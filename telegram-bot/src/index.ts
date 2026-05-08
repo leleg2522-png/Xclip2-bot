@@ -8,6 +8,23 @@ const RENDERFUL_BASE = 'https://api.renderful.ai/api/v1';
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!RENDERFUL_API_KEY) throw new Error('RENDERFUL_API_KEY is required');
 
+// Proxy configuration (Decodo residential rotating)
+const PROXY_HOST = process.env.PROXY_HOST || 'gate.decodo.com';
+const PROXY_PORT = parseInt(process.env.PROXY_PORT || '7000');
+const PROXY_USER = process.env.PROXY_USER || 'spg18hu8zx';
+const PROXY_PASS = process.env.PROXY_PASS || '16ktoBwP5Y8t_peuFc';
+
+const http = axios.create({
+  proxy: {
+    protocol: 'http',
+    host: PROXY_HOST,
+    port: PROXY_PORT,
+    auth: { username: PROXY_USER, password: PROXY_PASS },
+  },
+});
+
+console.log(`✅ Proxy configured: ${PROXY_HOST}:${PROXY_PORT}`);
+
 const bot = new Telegraf(BOT_TOKEN);
 
 interface Session {
@@ -141,7 +158,7 @@ async function handleVideoGeneration(ctx: any, videoFileId: string, session: Ses
 
     console.log(`[${userId}] Submitting generation...`);
 
-    const genRes = await axios.post(`${RENDERFUL_BASE}/generations`, payload, {
+    const genRes = await http.post(`${RENDERFUL_BASE}/generations`, payload, {
       headers: {
         Authorization: `Bearer ${RENDERFUL_API_KEY}`,
         'Content-Type': 'application/json',
@@ -185,7 +202,7 @@ async function handleVideoGeneration(ctx: any, videoFileId: string, session: Ses
     // Strategy 2: download and send as buffer
     if (!sent) {
       try {
-        const videoRes = await axios.get(outputUrl, {
+        const videoRes = await http.get(outputUrl, {
           responseType: 'arraybuffer',
           timeout: 120_000,
         });
@@ -228,7 +245,7 @@ async function pollForResult(taskId: string, userId: number, maxAttempts = 60): 
   for (let i = 0; i < maxAttempts; i++) {
     await sleep(10_000);
 
-    const res = await axios.get(`${RENDERFUL_BASE}/generations/${taskId}`, {
+    const res = await http.get(`${RENDERFUL_BASE}/generations/${taskId}`, {
       headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}` },
     });
 
