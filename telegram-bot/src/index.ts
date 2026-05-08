@@ -8,22 +8,23 @@ const RENDERFUL_BASE = 'https://api.renderful.ai/api/v1';
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!RENDERFUL_API_KEY) throw new Error('RENDERFUL_API_KEY is required');
 
-// Proxy configuration (Decodo residential rotating)
-const PROXY_HOST = process.env.PROXY_HOST || 'gate.decodo.com';
-const PROXY_PORT = parseInt(process.env.PROXY_PORT || '7000');
-const PROXY_USER = process.env.PROXY_USER || 'spg18hu8zx';
-const PROXY_PASS = process.env.PROXY_PASS || '16ktoBwP5Y8t_peuFc';
+// Proxy configuration — format: http://user:pass@host:port
+const PROXY_URL = process.env.PROXY_URL || 'http://spg18hu8zx:16ktoBwP5Y8t_peuFc@gate.decodo.com:7000';
+const proxyParsed = new URL(PROXY_URL);
 
 const http = axios.create({
   proxy: {
-    protocol: 'http',
-    host: PROXY_HOST,
-    port: PROXY_PORT,
-    auth: { username: PROXY_USER, password: PROXY_PASS },
+    protocol: proxyParsed.protocol.replace(':', ''),
+    host: proxyParsed.hostname,
+    port: parseInt(proxyParsed.port),
+    auth: {
+      username: decodeURIComponent(proxyParsed.username),
+      password: decodeURIComponent(proxyParsed.password),
+    },
   },
 });
 
-console.log(`✅ Proxy configured: ${PROXY_HOST}:${PROXY_PORT}`);
+console.log(`✅ Proxy configured: ${proxyParsed.hostname}:${proxyParsed.port}`);
 
 const bot = new Telegraf(BOT_TOKEN);
 
