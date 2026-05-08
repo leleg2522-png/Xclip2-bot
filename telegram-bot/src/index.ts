@@ -24,6 +24,17 @@ function getSession(userId: number): Session {
   return sessions.get(userId)!;
 }
 
+function extractOutputUrl(output: unknown): string {
+  if (typeof output === 'string') return output;
+  if (Array.isArray(output) && output.length > 0) return String(output[0]);
+  if (output && typeof output === 'object') {
+    const obj = output as Record<string, unknown>;
+    if (obj.url) return String(obj.url);
+    if (obj.video) return String(obj.video);
+  }
+  throw new Error(`Format output tidak dikenal: ${JSON.stringify(output)}`);
+}
+
 bot.start((ctx) => {
   const userId = ctx.from.id;
   sessions.set(userId, { waitingFor: 'image' });
@@ -112,10 +123,9 @@ bot.on('video', async (ctx) => {
 
 async function handleVideoGeneration(ctx: any, videoFileId: string, session: Session) {
   const userId = ctx.from.id;
-  const processingMsg = await ctx.reply(
-    '⏳ Mengirim ke Renderful.ai...\nMohon tunggu beberapa menit.'
-  );
+  const chatId = ctx.chat.id;
 
+  const processingMsg = await ctx.reply('⏳ Mengirim ke Renderful.ai...\nMohon tunggu beberapa menit.');
   sessions.set(userId, { waitingFor: 'image' });
 
   try {
@@ -129,6 +139,8 @@ async function handleVideoGeneration(ctx: any, videoFileId: string, session: Ses
       prompt: 'Transfer motion from reference video to character',
     };
 
+    console.log(`[${userId}] Submitting generation...`);
+
     const genRes = await axios.post(`${RENDERFUL_BASE}/generations`, payload, {
       headers: {
         Authorization: `Bearer ${RENDERFUL_API_KEY}`,
@@ -139,40 +151,53 @@ async function handleVideoGeneration(ctx: any, videoFileId: string, session: Ses
     const { id: taskId } = genRes.data;
     if (!taskId) throw new Error(`Tidak ada task ID: ${JSON.stringify(genRes.data)}`);
 
-    await ctx.telegram.editMessageText(
-      ctx.chat.id,
-      processingMsg.message_id,
-      undefined,
-      `⏳ Video sedang diproses...\nBiasanya membutuhkan 2-5 menit.`
-    );
-
-    const outputUrl = await pollForResult(taskId);
+    console.log(`[${userId}] Task created: ${taskId}`);
 
     await ctx.telegram.editMessageText(
-      ctx.chat.id,
+      chatId,
       processingMsg.message_id,
       undefined,
-      '✅ Video selesai! Mengirim...'
+      `⏳ Video sedang diproses...\nBiasanya 2-5 menit, mohon tunggu.`
     );
+
+    const outputUrl = await pollForResult(taskId, userId);
+    console.log(`[${userId}] Output URL: ${outputUrl}`);
+
+    await ctx.telegram.editMessageText(
+      chatId,
+      processingMsg.message_id,
+      undefined,
+      '✅ Selesai! Mengunduh dan mengirim video...'
+    );
+
+    // Download video then send as buffer to avoid Telegram URL access issues
+    const videoRes = await axios.get(outputUrl, { responseType: 'arraybuffer' });
+    const videoBuffer = Buffer.from(videoRes.data);
+    console.log(`[${userId}] Video downloaded: ${(videoBuffer.length / 1024 / 1024).toFixed(1)} MB`);
 
     await ctx.replyWithVideo(
-      { url: outputUrl },
+      { source: videoBuffer, filename: 'motion_video.mp4' },
       { caption: '🎬 Video berhasil dibuat dengan Kling 2.6 Pro Motion Control!\n\nKirim foto baru untuk membuat video lagi.' }
     );
+
+    await ctx.telegram.deleteMessage(chatId, processingMsg.message_id).catch(() => {});
+    console.log(`[${userId}] Video sent successfully`);
+
   } catch (err: any) {
     const errData = err?.response?.data;
     const errMsg = errData ? JSON.stringify(errData) : err.message;
+    console.error(`[${userId}] Error:`, errMsg);
 
     await ctx.telegram.editMessageText(
-      ctx.chat.id,
+      chatId,
       processingMsg.message_id,
       undefined,
-      `❌ Gagal membuat video: ${errMsg}\n\nGunakan /start untuk mencoba lagi.`
-    );
+      `❌ Gagal: ${errMsg}\n\nGunakan /start untuk mencoba lagi.`
+    ).catch(() => ctx.reply(`❌ Gagal: ${errMsg}\n\nGunakan /start untuk mencoba lagi.`));
   }
 }
 
-async function pollForResult(taskId: string, maxAttempts = 60): Promise<string> {
+async function pollForResult(taskId: string, userId: number, maxAttempts = 60): Promise<string> {
   for (let i = 0; i < maxAttempts; i++) {
     await sleep(10_000);
 
@@ -180,15 +205,20 @@ async function pollForResult(taskId: string, maxAttempts = 60): Promise<string> 
       headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}` },
     });
 
-    const { status, output } = res.data;
+    const { status, output, error } = res.data;
+    console.log(`[${userId}] Poll ${i + 1}: status=${status}`);
 
-    if (status === 'completed' && output) return output;
+    if (status === 'completed') {
+      if (!output) throw new Error('Status completed tapi tidak ada output');
+      return extractOutputUrl(output);
+    }
+
     if (status === 'failed') {
-      throw new Error(res.data.error || 'Generation gagal di sisi Renderful');
+      throw new Error(error || 'Generation gagal di sisi Renderful');
     }
   }
 
-  throw new Error('Timeout: Pembuatan video terlalu lama (>10 menit)');
+  throw new Error('Timeout: video terlalu lama diproses (>10 menit)');
 }
 
 function sleep(ms: number) {
@@ -196,7 +226,6 @@ function sleep(ms: number) {
 }
 
 bot.launch({ allowedUpdates: ['message'] });
-
 console.log('✅ Bot berjalan...');
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
