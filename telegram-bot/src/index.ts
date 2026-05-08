@@ -1,4 +1,4 @@
-import { Telegraf } from 'telegraf';
+import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -8,10 +8,9 @@ const RENDERFUL_BASE = 'https://api.renderful.ai/api/v1';
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!RENDERFUL_API_KEY) throw new Error('RENDERFUL_API_KEY is required');
 
-// Proxy configuration — format: http://user:pass@host:port
+// Proxy
 const PROXY_URL = process.env.PROXY_URL || 'http://spg18hu8zx:16ktoBwP5Y8t_peuFc@gate.decodo.com:7000';
 const proxyParsed = new URL(PROXY_URL);
-
 const http = axios.create({
   proxy: {
     protocol: proxyParsed.protocol.replace(':', ''),
@@ -23,230 +22,88 @@ const http = axios.create({
     },
   },
 });
-
-console.log(`✅ Proxy configured: ${proxyParsed.hostname}:${proxyParsed.port}`);
+console.log(`✅ Proxy: ${proxyParsed.hostname}:${proxyParsed.port}`);
 
 const bot = new Telegraf(BOT_TOKEN);
 
+// ─── Model definitions ────────────────────────────────────────────────────────
+
+const IMAGE_MODELS: Record<string, { label: string; cost: string }> = {
+  'gpt-image-1':  { label: '🤖 GPT Image 1',  cost: '$0.02' },
+  'banana-2':     { label: '🍌 Banana 2',      cost: '$0.02' },
+  'banana-pro':   { label: '🍌 Banana Pro',    cost: '$0.04' },
+  'seedream-5':   { label: '🌱 Seedream 5',    cost: '$0.02' },
+};
+
+// ─── Session state ────────────────────────────────────────────────────────────
+
+type Mode = 'idle' | 'video_wait_image' | 'video_wait_video' | 'img_wait_source';
+
 interface Session {
-  imageUrl?: string;
-  waitingFor: 'image' | 'video';
+  mode: Mode;
+  imageModel?: string;
+  characterUrl?: string; // for video mode
 }
 
 const sessions = new Map<number, Session>();
 
 function getSession(userId: number): Session {
-  if (!sessions.has(userId)) sessions.set(userId, { waitingFor: 'image' });
+  if (!sessions.has(userId)) sessions.set(userId, { mode: 'idle' });
   return sessions.get(userId)!;
 }
+
+function setSession(userId: number, data: Partial<Session>) {
+  sessions.set(userId, { ...getSession(userId), ...data });
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
 function extractOutputUrl(output: unknown): string {
   if (typeof output === 'string') return output;
   if (Array.isArray(output) && output.length > 0) return String(output[0]);
   if (output && typeof output === 'object') {
-    const obj = output as Record<string, unknown>;
-    if (obj.url) return String(obj.url);
-    if (obj.video) return String(obj.video);
+    const o = output as Record<string, unknown>;
+    if (o.url) return String(o.url);
+    if (o.image) return String(o.image);
+    if (o.video) return String(o.video);
   }
   throw new Error(`Format output tidak dikenal: ${JSON.stringify(output)}`);
 }
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// ─── Bot commands ────────────────────────────────────────────────────────────
-
-bot.start((ctx) => {
-  const userId = ctx.from.id;
-  sessions.set(userId, { waitingFor: 'image' });
-  return ctx.reply(
-    '🎬 *Kling 2.6 Pro Motion Control Bot*\n\n' +
-    'Transfer gerakan dari video referensi ke foto karakter!\n\n' +
-    '*Cara pakai:*\n' +
-    '1️⃣ Kirim *foto* karakter (sebagai foto, bukan file)\n' +
-    '2️⃣ Kirim *video* referensi gerakan\n' +
-    '3️⃣ Tunggu hasil (~2-5 menit)\n\n' +
-    'Mulai dengan kirim foto karakter!',
-    { parse_mode: 'Markdown' }
-  );
-});
-
-bot.help((ctx) => {
-  return ctx.reply(
-    '*Perintah:*\n' +
-    '/start — Mulai ulang dari awal\n' +
-    '/help — Tampilkan bantuan\n' +
-    '/cancel — Batalkan proses saat ini\n\n' +
-    '*Catatan:*\n' +
-    '• Ukuran file max 10 MB\n' +
-    '• Video mode: hingga 30 detik\n' +
-    '• Biaya: $0.15 per video',
-    { parse_mode: 'Markdown' }
-  );
-});
-
-bot.command('cancel', (ctx) => {
-  sessions.set(ctx.from.id, { waitingFor: 'image' });
-  return ctx.reply('✅ Dibatalkan. Kirim foto karakter untuk memulai lagi.');
-});
-
-// ─── Photo handler ───────────────────────────────────────────────────────────
-
-bot.on('photo', async (ctx) => {
-  const userId = ctx.from.id;
-  const session = getSession(userId);
-  const photo = ctx.message.photo[ctx.message.photo.length - 1];
-  const fileLink = await ctx.telegram.getFileLink(photo.file_id);
-  session.imageUrl = fileLink.href;
-  session.waitingFor = 'video';
-  sessions.set(userId, session);
-  return ctx.reply(
-    '✅ Foto karakter diterima!\n\nSekarang kirim *video referensi gerakan*.',
-    { parse_mode: 'Markdown' }
-  );
-});
-
-// ─── Document handler ─────────────────────────────────────────────────────────
-
-bot.on('document', async (ctx) => {
-  const userId = ctx.from.id;
-  const session = getSession(userId);
-  const doc = ctx.message.document;
-  if (session.waitingFor === 'image' && doc.mime_type?.startsWith('image/')) {
-    const fileLink = await ctx.telegram.getFileLink(doc.file_id);
-    session.imageUrl = fileLink.href;
-    session.waitingFor = 'video';
-    sessions.set(userId, session);
-    return ctx.reply('✅ Foto karakter diterima!\n\nSekarang kirim *video referensi gerakan*.', { parse_mode: 'Markdown' });
-  } else if (session.waitingFor === 'video' && doc.mime_type?.startsWith('video/')) {
-    return startGeneration(ctx, doc.file_id, session);
-  } else {
-    return ctx.reply('⚠️ Kirim foto karakter terlebih dahulu dengan /start');
-  }
-});
-
-// ─── Video handler ────────────────────────────────────────────────────────────
-
-bot.on('video', async (ctx) => {
-  const userId = ctx.from.id;
-  const session = getSession(userId);
-  if (session.waitingFor !== 'video' || !session.imageUrl) {
-    return ctx.reply('⚠️ Kirim foto karakter terlebih dahulu!\nGunakan /start untuk memulai ulang.');
-  }
-  return startGeneration(ctx, ctx.message.video.file_id, session);
-});
-
-// ─── Fire-and-forget generation ───────────────────────────────────────────────
-
-async function startGeneration(ctx: any, videoFileId: string, session: Session) {
-  const userId = ctx.from.id;
-  const chatId = ctx.chat.id;
-
-  // Reset session immediately
-  sessions.set(userId, { waitingFor: 'image' });
-
-  // Send status message synchronously so Telegraf handler returns fast
-  const statusMsg = await ctx.reply('⏳ Mengirim ke Renderful.ai...\nHasil akan dikirim otomatis setelah selesai (~2-5 menit).');
-
-  // Run generation in background — do NOT await this
-  runGeneration(chatId, userId, statusMsg.message_id, videoFileId, session.imageUrl!).catch((err) => {
-    console.error(`[${userId}] Uncaught background error:`, err.message);
-  });
-}
-
-async function runGeneration(
-  chatId: number,
-  userId: number,
-  statusMsgId: number,
-  videoFileId: string,
-  imageUrl: string
-) {
+async function sendResult(chatId: number, outputUrl: string, caption: string, isVideo: boolean) {
+  // Strategy 1: download via proxy → send as buffer
   try {
-    const videoFileLink = await bot.telegram.getFileLink(videoFileId);
-
-    const payload = {
-      type: 'image-to-video',
-      model: 'kling-v2-6-motion-control',
-      image_url: imageUrl,
-      video_url: videoFileLink.href,
-      prompt: 'Transfer motion from reference video to character',
-    };
-
-    console.log(`[${userId}] Submitting generation...`);
-
-    const genRes = await http.post(`${RENDERFUL_BASE}/generations`, payload, {
-      headers: {
-        Authorization: `Bearer ${RENDERFUL_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    const { id: taskId } = genRes.data;
-    if (!taskId) throw new Error(`Tidak ada task ID: ${JSON.stringify(genRes.data)}`);
-
-    console.log(`[${userId}] Task created: ${taskId}`);
-
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `⏳ Video sedang diproses (${taskId.slice(0, 8)}...)\nBiasanya 2-5 menit, mohon tunggu.`
-    );
-
-    // Poll for result
-    const outputUrl = await pollForResult(taskId, userId);
-    console.log(`[${userId}] Output: ${outputUrl}`);
-
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '✅ Selesai! Mengirim video...');
-
-    const caption = '🎬 Video berhasil dibuat!\n\nKirim foto baru untuk membuat video lagi.';
-
-    // Strategy 1: download via proxy, send as buffer (most reliable for large files)
-    let sent = false;
-    try {
-      const videoRes = await http.get(outputUrl, { responseType: 'arraybuffer', timeout: 180_000 });
-      const videoBuffer = Buffer.from(videoRes.data);
-      const sizeMB = (videoBuffer.length / 1024 / 1024).toFixed(1);
-      console.log(`[${userId}] Downloaded ${sizeMB} MB via proxy`);
-      await bot.telegram.sendVideo(chatId, { source: videoBuffer, filename: 'motion_video.mp4' }, { caption });
-      sent = true;
-      console.log(`[${userId}] Sent via buffer`);
-    } catch (e: any) {
-      console.log(`[${userId}] Buffer failed: ${e.message}`);
+    const res = await http.get(outputUrl, { responseType: 'arraybuffer', timeout: 180_000 });
+    const buf = Buffer.from(res.data);
+    console.log(`Downloaded ${(buf.length / 1024 / 1024).toFixed(1)} MB`);
+    if (isVideo) {
+      await bot.telegram.sendVideo(chatId, { source: buf, filename: 'output.mp4' }, { caption });
+    } else {
+      await bot.telegram.sendPhoto(chatId, { source: buf, filename: 'output.jpg' }, { caption });
     }
-
-    // Strategy 2: direct URL (may fail for large files but worth trying)
-    if (!sent) {
-      try {
-        await bot.telegram.sendVideo(chatId, outputUrl, { caption });
-        sent = true;
-        console.log(`[${userId}] Sent via URL`);
-      } catch (e: any) {
-        console.log(`[${userId}] URL failed: ${e.message}`);
-      }
-    }
-
-    // Strategy 3: send link as text
-    if (!sent) {
-      await bot.telegram.sendMessage(
-        chatId,
-        `✅ Video selesai!\n\n📥 Download link (aktif ~1 jam):\n${outputUrl}\n\nKirim foto baru untuk membuat video lagi.`
-      );
-      console.log(`[${userId}] Sent as text link`);
-    }
-
-    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] Done`);
-
-  } catch (err: any) {
-    const errData = err?.response?.data;
-    const errMsg = errData ? JSON.stringify(errData) : err.message;
-    console.error(`[${userId}] Error: ${errMsg}`);
-    await bot.telegram.editMessageText(
-      chatId, statusMsgId, undefined,
-      `❌ Gagal: ${errMsg}\n\nGunakan /start untuk mencoba lagi.`
-    ).catch(() =>
-      bot.telegram.sendMessage(chatId, `❌ Gagal: ${errMsg}\n\nGunakan /start untuk mencoba lagi.`)
-    );
+    return;
+  } catch (e: any) {
+    console.log(`Buffer strategy failed: ${e.message}`);
   }
+
+  // Strategy 2: direct URL
+  try {
+    if (isVideo) {
+      await bot.telegram.sendVideo(chatId, outputUrl, { caption });
+    } else {
+      await bot.telegram.sendPhoto(chatId, outputUrl, { caption });
+    }
+    return;
+  } catch (e: any) {
+    console.log(`URL strategy failed: ${e.message}`);
+  }
+
+  // Strategy 3: text link fallback
+  await bot.telegram.sendMessage(chatId,
+    `✅ Hasil selesai!\n\n📥 Download (link aktif ~1 jam):\n${outputUrl}\n\n${caption}`
+  );
 }
 
 async function pollForResult(taskId: string, userId: number, maxAttempts = 60): Promise<string> {
@@ -263,12 +120,266 @@ async function pollForResult(taskId: string, userId: number, maxAttempts = 60): 
     }
     if (status === 'failed') throw new Error(error || 'Generation gagal di Renderful');
   }
-  throw new Error('Timeout: video terlalu lama (>10 menit)');
+  throw new Error('Timeout: proses terlalu lama (>10 menit)');
+}
+
+// ─── Main menu keyboard ───────────────────────────────────────────────────────
+
+function mainMenuKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🎬 Video Motion Control', 'mode_video')],
+    [Markup.button.callback('🖼️ Image to Image', 'mode_image')],
+  ]);
+}
+
+function imageModelKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🤖 GPT Image 1 ($0.02)',  'model_gpt-image-1')],
+    [Markup.button.callback('🍌 Banana 2 ($0.02)',     'model_banana-2')],
+    [Markup.button.callback('🍌 Banana Pro ($0.04)',   'model_banana-pro')],
+    [Markup.button.callback('🌱 Seedream 5 ($0.02)',   'model_seedream-5')],
+    [Markup.button.callback('« Kembali',               'back_main')],
+  ]);
+}
+
+// ─── Commands ─────────────────────────────────────────────────────────────────
+
+bot.start((ctx) => {
+  setSession(ctx.from.id, { mode: 'idle' });
+  return ctx.reply(
+    '👋 Selamat datang di *XclipAI Bot*!\n\nPilih mode generasi:',
+    { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+  );
+});
+
+bot.command('menu', (ctx) => {
+  setSession(ctx.from.id, { mode: 'idle' });
+  return ctx.reply('Pilih mode generasi:', mainMenuKeyboard());
+});
+
+bot.command('cancel', (ctx) => {
+  setSession(ctx.from.id, { mode: 'idle' });
+  return ctx.reply('✅ Dibatalkan.', mainMenuKeyboard());
+});
+
+bot.help((ctx) => {
+  return ctx.reply(
+    '*Perintah:*\n' +
+    '/start — Menu utama\n' +
+    '/menu — Tampilkan menu\n' +
+    '/cancel — Batalkan proses\n\n' +
+    '*Mode Video:*\n' +
+    '• Kirim foto karakter → kirim video referensi → tunggu hasil\n' +
+    '• Menggunakan Kling 2.6 Pro Motion Control ($0.15)\n\n' +
+    '*Mode Image (i2i):*\n' +
+    '• Pilih model → kirim foto → tunggu hasil\n' +
+    '• GPT Image 1, Banana 2, Banana Pro, Seedream 5',
+    { parse_mode: 'Markdown' }
+  );
+});
+
+// ─── Callback queries (inline buttons) ───────────────────────────────────────
+
+bot.on('callback_query', async (ctx) => {
+  const data = (ctx.callbackQuery as any).data as string;
+  const userId = ctx.from.id;
+
+  await ctx.answerCbQuery();
+
+  if (data === 'mode_video') {
+    setSession(userId, { mode: 'video_wait_image' });
+    return ctx.editMessageText(
+      '🎬 *Video Motion Control*\n\nKirim *foto karakter* yang ingin dianimasikan.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data === 'mode_image') {
+    setSession(userId, { mode: 'idle' });
+    return ctx.editMessageText(
+      '🖼️ *Image to Image*\n\nPilih model:',
+      { parse_mode: 'Markdown', ...imageModelKeyboard() }
+    );
+  }
+
+  if (data.startsWith('model_')) {
+    const model = data.replace('model_', '');
+    const modelInfo = IMAGE_MODELS[model];
+    if (!modelInfo) return;
+    setSession(userId, { mode: 'img_wait_source', imageModel: model });
+    return ctx.editMessageText(
+      `🖼️ *${modelInfo.label}* dipilih (${modelInfo.cost}/gambar)\n\nSekarang kirim *foto* yang ingin diproses.`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data === 'back_main') {
+    setSession(userId, { mode: 'idle' });
+    return ctx.editMessageText('Pilih mode generasi:', mainMenuKeyboard());
+  }
+});
+
+// ─── Photo handler ────────────────────────────────────────────────────────────
+
+bot.on('photo', async (ctx) => {
+  const userId = ctx.from.id;
+  const session = getSession(userId);
+  const photo = ctx.message.photo[ctx.message.photo.length - 1];
+  const fileLink = await ctx.telegram.getFileLink(photo.file_id);
+  const fileUrl = fileLink.href;
+
+  // Video mode: save character photo
+  if (session.mode === 'video_wait_image') {
+    setSession(userId, { characterUrl: fileUrl, mode: 'video_wait_video' });
+    return ctx.reply(
+      '✅ Foto karakter diterima!\n\nSekarang kirim *video referensi gerakan*.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  // Image-to-image mode: run generation
+  if (session.mode === 'img_wait_source') {
+    const model = session.imageModel!;
+    const modelInfo = IMAGE_MODELS[model];
+    setSession(userId, { mode: 'idle' });
+
+    const statusMsg = await ctx.reply(`⏳ Memproses dengan *${modelInfo.label}*...\nHasil dikirim otomatis setelah selesai.`, { parse_mode: 'Markdown' });
+
+    // Fire and forget
+    runImageGeneration(ctx.chat.id, userId, statusMsg.message_id, fileUrl, model, modelInfo.label).catch(e =>
+      console.error(`[${userId}] Image gen error:`, e.message)
+    );
+    return;
+  }
+
+  // Not in any mode
+  return ctx.reply('Pilih mode terlebih dahulu:', mainMenuKeyboard());
+});
+
+// ─── Video handler ────────────────────────────────────────────────────────────
+
+bot.on('video', async (ctx) => {
+  const userId = ctx.from.id;
+  const session = getSession(userId);
+
+  if (session.mode !== 'video_wait_video' || !session.characterUrl) {
+    return ctx.reply('⚠️ Kirim foto karakter terlebih dahulu.', mainMenuKeyboard());
+  }
+
+  setSession(userId, { mode: 'idle' });
+  const statusMsg = await ctx.reply('⏳ Mengirim ke Renderful.ai...\nHasil dikirim otomatis (~2-5 menit).');
+
+  runVideoGeneration(ctx.chat.id, userId, statusMsg.message_id, ctx.message.video.file_id, session.characterUrl).catch(e =>
+    console.error(`[${userId}] Video gen error:`, e.message)
+  );
+});
+
+bot.on('document', async (ctx) => {
+  const userId = ctx.from.id;
+  const session = getSession(userId);
+  const doc = ctx.message.document;
+
+  if (doc.mime_type?.startsWith('image/')) {
+    const fileLink = await ctx.telegram.getFileLink(doc.file_id);
+    if (session.mode === 'video_wait_image') {
+      setSession(userId, { characterUrl: fileLink.href, mode: 'video_wait_video' });
+      return ctx.reply('✅ Foto diterima! Kirim *video referensi gerakan*.', { parse_mode: 'Markdown' });
+    }
+    if (session.mode === 'img_wait_source') {
+      const model = session.imageModel!;
+      const modelInfo = IMAGE_MODELS[model];
+      setSession(userId, { mode: 'idle' });
+      const statusMsg = await ctx.reply(`⏳ Memproses dengan *${modelInfo.label}*...`, { parse_mode: 'Markdown' });
+      runImageGeneration(ctx.chat.id, userId, statusMsg.message_id, fileLink.href, model, modelInfo.label).catch(console.error);
+      return;
+    }
+  }
+
+  if (doc.mime_type?.startsWith('video/') && session.mode === 'video_wait_video' && session.characterUrl) {
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Mengirim ke Renderful.ai...');
+    runVideoGeneration(ctx.chat.id, userId, statusMsg.message_id, doc.file_id, session.characterUrl).catch(console.error);
+    return;
+  }
+
+  return ctx.reply('⚠️ Pilih mode terlebih dahulu:', mainMenuKeyboard());
+});
+
+// ─── Background: Video generation ────────────────────────────────────────────
+
+async function runVideoGeneration(chatId: number, userId: number, statusMsgId: number, videoFileId: string, imageUrl: string) {
+  try {
+    const videoFileLink = await bot.telegram.getFileLink(videoFileId);
+    console.log(`[${userId}] Video generation started`);
+
+    const genRes = await http.post(`${RENDERFUL_BASE}/generations`, {
+      type: 'image-to-video',
+      model: 'kling-v2-6-motion-control',
+      image_url: imageUrl,
+      video_url: videoFileLink.href,
+      prompt: 'Transfer motion from reference video to character',
+    }, { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } });
+
+    const { id: taskId } = genRes.data;
+    if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
+    console.log(`[${userId}] Task: ${taskId}`);
+
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `⏳ Video diproses (${taskId.slice(0, 8)}...)\nBiasanya 2-5 menit.`
+    );
+
+    const outputUrl = await pollForResult(taskId, userId);
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '✅ Selesai! Mengirim...');
+    await sendResult(chatId, outputUrl, '🎬 Kling 2.6 Motion Control\n\n/menu untuk buat lagi', true);
+    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    console.log(`[${userId}] Video done`);
+  } catch (err: any) {
+    const msg = err?.response?.data ? JSON.stringify(err.response.data) : err.message;
+    console.error(`[${userId}] Video error: ${msg}`);
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `❌ Gagal: ${msg}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `❌ Gagal: ${msg}\n\n/menu untuk coba lagi`));
+  }
+}
+
+// ─── Background: Image generation ────────────────────────────────────────────
+
+async function runImageGeneration(chatId: number, userId: number, statusMsgId: number, imageUrl: string, model: string, modelLabel: string) {
+  try {
+    console.log(`[${userId}] Image generation: ${model}`);
+
+    const genRes = await http.post(`${RENDERFUL_BASE}/generations`, {
+      type: 'image-to-image',
+      model,
+      image_url: imageUrl,
+      prompt: 'high quality, photorealistic',
+    }, { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } });
+
+    const { id: taskId } = genRes.data;
+    if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
+    console.log(`[${userId}] Task: ${taskId}`);
+
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `⏳ Diproses dengan ${modelLabel}...\nMohon tunggu.`
+    );
+
+    const outputUrl = await pollForResult(taskId, userId);
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '✅ Selesai! Mengirim...');
+    await sendResult(chatId, outputUrl, `🖼️ Dibuat dengan ${modelLabel}\n\n/menu untuk buat lagi`, false);
+    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    console.log(`[${userId}] Image done`);
+  } catch (err: any) {
+    const msg = err?.response?.data ? JSON.stringify(err.response.data) : err.message;
+    console.error(`[${userId}] Image error: ${msg}`);
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `❌ Gagal: ${msg}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `❌ Gagal: ${msg}\n\n/menu untuk coba lagi`));
+  }
 }
 
 // ─── Launch ───────────────────────────────────────────────────────────────────
 
-bot.launch({ allowedUpdates: ['message'] });
+bot.launch({ allowedUpdates: ['message', 'callback_query'] });
 console.log('✅ Bot berjalan...');
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
