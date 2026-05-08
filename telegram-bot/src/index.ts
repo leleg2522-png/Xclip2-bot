@@ -26,7 +26,7 @@ const bot = new Telegraf(BOT_TOKEN);
 // ─── Model definitions ────────────────────────────────────────────────────────
 
 const IMAGE_MODELS: Record<string, { label: string; cost: string }> = {
-  'gpt-image-2':  { label: '🤖 GPT-2',  cost: '$0.02' },
+  'gpt-image-1':  { label: '🤖 GPT Image 1',  cost: '$0.02' },
   'banana-2':     { label: '🍌 Banana 2',      cost: '$0.02' },
   'banana-pro':   { label: '🍌 Banana Pro',    cost: '$0.04' },
   'seedream-5':   { label: '🌱 Seedream 5',    cost: '$0.02' },
@@ -202,7 +202,9 @@ bot.on('callback_query', async (ctx) => {
   if (data.startsWith('model_')) {
     const model = data.replace('model_', '');
     const modelInfo = IMAGE_MODELS[model];
-    if (!modelInfo) return;
+    if (!modelInfo) {
+      return ctx.editMessageText(`❌ Model tidak dikenal: ${model}`, mainMenuKeyboard());
+    }
     setSession(userId, { mode: 'img_wait_source', imageModel: model });
     return ctx.editMessageText(
       `🖼️ *${modelInfo.label}* dipilih (${modelInfo.cost}/gambar)\n\nSekarang kirim *foto* yang ingin diproses.`,
@@ -345,15 +347,23 @@ async function runImageGeneration(chatId: number, userId: number, statusMsgId: n
   try {
     console.log(`[${userId}] Image generation: ${model}`);
 
-    const genRes = await http.post(`${RENDERFUL_BASE}/generations`, {
+    const payload = {
       type: 'image-to-image',
       model,
       image_url: imageUrl,
       prompt: 'high quality, photorealistic',
-    }, { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } });
+    };
+    console.log(`[${userId}] Renderful payload:`, JSON.stringify(payload));
+
+    const genRes = await http.post(`${RENDERFUL_BASE}/generations`, payload,
+      { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } }
+    );
+
+    console.log(`[${userId}] Renderful response status: ${genRes.status}`);
+    console.log(`[${userId}] Renderful response data:`, JSON.stringify(genRes.data));
 
     const { id: taskId } = genRes.data;
-    if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
+    if (!taskId) throw new Error(`No task ID in response: ${JSON.stringify(genRes.data)}`);
     console.log(`[${userId}] Task: ${taskId}`);
 
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
