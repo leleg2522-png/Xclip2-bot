@@ -1,6 +1,5 @@
 import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
-import { HttpsProxyAgent } from 'https-proxy-agent';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -9,17 +8,21 @@ const RENDERFUL_BASE = 'https://api.renderful.ai/api/v1';
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!RENDERFUL_API_KEY) throw new Error('RENDERFUL_API_KEY is required');
 
-// Proxy — uses https-proxy-agent for reliable HTTPS tunneling
-const PROXY_URL = process.env.PROXY_URL || 'http://spg18hu8zx:16ktoBwP5Y8t_peuFc@gate.decodo.com:7000';
-const proxyAgent = new HttpsProxyAgent(PROXY_URL);
-
-const http = axios.create({
-  proxy: false, // disable axios built-in proxy
-  httpsAgent: proxyAgent,
-  httpAgent: proxyAgent,
+// Direct HTTP client for Renderful API (no proxy needed)
+const renderfulHttp = axios.create({
+  timeout: 30_000,
 });
 
-console.log(`✅ Proxy: ${new URL(PROXY_URL).hostname}:${new URL(PROXY_URL).port}`);
+// Proxy client for file downloads (optional, fallback to direct)
+const PROXY_URL = process.env.PROXY_URL;
+const http = PROXY_URL
+  ? (() => {
+      const { HttpsProxyAgent } = require('https-proxy-agent');
+      const agent = new HttpsProxyAgent(PROXY_URL);
+      console.log(`✅ Proxy aktif: ${new URL(PROXY_URL).hostname}:${new URL(PROXY_URL).port}`);
+      return axios.create({ proxy: false, httpsAgent: agent, httpAgent: agent });
+    })()
+  : axios.create({ timeout: 60_000 });
 
 const bot = new Telegraf(BOT_TOKEN);
 
@@ -106,7 +109,7 @@ async function sendResult(chatId: number, outputUrl: string, caption: string, is
 async function pollForResult(taskId: string, userId: number, maxAttempts = 60): Promise<string> {
   for (let i = 0; i < maxAttempts; i++) {
     await sleep(10_000);
-    const res = await http.get(`${RENDERFUL_BASE}/generations/${taskId}`, {
+    const res = await renderfulHttp.get(`${RENDERFUL_BASE}/generations/${taskId}`, {
       headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}` },
     });
     const { status, output, error } = res.data;
@@ -311,7 +314,7 @@ async function runVideoGeneration(chatId: number, userId: number, statusMsgId: n
     const videoFileLink = await bot.telegram.getFileLink(videoFileId);
     console.log(`[${userId}] Video generation started`);
 
-    const genRes = await http.post(`${RENDERFUL_BASE}/generations`, {
+    const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
       type: 'image-to-video',
       model: 'kling-v2-6-motion-control',
       image_url: imageUrl,
@@ -355,7 +358,7 @@ async function runImageGeneration(chatId: number, userId: number, statusMsgId: n
     };
     console.log(`[${userId}] Renderful payload:`, JSON.stringify(payload));
 
-    const genRes = await http.post(`${RENDERFUL_BASE}/generations`, payload,
+    const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, payload,
       { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } }
     );
 
