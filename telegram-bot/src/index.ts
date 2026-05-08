@@ -29,10 +29,10 @@ const bot = new Telegraf(BOT_TOKEN);
 // ─── Model definitions ────────────────────────────────────────────────────────
 
 const IMAGE_MODELS: Record<string, { label: string; cost: string }> = {
-  'gpt-image-1':  { label: '🤖 GPT Image 1',  cost: '$0.02' },
-  'banana-2':     { label: '🍌 Banana 2',      cost: '$0.02' },
-  'banana-pro':   { label: '🍌 Banana Pro',    cost: '$0.04' },
-  'seedream-5':   { label: '🌱 Seedream 5',    cost: '$0.02' },
+  'gpt-image':        { label: '🤖 GPT Image',      cost: '$0.04' },
+  'nano-banana-2':    { label: '🍌 Nano Banana 2',   cost: '$0.04' },
+  'nano-banana-pro':  { label: '🍌 Nano Banana Pro', cost: '$0.14' },
+  'seedream-5.0-lite':{ label: '🌱 Seedream 5 Lite', cost: '$0.04' },
 };
 
 // ─── Session state ────────────────────────────────────────────────────────────
@@ -134,10 +134,10 @@ function mainMenuKeyboard() {
 
 function imageModelKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('🤖 GPT Image 1 ($0.02)',  'model_gpt-image-1')],
-    [Markup.button.callback('🍌 Banana 2 ($0.02)',     'model_banana-2')],
-    [Markup.button.callback('🍌 Banana Pro ($0.04)',   'model_banana-pro')],
-    [Markup.button.callback('🌱 Seedream 5 ($0.02)',   'model_seedream-5')],
+    [Markup.button.callback('🤖 GPT Image ($0.04)',       'model_gpt-image')],
+    [Markup.button.callback('🍌 Nano Banana 2 ($0.04)',  'model_nano-banana-2')],
+    [Markup.button.callback('🍌 Nano Banana Pro ($0.14)','model_nano-banana-pro')],
+    [Markup.button.callback('🌱 Seedream 5 Lite ($0.04)','model_seedream-5.0-lite')],
     [Markup.button.callback('« Kembali',               'back_main')],
   ]);
 }
@@ -315,7 +315,7 @@ async function runVideoGeneration(chatId: number, userId: number, statusMsgId: n
     console.log(`[${userId}] Video generation started`);
 
     const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
-      type: 'image-to-video',
+      type: 'video-to-video',
       model: 'kling-v2-6-motion-control',
       image_url: imageUrl,
       video_url: videoFileLink.href,
