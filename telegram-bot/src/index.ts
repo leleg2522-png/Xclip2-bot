@@ -29,7 +29,7 @@ const bot = new Telegraf(BOT_TOKEN);
 // ─── Model definitions ────────────────────────────────────────────────────────
 
 const IMAGE_MODELS: Record<string, { label: string; cost: string }> = {
-  'gpt-image-1':  { label: '🤖 GPT-2',  cost: '$0.02' },
+  'gpt-image-2':  { label: '🤖 GPT-2',  cost: '$0.02' },
   'banana-2':     { label: '🍌 Banana 2',      cost: '$0.02' },
   'banana-pro':   { label: '🍌 Banana Pro',    cost: '$0.04' },
   'seedream-5':   { label: '🌱 Seedream 5',    cost: '$0.02' },
