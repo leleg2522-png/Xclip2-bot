@@ -167,21 +167,48 @@ async function handleVideoGeneration(ctx: any, videoFileId: string, session: Ses
       chatId,
       processingMsg.message_id,
       undefined,
-      '✅ Selesai! Mengunduh dan mengirim video...'
+      '✅ Selesai! Mengirim video...'
     );
 
-    // Download video then send as buffer to avoid Telegram URL access issues
-    const videoRes = await axios.get(outputUrl, { responseType: 'arraybuffer' });
-    const videoBuffer = Buffer.from(videoRes.data);
-    console.log(`[${userId}] Video downloaded: ${(videoBuffer.length / 1024 / 1024).toFixed(1)} MB`);
+    const caption = '🎬 Video berhasil dibuat dengan Kling 2.6 Pro Motion Control!\n\nKirim foto baru untuk membuat video lagi.';
 
-    await ctx.replyWithVideo(
-      { source: videoBuffer, filename: 'motion_video.mp4' },
-      { caption: '🎬 Video berhasil dibuat dengan Kling 2.6 Pro Motion Control!\n\nKirim foto baru untuk membuat video lagi.' }
-    );
+    // Strategy 1: send via URL directly (fastest, no size limit from our side)
+    let sent = false;
+    try {
+      await ctx.replyWithVideo({ url: outputUrl }, { caption });
+      sent = true;
+      console.log(`[${userId}] Video sent via URL`);
+    } catch (urlErr: any) {
+      console.log(`[${userId}] URL send failed: ${urlErr.message}, trying buffer...`);
+    }
+
+    // Strategy 2: download and send as buffer
+    if (!sent) {
+      try {
+        const videoRes = await axios.get(outputUrl, {
+          responseType: 'arraybuffer',
+          timeout: 120_000,
+        });
+        const videoBuffer = Buffer.from(videoRes.data);
+        console.log(`[${userId}] Downloaded: ${(videoBuffer.length / 1024 / 1024).toFixed(1)} MB`);
+        await ctx.replyWithVideo({ source: videoBuffer, filename: 'motion_video.mp4' }, { caption });
+        sent = true;
+        console.log(`[${userId}] Video sent via buffer`);
+      } catch (bufErr: any) {
+        console.log(`[${userId}] Buffer send failed: ${bufErr.message}, sending link...`);
+      }
+    }
+
+    // Strategy 3: fallback — just send the URL as text
+    if (!sent) {
+      await ctx.reply(
+        `✅ Video selesai dibuat!\n\n📥 Download di sini (link aktif ~1 jam):\n${outputUrl}\n\nKirim foto baru untuk membuat video lagi.`
+      );
+      console.log(`[${userId}] Sent as text link (fallback)`);
+    }
 
     await ctx.telegram.deleteMessage(chatId, processingMsg.message_id).catch(() => {});
-    console.log(`[${userId}] Video sent successfully`);
+    console.log(`[${userId}] Done`);
 
   } catch (err: any) {
     const errData = err?.response?.data;
