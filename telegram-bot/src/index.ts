@@ -1,6 +1,5 @@
 import { Telegraf } from 'telegraf';
 import axios from 'axios';
-import FormData from 'form-data';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -114,7 +113,7 @@ bot.on('video', async (ctx) => {
 async function handleVideoGeneration(ctx: any, videoFileId: string, session: Session) {
   const userId = ctx.from.id;
   const processingMsg = await ctx.reply(
-    '⏳ Mengunduh file dan mengirim ke Renderful...\nMohon tunggu beberapa menit.'
+    '⏳ Mengirim ke Renderful.ai...\nMohon tunggu beberapa menit.'
   );
 
   sessions.set(userId, { waitingFor: 'image' });
@@ -122,45 +121,29 @@ async function handleVideoGeneration(ctx: any, videoFileId: string, session: Ses
   try {
     const videoFileLink = await ctx.telegram.getFileLink(videoFileId);
 
-    await ctx.telegram.editMessageText(
-      ctx.chat.id,
-      processingMsg.message_id,
-      undefined,
-      '⏳ File diterima. Mengirim ke Renderful.ai untuk diproses...'
-    );
+    const payload = {
+      type: 'image-to-video',
+      model: 'kling-v2-6-motion-control',
+      image_url: session.imageUrl,
+      video_url: videoFileLink.href,
+      prompt: 'Transfer motion from reference video to character',
+    };
 
-    const [imageRes, videoRes] = await Promise.all([
-      axios.get(session.imageUrl!, { responseType: 'arraybuffer' }),
-      axios.get(videoFileLink.href, { responseType: 'arraybuffer' }),
-    ]);
-
-    const form = new FormData();
-    form.append('type', 'video-to-video');
-    form.append('model', 'kling-v2-6-motion-control');
-    form.append('image', Buffer.from(imageRes.data), {
-      filename: 'character.jpg',
-      contentType: String(imageRes.headers['content-type'] || 'image/jpeg'),
-    });
-    form.append('video', Buffer.from(videoRes.data), {
-      filename: 'motion.mp4',
-      contentType: String(videoRes.headers['content-type'] || 'video/mp4'),
-    });
-
-    const genRes = await axios.post(`${RENDERFUL_BASE}/generations`, form, {
+    const genRes = await axios.post(`${RENDERFUL_BASE}/generations`, payload, {
       headers: {
         Authorization: `Bearer ${RENDERFUL_API_KEY}`,
-        ...form.getHeaders(),
+        'Content-Type': 'application/json',
       },
     });
 
     const { id: taskId } = genRes.data;
-    if (!taskId) throw new Error(`Tidak ada task ID dari Renderful: ${JSON.stringify(genRes.data)}`);
+    if (!taskId) throw new Error(`Tidak ada task ID: ${JSON.stringify(genRes.data)}`);
 
     await ctx.telegram.editMessageText(
       ctx.chat.id,
       processingMsg.message_id,
       undefined,
-      `⏳ Video sedang diproses (Task: ${taskId})\nBiasanya membutuhkan 2-5 menit...`
+      `⏳ Video sedang diproses...\nBiasanya membutuhkan 2-5 menit.`
     );
 
     const outputUrl = await pollForResult(taskId);
@@ -177,9 +160,8 @@ async function handleVideoGeneration(ctx: any, videoFileId: string, session: Ses
       { caption: '🎬 Video berhasil dibuat dengan Kling 2.6 Pro Motion Control!\n\nKirim foto baru untuk membuat video lagi.' }
     );
   } catch (err: any) {
-    const errMsg = err?.response?.data
-      ? JSON.stringify(err.response.data)
-      : err.message;
+    const errData = err?.response?.data;
+    const errMsg = errData ? JSON.stringify(errData) : err.message;
 
     await ctx.telegram.editMessageText(
       ctx.chat.id,
@@ -201,7 +183,9 @@ async function pollForResult(taskId: string, maxAttempts = 60): Promise<string> 
     const { status, output } = res.data;
 
     if (status === 'completed' && output) return output;
-    if (status === 'failed') throw new Error('Generation gagal di sisi Renderful');
+    if (status === 'failed') {
+      throw new Error(res.data.error || 'Generation gagal di sisi Renderful');
+    }
   }
 
   throw new Error('Timeout: Pembuatan video terlalu lama (>10 menit)');
@@ -211,9 +195,7 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-bot.launch({
-  allowedUpdates: ['message'],
-});
+bot.launch({ allowedUpdates: ['message'] });
 
 console.log('✅ Bot berjalan...');
 
