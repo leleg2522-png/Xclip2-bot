@@ -1,5 +1,6 @@
 import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -8,21 +9,17 @@ const RENDERFUL_BASE = 'https://api.renderful.ai/api/v1';
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!RENDERFUL_API_KEY) throw new Error('RENDERFUL_API_KEY is required');
 
-// Proxy
+// Proxy — uses https-proxy-agent for reliable HTTPS tunneling
 const PROXY_URL = process.env.PROXY_URL || 'http://spg18hu8zx:16ktoBwP5Y8t_peuFc@gate.decodo.com:7000';
-const proxyParsed = new URL(PROXY_URL);
+const proxyAgent = new HttpsProxyAgent(PROXY_URL);
+
 const http = axios.create({
-  proxy: {
-    protocol: proxyParsed.protocol.replace(':', ''),
-    host: proxyParsed.hostname,
-    port: parseInt(proxyParsed.port),
-    auth: {
-      username: decodeURIComponent(proxyParsed.username),
-      password: decodeURIComponent(proxyParsed.password),
-    },
-  },
+  proxy: false, // disable axios built-in proxy
+  httpsAgent: proxyAgent,
+  httpAgent: proxyAgent,
 });
-console.log(`✅ Proxy: ${proxyParsed.hostname}:${proxyParsed.port}`);
+
+console.log(`✅ Proxy: ${new URL(PROXY_URL).hostname}:${new URL(PROXY_URL).port}`);
 
 const bot = new Telegraf(BOT_TOKEN);
 
