@@ -1,6 +1,5 @@
 import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
-import FormData from 'form-data';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -105,7 +104,7 @@ function translateError(raw: string): string {
   return `❌ Gagal: ${short}`;
 }
 
-// ─── MIME detection from magic bytes ─────────────────────────────────────────
+// ─── Convert Telegram image URL to base64 data URI ───────────────────────────
 
 function detectMime(buf: Buffer): { mime: string; ext: string } {
   if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47)
@@ -117,51 +116,14 @@ function detectMime(buf: Buffer): { mime: string; ext: string } {
   return { mime: 'image/jpeg', ext: 'jpg' };
 }
 
-// ─── Upload to public host with correct MIME type ────────────────────────────
-
-async function uploadToPublicHost(buf: Buffer, mime: string, ext: string): Promise<string> {
-  // Primary: uguu.se — tested working, serves correct Content-Type
-  try {
-    const form = new FormData();
-    form.append('files[]', buf, { filename: `image.${ext}`, contentType: mime });
-    const res = await axios.post('https://uguu.se/upload', form, {
-      headers: form.getHeaders(),
-      timeout: 30_000,
-    });
-    const url = res.data?.files?.[0]?.url ?? '';
-    if (url.startsWith('https://')) {
-      console.log(`Uploaded to uguu.se: ${url}`);
-      return url;
-    }
-    throw new Error(`uguu response: ${JSON.stringify(res.data)}`);
-  } catch (e: any) {
-    console.log(`uguu.se failed: ${e.message}, trying litterbox...`);
-  }
-
-  // Fallback: litterbox.catbox.moe — tested working, serves correct Content-Type
-  const form2 = new FormData();
-  form2.append('reqtype', 'fileupload');
-  form2.append('time', '1h');
-  form2.append('fileToUpload', buf, { filename: `image.${ext}`, contentType: mime });
-  const res2 = await axios.post('https://litterbox.catbox.moe/resources/internals/api.php', form2, {
-    headers: form2.getHeaders(),
-    timeout: 30_000,
-  });
-  const url2 = typeof res2.data === 'string' ? res2.data.trim() : '';
-  if (!url2.startsWith('https://')) throw new Error(`litterbox response: ${url2}`);
-  console.log(`Uploaded to litterbox: ${url2}`);
-  return url2;
-}
-
-// ─── Download from Telegram + re-upload with correct MIME ────────────────────
-
-async function reuploadImage(telegramUrl: string): Promise<string> {
-  console.log(`Downloading from Telegram: ${telegramUrl}`);
+async function toDataUri(telegramUrl: string): Promise<string> {
+  console.log(`Converting to base64: ${telegramUrl}`);
   const res = await http.get(telegramUrl, { responseType: 'arraybuffer', timeout: 60_000 });
   const buf = Buffer.from(res.data);
-  const { mime, ext } = detectMime(buf);
-  console.log(`Detected MIME: ${mime}, size: ${(buf.length / 1024).toFixed(1)} KB`);
-  return uploadToPublicHost(buf, mime, ext);
+  const { mime } = detectMime(buf);
+  const b64 = buf.toString('base64');
+  console.log(`  → ${mime}, ${(buf.length / 1024).toFixed(1)} KB, b64 length: ${b64.length}`);
+  return `data:${mime};base64,${b64}`;
 }
 
 // ─── Result sender ────────────────────────────────────────────────────────────
@@ -394,7 +356,7 @@ bot.on('text', async (ctx) => {
     setSession(userId, { mode: 'idle' });
 
     const statusMsg = await ctx.reply(
-      `⏳ Mengupload gambar & memproses dengan *${modelInfo.label}*...\nHasil dikirim otomatis setelah selesai.`,
+      `⏳ Memproses dengan *${modelInfo.label}*...\nHasil dikirim otomatis setelah selesai.`,
       { parse_mode: 'Markdown' }
     );
 
@@ -477,28 +439,28 @@ async function runImageGeneration(
   try {
     console.log(`[${userId}] Image generation: ${model}`);
 
-    // Download from Telegram + re-upload to public host with correct MIME type
-    console.log(`[${userId}] Re-uploading images to public host...`);
-    const [publicUrl1, publicUrl2] = await Promise.all([
-      reuploadImage(image1Url),
-      reuploadImage(image2Url),
+    // Download from Telegram and convert to base64 data URIs
+    // Renderful accepts data:image/jpeg;base64,... in image_url field
+    console.log(`[${userId}] Converting images to base64...`);
+    const [dataUri1, dataUri2] = await Promise.all([
+      toDataUri(image1Url),
+      toDataUri(image2Url),
     ]);
-    console.log(`[${userId}] Public URLs: ${publicUrl1}, ${publicUrl2}`);
+    console.log(`[${userId}] Base64 conversion done, sending to Renderful...`);
 
     const payload = {
       type: 'image-to-image',
       model,
-      image_url: publicUrl1,
-      mask_url: publicUrl2,
+      image_url: dataUri1,
+      mask_url: dataUri2,
       prompt,
     };
-    console.log(`[${userId}] Renderful payload:`, JSON.stringify(payload));
 
     const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, payload,
       { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } }
     );
 
-    console.log(`[${userId}] Response:`, JSON.stringify(genRes.data));
+    console.log(`[${userId}] Renderful response:`, JSON.stringify(genRes.data));
     const { id: taskId } = genRes.data;
     if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
 
