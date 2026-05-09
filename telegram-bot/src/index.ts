@@ -1,13 +1,17 @@
 import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
-import FormData from 'form-data';
+import express from 'express';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
 const RENDERFUL_BASE = 'https://api.renderful.ai/api/v1';
+const PORT = parseInt(process.env.PORT || '3000', 10);
+// Railway provides RAILWAY_PUBLIC_DOMAIN as the public hostname (no protocol)
+const PUBLIC_DOMAIN = process.env.RAILWAY_PUBLIC_DOMAIN || '';
 
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!RENDERFUL_API_KEY) throw new Error('RENDERFUL_API_KEY is required');
+if (!PUBLIC_DOMAIN) console.warn('⚠️ RAILWAY_PUBLIC_DOMAIN not set — image proxy URLs will not work!');
 
 const renderfulHttp = axios.create({ timeout: 30_000 });
 
@@ -105,22 +109,65 @@ function translateError(raw: string): string {
   return `❌ Gagal: ${short}`;
 }
 
-async function downloadWithMime(url: string): Promise<{ buf: Buffer; mime: string; ext: string }> {
-  const res = await http.get(url, { responseType: 'arraybuffer', timeout: 60_000 });
-  const buf = Buffer.from(res.data);
-  // Detect MIME type from magic bytes
-  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) {
-    return { buf, mime: 'image/png', ext: 'png' };
-  }
-  if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) {
-    return { buf, mime: 'image/jpeg', ext: 'jpg' };
-  }
-  if (buf.slice(0, 4).toString() === 'RIFF' && buf.slice(8, 12).toString() === 'WEBP') {
-    return { buf, mime: 'image/webp', ext: 'webp' };
-  }
-  // Default to JPEG if can't detect
-  return { buf, mime: 'image/jpeg', ext: 'jpg' };
+// ─── Image proxy helpers ───────────────────────────────────────────────────────
+
+function detectMime(buf: Buffer): { mime: string; ext: string } {
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47)
+    return { mime: 'image/png', ext: 'png' };
+  if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF)
+    return { mime: 'image/jpeg', ext: 'jpg' };
+  if (buf.slice(0, 4).toString('ascii') === 'RIFF' && buf.slice(8, 12).toString('ascii') === 'WEBP')
+    return { mime: 'image/webp', ext: 'webp' };
+  return { mime: 'image/jpeg', ext: 'jpg' };
 }
+
+// In-memory cache: token -> { buf, mime }
+const imageCache = new Map<string, { buf: Buffer; mime: string; ext: string }>();
+
+function buildProxyUrl(telegramUrl: string): string {
+  const token = Buffer.from(telegramUrl).toString('base64url');
+  return `https://${PUBLIC_DOMAIN}/imgproxy/${token}`;
+}
+
+async function cacheImage(telegramUrl: string): Promise<{ proxyUrl: string; mime: string; ext: string }> {
+  const token = Buffer.from(telegramUrl).toString('base64url');
+  if (!imageCache.has(token)) {
+    const res = await http.get(telegramUrl, { responseType: 'arraybuffer', timeout: 60_000 });
+    const buf = Buffer.from(res.data);
+    const { mime, ext } = detectMime(buf);
+    imageCache.set(token, { buf, mime, ext });
+    console.log(`Cached image: ${mime}, ${(buf.length / 1024).toFixed(1)} KB, token=${token.slice(0, 12)}...`);
+  }
+  const cached = imageCache.get(token)!;
+  const proxyUrl = `https://${PUBLIC_DOMAIN}/imgproxy/${token}`;
+  return { proxyUrl, mime: cached.mime, ext: cached.ext };
+}
+
+// ─── Express proxy server ─────────────────────────────────────────────────────
+
+const app = express();
+
+app.get('/imgproxy/:token', (req, res) => {
+  const { token } = req.params;
+  const cached = imageCache.get(token);
+  if (!cached) {
+    res.status(404).send('Not found or expired');
+    return;
+  }
+  res.setHeader('Content-Type', cached.mime);
+  res.setHeader('Content-Length', cached.buf.length);
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.end(cached.buf);
+});
+
+app.get('/health', (_req, res) => res.send('OK'));
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ HTTP proxy server berjalan di port ${PORT}`);
+  if (PUBLIC_DOMAIN) console.log(`🌐 Public domain: https://${PUBLIC_DOMAIN}`);
+});
+
+// ─── Result sender ────────────────────────────────────────────────────────────
 
 async function sendResult(chatId: number, outputUrl: string, caption: string, isVideo: boolean) {
   try {
@@ -292,7 +339,6 @@ async function handleImageInput(ctx: any, fileUrl: string) {
 
   // Image-to-image: step 1 — first image
   if (session.mode === 'img_wait_image1') {
-    const modelInfo = IMAGE_MODELS[session.imageModel!];
     setSession(userId, { image1Url: fileUrl, mode: 'img_wait_image2' });
     return ctx.reply(
       `✅ Gambar 1 diterima!\n\n` +
@@ -362,8 +408,6 @@ bot.on('text', async (ctx) => {
       .catch(e => console.error(`[${userId}] Image gen error:`, e.message));
     return;
   }
-
-  // Ignore other text (commands handled separately)
 });
 
 // ─── Document handler ─────────────────────────────────────────────────────────
@@ -439,24 +483,25 @@ async function runImageGeneration(
   try {
     console.log(`[${userId}] Image generation: ${model}`);
 
-    // Download both images and detect their real MIME types
+    // Download & cache both images, serve via proxy with correct MIME type
     const [img1, img2] = await Promise.all([
-      downloadWithMime(image1Url),
-      downloadWithMime(image2Url),
+      cacheImage(image1Url),
+      cacheImage(image2Url),
     ]);
-    console.log(`[${userId}] img1: ${img1.mime} (${img1.buf.length} bytes), img2: ${img2.mime} (${img2.buf.length} bytes)`);
+    console.log(`[${userId}] img1 proxy: ${img1.proxyUrl} (${img1.mime})`);
+    console.log(`[${userId}] img2 proxy: ${img2.proxyUrl} (${img2.mime})`);
 
-    const form = new FormData();
-    form.append('type', 'image-to-image');
-    form.append('model', model);
-    form.append('prompt', prompt);
-    form.append('image', img1.buf, { filename: `image.${img1.ext}`, contentType: img1.mime });
-    form.append('mask', img2.buf, { filename: `mask.${img2.ext}`, contentType: img2.mime });
+    const payload = {
+      type: 'image-to-image',
+      model,
+      image_url: img1.proxyUrl,
+      mask_url: img2.proxyUrl,
+      prompt,
+    };
+    console.log(`[${userId}] Renderful payload:`, JSON.stringify(payload));
 
-    console.log(`[${userId}] Sending as FormData with MIME types: ${img1.mime}, ${img2.mime}`);
-
-    const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, form,
-      { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, ...form.getHeaders() } }
+    const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, payload,
+      { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } }
     );
 
     console.log(`[${userId}] Response:`, JSON.stringify(genRes.data));
