@@ -10,15 +10,13 @@ if (!RENDERFUL_API_KEY) throw new Error('RENDERFUL_API_KEY is required');
 
 const renderfulHttp = axios.create({ timeout: 30_000 });
 
+// Direct HTTP client for Telegram downloads — no proxy needed, Railway can reach Telegram directly
+const telegramHttp = axios.create({ timeout: 60_000 });
+
 const PROXY_URL = process.env.PROXY_URL;
-const http = PROXY_URL
-  ? (() => {
-      const { HttpsProxyAgent } = require('https-proxy-agent');
-      const agent = new HttpsProxyAgent(PROXY_URL);
-      console.log(`✅ Proxy aktif: ${new URL(PROXY_URL).hostname}:${new URL(PROXY_URL).port}`);
-      return axios.create({ proxy: false, httpsAgent: agent, httpAgent: agent });
-    })()
-  : axios.create({ timeout: 60_000 });
+if (PROXY_URL) {
+  console.log(`ℹ️ PROXY_URL set but not used for Telegram downloads (Railway can reach Telegram directly)`);
+}
 
 const bot = new Telegraf(BOT_TOKEN);
 
@@ -117,12 +115,18 @@ function detectMime(buf: Buffer): { mime: string; ext: string } {
 }
 
 async function toDataUri(telegramUrl: string): Promise<string> {
-  console.log(`Converting to base64: ${telegramUrl}`);
-  const res = await http.get(telegramUrl, { responseType: 'arraybuffer', timeout: 60_000 });
+  console.log(`Downloading from Telegram: ${telegramUrl}`);
+  let res;
+  try {
+    res = await telegramHttp.get(telegramUrl, { responseType: 'arraybuffer', timeout: 60_000 });
+  } catch (e: any) {
+    console.error(`❌ Download gagal: ${e.message}`);
+    throw new Error(`Gagal download dari Telegram: ${e.message}`);
+  }
   const buf = Buffer.from(res.data);
   const { mime } = detectMime(buf);
   const b64 = buf.toString('base64');
-  console.log(`  → ${mime}, ${(buf.length / 1024).toFixed(1)} KB, b64 length: ${b64.length}`);
+  console.log(`  ✅ ${mime}, ${(buf.length / 1024).toFixed(1)} KB → base64 ${(b64.length / 1024).toFixed(0)} KB`);
   return `data:${mime};base64,${b64}`;
 }
 
@@ -130,7 +134,7 @@ async function toDataUri(telegramUrl: string): Promise<string> {
 
 async function sendResult(chatId: number, outputUrl: string, caption: string, isVideo: boolean) {
   try {
-    const res = await http.get(outputUrl, { responseType: 'arraybuffer', timeout: 180_000 });
+    const res = await telegramHttp.get(outputUrl, { responseType: 'arraybuffer', timeout: 180_000 });
     const buf = Buffer.from(res.data);
     console.log(`Downloaded ${(buf.length / 1024 / 1024).toFixed(1)} MB`);
     if (isVideo) {
