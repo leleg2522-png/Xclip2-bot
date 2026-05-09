@@ -8,12 +8,8 @@ const RENDERFUL_BASE = 'https://api.renderful.ai/api/v1';
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!RENDERFUL_API_KEY) throw new Error('RENDERFUL_API_KEY is required');
 
-// Direct HTTP client for Renderful API (no proxy needed)
-const renderfulHttp = axios.create({
-  timeout: 30_000,
-});
+const renderfulHttp = axios.create({ timeout: 30_000 });
 
-// Proxy client for file downloads (optional, fallback to direct)
 const PROXY_URL = process.env.PROXY_URL;
 const http = PROXY_URL
   ? (() => {
@@ -29,20 +25,28 @@ const bot = new Telegraf(BOT_TOKEN);
 // ─── Model definitions ────────────────────────────────────────────────────────
 
 const IMAGE_MODELS: Record<string, { label: string; cost: string }> = {
-  'gpt-image':        { label: '🤖 GPT Image',      cost: '$0.04' },
-  'nano-banana-2':    { label: '🍌 Nano Banana 2',   cost: '$0.04' },
-  'nano-banana-pro':  { label: '🍌 Nano Banana Pro', cost: '$0.14' },
-  'seedream-5.0-lite':{ label: '🌱 Seedream 5 Lite', cost: '$0.04' },
+  'gpt-image-2':      { label: '🤖 GPT Image 2',     cost: '$0.03' },
+  'nano-banana-2':    { label: '🍌 Nano Banana 2',    cost: '$0.04' },
+  'nano-banana-pro':  { label: '🍌 Nano Banana Pro',  cost: '$0.14' },
+  'seedream-5.0-lite':{ label: '🌱 Seedream 5 Lite',  cost: '$0.04' },
 };
 
 // ─── Session state ────────────────────────────────────────────────────────────
 
-type Mode = 'idle' | 'video_wait_image' | 'video_wait_video' | 'img_wait_source';
+type Mode =
+  | 'idle'
+  | 'video_wait_image'
+  | 'video_wait_video'
+  | 'img_wait_image1'
+  | 'img_wait_image2'
+  | 'img_wait_prompt';
 
 interface Session {
   mode: Mode;
   imageModel?: string;
-  characterUrl?: string; // for video mode
+  image1Url?: string;
+  image2Url?: string;
+  characterUrl?: string;
 }
 
 const sessions = new Map<number, Session>();
@@ -72,51 +76,35 @@ function extractOutputUrl(output: unknown): string {
   throw new Error(`Format output tidak dikenal: ${JSON.stringify(output)}`);
 }
 
-/**
- * Translate Renderful/WAN animate error codes to friendly Indonesian messages.
- */
 function translateError(raw: string): string {
   if (!raw) return 'Error tidak diketahui';
-
-  // WAN Animate – image errors
   if (raw.includes('InvalidImage.FrontBody'))
-    return '❌ *Foto tidak valid*: Pastikan foto menampilkan *seluruh tubuh dari depan* (tampak depan penuh, bukan close-up wajah).';
+    return '❌ *Foto tidak valid*: Pastikan foto menampilkan *seluruh tubuh dari depan* (bukan close-up wajah).';
   if (raw.includes('InvalidImage.Resolution'))
-    return '❌ *Resolusi foto tidak valid*: Foto terlalu kecil atau terlalu besar. Gunakan foto dengan resolusi antara 200–4096 piksel.';
+    return '❌ *Resolusi foto tidak valid*: Gunakan foto dengan resolusi antara 200–4096 piksel.';
   if (raw.includes('InvalidImage.'))
     return `❌ *Foto tidak valid*: ${raw.split(':').slice(1).join(':').trim() || raw}`;
-
-  // WAN Animate – video errors
   if (raw.includes('InvalidVideo.NoHuman'))
     return '❌ *Video tidak valid*: Video harus mengandung *manusia yang terlihat jelas*.';
   if (raw.includes('InvalidVideo.FrontBody'))
-    return '❌ *Video tidak valid*: Orang dalam video harus *menghadap ke depan* (tampak depan, bukan samping/belakang).';
+    return '❌ *Video tidak valid*: Orang dalam video harus *menghadap ke depan*.';
   if (raw.includes('InvalidVideo.Resolution'))
-    return '❌ *Resolusi video tidak valid*: Pastikan resolusi video antara 200–2048 piksel (lebar & tinggi).';
+    return '❌ *Resolusi video tidak valid*: Pastikan resolusi video antara 200–2048 piksel.';
   if (raw.includes('InvalidVideo.Duration'))
     return '❌ *Durasi video tidak valid*: Video harus berdurasi *2–30 detik*.';
   if (raw.includes('InvalidVideo.'))
     return `❌ *Video tidak valid*: ${raw.split(':').slice(1).join(':').trim() || raw}`;
-
-  // WAN Animate – URL errors
   if (raw.includes('InvalidURL'))
-    return '❌ *URL tidak dapat diakses*: Renderful tidak bisa mengunduh file. Coba kirim file langsung ke bot (bukan link).';
-
-  // Internal model error
+    return '❌ *URL tidak dapat diakses*: Renderful tidak bisa mengunduh file. Coba kirim file langsung ke bot.';
   if (raw.includes('InternalError.Algo'))
     return '❌ *Error internal model*: Konten foto/video tidak kompatibel. Coba dengan foto atau video yang berbeda.';
-
-  // Renderful account / backend errors
   if (raw.includes('Exhausted balance') || raw.includes('fal.ai'))
     return '❌ *Error backend*: Layanan Renderful sedang bermasalah. Coba lagi beberapa saat.';
-
-  // Generic – keep it short
   const short = raw.length > 200 ? raw.slice(0, 200) + '…' : raw;
   return `❌ Gagal: ${short}`;
 }
 
 async function sendResult(chatId: number, outputUrl: string, caption: string, isVideo: boolean) {
-  // Strategy 1: download via proxy → send as buffer
   try {
     const res = await http.get(outputUrl, { responseType: 'arraybuffer', timeout: 180_000 });
     const buf = Buffer.from(res.data);
@@ -130,8 +118,6 @@ async function sendResult(chatId: number, outputUrl: string, caption: string, is
   } catch (e: any) {
     console.log(`Buffer strategy failed: ${e.message}`);
   }
-
-  // Strategy 2: direct URL
   try {
     if (isVideo) {
       await bot.telegram.sendVideo(chatId, outputUrl, { caption });
@@ -142,8 +128,6 @@ async function sendResult(chatId: number, outputUrl: string, caption: string, is
   } catch (e: any) {
     console.log(`URL strategy failed: ${e.message}`);
   }
-
-  // Strategy 3: text link fallback
   await bot.telegram.sendMessage(chatId,
     `✅ Hasil selesai!\n\n📥 Download (link aktif ~1 jam):\n${outputUrl}\n\n${caption}`
   );
@@ -166,7 +150,7 @@ async function pollForResult(taskId: string, userId: number, maxAttempts = 60): 
   throw new Error('Timeout: proses terlalu lama (>10 menit)');
 }
 
-// ─── Main menu keyboard ───────────────────────────────────────────────────────
+// ─── Keyboards ────────────────────────────────────────────────────────────────
 
 function mainMenuKeyboard() {
   return Markup.inlineKeyboard([
@@ -177,11 +161,11 @@ function mainMenuKeyboard() {
 
 function imageModelKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('🤖 GPT Image ($0.04)',       'model_gpt-image')],
-    [Markup.button.callback('🍌 Nano Banana 2 ($0.04)',  'model_nano-banana-2')],
-    [Markup.button.callback('🍌 Nano Banana Pro ($0.14)','model_nano-banana-pro')],
-    [Markup.button.callback('🌱 Seedream 5 Lite ($0.04)','model_seedream-5.0-lite')],
-    [Markup.button.callback('« Kembali',               'back_main')],
+    [Markup.button.callback('🤖 GPT Image 2 ($0.03)',      'model_gpt-image-2')],
+    [Markup.button.callback('🍌 Nano Banana 2 ($0.04)',    'model_nano-banana-2')],
+    [Markup.button.callback('🍌 Nano Banana Pro ($0.14)',  'model_nano-banana-pro')],
+    [Markup.button.callback('🌱 Seedream 5 Lite ($0.04)', 'model_seedream-5.0-lite')],
+    [Markup.button.callback('« Kembali',                  'back_main')],
   ]);
 }
 
@@ -212,23 +196,21 @@ bot.help((ctx) => {
     '/menu — Tampilkan menu\n' +
     '/cancel — Batalkan proses\n\n' +
     '*🎬 WAN Animate:*\n' +
-    '• Kirim foto karakter → kirim video referensi → tunggu hasil\n' +
-    '• Model: WAN 2.2 Animate ($0.15)\n' +
-    '• Syarat foto: tampak depan penuh (bukan close-up), min. 200px\n' +
-    '• Syarat video: ada orang menghadap depan, durasi 2–30 detik, resolusi 200–2048px\n\n' +
+    '• Langkah: foto karakter → video referensi → tunggu hasil\n' +
+    '• Syarat foto: tampak depan penuh, min. 200px\n' +
+    '• Syarat video: orang menghadap depan, durasi 2–30 detik, resolusi 200–2048px\n\n' +
     '*🖼️ Image to Image:*\n' +
-    '• Pilih model → kirim foto → tunggu hasil\n' +
-    '• Model: GPT Image, Banana 2, Banana Pro, Seedream 5',
+    '• Langkah: pilih model → kirim gambar 1 → kirim gambar 2 → ketik prompt → tunggu hasil\n' +
+    '• Model: GPT Image 2, Banana 2, Banana Pro, Seedream 5',
     { parse_mode: 'Markdown' }
   );
 });
 
-// ─── Callback queries (inline buttons) ───────────────────────────────────────
+// ─── Callback queries ─────────────────────────────────────────────────────────
 
 bot.on('callback_query', async (ctx) => {
   const data = (ctx.callbackQuery as any).data as string;
   const userId = ctx.from.id;
-
   await ctx.answerCbQuery();
 
   if (data === 'mode_video') {
@@ -237,7 +219,7 @@ bot.on('callback_query', async (ctx) => {
       '🎬 *WAN Animate* — Transfer gerakan ke karakter\n\n' +
       '*Langkah 1:* Kirim *foto karakter* yang ingin dianimasikan.\n\n' +
       '⚠️ *Syarat foto:*\n' +
-      '• Tampilkan seluruh tubuh dari depan (tampak depan penuh)\n' +
+      '• Tampilkan seluruh tubuh dari depan\n' +
       '• Bukan close-up wajah\n' +
       '• Resolusi minimal 200px',
       { parse_mode: 'Markdown' }
@@ -255,12 +237,11 @@ bot.on('callback_query', async (ctx) => {
   if (data.startsWith('model_')) {
     const model = data.replace('model_', '');
     const modelInfo = IMAGE_MODELS[model];
-    if (!modelInfo) {
-      return ctx.editMessageText(`❌ Model tidak dikenal: ${model}`, mainMenuKeyboard());
-    }
-    setSession(userId, { mode: 'img_wait_source', imageModel: model });
+    if (!modelInfo) return ctx.editMessageText(`❌ Model tidak dikenal: ${model}`, mainMenuKeyboard());
+    setSession(userId, { mode: 'img_wait_image1', imageModel: model, image1Url: undefined, image2Url: undefined });
     return ctx.editMessageText(
-      `🖼️ *${modelInfo.label}* dipilih (${modelInfo.cost}/gambar)\n\nSekarang kirim *foto* yang ingin diproses.`,
+      `🖼️ *${modelInfo.label}* (${modelInfo.cost})\n\n` +
+      '*Langkah 1 dari 3:* Kirim *gambar pertama* (gambar yang ingin diedit).',
       { parse_mode: 'Markdown' }
     );
   }
@@ -271,46 +252,57 @@ bot.on('callback_query', async (ctx) => {
   }
 });
 
-// ─── Photo handler ────────────────────────────────────────────────────────────
+// ─── Shared photo/image handler ───────────────────────────────────────────────
 
-bot.on('photo', async (ctx) => {
+async function handleImageInput(ctx: any, fileUrl: string) {
   const userId = ctx.from.id;
   const session = getSession(userId);
-  const photo = ctx.message.photo[ctx.message.photo.length - 1];
-  const fileLink = await ctx.telegram.getFileLink(photo.file_id);
-  const fileUrl = fileLink.href;
 
-  // Video mode: save character photo
+  // WAN Animate: step 1 — save character photo
   if (session.mode === 'video_wait_image') {
     setSession(userId, { characterUrl: fileUrl, mode: 'video_wait_video' });
     return ctx.reply(
       '✅ Foto karakter diterima!\n\n' +
       '*Langkah 2:* Kirim *video referensi gerakan*.\n\n' +
       '⚠️ *Syarat video:*\n' +
-      '• Ada orang yang menghadap ke depan (tampak depan)\n' +
+      '• Ada orang menghadap ke depan\n' +
       '• Durasi 2–30 detik\n' +
       '• Resolusi 200–2048px',
       { parse_mode: 'Markdown' }
     );
   }
 
-  // Image-to-image mode: run generation
-  if (session.mode === 'img_wait_source') {
-    const model = session.imageModel!;
-    const modelInfo = IMAGE_MODELS[model];
-    setSession(userId, { mode: 'idle' });
-
-    const statusMsg = await ctx.reply(`⏳ Memproses dengan *${modelInfo.label}*...\nHasil dikirim otomatis setelah selesai.`, { parse_mode: 'Markdown' });
-
-    // Fire and forget
-    runImageGeneration(ctx.chat.id, userId, statusMsg.message_id, fileUrl, model, modelInfo.label).catch(e =>
-      console.error(`[${userId}] Image gen error:`, e.message)
+  // Image-to-image: step 1 — first image
+  if (session.mode === 'img_wait_image1') {
+    const modelInfo = IMAGE_MODELS[session.imageModel!];
+    setSession(userId, { image1Url: fileUrl, mode: 'img_wait_image2' });
+    return ctx.reply(
+      `✅ Gambar 1 diterima!\n\n` +
+      `*Langkah 2 dari 3:* Kirim *gambar kedua* (referensi/mask untuk edit).`,
+      { parse_mode: 'Markdown' }
     );
-    return;
   }
 
-  // Not in any mode
+  // Image-to-image: step 2 — second image
+  if (session.mode === 'img_wait_image2') {
+    setSession(userId, { image2Url: fileUrl, mode: 'img_wait_prompt' });
+    return ctx.reply(
+      '✅ Gambar 2 diterima!\n\n' +
+      '*Langkah 3 dari 3:* Ketik *prompt* — apa yang ingin diubah?\n\n' +
+      '_Contoh: "ganti baju jadi merah" atau "ubah background jadi pantai"_',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   return ctx.reply('Pilih mode terlebih dahulu:', mainMenuKeyboard());
+}
+
+// ─── Photo handler ────────────────────────────────────────────────────────────
+
+bot.on('photo', async (ctx) => {
+  const photo = ctx.message.photo[ctx.message.photo.length - 1];
+  const fileLink = await ctx.telegram.getFileLink(photo.file_id);
+  await handleImageInput(ctx, fileLink.href);
 });
 
 // ─── Video handler ────────────────────────────────────────────────────────────
@@ -318,18 +310,45 @@ bot.on('photo', async (ctx) => {
 bot.on('video', async (ctx) => {
   const userId = ctx.from.id;
   const session = getSession(userId);
-
   if (session.mode !== 'video_wait_video' || !session.characterUrl) {
     return ctx.reply('⚠️ Kirim foto karakter terlebih dahulu.', mainMenuKeyboard());
   }
-
   setSession(userId, { mode: 'idle' });
   const statusMsg = await ctx.reply('⏳ Mengirim ke Renderful.ai...\nHasil dikirim otomatis (~2-5 menit).');
-
-  runVideoGeneration(ctx.chat.id, userId, statusMsg.message_id, ctx.message.video.file_id, session.characterUrl).catch(e =>
-    console.error(`[${userId}] Video gen error:`, e.message)
-  );
+  runVideoGeneration(ctx.chat.id, userId, statusMsg.message_id, ctx.message.video.file_id, session.characterUrl)
+    .catch(e => console.error(`[${userId}] Video gen error:`, e.message));
 });
+
+// ─── Text handler (for prompt) ────────────────────────────────────────────────
+
+bot.on('text', async (ctx) => {
+  const userId = ctx.from.id;
+  const session = getSession(userId);
+
+  if (session.mode === 'img_wait_prompt') {
+    const prompt = ctx.message.text.trim();
+    if (!prompt) return ctx.reply('Prompt tidak boleh kosong. Ketik apa yang ingin diubah:');
+
+    const model = session.imageModel!;
+    const modelInfo = IMAGE_MODELS[model];
+    const image1Url = session.image1Url!;
+    const image2Url = session.image2Url!;
+    setSession(userId, { mode: 'idle' });
+
+    const statusMsg = await ctx.reply(
+      `⏳ Memproses dengan *${modelInfo.label}*...\nHasil dikirim otomatis setelah selesai.`,
+      { parse_mode: 'Markdown' }
+    );
+
+    runImageGeneration(ctx.chat.id, userId, statusMsg.message_id, image1Url, image2Url, prompt, model, modelInfo.label)
+      .catch(e => console.error(`[${userId}] Image gen error:`, e.message));
+    return;
+  }
+
+  // Ignore other text (commands handled separately)
+});
+
+// ─── Document handler ─────────────────────────────────────────────────────────
 
 bot.on('document', async (ctx) => {
   const userId = ctx.from.id;
@@ -338,32 +357,15 @@ bot.on('document', async (ctx) => {
 
   if (doc.mime_type?.startsWith('image/')) {
     const fileLink = await ctx.telegram.getFileLink(doc.file_id);
-    if (session.mode === 'video_wait_image') {
-      setSession(userId, { characterUrl: fileLink.href, mode: 'video_wait_video' });
-      return ctx.reply(
-        '✅ Foto diterima!\n\n' +
-        '*Langkah 2:* Kirim *video referensi gerakan*.\n\n' +
-        '⚠️ *Syarat video:*\n' +
-        '• Ada orang yang menghadap ke depan\n' +
-        '• Durasi 2–30 detik\n' +
-        '• Resolusi 200–2048px',
-        { parse_mode: 'Markdown' }
-      );
-    }
-    if (session.mode === 'img_wait_source') {
-      const model = session.imageModel!;
-      const modelInfo = IMAGE_MODELS[model];
-      setSession(userId, { mode: 'idle' });
-      const statusMsg = await ctx.reply(`⏳ Memproses dengan *${modelInfo.label}*...`, { parse_mode: 'Markdown' });
-      runImageGeneration(ctx.chat.id, userId, statusMsg.message_id, fileLink.href, model, modelInfo.label).catch(console.error);
-      return;
-    }
+    await handleImageInput(ctx, fileLink.href);
+    return;
   }
 
   if (doc.mime_type?.startsWith('video/') && session.mode === 'video_wait_video' && session.characterUrl) {
     setSession(userId, { mode: 'idle' });
     const statusMsg = await ctx.reply('⏳ Mengirim ke Renderful.ai...');
-    runVideoGeneration(ctx.chat.id, userId, statusMsg.message_id, doc.file_id, session.characterUrl).catch(console.error);
+    runVideoGeneration(ctx.chat.id, userId, statusMsg.message_id, doc.file_id, session.characterUrl)
+      .catch(console.error);
     return;
   }
 
@@ -404,23 +406,27 @@ async function runVideoGeneration(chatId: number, userId: number, statusMsgId: n
     console.error(`[${userId}] Video error: ${raw}`);
     const friendly = translateError(raw);
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${friendly}\n\n/menu untuk coba lagi`,
-      { parse_mode: 'Markdown' }
+      `${friendly}\n\n/menu untuk coba lagi`, { parse_mode: 'Markdown' }
     ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`, { parse_mode: 'Markdown' }));
   }
 }
 
 // ─── Background: Image generation ────────────────────────────────────────────
 
-async function runImageGeneration(chatId: number, userId: number, statusMsgId: number, imageUrl: string, model: string, modelLabel: string) {
+async function runImageGeneration(
+  chatId: number, userId: number, statusMsgId: number,
+  image1Url: string, image2Url: string, prompt: string,
+  model: string, modelLabel: string
+) {
   try {
     console.log(`[${userId}] Image generation: ${model}`);
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       type: 'image-to-image',
       model,
-      image_url: imageUrl,
-      prompt: 'high quality, photorealistic',
+      image_url: image1Url,
+      mask_url: image2Url,
+      prompt,
     };
     console.log(`[${userId}] Renderful payload:`, JSON.stringify(payload));
 
@@ -428,12 +434,9 @@ async function runImageGeneration(chatId: number, userId: number, statusMsgId: n
       { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } }
     );
 
-    console.log(`[${userId}] Renderful response status: ${genRes.status}`);
-    console.log(`[${userId}] Renderful response data:`, JSON.stringify(genRes.data));
-
+    console.log(`[${userId}] Response:`, JSON.stringify(genRes.data));
     const { id: taskId } = genRes.data;
-    if (!taskId) throw new Error(`No task ID in response: ${JSON.stringify(genRes.data)}`);
-    console.log(`[${userId}] Task: ${taskId}`);
+    if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
 
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `⏳ Diproses dengan ${modelLabel}...\nMohon tunggu.`
@@ -450,8 +453,7 @@ async function runImageGeneration(chatId: number, userId: number, statusMsgId: n
     console.error(`[${userId}] Image error: ${raw}`);
     const friendly = translateError(raw);
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${friendly}\n\n/menu untuk coba lagi`,
-      { parse_mode: 'Markdown' }
+      `${friendly}\n\n/menu untuk coba lagi`, { parse_mode: 'Markdown' }
     ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`, { parse_mode: 'Markdown' }));
   }
 }
