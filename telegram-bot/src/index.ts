@@ -127,7 +127,7 @@ async function pollForResult(taskId: string, userId: number, maxAttempts = 60): 
 
 function mainMenuKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('🎬 Video Motion Control', 'mode_video')],
+    [Markup.button.callback('🎬 WAN Animate', 'mode_video')],
     [Markup.button.callback('🖼️ Image to Image', 'mode_image')],
   ]);
 }
@@ -170,7 +170,7 @@ bot.help((ctx) => {
     '/cancel — Batalkan proses\n\n' +
     '*Mode Video:*\n' +
     '• Kirim foto karakter → kirim video referensi → tunggu hasil\n' +
-    '• Menggunakan Kling 2.6 Pro Motion Control ($0.15)\n\n' +
+    '• Menggunakan WAN 2.2 Animate ($0.15)\n\n' +
     '*Mode Image (i2i):*\n' +
     '• Pilih model → kirim foto → tunggu hasil\n' +
     '• GPT Image 1, Banana 2, Banana Pro, Seedream 5',
@@ -189,7 +189,7 @@ bot.on('callback_query', async (ctx) => {
   if (data === 'mode_video') {
     setSession(userId, { mode: 'video_wait_image' });
     return ctx.editMessageText(
-      '🎬 *Video Motion Control*\n\nKirim *foto karakter* yang ingin dianimasikan.',
+      '🎬 *WAN Animate*\n\nKirim *foto karakter* yang ingin dianimasikan.',
       { parse_mode: 'Markdown' }
     );
   }
@@ -316,7 +316,7 @@ async function runVideoGeneration(chatId: number, userId: number, statusMsgId: n
 
     const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
       type: 'video-to-video',
-      model: 'kling-v2-6-motion-control',
+      model: 'wan-2.2-animate',
       image_url: imageUrl,
       video_url: videoFileLink.href,
       prompt: 'Transfer motion from reference video to character',
@@ -332,7 +332,7 @@ async function runVideoGeneration(chatId: number, userId: number, statusMsgId: n
 
     const outputUrl = await pollForResult(taskId, userId);
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '✅ Selesai! Mengirim...');
-    await sendResult(chatId, outputUrl, '🎬 Kling 2.6 Motion Control\n\n/menu untuk buat lagi', true);
+    await sendResult(chatId, outputUrl, '🎬 WAN 2.2 Animate\n\n/menu untuk buat lagi', true);
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
     console.log(`[${userId}] Video done`);
   } catch (err: any) {
