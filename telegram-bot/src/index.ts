@@ -1,5 +1,6 @@
 import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
+import FormData from 'form-data';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -102,6 +103,23 @@ function translateError(raw: string): string {
     return '❌ *Error backend*: Layanan Renderful sedang bermasalah. Coba lagi beberapa saat.';
   const short = raw.length > 200 ? raw.slice(0, 200) + '…' : raw;
   return `❌ Gagal: ${short}`;
+}
+
+async function downloadWithMime(url: string): Promise<{ buf: Buffer; mime: string; ext: string }> {
+  const res = await http.get(url, { responseType: 'arraybuffer', timeout: 60_000 });
+  const buf = Buffer.from(res.data);
+  // Detect MIME type from magic bytes
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) {
+    return { buf, mime: 'image/png', ext: 'png' };
+  }
+  if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) {
+    return { buf, mime: 'image/jpeg', ext: 'jpg' };
+  }
+  if (buf.slice(0, 4).toString() === 'RIFF' && buf.slice(8, 12).toString() === 'WEBP') {
+    return { buf, mime: 'image/webp', ext: 'webp' };
+  }
+  // Default to JPEG if can't detect
+  return { buf, mime: 'image/jpeg', ext: 'jpg' };
 }
 
 async function sendResult(chatId: number, outputUrl: string, caption: string, isVideo: boolean) {
@@ -421,17 +439,24 @@ async function runImageGeneration(
   try {
     console.log(`[${userId}] Image generation: ${model}`);
 
-    const payload: Record<string, unknown> = {
-      type: 'image-to-image',
-      model,
-      image_url: image1Url,
-      mask_url: image2Url,
-      prompt,
-    };
-    console.log(`[${userId}] Renderful payload:`, JSON.stringify(payload));
+    // Download both images and detect their real MIME types
+    const [img1, img2] = await Promise.all([
+      downloadWithMime(image1Url),
+      downloadWithMime(image2Url),
+    ]);
+    console.log(`[${userId}] img1: ${img1.mime} (${img1.buf.length} bytes), img2: ${img2.mime} (${img2.buf.length} bytes)`);
 
-    const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, payload,
-      { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } }
+    const form = new FormData();
+    form.append('type', 'image-to-image');
+    form.append('model', model);
+    form.append('prompt', prompt);
+    form.append('image', img1.buf, { filename: `image.${img1.ext}`, contentType: img1.mime });
+    form.append('mask', img2.buf, { filename: `mask.${img2.ext}`, contentType: img2.mime });
+
+    console.log(`[${userId}] Sending as FormData with MIME types: ${img1.mime}, ${img2.mime}`);
+
+    const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, form,
+      { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, ...form.getHeaders() } }
     );
 
     console.log(`[${userId}] Response:`, JSON.stringify(genRes.data));
