@@ -1,17 +1,13 @@
 import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
-import express from 'express';
+import FormData from 'form-data';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
 const RENDERFUL_BASE = 'https://api.renderful.ai/api/v1';
-const PORT = parseInt(process.env.PORT || '3000', 10);
-// Railway provides RAILWAY_PUBLIC_DOMAIN as the public hostname (no protocol)
-const PUBLIC_DOMAIN = process.env.RAILWAY_PUBLIC_DOMAIN || '';
 
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!RENDERFUL_API_KEY) throw new Error('RENDERFUL_API_KEY is required');
-if (!PUBLIC_DOMAIN) console.warn('⚠️ RAILWAY_PUBLIC_DOMAIN not set — image proxy URLs will not work!');
 
 const renderfulHttp = axios.create({ timeout: 30_000 });
 
@@ -109,7 +105,7 @@ function translateError(raw: string): string {
   return `❌ Gagal: ${short}`;
 }
 
-// ─── Image proxy helpers ───────────────────────────────────────────────────────
+// ─── MIME detection from magic bytes ─────────────────────────────────────────
 
 function detectMime(buf: Buffer): { mime: string; ext: string } {
   if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47)
@@ -121,51 +117,52 @@ function detectMime(buf: Buffer): { mime: string; ext: string } {
   return { mime: 'image/jpeg', ext: 'jpg' };
 }
 
-// In-memory cache: token -> { buf, mime }
-const imageCache = new Map<string, { buf: Buffer; mime: string; ext: string }>();
+// ─── Upload to public host with correct MIME type ────────────────────────────
 
-function buildProxyUrl(telegramUrl: string): string {
-  const token = Buffer.from(telegramUrl).toString('base64url');
-  return `https://${PUBLIC_DOMAIN}/imgproxy/${token}`;
+async function uploadToPublicHost(buf: Buffer, mime: string, ext: string): Promise<string> {
+  // Primary: uguu.se — tested working, serves correct Content-Type
+  try {
+    const form = new FormData();
+    form.append('files[]', buf, { filename: `image.${ext}`, contentType: mime });
+    const res = await axios.post('https://uguu.se/upload', form, {
+      headers: form.getHeaders(),
+      timeout: 30_000,
+    });
+    const url = res.data?.files?.[0]?.url ?? '';
+    if (url.startsWith('https://')) {
+      console.log(`Uploaded to uguu.se: ${url}`);
+      return url;
+    }
+    throw new Error(`uguu response: ${JSON.stringify(res.data)}`);
+  } catch (e: any) {
+    console.log(`uguu.se failed: ${e.message}, trying litterbox...`);
+  }
+
+  // Fallback: litterbox.catbox.moe — tested working, serves correct Content-Type
+  const form2 = new FormData();
+  form2.append('reqtype', 'fileupload');
+  form2.append('time', '1h');
+  form2.append('fileToUpload', buf, { filename: `image.${ext}`, contentType: mime });
+  const res2 = await axios.post('https://litterbox.catbox.moe/resources/internals/api.php', form2, {
+    headers: form2.getHeaders(),
+    timeout: 30_000,
+  });
+  const url2 = typeof res2.data === 'string' ? res2.data.trim() : '';
+  if (!url2.startsWith('https://')) throw new Error(`litterbox response: ${url2}`);
+  console.log(`Uploaded to litterbox: ${url2}`);
+  return url2;
 }
 
-async function cacheImage(telegramUrl: string): Promise<{ proxyUrl: string; mime: string; ext: string }> {
-  const token = Buffer.from(telegramUrl).toString('base64url');
-  if (!imageCache.has(token)) {
-    const res = await http.get(telegramUrl, { responseType: 'arraybuffer', timeout: 60_000 });
-    const buf = Buffer.from(res.data);
-    const { mime, ext } = detectMime(buf);
-    imageCache.set(token, { buf, mime, ext });
-    console.log(`Cached image: ${mime}, ${(buf.length / 1024).toFixed(1)} KB, token=${token.slice(0, 12)}...`);
-  }
-  const cached = imageCache.get(token)!;
-  const proxyUrl = `https://${PUBLIC_DOMAIN}/imgproxy/${token}`;
-  return { proxyUrl, mime: cached.mime, ext: cached.ext };
+// ─── Download from Telegram + re-upload with correct MIME ────────────────────
+
+async function reuploadImage(telegramUrl: string): Promise<string> {
+  console.log(`Downloading from Telegram: ${telegramUrl}`);
+  const res = await http.get(telegramUrl, { responseType: 'arraybuffer', timeout: 60_000 });
+  const buf = Buffer.from(res.data);
+  const { mime, ext } = detectMime(buf);
+  console.log(`Detected MIME: ${mime}, size: ${(buf.length / 1024).toFixed(1)} KB`);
+  return uploadToPublicHost(buf, mime, ext);
 }
-
-// ─── Express proxy server ─────────────────────────────────────────────────────
-
-const app = express();
-
-app.get('/imgproxy/:token', (req, res) => {
-  const { token } = req.params;
-  const cached = imageCache.get(token);
-  if (!cached) {
-    res.status(404).send('Not found or expired');
-    return;
-  }
-  res.setHeader('Content-Type', cached.mime);
-  res.setHeader('Content-Length', cached.buf.length);
-  res.setHeader('Cache-Control', 'public, max-age=3600');
-  res.end(cached.buf);
-});
-
-app.get('/health', (_req, res) => res.send('OK'));
-
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ HTTP proxy server berjalan di port ${PORT}`);
-  if (PUBLIC_DOMAIN) console.log(`🌐 Public domain: https://${PUBLIC_DOMAIN}`);
-});
 
 // ─── Result sender ────────────────────────────────────────────────────────────
 
@@ -323,7 +320,6 @@ async function handleImageInput(ctx: any, fileUrl: string) {
   const userId = ctx.from.id;
   const session = getSession(userId);
 
-  // WAN Animate: step 1 — save character photo
   if (session.mode === 'video_wait_image') {
     setSession(userId, { characterUrl: fileUrl, mode: 'video_wait_video' });
     return ctx.reply(
@@ -337,7 +333,6 @@ async function handleImageInput(ctx: any, fileUrl: string) {
     );
   }
 
-  // Image-to-image: step 1 — first image
   if (session.mode === 'img_wait_image1') {
     setSession(userId, { image1Url: fileUrl, mode: 'img_wait_image2' });
     return ctx.reply(
@@ -347,7 +342,6 @@ async function handleImageInput(ctx: any, fileUrl: string) {
     );
   }
 
-  // Image-to-image: step 2 — second image
   if (session.mode === 'img_wait_image2') {
     setSession(userId, { image2Url: fileUrl, mode: 'img_wait_prompt' });
     return ctx.reply(
@@ -383,7 +377,7 @@ bot.on('video', async (ctx) => {
     .catch(e => console.error(`[${userId}] Video gen error:`, e.message));
 });
 
-// ─── Text handler (for prompt) ────────────────────────────────────────────────
+// ─── Text handler ─────────────────────────────────────────────────────────────
 
 bot.on('text', async (ctx) => {
   const userId = ctx.from.id;
@@ -400,7 +394,7 @@ bot.on('text', async (ctx) => {
     setSession(userId, { mode: 'idle' });
 
     const statusMsg = await ctx.reply(
-      `⏳ Memproses dengan *${modelInfo.label}*...\nHasil dikirim otomatis setelah selesai.`,
+      `⏳ Mengupload gambar & memproses dengan *${modelInfo.label}*...\nHasil dikirim otomatis setelah selesai.`,
       { parse_mode: 'Markdown' }
     );
 
@@ -483,19 +477,19 @@ async function runImageGeneration(
   try {
     console.log(`[${userId}] Image generation: ${model}`);
 
-    // Download & cache both images, serve via proxy with correct MIME type
-    const [img1, img2] = await Promise.all([
-      cacheImage(image1Url),
-      cacheImage(image2Url),
+    // Download from Telegram + re-upload to public host with correct MIME type
+    console.log(`[${userId}] Re-uploading images to public host...`);
+    const [publicUrl1, publicUrl2] = await Promise.all([
+      reuploadImage(image1Url),
+      reuploadImage(image2Url),
     ]);
-    console.log(`[${userId}] img1 proxy: ${img1.proxyUrl} (${img1.mime})`);
-    console.log(`[${userId}] img2 proxy: ${img2.proxyUrl} (${img2.mime})`);
+    console.log(`[${userId}] Public URLs: ${publicUrl1}, ${publicUrl2}`);
 
     const payload = {
       type: 'image-to-image',
       model,
-      image_url: img1.proxyUrl,
-      mask_url: img2.proxyUrl,
+      image_url: publicUrl1,
+      mask_url: publicUrl2,
       prompt,
     };
     console.log(`[${userId}] Renderful payload:`, JSON.stringify(payload));
