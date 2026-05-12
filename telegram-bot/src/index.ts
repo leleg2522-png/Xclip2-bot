@@ -1,5 +1,6 @@
 import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
+import FormData from 'form-data';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -22,11 +23,11 @@ const bot = new Telegraf(BOT_TOKEN);
 
 // ─── Model definitions ────────────────────────────────────────────────────────
 
-const IMAGE_MODELS: Record<string, { label: string; cost: string }> = {
-  'gpt-image-2':      { label: '🤖 GPT Image 2',     cost: '$0.03' },
-  'nano-banana-2':    { label: '🍌 Nano Banana 2',    cost: '$0.04' },
-  'nano-banana-pro':  { label: '🍌 Nano Banana Pro',  cost: '$0.14' },
-  'seedream-5.0-lite':{ label: '🌱 Seedream 5 Lite',  cost: '$0.04' },
+const IMAGE_MODELS: Record<string, { label: string; cost: string; apiId?: string }> = {
+  'gpt-image-2':       { label: '🤖 GPT Image 2',     cost: '$0.03' },
+  'nano-banana-2-i2i': { label: '🍌 Nano Banana 2',   cost: '$0.04' },
+  'nano-banana-pro':   { label: '🍌 Nano Banana Pro',  cost: '$0.14' },
+  'seedream-5.0-lite': { label: '🌱 Seedream 5 Lite',  cost: '$0.04' },
 };
 
 // ─── Session state ────────────────────────────────────────────────────────────
@@ -193,7 +194,7 @@ function mainMenuKeyboard() {
 function imageModelKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('🤖 GPT Image 2 ($0.03)',      'model_gpt-image-2')],
-    [Markup.button.callback('🍌 Nano Banana 2 ($0.04)',    'model_nano-banana-2')],
+    [Markup.button.callback('🍌 Nano Banana 2 ($0.04)',    'model_nano-banana-2-i2i')],
     [Markup.button.callback('🍌 Nano Banana Pro ($0.14)',  'model_nano-banana-pro')],
     [Markup.button.callback('🌱 Seedream 5 Lite ($0.04)', 'model_seedream-5.0-lite')],
     [Markup.button.callback('« Kembali',                  'back_main')],
@@ -536,6 +537,13 @@ async function runKlingMotionControl(chatId: number, userId: number, statusMsgId
 
 // ─── Background: Image generation ────────────────────────────────────────────
 
+async function downloadBuffer(url: string): Promise<{ buf: Buffer; mime: string; ext: string }> {
+  const res = await telegramHttp.get(url, { responseType: 'arraybuffer', timeout: 60_000 });
+  const buf = Buffer.from(res.data);
+  const { mime, ext } = detectMime(buf);
+  return { buf, mime, ext };
+}
+
 async function runImageGeneration(
   chatId: number, userId: number, statusMsgId: number,
   image1Url: string, image2Url: string, prompt: string,
@@ -546,23 +554,56 @@ async function runImageGeneration(
     console.log(`[${userId}] image1: ${image1Url}`);
     console.log(`[${userId}] image2: ${image2Url}`);
 
-    const payload = {
-      type: 'image-to-image',
-      model,
-      image_url: image1Url,
-      reference_image_url: image2Url,
-      prompt,
-    };
+    let taskId: string;
 
-    console.log(`[${userId}] Payload: ${JSON.stringify({ ...payload, image_urls: ['...', '...'] })}`);
+    if (model === 'nano-banana-2-i2i') {
+      // Nano Banana 2 requires multipart/form-data with file uploads
+      console.log(`[${userId}] Downloading images for Nano Banana 2...`);
+      const [img1, img2] = await Promise.all([
+        downloadBuffer(image1Url),
+        downloadBuffer(image2Url),
+      ]);
+      console.log(`[${userId}] img1: ${img1.mime} ${(img1.buf.length / 1024).toFixed(1)}KB`);
+      console.log(`[${userId}] img2: ${img2.mime} ${(img2.buf.length / 1024).toFixed(1)}KB`);
 
-    const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, payload,
-      { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } }
-    );
+      const form = new FormData();
+      form.append('type', 'image-to-image');
+      form.append('model', 'nano-banana-2-i2i');
+      form.append('prompt', prompt);
+      form.append('image', img1.buf, { filename: `image1.${img1.ext}`, contentType: img1.mime });
+      form.append('image', img2.buf, { filename: `image2.${img2.ext}`, contentType: img2.mime });
 
-    console.log(`[${userId}] Response:`, JSON.stringify(genRes.data));
-    const { id: taskId } = genRes.data;
-    if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
+      const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, form, {
+        headers: {
+          Authorization: `Bearer ${RENDERFUL_API_KEY}`,
+          ...form.getHeaders(),
+        },
+        maxBodyLength: Infinity,
+      });
+
+      console.log(`[${userId}] Nano Banana 2 response:`, JSON.stringify(genRes.data));
+      taskId = genRes.data?.id;
+      if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
+    } else {
+      // Other models use JSON with image URLs
+      const payload = {
+        type: 'image-to-image',
+        model,
+        image_url: image1Url,
+        reference_image_url: image2Url,
+        prompt,
+      };
+
+      console.log(`[${userId}] Payload: ${JSON.stringify(payload)}`);
+
+      const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, payload,
+        { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } }
+      );
+
+      console.log(`[${userId}] Response:`, JSON.stringify(genRes.data));
+      taskId = genRes.data?.id;
+      if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
+    }
 
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `⏳ Diproses dengan ${modelLabel}...\nMohon tunggu.`
