@@ -28,8 +28,11 @@ if (PROXY_URL) {
 const db = new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } });
 console.log('✅ Database pool initialized');
 
-async function findUserByUsername(username: string) {
-  const res = await db.query('SELECT * FROM users WHERE username = $1 LIMIT 1', [username]);
+async function findUserByUsernameOrEmail(input: string) {
+  const res = await db.query(
+    'SELECT * FROM users WHERE username = $1 OR email = $1 LIMIT 1',
+    [input]
+  );
   return res.rows[0] || null;
 }
 
@@ -330,7 +333,7 @@ bot.command('login', (ctx) => {
     );
   }
   setSession(ctx.from.id, { mode: 'login_wait_username' });
-  return ctx.reply('🔐 *Login XclipAI*\n\nMasukkan *username* kamu:', { parse_mode: 'Markdown' });
+  return ctx.reply('🔐 *Login XclipAI*\n\nMasukkan *username atau email* kamu:', { parse_mode: 'Markdown' });
 });
 
 bot.command('logout', (ctx) => {
@@ -590,9 +593,9 @@ bot.on('text', async (ctx) => {
     setSession(userId, { mode: 'idle', loginTempUsername: undefined });
 
     try {
-      const user = await findUserByUsername(username);
+      const user = await findUserByUsernameOrEmail(username);
       if (!user) {
-        return ctx.reply('❌ Username tidak ditemukan. Coba lagi dengan /login');
+        return ctx.reply('❌ Username/email tidak ditemukan. Coba lagi dengan /login');
       }
       const valid = await bcrypt.compare(password, user.password_hash);
       if (!valid) {
