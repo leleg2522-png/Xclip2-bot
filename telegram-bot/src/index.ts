@@ -212,6 +212,15 @@ function isKeyExhaustedError(raw: string): boolean {
     || lower.includes('balance') || lower.includes('credit');
 }
 
+function isNotFoundError(raw: string): boolean {
+  const lower = raw.toLowerCase();
+  return lower.includes('not found') || lower.includes('404') || lower.includes('no such');
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function handleDeadKey(userId: number, deadKey: string): Promise<void> {
   const session = getSession(userId);
   if (!session.dbUserId) return;
@@ -249,7 +258,6 @@ async function requireLoginAndSub(ctx: any): Promise<boolean> {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
 function extractOutputUrl(output: unknown): string {
   if (typeof output === 'string') return output;
@@ -901,13 +909,41 @@ async function runVideoGeneration(chatId: number, userId: number, statusMsgId: n
     const videoFileLink = await bot.telegram.getFileLink(videoFileId);
     console.log(`[${userId}] Video generation started`);
 
-    const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
-      type: 'video-to-video',
-      model: 'wan-2.2-animate',
-      image_url: imageUrl,
-      video_url: videoFileLink.href,
-      prompt: 'Transfer motion from reference video to character',
-    }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
+    // Download both files so Renderful doesn't need to access Telegram URLs directly
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '⏳ Mengunduh file...');
+    const [imgBuf, vidBuf] = await Promise.all([
+      downloadBuffer(imageUrl),
+      downloadBuffer(videoFileLink.href),
+    ]);
+    const b64Image = `data:${imgBuf.mime};base64,${imgBuf.buf.toString('base64')}`;
+    const b64Video = `data:${vidBuf.mime};base64,${vidBuf.buf.toString('base64')}`;
+    console.log(`[${userId}] img: ${(imgBuf.buf.length / 1024).toFixed(1)}KB, vid: ${(vidBuf.buf.length / 1024).toFixed(1)}KB`);
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '⏳ Mengirim ke Renderful...');
+
+    let genRes: any;
+    try {
+      // Strategy 1: base64 encoded files
+      genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
+        type: 'video-to-video',
+        model: 'wan-2.2-animate',
+        image: b64Image,
+        video: b64Video,
+        prompt: 'Transfer motion from reference video to character',
+      }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, maxBodyLength: Infinity });
+      console.log(`[${userId}] base64 strategy OK`);
+    } catch (e1: any) {
+      const e1msg = e1?.response?.data ? JSON.stringify(e1.response.data) : e1.message;
+      console.log(`[${userId}] base64 failed (${e1msg}), falling back to URL...`);
+      // Strategy 2: fallback to URL
+      genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
+        type: 'video-to-video',
+        model: 'wan-2.2-animate',
+        image_url: imageUrl,
+        video_url: videoFileLink.href,
+        prompt: 'Transfer motion from reference video to character',
+      }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
+      console.log(`[${userId}] URL strategy OK`);
+    }
 
     const { id: taskId } = genRes.data;
     if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
@@ -947,24 +983,46 @@ async function runKlingMotionControl(chatId: number, userId: number, statusMsgId
   try {
     const videoFileLink = await bot.telegram.getFileLink(videoFileId);
     console.log(`[${userId}] Kling Motion Control started`);
-    console.log(`[${userId}] Image URL: ${imageUrl}`);
-    console.log(`[${userId}] Video URL: ${videoFileLink.href}`);
 
-    const payload = {
-      type: 'video-to-video',
-      model: 'kling-v2-6-motion-control',
-      image_url: imageUrl,
-      video_url: videoFileLink.href,
-      prompt: 'Cinematic quality, smooth motion transfer, preserve character identity',
-      character_orientation: 'video',
-      keep_original_sound: false,
-    };
+    // Download both files so Renderful doesn't need to access Telegram URLs directly
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '⏳ Mengunduh file...');
+    const [imgBuf, vidBuf] = await Promise.all([
+      downloadBuffer(imageUrl),
+      downloadBuffer(videoFileLink.href),
+    ]);
+    const b64Image = `data:${imgBuf.mime};base64,${imgBuf.buf.toString('base64')}`;
+    const b64Video = `data:${vidBuf.mime};base64,${vidBuf.buf.toString('base64')}`;
+    console.log(`[${userId}] img: ${(imgBuf.buf.length / 1024).toFixed(1)}KB, vid: ${(vidBuf.buf.length / 1024).toFixed(1)}KB`);
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '⏳ Mengirim ke Renderful...');
 
-    console.log(`[${userId}] Sending to Renderful: ${JSON.stringify(payload)}`);
-
-    const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, payload,
-      { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } }
-    );
+    let genRes: any;
+    try {
+      // Strategy 1: base64 encoded files
+      genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
+        type: 'video-to-video',
+        model: 'kling-v2-6-motion-control',
+        image: b64Image,
+        video: b64Video,
+        prompt: 'Cinematic quality, smooth motion transfer, preserve character identity',
+        character_orientation: 'video',
+        keep_original_sound: false,
+      }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, maxBodyLength: Infinity });
+      console.log(`[${userId}] Kling base64 strategy OK`);
+    } catch (e1: any) {
+      const e1msg = e1?.response?.data ? JSON.stringify(e1.response.data) : e1.message;
+      console.log(`[${userId}] Kling base64 failed (${e1msg}), falling back to URL...`);
+      // Strategy 2: fallback to URL
+      genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
+        type: 'video-to-video',
+        model: 'kling-v2-6-motion-control',
+        image_url: imageUrl,
+        video_url: videoFileLink.href,
+        prompt: 'Cinematic quality, smooth motion transfer, preserve character identity',
+        character_orientation: 'video',
+        keep_original_sound: false,
+      }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
+      console.log(`[${userId}] Kling URL strategy OK`);
+    }
 
     console.log(`[${userId}] Renderful Kling response: ${JSON.stringify(genRes.data)}`);
     const { id: taskId } = genRes.data;
