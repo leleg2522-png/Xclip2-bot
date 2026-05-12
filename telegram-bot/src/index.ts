@@ -48,41 +48,6 @@ async function checkActiveSubscription(userId: number): Promise<boolean> {
 
 // ─── Renderful Key Pool ───────────────────────────────────────────────────────
 
-async function assignKeysToUser(dbUserId: number): Promise<string[]> {
-  const client = await db.connect();
-  try {
-    await client.query('BEGIN');
-
-    // Return any existing assigned keys first
-    await client.query(
-      `UPDATE renderful_key_pool SET status = 'available', assigned_to = NULL, slot = NULL, assigned_at = NULL
-       WHERE assigned_to = $1`,
-      [dbUserId]
-    );
-
-    // Assign 2 available keys
-    const res = await client.query(
-      `UPDATE renderful_key_pool SET status = 'assigned', assigned_to = $1, assigned_at = NOW(),
-        slot = sub.rn
-       FROM (
-         SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS rn
-         FROM renderful_key_pool WHERE status = 'available' LIMIT 2
-       ) sub
-       WHERE renderful_key_pool.id = sub.id
-       RETURNING api_key`,
-      [dbUserId]
-    );
-
-    await client.query('COMMIT');
-    return res.rows.map((r: any) => r.api_key);
-  } catch (e) {
-    await client.query('ROLLBACK');
-    throw e;
-  } finally {
-    client.release();
-  }
-}
-
 async function getUserKeys(dbUserId: number): Promise<string[]> {
   const res = await db.query(
     `SELECT api_key FROM renderful_key_pool WHERE assigned_to = $1 AND status = 'assigned' ORDER BY slot`,
@@ -91,12 +56,60 @@ async function getUserKeys(dbUserId: number): Promise<string[]> {
   return res.rows.map((r: any) => r.api_key);
 }
 
-async function returnUserKeys(dbUserId: number): Promise<void> {
+async function assignKeysToUser(dbUserId: number): Promise<string[]> {
+  // Load existing assigned keys first — keys are permanent, not returned on logout
+  const existing = await getUserKeys(dbUserId);
+  const needed = 2 - existing.length;
+  if (needed <= 0) return existing;
+
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Determine next slot numbers
+    const slotStart = existing.length + 1;
+    const res = await client.query(
+      `UPDATE renderful_key_pool SET status = 'assigned', assigned_to = $1, assigned_at = NOW(),
+        slot = sub.rn + $2
+       FROM (
+         SELECT id, ROW_NUMBER() OVER (ORDER BY id) - 1 AS rn
+         FROM renderful_key_pool WHERE status = 'available' LIMIT $3
+       ) sub
+       WHERE renderful_key_pool.id = sub.id
+       RETURNING api_key`,
+      [dbUserId, slotStart, needed]
+    );
+
+    await client.query('COMMIT');
+    return [...existing, ...res.rows.map((r: any) => r.api_key)];
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+async function replaceDeadKey(dbUserId: number, deadKey: string): Promise<string | null> {
+  // Mark the dead key
   await db.query(
-    `UPDATE renderful_key_pool SET status = 'available', assigned_to = NULL, slot = NULL, assigned_at = NULL
-     WHERE assigned_to = $1`,
+    `UPDATE renderful_key_pool SET status = 'dead', dead_at = NOW(), assigned_to = NULL, slot = NULL
+     WHERE api_key = $1`,
+    [deadKey]
+  );
+
+  // Get a new key from pool
+  const res = await db.query(
+    `UPDATE renderful_key_pool SET status = 'assigned', assigned_to = $1, assigned_at = NOW(), slot = (
+       SELECT COALESCE(MAX(slot), 0) + 1 FROM renderful_key_pool WHERE assigned_to = $1
+     )
+     WHERE id = (
+       SELECT id FROM renderful_key_pool WHERE status = 'available' LIMIT 1
+     )
+     RETURNING api_key`,
     [dbUserId]
   );
+  return res.rows[0]?.api_key ?? null;
 }
 
 async function addKeyToPool(apiKey: string): Promise<boolean> {
@@ -183,13 +196,30 @@ function isLoggedIn(userId: number): boolean {
   return !!getSession(userId).dbUserId;
 }
 
-function getNextKey(userId: number): string | null {
+function getNextKey(userId: number): string {
   const session = getSession(userId);
   const keys = session.assignedKeys;
   if (!keys || keys.length === 0) return RENDERFUL_API_KEY!;
   const idx = (session.keyIndex ?? 0) % keys.length;
   setSession(userId, { keyIndex: idx + 1 });
   return keys[idx];
+}
+
+function isKeyExhaustedError(raw: string): boolean {
+  const lower = raw.toLowerCase();
+  return lower.includes('quota') || lower.includes('exhausted') || lower.includes('limit exceeded')
+    || lower.includes('rate limit') || lower.includes('insufficient') || lower.includes('402')
+    || lower.includes('balance') || lower.includes('credit');
+}
+
+async function handleDeadKey(userId: number, deadKey: string): Promise<void> {
+  const session = getSession(userId);
+  if (!session.dbUserId) return;
+  console.log(`[${userId}] Key exhausted, replacing: ${deadKey.slice(0, 10)}...`);
+  const newKey = await replaceDeadKey(session.dbUserId, deadKey).catch(() => null);
+  const updatedKeys = await getUserKeys(session.dbUserId).catch(() => session.assignedKeys ?? []);
+  setSession(userId, { assignedKeys: updatedKeys, keyIndex: 0 });
+  console.log(`[${userId}] Key replaced: ${newKey ? newKey.slice(0, 10) + '...' : 'no key available'}`);
 }
 
 async function requireLoginAndSub(ctx: any): Promise<boolean> {
@@ -427,12 +457,10 @@ bot.command('login', (ctx) => {
   return ctx.reply('🔐 *Login XclipAI*\n\nMasukkan *username atau email* kamu:', { parse_mode: 'Markdown' });
 });
 
-bot.command('logout', async (ctx) => {
+bot.command('logout', (ctx) => {
   const session = getSession(ctx.from.id);
   const name = session.dbUsername;
-  if (session.dbUserId) {
-    await returnUserKeys(session.dbUserId).catch(e => console.error('Return keys error:', e.message));
-  }
+  // Keys are NOT returned to pool — they stay assigned to user in DB
   setSession(ctx.from.id, { mode: 'idle', dbUserId: undefined, dbUsername: undefined, dbIsAdmin: undefined, assignedKeys: undefined, keyIndex: undefined, loginTempUsername: undefined });
   return ctx.reply(`✅ Berhasil logout${name ? ` dari akun *${name}*` : ''}.\n\nKetik /login untuk masuk kembali.`, { parse_mode: 'Markdown' });
 });
@@ -778,16 +806,16 @@ bot.on('text', async (ctx) => {
         );
       }
 
-      // Assign 2 Renderful API keys from pool
+      // Load or assign Renderful API keys — keys are permanent (not returned on logout)
       let keyInfo = '';
       try {
         const keys = await assignKeysToUser(user.id);
         setSession(userId, { assignedKeys: keys, keyIndex: 0 });
         keyInfo = keys.length >= 2
-          ? `\n🔑 *${keys.length} API key* telah ditetapkan untuk kamu.`
+          ? `\n🔑 *${keys.length} API key* aktif.`
           : keys.length === 1
-            ? `\n🔑 *1 API key* ditetapkan (pool hampir habis).`
-            : `\n⚠️ Pool API key kosong, hubungi admin.`;
+            ? `\n🔑 *1 API key* aktif (pool hampir habis).`
+            : `\n⚠️ Belum ada API key — hubungi admin untuk isi pool.`;
       } catch (e) {
         console.error(`[${userId}] Key assign error:`, e);
       }
@@ -868,10 +896,10 @@ bot.on('document', async (ctx) => {
 // ─── Background: Video generation ────────────────────────────────────────────
 
 async function runVideoGeneration(chatId: number, userId: number, statusMsgId: number, videoFileId: string, imageUrl: string) {
+  const apiKey = getNextKey(userId);
   try {
     const videoFileLink = await bot.telegram.getFileLink(videoFileId);
     console.log(`[${userId}] Video generation started`);
-    const apiKey = getNextKey(userId);
 
     const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
       type: 'video-to-video',
@@ -898,6 +926,13 @@ async function runVideoGeneration(chatId: number, userId: number, statusMsgId: n
     const rawMsg = err?.response?.data?.error ?? err?.response?.data ?? err.message ?? String(err);
     const raw = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
     console.error(`[${userId}] Video error: ${raw}`);
+    if (isKeyExhaustedError(raw)) {
+      await handleDeadKey(userId, apiKey);
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+        `⚠️ API key habis, sudah diganti otomatis. Coba lagi dengan /menu`, { parse_mode: 'Markdown' }
+      ).catch(() => {});
+      return;
+    }
     const friendly = translateError(raw);
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `${friendly}\n\n/menu untuk coba lagi`, { parse_mode: 'Markdown' }
@@ -908,6 +943,7 @@ async function runVideoGeneration(chatId: number, userId: number, statusMsgId: n
 // ─── Background: Kling Motion Control ────────────────────────────────────────
 
 async function runKlingMotionControl(chatId: number, userId: number, statusMsgId: number, videoFileId: string, imageUrl: string) {
+  const apiKey = getNextKey(userId);
   try {
     const videoFileLink = await bot.telegram.getFileLink(videoFileId);
     console.log(`[${userId}] Kling Motion Control started`);
@@ -926,7 +962,6 @@ async function runKlingMotionControl(chatId: number, userId: number, statusMsgId
 
     console.log(`[${userId}] Sending to Renderful: ${JSON.stringify(payload)}`);
 
-    const apiKey = getNextKey(userId);
     const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, payload,
       { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } }
     );
@@ -948,6 +983,13 @@ async function runKlingMotionControl(chatId: number, userId: number, statusMsgId
     const rawMsg = err?.response?.data?.error ?? err?.response?.data ?? err.message ?? String(err);
     const raw = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
     console.error(`[${userId}] Kling error: ${raw}`);
+    if (isKeyExhaustedError(raw)) {
+      await handleDeadKey(userId, apiKey);
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+        `⚠️ API key habis, sudah diganti otomatis. Coba lagi dengan /menu`, { parse_mode: 'Markdown' }
+      ).catch(() => {});
+      return;
+    }
     const friendly = translateError(raw);
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `${friendly}\n\n/menu untuk coba lagi`, { parse_mode: 'Markdown' }
@@ -969,13 +1011,13 @@ async function runImageGeneration(
   image1Url: string, image2Url: string, prompt: string,
   model: string, modelLabel: string, aspectRatio: string = '1:1', resolution: string = '1k'
 ) {
+  const apiKey = getNextKey(userId);
   try {
     console.log(`[${userId}] Image generation: ${model}`);
     console.log(`[${userId}] image1: ${image1Url}`);
     console.log(`[${userId}] image2: ${image2Url}`);
 
     let taskId: string;
-    const apiKey = getNextKey(userId);
 
     if (model === 'nano-banana-2-i2i') {
       console.log(`[${userId}] Downloading images for Nano Banana 2...`);
@@ -1081,6 +1123,13 @@ async function runImageGeneration(
     const rawMsg = err?.response?.data?.error ?? err?.response?.data ?? err.message ?? String(err);
     const raw = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
     console.error(`[${userId}] Image error: ${raw}`);
+    if (isKeyExhaustedError(raw)) {
+      await handleDeadKey(userId, apiKey);
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+        `⚠️ API key habis, sudah diganti otomatis. Coba lagi dengan /menu`, { parse_mode: 'Markdown' }
+      ).catch(() => {});
+      return;
+    }
     const friendly = translateError(raw);
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `${friendly}\n\n/menu untuk coba lagi`, { parse_mode: 'Markdown' }
