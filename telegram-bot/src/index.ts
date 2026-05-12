@@ -358,11 +358,16 @@ async function sendResult(chatId: number, outputUrl: string, caption: string, is
   );
 }
 
-async function pollForResult(taskId: string, userId: number, maxAttempts = 60): Promise<string> {
+async function pollForResult(taskId: string, userId: number, apiKey: string, pollPath?: string, maxAttempts = 60): Promise<string> {
+  // Use poll_url from response if provided, otherwise construct from taskId
+  const pollUrl = pollPath
+    ? (pollPath.startsWith('http') ? pollPath : `https://api.renderful.ai${pollPath}`)
+    : `${RENDERFUL_BASE}/generations/${taskId}`;
+  console.log(`[${userId}] Polling: ${pollUrl}`);
   for (let i = 0; i < maxAttempts; i++) {
     await sleep(10_000);
-    const res = await renderfulHttp.get(`${RENDERFUL_BASE}/generations/${taskId}`, {
-      headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}` },
+    const res = await renderfulHttp.get(pollUrl, {
+      headers: { Authorization: `Bearer ${apiKey}` },
     });
     const { status, output, error } = res.data;
     console.log(`[${userId}] Poll ${i + 1}: ${status}`);
@@ -945,15 +950,15 @@ async function runVideoGeneration(chatId: number, userId: number, statusMsgId: n
       console.log(`[${userId}] URL strategy OK`);
     }
 
-    const { id: taskId } = genRes.data;
+    const { id: taskId, poll_url: pollUrl } = genRes.data;
     if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
-    console.log(`[${userId}] Task: ${taskId}`);
+    console.log(`[${userId}] Task: ${taskId}, poll_url: ${pollUrl}`);
 
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `⏳ Video diproses (${taskId.slice(0, 8)}...)\nBiasanya 2-5 menit.`
     );
 
-    const outputUrl = await pollForResult(taskId, userId);
+    const outputUrl = await pollForResult(taskId, userId, apiKey, pollUrl);
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '✅ Selesai! Mengirim...');
     await sendResult(chatId, outputUrl, '🎬 WAN 2.2 Animate\n\n/menu untuk buat lagi', true);
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
@@ -1025,14 +1030,14 @@ async function runKlingMotionControl(chatId: number, userId: number, statusMsgId
     }
 
     console.log(`[${userId}] Renderful Kling response: ${JSON.stringify(genRes.data)}`);
-    const { id: taskId } = genRes.data;
+    const { id: taskId, poll_url: pollUrl } = genRes.data;
     if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
 
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `⏳ Kling Motion Control diproses (${taskId.slice(0, 8)}...)\nBiasanya 2-5 menit.`
     );
 
-    const outputUrl = await pollForResult(taskId, userId);
+    const outputUrl = await pollForResult(taskId, userId, apiKey, pollUrl);
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '✅ Selesai! Mengirim...');
     await sendResult(chatId, outputUrl, '🕹️ Kling 2.6 Pro Motion Control\n\n/menu untuk buat lagi', true);
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
@@ -1076,6 +1081,7 @@ async function runImageGeneration(
     console.log(`[${userId}] image2: ${image2Url}`);
 
     let taskId: string;
+    let pollPath: string | undefined;
 
     if (model === 'nano-banana-2-i2i') {
       console.log(`[${userId}] Downloading images for Nano Banana 2...`);
@@ -1147,6 +1153,7 @@ async function runImageGeneration(
       }
 
       taskId = genRes.data?.id;
+      pollPath = genRes.data?.poll_url;
       if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
     } else {
       // Other models use JSON with image URLs
@@ -1160,20 +1167,21 @@ async function runImageGeneration(
 
       console.log(`[${userId}] Payload: ${JSON.stringify(payload)}`);
 
-      const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, payload,
+      const otherRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, payload,
         { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } }
       );
 
-      console.log(`[${userId}] Response:`, JSON.stringify(genRes.data));
-      taskId = genRes.data?.id;
-      if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
+      console.log(`[${userId}] Response:`, JSON.stringify(otherRes.data));
+      taskId = otherRes.data?.id;
+      pollPath = otherRes.data?.poll_url;
+      if (!taskId) throw new Error(`No task ID: ${JSON.stringify(otherRes.data)}`);
     }
 
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `⏳ Diproses dengan ${modelLabel}...\nMohon tunggu.`
     );
 
-    const outputUrl = await pollForResult(taskId, userId);
+    const outputUrl = await pollForResult(taskId, userId, apiKey, pollPath);
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '✅ Selesai! Mengirim...');
     await sendResult(chatId, outputUrl, `🖼️ Dibuat dengan ${modelLabel}\n\n/menu untuk buat lagi`, false);
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
