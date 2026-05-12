@@ -10,10 +10,12 @@
   },
   "dependencies": {
     "@types/express": "^5.0.6",
+    "@types/pg": "^8.20.0",
     "axios": "^1.7.9",
     "express": "^5.2.1",
     "form-data": "^4.0.5",
     "https-proxy-agent": "^5.0.1",
+    "pg": "^8.20.0",
     "telegraf": "^4.16.3"
   },
   "devDependencies": {
