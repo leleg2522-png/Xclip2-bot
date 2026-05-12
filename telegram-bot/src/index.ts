@@ -236,8 +236,8 @@ bot.help((ctx) => {
     '• Syarat foto: tampak depan penuh, min. 300px, maks 10MB\n' +
     '• Syarat video: orang terlihat jelas, durasi 2–30 detik, maks 100MB\n\n' +
     '*🖼️ Image to Image:*\n' +
-    '• Langkah: pilih model → kirim gambar 1 → kirim gambar 2 → ketik prompt → tunggu hasil\n' +
-    '• Model: GPT Image 2, Banana 2, Banana Pro, Seedream 5',
+    '• Langkah: pilih model → kirim gambar 1 (sumber) → kirim gambar 2 (referensi/style) → ketik prompt → tunggu hasil\n' +
+    '• Model: GPT Image 2, Nano Banana 2, Nano Banana Pro, Seedream 5 Lite',
     { parse_mode: 'Markdown' }
   );
 });
@@ -291,7 +291,7 @@ bot.on('callback_query', async (ctx) => {
     setSession(userId, { mode: 'img_wait_image1', imageModel: model, image1Url: undefined, image2Url: undefined });
     return ctx.editMessageText(
       `🖼️ *${modelInfo.label}* (${modelInfo.cost})\n\n` +
-      '*Langkah 1 dari 3:* Kirim *gambar pertama* (gambar yang ingin diedit).',
+      '*Langkah 1 dari 3:* Kirim *gambar pertama* (gambar sumber yang ingin diedit).',
       { parse_mode: 'Markdown' }
     );
   }
@@ -337,8 +337,8 @@ async function handleImageInput(ctx: any, fileUrl: string) {
   if (session.mode === 'img_wait_image1') {
     setSession(userId, { image1Url: fileUrl, mode: 'img_wait_image2' });
     return ctx.reply(
-      `✅ Gambar 1 diterima!\n\n` +
-      `*Langkah 2 dari 3:* Kirim *gambar kedua* (referensi/mask untuk edit).`,
+      '✅ Gambar pertama diterima!\n\n' +
+      '*Langkah 2 dari 3:* Kirim *gambar kedua* (gambar referensi/style).',
       { parse_mode: 'Markdown' }
     );
   }
@@ -346,9 +346,9 @@ async function handleImageInput(ctx: any, fileUrl: string) {
   if (session.mode === 'img_wait_image2') {
     setSession(userId, { image2Url: fileUrl, mode: 'img_wait_prompt' });
     return ctx.reply(
-      '✅ Gambar 2 diterima!\n\n' +
-      '*Langkah 3 dari 3:* Ketik *prompt* — apa yang ingin diubah?\n\n' +
-      '_Contoh: "ganti baju jadi merah" atau "ubah background jadi pantai"_',
+      '✅ Gambar kedua diterima!\n\n' +
+      '*Langkah 3 dari 3:* Ketik *prompt* — apa yang ingin dilakukan?\n\n' +
+      '_Contoh: "ganti baju jadi merah", "ubah background jadi pantai", "terapkan style gambar kedua"_',
       { parse_mode: 'Markdown' }
     );
   }
@@ -395,7 +395,7 @@ bot.on('text', async (ctx) => {
 
   if (session.mode === 'img_wait_prompt') {
     const prompt = ctx.message.text.trim();
-    if (!prompt) return ctx.reply('Prompt tidak boleh kosong. Ketik apa yang ingin diubah:');
+    if (!prompt) return ctx.reply('Prompt tidak boleh kosong. Ketik apa yang ingin dilakukan:');
 
     const model = session.imageModel!;
     const modelInfo = IMAGE_MODELS[model];
@@ -543,29 +543,23 @@ async function runImageGeneration(
 ) {
   try {
     console.log(`[${userId}] Image generation: ${model}`);
-
-    // Download from Telegram and convert to base64 data URIs
-    // API accepts data:image/jpeg;base64,... in image_url field
-    console.log(`[${userId}] Converting images to base64...`);
-    const [dataUri1, dataUri2] = await Promise.all([
-      toDataUri(image1Url),
-      toDataUri(image2Url),
-    ]);
-    console.log(`[${userId}] Base64 conversion done, sending to Renderful...`);
+    console.log(`[${userId}] image1: ${image1Url}`);
+    console.log(`[${userId}] image2: ${image2Url}`);
 
     const payload = {
       type: 'image-to-image',
       model,
-      image_url: dataUri1,
-      mask_url: dataUri2,
+      image_urls: [image1Url, image2Url],
       prompt,
     };
+
+    console.log(`[${userId}] Payload: ${JSON.stringify({ ...payload, image_urls: ['...', '...'] })}`);
 
     const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, payload,
       { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } }
     );
 
-    console.log(`[${userId}] Renderful response:`, JSON.stringify(genRes.data));
+    console.log(`[${userId}] Response:`, JSON.stringify(genRes.data));
     const { id: taskId } = genRes.data;
     if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
 
