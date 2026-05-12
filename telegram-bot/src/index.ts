@@ -330,31 +330,68 @@ async function toDataUri(telegramUrl: string): Promise<string> {
 // ─── Result sender ────────────────────────────────────────────────────────────
 
 async function sendResult(chatId: number, outputUrl: string, caption: string, isVideo: boolean) {
+  const TELEGRAM_MAX_BYTES = 48 * 1024 * 1024; // 48MB safe limit
+
+  // Auto-detect type from URL extension if not forced
+  const lowerUrl = outputUrl.toLowerCase().split('?')[0];
+  const looksLikeVideo = isVideo
+    || lowerUrl.endsWith('.mp4') || lowerUrl.endsWith('.mov')
+    || lowerUrl.endsWith('.webm') || lowerUrl.endsWith('.avi');
+
+  const opts = { caption, parse_mode: 'Markdown' as const };
+
+  // Strategy 1: download buffer and upload directly to Telegram
   try {
-    const res = await telegramHttp.get(outputUrl, { responseType: 'arraybuffer', timeout: 180_000 });
+    const res = await telegramHttp.get(outputUrl, { responseType: 'arraybuffer', timeout: 300_000 });
     const buf = Buffer.from(res.data);
-    console.log(`Downloaded ${(buf.length / 1024 / 1024).toFixed(1)} MB`);
-    if (isVideo) {
-      await bot.telegram.sendVideo(chatId, { source: buf, filename: 'output.mp4' }, { caption });
-    } else {
-      await bot.telegram.sendPhoto(chatId, { source: buf, filename: 'output.jpg' }, { caption });
+    const sizeMB = (buf.length / 1024 / 1024).toFixed(1);
+    console.log(`Downloaded result: ${sizeMB} MB, isVideo: ${looksLikeVideo}`);
+
+    if (buf.length > TELEGRAM_MAX_BYTES) {
+      console.log(`File too large (${sizeMB} MB), skipping buffer upload, using link`);
+      throw new Error('too_large');
     }
+
+    if (looksLikeVideo) {
+      await bot.telegram.sendVideo(chatId, { source: buf, filename: 'output.mp4' }, opts);
+    } else {
+      await bot.telegram.sendPhoto(chatId, { source: buf, filename: 'output.jpg' }, opts);
+    }
+    console.log(`Result sent via buffer (${sizeMB} MB)`);
     return;
   } catch (e: any) {
     console.log(`Buffer strategy failed: ${e.message}`);
   }
+
+  // Strategy 2: send URL directly (let Telegram download)
   try {
-    if (isVideo) {
-      await bot.telegram.sendVideo(chatId, outputUrl, { caption });
+    if (looksLikeVideo) {
+      await bot.telegram.sendVideo(chatId, outputUrl, opts);
     } else {
-      await bot.telegram.sendPhoto(chatId, outputUrl, { caption });
+      await bot.telegram.sendPhoto(chatId, outputUrl, opts);
     }
+    console.log(`Result sent via URL`);
     return;
   } catch (e: any) {
     console.log(`URL strategy failed: ${e.message}`);
   }
+
+  // Strategy 3: send as document (bypasses photo/video size limits)
+  try {
+    await bot.telegram.sendDocument(chatId,
+      { url: outputUrl, filename: looksLikeVideo ? 'output.mp4' : 'output.jpg' },
+      opts
+    );
+    console.log(`Result sent as document`);
+    return;
+  } catch (e: any) {
+    console.log(`Document strategy failed: ${e.message}`);
+  }
+
+  // Final fallback: send download link
   await bot.telegram.sendMessage(chatId,
-    `✅ Hasil selesai!\n\n📥 Download (link aktif ~1 jam):\n${outputUrl}\n\n${caption}`
+    `✅ *Hasil selesai!*\n\n📥 *Download* (link aktif ~1 jam):\n${outputUrl}\n\n${caption}`,
+    { parse_mode: 'Markdown' }
   );
 }
 
