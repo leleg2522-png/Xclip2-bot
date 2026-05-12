@@ -557,7 +557,7 @@ async function runImageGeneration(
     let taskId: string;
 
     if (model === 'nano-banana-2-i2i') {
-      // Nano Banana 2 requires multipart/form-data with file uploads
+      // Nano Banana 2: try multipart first, fallback to base64 JSON
       console.log(`[${userId}] Downloading images for Nano Banana 2...`);
       const [img1, img2] = await Promise.all([
         downloadBuffer(image1Url),
@@ -566,22 +566,55 @@ async function runImageGeneration(
       console.log(`[${userId}] img1: ${img1.mime} ${(img1.buf.length / 1024).toFixed(1)}KB`);
       console.log(`[${userId}] img2: ${img2.mime} ${(img2.buf.length / 1024).toFixed(1)}KB`);
 
-      const form = new FormData();
-      form.append('type', 'image-to-image');
-      form.append('model', 'nano-banana-2-i2i');
-      form.append('prompt', prompt);
-      form.append('image', img1.buf, { filename: `image1.${img1.ext}`, contentType: img1.mime });
-      form.append('image', img2.buf, { filename: `image2.${img2.ext}`, contentType: img2.mime });
+      // Strategy 1: multipart/form-data with file buffers
+      let genRes: any;
+      try {
+        const form = new FormData();
+        form.append('type', 'image-to-image');
+        form.append('model', 'nano-banana-2-i2i');
+        form.append('prompt', prompt);
+        form.append('image', img1.buf, { filename: `image1.${img1.ext}`, contentType: img1.mime });
+        form.append('image', img2.buf, { filename: `image2.${img2.ext}`, contentType: img2.mime });
 
-      const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, form, {
-        headers: {
-          Authorization: `Bearer ${RENDERFUL_API_KEY}`,
-          ...form.getHeaders(),
-        },
-        maxBodyLength: Infinity,
-      });
+        console.log(`[${userId}] Trying multipart/form-data...`);
+        genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, form, {
+          headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, ...form.getHeaders() },
+          maxBodyLength: Infinity,
+        });
+        console.log(`[${userId}] Multipart OK: ${JSON.stringify(genRes.data)}`);
+      } catch (e1: any) {
+        const e1msg = e1?.response?.data ? JSON.stringify(e1.response.data) : e1.message;
+        console.log(`[${userId}] Multipart failed (${e1msg}), trying base64 JSON...`);
 
-      console.log(`[${userId}] Nano Banana 2 response:`, JSON.stringify(genRes.data));
+        // Strategy 2: JSON with base64 data URIs
+        const b64img1 = `data:${img1.mime};base64,${img1.buf.toString('base64')}`;
+        const b64img2 = `data:${img2.mime};base64,${img2.buf.toString('base64')}`;
+
+        // Try as array first
+        try {
+          genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
+            type: 'image-to-image',
+            model: 'nano-banana-2-i2i',
+            prompt,
+            image: [b64img1, b64img2],
+          }, { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } });
+          console.log(`[${userId}] Base64 array OK: ${JSON.stringify(genRes.data)}`);
+        } catch (e2: any) {
+          const e2msg = e2?.response?.data ? JSON.stringify(e2.response.data) : e2.message;
+          console.log(`[${userId}] Base64 array failed (${e2msg}), trying image_url + reference_image_url...`);
+
+          // Strategy 3: JSON with image_url + reference_image_url (same as other models)
+          genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
+            type: 'image-to-image',
+            model: 'nano-banana-2-i2i',
+            prompt,
+            image_url: image1Url,
+            reference_image_url: image2Url,
+          }, { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } });
+          console.log(`[${userId}] image_url OK: ${JSON.stringify(genRes.data)}`);
+        }
+      }
+
       taskId = genRes.data?.id;
       if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
     } else {
