@@ -1092,56 +1092,57 @@ async function runImageGeneration(
 
       let genRes: any;
 
-      // Strategy 1: image (source) + reference_images array (correct Nano Banana 2 params per docs)
-      try {
-        console.log(`[${userId}] Trying image + reference_images JSON...`);
-        const b64img1 = `data:${img1.mime};base64,${img1.buf.toString('base64')}`;
-        const b64img2 = `data:${img2.mime};base64,${img2.buf.toString('base64')}`;
-        genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
-          type: 'image-to-image',
-          model: 'nano-banana-2-i2i',
-          prompt: enhancedPrompt,
-          image: b64img1,
-          reference_images: [b64img2],
-          aspect_ratio: aspectRatio,
-          resolution,
-        }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
-        console.log(`[${userId}] reference_images strategy OK: ${JSON.stringify(genRes.data)}`);
-      } catch (e1: any) {
-        const e1msg = e1?.response?.data ? JSON.stringify(e1.response.data) : e1.message;
-        console.log(`[${userId}] reference_images failed (${e1msg}), trying image_url + reference_image_url...`);
+      const b64img1 = `data:${img1.mime};base64,${img1.buf.toString('base64')}`;
+      const b64img2 = `data:${img2.mime};base64,${img2.buf.toString('base64')}`;
 
-        // Strategy 2: image_url + reference_image_url fallback
+      const nanoBananaStrategies = [
+        // S1: model nano-banana-2-i2i + base64 image + reference_images[]
+        { label: 'S1:nb2-i2i+b64+ref_arr', body: { type: 'image-to-image', model: 'nano-banana-2-i2i', prompt: enhancedPrompt, image: b64img1, reference_images: [b64img2], aspect_ratio: aspectRatio, resolution } },
+        // S2: model nano-banana-2 (no suffix) + base64
+        { label: 'S2:nb2+b64+ref_arr', body: { type: 'image-to-image', model: 'nano-banana-2', prompt: enhancedPrompt, image: b64img1, reference_images: [b64img2], aspect_ratio: aspectRatio, resolution } },
+        // S3: model nano-banana-2-i2i + base64 image + reference_image (singular)
+        { label: 'S3:nb2-i2i+b64+ref_single', body: { type: 'image-to-image', model: 'nano-banana-2-i2i', prompt: enhancedPrompt, image: b64img1, reference_image: b64img2, aspect_ratio: aspectRatio, resolution } },
+        // S4: model nano-banana-2 + base64 image + reference_image (singular)
+        { label: 'S4:nb2+b64+ref_single', body: { type: 'image-to-image', model: 'nano-banana-2', prompt: enhancedPrompt, image: b64img1, reference_image: b64img2, aspect_ratio: aspectRatio, resolution } },
+        // S5: multipart with nano-banana-2-i2i
+        { label: 'S5:multipart-i2i', body: null as any },
+        // S6: multipart with nano-banana-2
+        { label: 'S6:multipart-nb2', body: null as any },
+      ];
+
+      let lastErr = '';
+      for (const strat of nanoBananaStrategies) {
         try {
-          genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
-            type: 'image-to-image',
-            model: 'nano-banana-2-i2i',
-            prompt: enhancedPrompt,
-            image_url: image1Url,
-            reference_image_url: image2Url,
-            aspect_ratio: aspectRatio,
-            resolution,
-          }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
-          console.log(`[${userId}] image_url strategy OK: ${JSON.stringify(genRes.data)}`);
-        } catch (e2: any) {
-          const e2msg = e2?.response?.data ? JSON.stringify(e2.response.data) : e2.message;
-          console.log(`[${userId}] image_url failed (${e2msg}), trying multipart...`);
-
-          // Strategy 3: multipart/form-data
-          const form = new FormData();
-          form.append('type', 'image-to-image');
-          form.append('model', 'nano-banana-2-i2i');
-          form.append('prompt', enhancedPrompt);
-          form.append('aspect_ratio', aspectRatio);
-          form.append('resolution', resolution);
-          form.append('image', img1.buf, { filename: `source.${img1.ext}`, contentType: img1.mime });
-          form.append('reference_images', img2.buf, { filename: `reference.${img2.ext}`, contentType: img2.mime });
-
-          genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, form, {
-            headers: { Authorization: `Bearer ${apiKey}`, ...form.getHeaders() },
-            maxBodyLength: Infinity,
-          });
-          console.log(`[${userId}] Multipart OK: ${JSON.stringify(genRes.data)}`);
+          if (strat.label.startsWith('S5') || strat.label.startsWith('S6')) {
+            const modelName = strat.label.startsWith('S5') ? 'nano-banana-2-i2i' : 'nano-banana-2';
+            const form = new FormData();
+            form.append('type', 'image-to-image');
+            form.append('model', modelName);
+            form.append('prompt', enhancedPrompt);
+            form.append('aspect_ratio', aspectRatio);
+            form.append('resolution', resolution);
+            form.append('image', img1.buf, { filename: `source.${img1.ext}`, contentType: img1.mime });
+            form.append('reference_images', img2.buf, { filename: `reference.${img2.ext}`, contentType: img2.mime });
+            genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, form, {
+              headers: { Authorization: `Bearer ${apiKey}`, ...form.getHeaders() },
+              maxBodyLength: Infinity,
+            });
+          } else {
+            genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, strat.body, {
+              headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+              maxBodyLength: Infinity,
+            });
+          }
+          console.log(`[${userId}] ${strat.label} OK: ${JSON.stringify(genRes.data)}`);
+          break; // success
+        } catch (e: any) {
+          const status = e?.response?.status ?? 'no-status';
+          const errBody = e?.response?.data ? JSON.stringify(e.response.data) : e.message;
+          lastErr = errBody;
+          console.log(`[${userId}] ${strat.label} FAILED [HTTP ${status}]: ${errBody}`);
+          if (strat === nanoBananaStrategies[nanoBananaStrategies.length - 1]) {
+            throw new Error(typeof e?.response?.data?.error === 'string' ? e.response.data.error : errBody);
+          }
         }
       }
 
