@@ -41,6 +41,7 @@ type Mode =
   | 'img_wait_image1'
   | 'img_wait_image2'
   | 'img_wait_ratio'
+  | 'img_wait_resolution'
   | 'img_wait_prompt';
 
 interface Session {
@@ -49,6 +50,7 @@ interface Session {
   image1Url?: string;
   image2Url?: string;
   aspectRatio?: string;
+  resolution?: string;
   characterUrl?: string;
 }
 
@@ -226,6 +228,16 @@ function aspectRatioKeyboard() {
   ]);
 }
 
+function resolutionKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('🔹 1K  (cepat)',    'res_1k'),
+      Markup.button.callback('🔷 2K  (standar)',  'res_2k'),
+      Markup.button.callback('💠 4K  (terbaik)',  'res_4k'),
+    ],
+  ]);
+}
+
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
 bot.start((ctx) => {
@@ -324,11 +336,21 @@ bot.on('callback_query', async (ctx) => {
 
   if (data.startsWith('ratio_')) {
     const ratio = data.replace('ratio_', '');
-    const session = getSession(userId);
-    setSession(userId, { aspectRatio: ratio, mode: 'img_wait_prompt' });
+    setSession(userId, { aspectRatio: ratio, mode: 'img_wait_resolution' });
     return ctx.editMessageText(
       `✅ Rasio dipilih: *${ratio}*\n\n` +
-      '*Langkah 4 dari 4:* Ketik *prompt* — apa yang ingin dilakukan?\n\n' +
+      '*Langkah 4 dari 5:* Pilih *resolusi output*:',
+      { parse_mode: 'Markdown', ...resolutionKeyboard() }
+    );
+  }
+
+  if (data.startsWith('res_')) {
+    const resolution = data.replace('res_', '');
+    setSession(userId, { resolution, mode: 'img_wait_prompt' });
+    const resLabel: Record<string, string> = { '1k': '1K', '2k': '2K', '4k': '4K' };
+    return ctx.editMessageText(
+      `✅ Resolusi dipilih: *${resLabel[resolution] ?? resolution}*\n\n` +
+      '*Langkah 5 dari 5:* Ketik *prompt* — apa yang ingin dilakukan?\n\n' +
       '💡 *Tips:*\n' +
       '• Gambar *pertama* = subjek/orang yang ingin diubah\n' +
       '• Gambar *kedua* = referensi style/outfit/tampilan\n\n' +
@@ -392,7 +414,7 @@ async function handleImageInput(ctx: any, fileUrl: string) {
       setSession(userId, { image2Url: fileUrl, mode: 'img_wait_ratio' });
       return ctx.reply(
         '✅ Gambar kedua diterima!\n\n' +
-        '*Langkah 3 dari 4:* Pilih *rasio output*:',
+        '*Langkah 3 dari 5:* Pilih *rasio output*:',
         { parse_mode: 'Markdown', ...aspectRatioKeyboard() }
       );
     }
@@ -455,15 +477,19 @@ bot.on('text', async (ctx) => {
     const image1Url = session.image1Url!;
     const image2Url = session.image2Url!;
     const aspectRatio = session.aspectRatio ?? '1:1';
+    const resolution = session.resolution ?? '1k';
     setSession(userId, { mode: 'idle' });
 
-    const ratioLabel = model === 'nano-banana-2-i2i' ? ` • Rasio: ${aspectRatio}` : '';
+    const resLabel: Record<string, string> = { '1k': '1K', '2k': '2K', '4k': '4K' };
+    const infoLabel = model === 'nano-banana-2-i2i'
+      ? ` • Rasio: ${aspectRatio} • Resolusi: ${resLabel[resolution] ?? resolution}`
+      : '';
     const statusMsg = await ctx.reply(
-      `⏳ Memproses dengan *${modelInfo.label}*...${ratioLabel}\nHasil dikirim otomatis setelah selesai.`,
+      `⏳ Memproses dengan *${modelInfo.label}*...${infoLabel}\nHasil dikirim otomatis setelah selesai.`,
       { parse_mode: 'Markdown' }
     );
 
-    runImageGeneration(ctx.chat.id, userId, statusMsg.message_id, image1Url, image2Url, prompt, model, modelInfo.label, aspectRatio)
+    runImageGeneration(ctx.chat.id, userId, statusMsg.message_id, image1Url, image2Url, prompt, model, modelInfo.label, aspectRatio, resolution)
       .catch(e => console.error(`[${userId}] Image gen error:`, e.message));
     return;
   }
@@ -601,7 +627,7 @@ async function downloadBuffer(url: string): Promise<{ buf: Buffer; mime: string;
 async function runImageGeneration(
   chatId: number, userId: number, statusMsgId: number,
   image1Url: string, image2Url: string, prompt: string,
-  model: string, modelLabel: string, aspectRatio: string = '1:1'
+  model: string, modelLabel: string, aspectRatio: string = '1:1', resolution: string = '1k'
 ) {
   try {
     console.log(`[${userId}] Image generation: ${model}`);
@@ -637,6 +663,7 @@ async function runImageGeneration(
           image_url: image1Url,
           reference_image_url: image2Url,
           aspect_ratio: aspectRatio,
+          resolution,
         }, { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } });
         console.log(`[${userId}] image_url strategy OK: ${JSON.stringify(genRes.data)}`);
       } catch (e1: any) {
@@ -650,6 +677,7 @@ async function runImageGeneration(
           form.append('model', 'nano-banana-2-i2i');
           form.append('prompt', enhancedPrompt);
           form.append('aspect_ratio', aspectRatio);
+          form.append('resolution', resolution);
           form.append('image', img1.buf, { filename: `source.${img1.ext}`, contentType: img1.mime });
           form.append('image', img2.buf, { filename: `reference.${img2.ext}`, contentType: img2.mime });
 
@@ -672,6 +700,7 @@ async function runImageGeneration(
             prompt: enhancedPrompt,
             image: [b64img1, b64img2],
             aspect_ratio: aspectRatio,
+            resolution,
           }, { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } });
           console.log(`[${userId}] Base64 array OK: ${JSON.stringify(genRes.data)}`);
         }
