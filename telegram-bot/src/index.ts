@@ -35,6 +35,8 @@ type Mode =
   | 'idle'
   | 'video_wait_image'
   | 'video_wait_video'
+  | 'kling_wait_image'
+  | 'kling_wait_video'
   | 'img_wait_image1'
   | 'img_wait_image2'
   | 'img_wait_prompt';
@@ -183,6 +185,7 @@ async function pollForResult(taskId: string, userId: number, maxAttempts = 60): 
 function mainMenuKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('🎬 WAN Animate', 'mode_video')],
+    [Markup.button.callback('🕹️ Kling Motion Control', 'mode_kling')],
     [Markup.button.callback('🖼️ Image to Image', 'mode_image')],
   ]);
 }
@@ -227,6 +230,11 @@ bot.help((ctx) => {
     '• Langkah: foto karakter → video referensi → tunggu hasil\n' +
     '• Syarat foto: tampak depan penuh, min. 200px\n' +
     '• Syarat video: orang menghadap depan, durasi 2–30 detik, resolusi 200–2048px\n\n' +
+    '*🕹️ Kling Motion Control:*\n' +
+    '• Transfer gerakan dari video referensi ke karakter dengan kualitas sinematik\n' +
+    '• Langkah: foto karakter → video referensi → tunggu hasil\n' +
+    '• Syarat foto: tampak depan penuh, min. 300px, maks 10MB\n' +
+    '• Syarat video: orang terlihat jelas, durasi 2–30 detik, maks 100MB\n\n' +
     '*🖼️ Image to Image:*\n' +
     '• Langkah: pilih model → kirim gambar 1 → kirim gambar 2 → ketik prompt → tunggu hasil\n' +
     '• Model: GPT Image 2, Banana 2, Banana Pro, Seedream 5',
@@ -250,6 +258,20 @@ bot.on('callback_query', async (ctx) => {
       '• Tampilkan seluruh tubuh dari depan\n' +
       '• Bukan close-up wajah\n' +
       '• Resolusi minimal 200px',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data === 'mode_kling') {
+    setSession(userId, { mode: 'kling_wait_image' });
+    return ctx.editMessageText(
+      '🕹️ *Kling Motion Control* — Transfer gerakan sinematik ke karakter\n\n' +
+      '*Langkah 1:* Kirim *foto karakter* yang ingin dianimasikan.\n\n' +
+      '⚠️ *Syarat foto:*\n' +
+      '• Tampilkan seluruh tubuh dari depan\n' +
+      '• Bukan close-up wajah\n' +
+      '• Resolusi min. 300px, maks 10MB\n' +
+      '• Format: JPG, PNG',
       { parse_mode: 'Markdown' }
     );
   }
@@ -299,6 +321,19 @@ async function handleImageInput(ctx: any, fileUrl: string) {
     );
   }
 
+  if (session.mode === 'kling_wait_image') {
+    setSession(userId, { characterUrl: fileUrl, mode: 'kling_wait_video' });
+    return ctx.reply(
+      '✅ Foto karakter diterima!\n\n' +
+      '*Langkah 2:* Kirim *video referensi gerakan*.\n\n' +
+      '⚠️ *Syarat video:*\n' +
+      '• Orang terlihat jelas dalam video\n' +
+      '• Durasi 2–30 detik\n' +
+      '• Maks ukuran file: 10MB',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (session.mode === 'img_wait_image1') {
     setSession(userId, { image1Url: fileUrl, mode: 'img_wait_image2' });
     return ctx.reply(
@@ -334,6 +369,15 @@ bot.on('photo', async (ctx) => {
 bot.on('video', async (ctx) => {
   const userId = ctx.from.id;
   const session = getSession(userId);
+
+  if (session.mode === 'kling_wait_video' && session.characterUrl) {
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Mengirim ke Renderful.ai (Kling Motion Control)...\nHasil dikirim otomatis (~2-5 menit).');
+    runKlingMotionControl(ctx.chat.id, userId, statusMsg.message_id, ctx.message.video.file_id, session.characterUrl)
+      .catch(e => console.error(`[${userId}] Kling gen error:`, e.message));
+    return;
+  }
+
   if (session.mode !== 'video_wait_video' || !session.characterUrl) {
     return ctx.reply('⚠️ Kirim foto karakter terlebih dahulu.', mainMenuKeyboard());
   }
@@ -383,6 +427,14 @@ bot.on('document', async (ctx) => {
     return;
   }
 
+  if (doc.mime_type?.startsWith('video/') && session.mode === 'kling_wait_video' && session.characterUrl) {
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Mengirim ke Renderful.ai (Kling Motion Control)...');
+    runKlingMotionControl(ctx.chat.id, userId, statusMsg.message_id, doc.file_id, session.characterUrl)
+      .catch(console.error);
+    return;
+  }
+
   if (doc.mime_type?.startsWith('video/') && session.mode === 'video_wait_video' && session.characterUrl) {
     setSession(userId, { mode: 'idle' });
     const statusMsg = await ctx.reply('⏳ Mengirim ke Renderful.ai...');
@@ -426,6 +478,55 @@ async function runVideoGeneration(chatId: number, userId: number, statusMsgId: n
     const rawMsg = err?.response?.data?.error ?? err?.response?.data ?? err.message ?? String(err);
     const raw = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
     console.error(`[${userId}] Video error: ${raw}`);
+    const friendly = translateError(raw);
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`, { parse_mode: 'Markdown' }
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`, { parse_mode: 'Markdown' }));
+  }
+}
+
+// ─── Background: Kling Motion Control ────────────────────────────────────────
+
+async function runKlingMotionControl(chatId: number, userId: number, statusMsgId: number, videoFileId: string, imageUrl: string) {
+  try {
+    const videoFileLink = await bot.telegram.getFileLink(videoFileId);
+    console.log(`[${userId}] Kling Motion Control started`);
+    console.log(`[${userId}] Image URL: ${imageUrl}`);
+    console.log(`[${userId}] Video URL: ${videoFileLink.href}`);
+
+    const payload = {
+      type: 'video-to-video',
+      model: 'kling-v2-6-motion-control',
+      image_url: imageUrl,
+      video_url: videoFileLink.href,
+      prompt: 'Cinematic quality, smooth motion transfer, preserve character identity',
+      character_orientation: 'video',
+      keep_original_sound: false,
+    };
+
+    console.log(`[${userId}] Sending to Renderful: ${JSON.stringify(payload)}`);
+
+    const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, payload,
+      { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } }
+    );
+
+    console.log(`[${userId}] Renderful Kling response: ${JSON.stringify(genRes.data)}`);
+    const { id: taskId } = genRes.data;
+    if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
+
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `⏳ Kling Motion Control diproses (${taskId.slice(0, 8)}...)\nBiasanya 2-5 menit.`
+    );
+
+    const outputUrl = await pollForResult(taskId, userId);
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '✅ Selesai! Mengirim...');
+    await sendResult(chatId, outputUrl, '🕹️ Kling 2.6 Pro Motion Control\n\n/menu untuk buat lagi', true);
+    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    console.log(`[${userId}] Kling Motion Control done`);
+  } catch (err: any) {
+    const rawMsg = err?.response?.data?.error ?? err?.response?.data ?? err.message ?? String(err);
+    const raw = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
+    console.error(`[${userId}] Kling error: ${raw}`);
     const friendly = translateError(raw);
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `${friendly}\n\n/menu untuk coba lagi`, { parse_mode: 'Markdown' }
