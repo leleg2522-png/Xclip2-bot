@@ -351,10 +351,11 @@ bot.on('callback_query', async (ctx) => {
     return ctx.editMessageText(
       `✅ Resolusi dipilih: *${resLabel[resolution] ?? resolution}*\n\n` +
       '*Langkah 5 dari 5:* Ketik *prompt* — apa yang ingin dilakukan?\n\n' +
-      '💡 *Tips:*\n' +
-      '• Gambar *pertama* = subjek/orang yang ingin diubah\n' +
-      '• Gambar *kedua* = referensi style/outfit/tampilan\n\n' +
-      '_Contoh: "pakaikan outfit dari gambar referensi", "terapkan style pakaian gambar kedua ke orang di gambar pertama"_',
+      '💡 *Tips penggunaan:*\n' +
+      '• Untuk *ganti karakter*: kirim foto orang sebagai gambar 1, dan gambar tujuan/poster sebagai gambar 2\n' +
+      '  _Contoh prompt: "ganti karakter di gambar kedua dengan orang dari gambar pertama"_\n\n' +
+      '• Untuk *ganti outfit/style*: kirim foto orang sebagai gambar 1, foto referensi outfit sebagai gambar 2\n' +
+      '  _Contoh prompt: "pakaikan outfit dari gambar kedua ke orang di gambar pertama"_',
       { parse_mode: 'Markdown' }
     );
   }
@@ -645,8 +646,8 @@ async function runImageGeneration(
       console.log(`[${userId}] img1: ${img1.mime} ${(img1.buf.length / 1024).toFixed(1)}KB`);
       console.log(`[${userId}] img2: ${img2.mime} ${(img2.buf.length / 1024).toFixed(1)}KB`);
 
-      // Prefix prompt so the model knows which image is source and which is reference
-      const enhancedPrompt = `Apply the style, outfit, and appearance from the second reference image to the subject in the first source image. Keep the subject's identity and pose from the first image. ${prompt}`.trim();
+      // Use user's prompt directly — do not override with hardcoded role assumptions
+      const enhancedPrompt = prompt.trim();
       console.log(`[${userId}] Enhanced prompt: ${enhancedPrompt}`);
 
       let genRes: any;
