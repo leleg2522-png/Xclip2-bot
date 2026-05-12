@@ -46,6 +46,85 @@ async function checkActiveSubscription(userId: number): Promise<boolean> {
   return res.rows.length > 0;
 }
 
+// ─── Renderful Key Pool ───────────────────────────────────────────────────────
+
+async function assignKeysToUser(dbUserId: number): Promise<string[]> {
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Return any existing assigned keys first
+    await client.query(
+      `UPDATE renderful_key_pool SET status = 'available', assigned_to = NULL, slot = NULL, assigned_at = NULL
+       WHERE assigned_to = $1`,
+      [dbUserId]
+    );
+
+    // Assign 2 available keys
+    const res = await client.query(
+      `UPDATE renderful_key_pool SET status = 'assigned', assigned_to = $1, assigned_at = NOW(),
+        slot = sub.rn
+       FROM (
+         SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS rn
+         FROM renderful_key_pool WHERE status = 'available' LIMIT 2
+       ) sub
+       WHERE renderful_key_pool.id = sub.id
+       RETURNING api_key`,
+      [dbUserId]
+    );
+
+    await client.query('COMMIT');
+    return res.rows.map((r: any) => r.api_key);
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+async function getUserKeys(dbUserId: number): Promise<string[]> {
+  const res = await db.query(
+    `SELECT api_key FROM renderful_key_pool WHERE assigned_to = $1 AND status = 'assigned' ORDER BY slot`,
+    [dbUserId]
+  );
+  return res.rows.map((r: any) => r.api_key);
+}
+
+async function returnUserKeys(dbUserId: number): Promise<void> {
+  await db.query(
+    `UPDATE renderful_key_pool SET status = 'available', assigned_to = NULL, slot = NULL, assigned_at = NULL
+     WHERE assigned_to = $1`,
+    [dbUserId]
+  );
+}
+
+async function addKeyToPool(apiKey: string): Promise<boolean> {
+  try {
+    await db.query(
+      `INSERT INTO renderful_key_pool (api_key, status) VALUES ($1, 'available') ON CONFLICT (api_key) DO NOTHING`,
+      [apiKey]
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function getPoolStats(): Promise<{ available: number; assigned: number; dead: number }> {
+  const res = await db.query(
+    `SELECT status, COUNT(*) AS cnt FROM renderful_key_pool GROUP BY status`
+  );
+  const stats: any = { available: 0, assigned: 0, dead: 0 };
+  for (const row of res.rows) stats[row.status] = parseInt(row.cnt);
+  return stats;
+}
+
+async function isAdmin(dbUserId: number): Promise<boolean> {
+  const res = await db.query('SELECT is_admin FROM users WHERE id = $1', [dbUserId]);
+  return res.rows[0]?.is_admin === true;
+}
+
 const bot = new Telegraf(BOT_TOKEN);
 
 // ─── Model definitions ────────────────────────────────────────────────────────
@@ -77,6 +156,9 @@ interface Session {
   mode: Mode;
   dbUserId?: number;
   dbUsername?: string;
+  dbIsAdmin?: boolean;
+  assignedKeys?: string[];
+  keyIndex?: number;
   loginTempUsername?: string;
   imageModel?: string;
   image1Url?: string;
@@ -99,6 +181,15 @@ function setSession(userId: number, data: Partial<Session>) {
 
 function isLoggedIn(userId: number): boolean {
   return !!getSession(userId).dbUserId;
+}
+
+function getNextKey(userId: number): string | null {
+  const session = getSession(userId);
+  const keys = session.assignedKeys;
+  if (!keys || keys.length === 0) return RENDERFUL_API_KEY!;
+  const idx = (session.keyIndex ?? 0) % keys.length;
+  setSession(userId, { keyIndex: idx + 1 });
+  return keys[idx];
 }
 
 async function requireLoginAndSub(ctx: any): Promise<boolean> {
@@ -336,10 +427,13 @@ bot.command('login', (ctx) => {
   return ctx.reply('🔐 *Login XclipAI*\n\nMasukkan *username atau email* kamu:', { parse_mode: 'Markdown' });
 });
 
-bot.command('logout', (ctx) => {
+bot.command('logout', async (ctx) => {
   const session = getSession(ctx.from.id);
   const name = session.dbUsername;
-  setSession(ctx.from.id, { mode: 'idle', dbUserId: undefined, dbUsername: undefined, loginTempUsername: undefined });
+  if (session.dbUserId) {
+    await returnUserKeys(session.dbUserId).catch(e => console.error('Return keys error:', e.message));
+  }
+  setSession(ctx.from.id, { mode: 'idle', dbUserId: undefined, dbUsername: undefined, dbIsAdmin: undefined, assignedKeys: undefined, keyIndex: undefined, loginTempUsername: undefined });
   return ctx.reply(`✅ Berhasil logout${name ? ` dari akun *${name}*` : ''}.\n\nKetik /login untuk masuk kembali.`, { parse_mode: 'Markdown' });
 });
 
@@ -349,11 +443,82 @@ bot.command('status', async (ctx) => {
     return ctx.reply('🔒 Belum login. Ketik /login untuk masuk.');
   }
   const active = await checkActiveSubscription(session.dbUserId);
+  const keys = session.assignedKeys ?? [];
   return ctx.reply(
     `👤 *Akun:* ${session.dbUsername}\n` +
-    `📦 *Langganan:* ${active ? '✅ Aktif' : '❌ Tidak aktif / expired'}`,
+    `📦 *Langganan:* ${active ? '✅ Aktif' : '❌ Tidak aktif / expired'}\n` +
+    `🔑 *API Key:* ${keys.length} key ditetapkan`,
     { parse_mode: 'Markdown' }
   );
+});
+
+// ─── Admin commands ───────────────────────────────────────────────────────────
+
+bot.command('addkey', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const parts = ctx.message.text.trim().split(/\s+/);
+  if (parts.length < 2) {
+    return ctx.reply(
+      '📝 *Format:* `/addkey <api_key>`\n\n_Contoh: `/addkey rf_abc123xyz`_',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  const apiKey = parts[1].trim();
+  const ok = await addKeyToPool(apiKey);
+  const stats = await getPoolStats();
+
+  if (!ok) {
+    return ctx.reply(`⚠️ Key sudah ada di pool atau gagal ditambahkan.\n\n📊 Pool: ${stats.available} available, ${stats.assigned} assigned`);
+  }
+  return ctx.reply(
+    `✅ API key berhasil ditambahkan ke pool!\n\n` +
+    `📊 *Status pool:*\n` +
+    `• Available: ${stats.available}\n` +
+    `• Assigned: ${stats.assigned}\n` +
+    `• Dead: ${stats.dead}`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+bot.command('poolstatus', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const stats = await getPoolStats();
+  const total = stats.available + stats.assigned + stats.dead;
+  return ctx.reply(
+    `📊 *Status Renderful Key Pool*\n\n` +
+    `• ✅ Available: *${stats.available}*\n` +
+    `• 🔒 Assigned: *${stats.assigned}*\n` +
+    `• ❌ Dead: *${stats.dead}*\n` +
+    `• 📦 Total: *${total}*\n\n` +
+    `_Kapasitas user aktif: ~${Math.floor(stats.available / 2)} user baru_`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+bot.command('removekey', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const parts = ctx.message.text.trim().split(/\s+/);
+  if (parts.length < 2) {
+    return ctx.reply('📝 *Format:* `/removekey <api_key>`', { parse_mode: 'Markdown' });
+  }
+
+  const apiKey = parts[1].trim();
+  const res = await db.query(
+    `UPDATE renderful_key_pool SET status = 'dead', dead_at = NOW(), assigned_to = NULL WHERE api_key = $1 RETURNING id`,
+    [apiKey]
+  );
+  if (res.rows.length === 0) return ctx.reply('❌ Key tidak ditemukan di pool.');
+  return ctx.reply('✅ Key berhasil dinonaktifkan (dead).');
 });
 
 bot.command('cancel', (ctx) => {
@@ -601,7 +766,8 @@ bot.on('text', async (ctx) => {
       if (!valid) {
         return ctx.reply('❌ Password salah. Coba lagi dengan /login');
       }
-      setSession(userId, { dbUserId: user.id, dbUsername: user.username });
+      const admin = user.is_admin === true;
+      setSession(userId, { dbUserId: user.id, dbUsername: user.username, dbIsAdmin: admin });
       const active = await checkActiveSubscription(user.id);
       if (!active) {
         return ctx.reply(
@@ -611,9 +777,24 @@ bot.on('text', async (ctx) => {
           { parse_mode: 'Markdown' }
         );
       }
+
+      // Assign 2 Renderful API keys from pool
+      let keyInfo = '';
+      try {
+        const keys = await assignKeysToUser(user.id);
+        setSession(userId, { assignedKeys: keys, keyIndex: 0 });
+        keyInfo = keys.length >= 2
+          ? `\n🔑 *${keys.length} API key* telah ditetapkan untuk kamu.`
+          : keys.length === 1
+            ? `\n🔑 *1 API key* ditetapkan (pool hampir habis).`
+            : `\n⚠️ Pool API key kosong, hubungi admin.`;
+      } catch (e) {
+        console.error(`[${userId}] Key assign error:`, e);
+      }
+
       return ctx.reply(
         `✅ Login berhasil! Selamat datang, *${user.username}*! 🎉\n\n` +
-        `📦 Langganan: *Aktif*\n\nPilih mode generasi:`,
+        `📦 Langganan: *Aktif*${keyInfo}\n\nPilih mode generasi:`,
         { parse_mode: 'Markdown', ...mainMenuKeyboard() }
       );
     } catch (e: any) {
@@ -690,6 +871,7 @@ async function runVideoGeneration(chatId: number, userId: number, statusMsgId: n
   try {
     const videoFileLink = await bot.telegram.getFileLink(videoFileId);
     console.log(`[${userId}] Video generation started`);
+    const apiKey = getNextKey(userId);
 
     const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
       type: 'video-to-video',
@@ -697,7 +879,7 @@ async function runVideoGeneration(chatId: number, userId: number, statusMsgId: n
       image_url: imageUrl,
       video_url: videoFileLink.href,
       prompt: 'Transfer motion from reference video to character',
-    }, { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } });
+    }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
 
     const { id: taskId } = genRes.data;
     if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
@@ -744,8 +926,9 @@ async function runKlingMotionControl(chatId: number, userId: number, statusMsgId
 
     console.log(`[${userId}] Sending to Renderful: ${JSON.stringify(payload)}`);
 
+    const apiKey = getNextKey(userId);
     const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, payload,
-      { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } }
+      { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } }
     );
 
     console.log(`[${userId}] Renderful Kling response: ${JSON.stringify(genRes.data)}`);
@@ -792,6 +975,7 @@ async function runImageGeneration(
     console.log(`[${userId}] image2: ${image2Url}`);
 
     let taskId: string;
+    const apiKey = getNextKey(userId);
 
     if (model === 'nano-banana-2-i2i') {
       console.log(`[${userId}] Downloading images for Nano Banana 2...`);
@@ -821,7 +1005,7 @@ async function runImageGeneration(
           reference_images: [b64img2],
           aspect_ratio: aspectRatio,
           resolution,
-        }, { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } });
+        }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
         console.log(`[${userId}] reference_images strategy OK: ${JSON.stringify(genRes.data)}`);
       } catch (e1: any) {
         const e1msg = e1?.response?.data ? JSON.stringify(e1.response.data) : e1.message;
@@ -837,7 +1021,7 @@ async function runImageGeneration(
             reference_image_url: image2Url,
             aspect_ratio: aspectRatio,
             resolution,
-          }, { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } });
+          }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
           console.log(`[${userId}] image_url strategy OK: ${JSON.stringify(genRes.data)}`);
         } catch (e2: any) {
           const e2msg = e2?.response?.data ? JSON.stringify(e2.response.data) : e2.message;
@@ -854,7 +1038,7 @@ async function runImageGeneration(
           form.append('reference_images', img2.buf, { filename: `reference.${img2.ext}`, contentType: img2.mime });
 
           genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, form, {
-            headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, ...form.getHeaders() },
+            headers: { Authorization: `Bearer ${apiKey}`, ...form.getHeaders() },
             maxBodyLength: Infinity,
           });
           console.log(`[${userId}] Multipart OK: ${JSON.stringify(genRes.data)}`);
@@ -876,7 +1060,7 @@ async function runImageGeneration(
       console.log(`[${userId}] Payload: ${JSON.stringify(payload)}`);
 
       const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, payload,
-        { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } }
+        { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } }
       );
 
       console.log(`[${userId}] Response:`, JSON.stringify(genRes.data));
