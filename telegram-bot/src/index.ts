@@ -40,6 +40,7 @@ type Mode =
   | 'kling_wait_video'
   | 'img_wait_image1'
   | 'img_wait_image2'
+  | 'img_wait_ratio'
   | 'img_wait_prompt';
 
 interface Session {
@@ -47,6 +48,7 @@ interface Session {
   imageModel?: string;
   image1Url?: string;
   image2Url?: string;
+  aspectRatio?: string;
   characterUrl?: string;
 }
 
@@ -201,6 +203,29 @@ function imageModelKeyboard() {
   ]);
 }
 
+function aspectRatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('⬛ 1:1',  'ratio_1:1'),
+      Markup.button.callback('🖥️ 16:9', 'ratio_16:9'),
+      Markup.button.callback('📱 9:16', 'ratio_9:16'),
+    ],
+    [
+      Markup.button.callback('🗾 4:3',  'ratio_4:3'),
+      Markup.button.callback('📄 3:4',  'ratio_3:4'),
+      Markup.button.callback('🌅 3:2',  'ratio_3:2'),
+    ],
+    [
+      Markup.button.callback('📷 2:3',  'ratio_2:3'),
+      Markup.button.callback('📸 4:5',  'ratio_4:5'),
+      Markup.button.callback('🖼️ 5:4',  'ratio_5:4'),
+    ],
+    [
+      Markup.button.callback('🎬 21:9', 'ratio_21:9'),
+    ],
+  ]);
+}
+
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
 bot.start((ctx) => {
@@ -297,6 +322,21 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  if (data.startsWith('ratio_')) {
+    const ratio = data.replace('ratio_', '');
+    const session = getSession(userId);
+    setSession(userId, { aspectRatio: ratio, mode: 'img_wait_prompt' });
+    return ctx.editMessageText(
+      `✅ Rasio dipilih: *${ratio}*\n\n` +
+      '*Langkah 4 dari 4:* Ketik *prompt* — apa yang ingin dilakukan?\n\n' +
+      '💡 *Tips:*\n' +
+      '• Gambar *pertama* = subjek/orang yang ingin diubah\n' +
+      '• Gambar *kedua* = referensi style/outfit/tampilan\n\n' +
+      '_Contoh: "pakaikan outfit dari gambar referensi", "terapkan style pakaian gambar kedua ke orang di gambar pertama"_',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (data === 'back_main') {
     setSession(userId, { mode: 'idle' });
     return ctx.editMessageText('Pilih mode generasi:', mainMenuKeyboard());
@@ -345,19 +385,23 @@ async function handleImageInput(ctx: any, fileUrl: string) {
   }
 
   if (session.mode === 'img_wait_image2') {
-    setSession(userId, { image2Url: fileUrl, mode: 'img_wait_prompt' });
     const model = session.imageModel;
     const isNanoBanana2 = model === 'nano-banana-2-i2i';
+
+    if (isNanoBanana2) {
+      setSession(userId, { image2Url: fileUrl, mode: 'img_wait_ratio' });
+      return ctx.reply(
+        '✅ Gambar kedua diterima!\n\n' +
+        '*Langkah 3 dari 4:* Pilih *rasio output*:',
+        { parse_mode: 'Markdown', ...aspectRatioKeyboard() }
+      );
+    }
+
+    setSession(userId, { image2Url: fileUrl, mode: 'img_wait_prompt' });
     return ctx.reply(
       '✅ Gambar kedua diterima!\n\n' +
       '*Langkah 3 dari 3:* Ketik *prompt* — apa yang ingin dilakukan?\n\n' +
-      (isNanoBanana2
-        ? '💡 *Tips Nano Banana 2:*\n' +
-          '• Gambar *pertama* = subjek/orang yang ingin diubah\n' +
-          '• Gambar *kedua* = referensi style/outfit/tampilan\n' +
-          '• Tulis prompt yang spesifik!\n\n' +
-          '_Contoh: "pakaikan outfit dari gambar referensi", "terapkan style pakaian gambar kedua ke orang di gambar pertama", "ganti baju sesuai referensi"_'
-        : '_Contoh: "ganti baju jadi merah", "ubah background jadi pantai", "terapkan style gambar kedua"_'),
+      '_Contoh: "ganti baju jadi merah", "ubah background jadi pantai", "terapkan style gambar kedua"_',
       { parse_mode: 'Markdown' }
     );
   }
@@ -410,14 +454,16 @@ bot.on('text', async (ctx) => {
     const modelInfo = IMAGE_MODELS[model];
     const image1Url = session.image1Url!;
     const image2Url = session.image2Url!;
+    const aspectRatio = session.aspectRatio ?? '1:1';
     setSession(userId, { mode: 'idle' });
 
+    const ratioLabel = model === 'nano-banana-2-i2i' ? ` • Rasio: ${aspectRatio}` : '';
     const statusMsg = await ctx.reply(
-      `⏳ Memproses dengan *${modelInfo.label}*...\nHasil dikirim otomatis setelah selesai.`,
+      `⏳ Memproses dengan *${modelInfo.label}*...${ratioLabel}\nHasil dikirim otomatis setelah selesai.`,
       { parse_mode: 'Markdown' }
     );
 
-    runImageGeneration(ctx.chat.id, userId, statusMsg.message_id, image1Url, image2Url, prompt, model, modelInfo.label)
+    runImageGeneration(ctx.chat.id, userId, statusMsg.message_id, image1Url, image2Url, prompt, model, modelInfo.label, aspectRatio)
       .catch(e => console.error(`[${userId}] Image gen error:`, e.message));
     return;
   }
@@ -555,7 +601,7 @@ async function downloadBuffer(url: string): Promise<{ buf: Buffer; mime: string;
 async function runImageGeneration(
   chatId: number, userId: number, statusMsgId: number,
   image1Url: string, image2Url: string, prompt: string,
-  model: string, modelLabel: string
+  model: string, modelLabel: string, aspectRatio: string = '1:1'
 ) {
   try {
     console.log(`[${userId}] Image generation: ${model}`);
@@ -579,6 +625,8 @@ async function runImageGeneration(
 
       let genRes: any;
 
+      console.log(`[${userId}] Aspect ratio: ${aspectRatio}`);
+
       // Strategy 1: image_url + reference_image_url (clearest role separation)
       try {
         console.log(`[${userId}] Trying image_url + reference_image_url JSON...`);
@@ -588,6 +636,7 @@ async function runImageGeneration(
           prompt: enhancedPrompt,
           image_url: image1Url,
           reference_image_url: image2Url,
+          aspect_ratio: aspectRatio,
         }, { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } });
         console.log(`[${userId}] image_url strategy OK: ${JSON.stringify(genRes.data)}`);
       } catch (e1: any) {
@@ -600,6 +649,7 @@ async function runImageGeneration(
           form.append('type', 'image-to-image');
           form.append('model', 'nano-banana-2-i2i');
           form.append('prompt', enhancedPrompt);
+          form.append('aspect_ratio', aspectRatio);
           form.append('image', img1.buf, { filename: `source.${img1.ext}`, contentType: img1.mime });
           form.append('image', img2.buf, { filename: `reference.${img2.ext}`, contentType: img2.mime });
 
@@ -621,6 +671,7 @@ async function runImageGeneration(
             model: 'nano-banana-2-i2i',
             prompt: enhancedPrompt,
             image: [b64img1, b64img2],
+            aspect_ratio: aspectRatio,
           }, { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } });
           console.log(`[${userId}] Base64 array OK: ${JSON.stringify(genRes.data)}`);
         }
