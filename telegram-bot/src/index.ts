@@ -549,7 +549,8 @@ async function runImageGeneration(
     const payload = {
       type: 'image-to-image',
       model,
-      image_urls: [image1Url, image2Url],
+      image_url: image1Url,
+      reference_image_url: image2Url,
       prompt,
     };
 
