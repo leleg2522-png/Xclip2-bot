@@ -95,11 +95,11 @@ function translateError(raw: string): string {
   if (raw.includes('InvalidVideo.'))
     return `❌ *Video tidak valid*: ${raw.split(':').slice(1).join(':').trim() || raw}`;
   if (raw.includes('InvalidURL'))
-    return '❌ *URL tidak dapat diakses*: Renderful tidak bisa mengunduh file. Coba kirim file langsung ke bot.';
+    return '❌ *File tidak dapat diakses*: Gagal mengunduh file. Coba kirim file langsung ke bot.';
   if (raw.includes('InternalError.Algo'))
     return '❌ *Error internal model*: Konten foto/video tidak kompatibel. Coba dengan foto atau video yang berbeda.';
   if (raw.includes('Exhausted balance') || raw.includes('fal.ai'))
-    return '❌ *Error backend*: Layanan Renderful sedang bermasalah. Coba lagi beberapa saat.';
+    return '❌ *Error backend*: Layanan sedang bermasalah. Coba lagi beberapa saat.';
   const short = raw.length > 200 ? raw.slice(0, 200) + '…' : raw;
   return `❌ Gagal: ${short}`;
 }
@@ -175,7 +175,7 @@ async function pollForResult(taskId: string, userId: number, maxAttempts = 60): 
       if (!output) throw new Error('Completed tapi tidak ada output');
       return extractOutputUrl(output);
     }
-    if (status === 'failed') throw new Error(error || 'Generation gagal di Renderful');
+    if (status === 'failed') throw new Error(error || 'Generation gagal');
   }
   throw new Error('Timeout: proses terlalu lama (>10 menit)');
 }
@@ -372,7 +372,7 @@ bot.on('video', async (ctx) => {
 
   if (session.mode === 'kling_wait_video' && session.characterUrl) {
     setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply('⏳ Mengirim ke Renderful.ai (Kling Motion Control)...\nHasil dikirim otomatis (~2-5 menit).');
+    const statusMsg = await ctx.reply('⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).');
     runKlingMotionControl(ctx.chat.id, userId, statusMsg.message_id, ctx.message.video.file_id, session.characterUrl)
       .catch(e => console.error(`[${userId}] Kling gen error:`, e.message));
     return;
@@ -382,7 +382,7 @@ bot.on('video', async (ctx) => {
     return ctx.reply('⚠️ Kirim foto karakter terlebih dahulu.', mainMenuKeyboard());
   }
   setSession(userId, { mode: 'idle' });
-  const statusMsg = await ctx.reply('⏳ Mengirim ke Renderful.ai...\nHasil dikirim otomatis (~2-5 menit).');
+  const statusMsg = await ctx.reply('⏳ Memproses animasi...\nHasil dikirim otomatis (~2-5 menit).');
   runVideoGeneration(ctx.chat.id, userId, statusMsg.message_id, ctx.message.video.file_id, session.characterUrl)
     .catch(e => console.error(`[${userId}] Video gen error:`, e.message));
 });
@@ -429,7 +429,7 @@ bot.on('document', async (ctx) => {
 
   if (doc.mime_type?.startsWith('video/') && session.mode === 'kling_wait_video' && session.characterUrl) {
     setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply('⏳ Mengirim ke Renderful.ai (Kling Motion Control)...');
+    const statusMsg = await ctx.reply('⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).');
     runKlingMotionControl(ctx.chat.id, userId, statusMsg.message_id, doc.file_id, session.characterUrl)
       .catch(console.error);
     return;
@@ -437,7 +437,7 @@ bot.on('document', async (ctx) => {
 
   if (doc.mime_type?.startsWith('video/') && session.mode === 'video_wait_video' && session.characterUrl) {
     setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply('⏳ Mengirim ke Renderful.ai...');
+    const statusMsg = await ctx.reply('⏳ Memproses animasi...\nHasil dikirim otomatis (~2-5 menit).');
     runVideoGeneration(ctx.chat.id, userId, statusMsg.message_id, doc.file_id, session.characterUrl)
       .catch(console.error);
     return;
@@ -545,7 +545,7 @@ async function runImageGeneration(
     console.log(`[${userId}] Image generation: ${model}`);
 
     // Download from Telegram and convert to base64 data URIs
-    // Renderful accepts data:image/jpeg;base64,... in image_url field
+    // API accepts data:image/jpeg;base64,... in image_url field
     console.log(`[${userId}] Converting images to base64...`);
     const [dataUri1, dataUri2] = await Promise.all([
       toDataUri(image1Url),
