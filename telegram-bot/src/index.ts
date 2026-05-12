@@ -327,11 +327,12 @@ bot.on('callback_query', async (ctx) => {
     const modelInfo = IMAGE_MODELS[model];
     if (!modelInfo) return ctx.editMessageText(`❌ Model tidak dikenal: ${model}`, mainMenuKeyboard());
     setSession(userId, { mode: 'img_wait_image1', imageModel: model, image1Url: undefined, image2Url: undefined });
-    return ctx.editMessageText(
-      `🖼️ *${modelInfo.label}* (${modelInfo.cost})\n\n` +
-      '*Langkah 1 dari 3:* Kirim *gambar pertama* (gambar sumber yang ingin diedit).',
-      { parse_mode: 'Markdown' }
-    );
+    const step1Text = model === 'nano-banana-2-i2i'
+      ? `🖼️ *${modelInfo.label}* (${modelInfo.cost})\n\n` +
+        '*Langkah 1 dari 5:* Kirim *gambar utama* (poster/foto yang ingin diedit karakternya).'
+      : `🖼️ *${modelInfo.label}* (${modelInfo.cost})\n\n` +
+        '*Langkah 1 dari 3:* Kirim *gambar pertama* (gambar sumber yang ingin diedit).';
+    return ctx.editMessageText(step1Text, { parse_mode: 'Markdown' });
   }
 
   if (data.startsWith('ratio_')) {
@@ -351,11 +352,10 @@ bot.on('callback_query', async (ctx) => {
     return ctx.editMessageText(
       `✅ Resolusi dipilih: *${resLabel[resolution] ?? resolution}*\n\n` +
       '*Langkah 5 dari 5:* Ketik *prompt* — apa yang ingin dilakukan?\n\n' +
-      '💡 *Tips penggunaan:*\n' +
-      '• Untuk *ganti karakter*: kirim foto orang sebagai gambar 1, dan gambar tujuan/poster sebagai gambar 2\n' +
-      '  _Contoh prompt: "ganti karakter di gambar kedua dengan orang dari gambar pertama"_\n\n' +
-      '• Untuk *ganti outfit/style*: kirim foto orang sebagai gambar 1, foto referensi outfit sebagai gambar 2\n' +
-      '  _Contoh prompt: "pakaikan outfit dari gambar kedua ke orang di gambar pertama"_',
+      '💡 *Tips prompt:*\n' +
+      '• Ganti karakter: _"ganti karakter di gambar utama dengan orang dari foto referensi"_\n' +
+      '• Ganti wajah saja: _"ganti wajah orang di gambar utama dengan wajah dari foto referensi, pertahankan pose, pakaian, dan background"_\n' +
+      '• Ganti outfit: _"pakaikan outfit dari foto referensi ke orang di gambar utama"_',
       { parse_mode: 'Markdown' }
     );
   }
@@ -399,12 +399,14 @@ async function handleImageInput(ctx: any, fileUrl: string) {
   }
 
   if (session.mode === 'img_wait_image1') {
+    const isNanoBanana2 = session.imageModel === 'nano-banana-2-i2i';
     setSession(userId, { image1Url: fileUrl, mode: 'img_wait_image2' });
-    return ctx.reply(
-      '✅ Gambar pertama diterima!\n\n' +
-      '*Langkah 2 dari 3:* Kirim *gambar kedua* (gambar referensi/style).',
-      { parse_mode: 'Markdown' }
-    );
+    const step2Text = isNanoBanana2
+      ? '✅ Gambar utama diterima!\n\n' +
+        '*Langkah 2 dari 5:* Kirim *foto karakter referensi* (orang yang ingin dimasukkan ke gambar utama).'
+      : '✅ Gambar pertama diterima!\n\n' +
+        '*Langkah 2 dari 3:* Kirim *gambar kedua* (gambar referensi/style).';
+    return ctx.reply(step2Text, { parse_mode: 'Markdown' });
   }
 
   if (session.mode === 'img_wait_image2') {
@@ -414,7 +416,7 @@ async function handleImageInput(ctx: any, fileUrl: string) {
     if (isNanoBanana2) {
       setSession(userId, { image2Url: fileUrl, mode: 'img_wait_ratio' });
       return ctx.reply(
-        '✅ Gambar kedua diterima!\n\n' +
+        '✅ Gambar referensi diterima!\n\n' +
         '*Langkah 3 dari 5:* Pilih *rasio output*:',
         { parse_mode: 'Markdown', ...aspectRatioKeyboard() }
       );
@@ -646,33 +648,48 @@ async function runImageGeneration(
       console.log(`[${userId}] img1: ${img1.mime} ${(img1.buf.length / 1024).toFixed(1)}KB`);
       console.log(`[${userId}] img2: ${img2.mime} ${(img2.buf.length / 1024).toFixed(1)}KB`);
 
-      // Use user's prompt directly — do not override with hardcoded role assumptions
       const enhancedPrompt = prompt.trim();
-      console.log(`[${userId}] Enhanced prompt: ${enhancedPrompt}`);
+      console.log(`[${userId}] Prompt: ${enhancedPrompt}`);
+      console.log(`[${userId}] Aspect ratio: ${aspectRatio}, Resolution: ${resolution}`);
 
       let genRes: any;
 
-      console.log(`[${userId}] Aspect ratio: ${aspectRatio}`);
-
-      // Strategy 1: image_url + reference_image_url (clearest role separation)
+      // Strategy 1: image (source) + reference_images array (correct Nano Banana 2 params per docs)
       try {
-        console.log(`[${userId}] Trying image_url + reference_image_url JSON...`);
+        console.log(`[${userId}] Trying image + reference_images JSON...`);
+        const b64img1 = `data:${img1.mime};base64,${img1.buf.toString('base64')}`;
+        const b64img2 = `data:${img2.mime};base64,${img2.buf.toString('base64')}`;
         genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
           type: 'image-to-image',
           model: 'nano-banana-2-i2i',
           prompt: enhancedPrompt,
-          image_url: image1Url,
-          reference_image_url: image2Url,
+          image: b64img1,
+          reference_images: [b64img2],
           aspect_ratio: aspectRatio,
           resolution,
         }, { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } });
-        console.log(`[${userId}] image_url strategy OK: ${JSON.stringify(genRes.data)}`);
+        console.log(`[${userId}] reference_images strategy OK: ${JSON.stringify(genRes.data)}`);
       } catch (e1: any) {
         const e1msg = e1?.response?.data ? JSON.stringify(e1.response.data) : e1.message;
-        console.log(`[${userId}] image_url failed (${e1msg}), trying multipart...`);
+        console.log(`[${userId}] reference_images failed (${e1msg}), trying image_url + reference_image_url...`);
 
-        // Strategy 2: multipart/form-data — source image first, reference second
+        // Strategy 2: image_url + reference_image_url fallback
         try {
+          genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
+            type: 'image-to-image',
+            model: 'nano-banana-2-i2i',
+            prompt: enhancedPrompt,
+            image_url: image1Url,
+            reference_image_url: image2Url,
+            aspect_ratio: aspectRatio,
+            resolution,
+          }, { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } });
+          console.log(`[${userId}] image_url strategy OK: ${JSON.stringify(genRes.data)}`);
+        } catch (e2: any) {
+          const e2msg = e2?.response?.data ? JSON.stringify(e2.response.data) : e2.message;
+          console.log(`[${userId}] image_url failed (${e2msg}), trying multipart...`);
+
+          // Strategy 3: multipart/form-data
           const form = new FormData();
           form.append('type', 'image-to-image');
           form.append('model', 'nano-banana-2-i2i');
@@ -680,30 +697,13 @@ async function runImageGeneration(
           form.append('aspect_ratio', aspectRatio);
           form.append('resolution', resolution);
           form.append('image', img1.buf, { filename: `source.${img1.ext}`, contentType: img1.mime });
-          form.append('image', img2.buf, { filename: `reference.${img2.ext}`, contentType: img2.mime });
+          form.append('reference_images', img2.buf, { filename: `reference.${img2.ext}`, contentType: img2.mime });
 
           genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, form, {
             headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, ...form.getHeaders() },
             maxBodyLength: Infinity,
           });
           console.log(`[${userId}] Multipart OK: ${JSON.stringify(genRes.data)}`);
-        } catch (e2: any) {
-          const e2msg = e2?.response?.data ? JSON.stringify(e2.response.data) : e2.message;
-          console.log(`[${userId}] Multipart failed (${e2msg}), trying base64 array JSON...`);
-
-          // Strategy 3: JSON base64 array
-          const b64img1 = `data:${img1.mime};base64,${img1.buf.toString('base64')}`;
-          const b64img2 = `data:${img2.mime};base64,${img2.buf.toString('base64')}`;
-
-          genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
-            type: 'image-to-image',
-            model: 'nano-banana-2-i2i',
-            prompt: enhancedPrompt,
-            image: [b64img1, b64img2],
-            aspect_ratio: aspectRatio,
-            resolution,
-          }, { headers: { Authorization: `Bearer ${RENDERFUL_API_KEY}`, 'Content-Type': 'application/json' } });
-          console.log(`[${userId}] Base64 array OK: ${JSON.stringify(genRes.data)}`);
         }
       }
 
