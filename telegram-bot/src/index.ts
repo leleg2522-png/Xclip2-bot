@@ -1,13 +1,17 @@
 import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
 import FormData from 'form-data';
+import { Client, Pool } from 'pg';
+import bcrypt from 'bcryptjs';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
 const RENDERFUL_BASE = 'https://api.renderful.ai/api/v1';
+const DATABASE_URL = process.env.RAILWAY_DATABASE_URL;
 
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!RENDERFUL_API_KEY) throw new Error('RENDERFUL_API_KEY is required');
+if (!DATABASE_URL) throw new Error('RAILWAY_DATABASE_URL is required');
 
 const renderfulHttp = axios.create({ timeout: 30_000 });
 
@@ -17,6 +21,26 @@ const telegramHttp = axios.create({ timeout: 60_000 });
 const PROXY_URL = process.env.PROXY_URL;
 if (PROXY_URL) {
   console.log(`ℹ️ PROXY_URL set but not used for Telegram downloads (Railway can reach Telegram directly)`);
+}
+
+// ─── Database ─────────────────────────────────────────────────────────────────
+
+const db = new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } });
+console.log('✅ Database pool initialized');
+
+async function findUserByUsername(username: string) {
+  const res = await db.query('SELECT * FROM users WHERE username = $1 LIMIT 1', [username]);
+  return res.rows[0] || null;
+}
+
+async function checkActiveSubscription(userId: number): Promise<boolean> {
+  const res = await db.query(
+    `SELECT id FROM subscriptions 
+     WHERE user_id = $1 AND status = 'active' AND expired_at > NOW()
+     LIMIT 1`,
+    [userId]
+  );
+  return res.rows.length > 0;
 }
 
 const bot = new Telegraf(BOT_TOKEN);
@@ -34,6 +58,8 @@ const IMAGE_MODELS: Record<string, { label: string; cost: string; apiId?: string
 
 type Mode =
   | 'idle'
+  | 'login_wait_username'
+  | 'login_wait_password'
   | 'video_wait_image'
   | 'video_wait_video'
   | 'kling_wait_image'
@@ -46,6 +72,9 @@ type Mode =
 
 interface Session {
   mode: Mode;
+  dbUserId?: number;
+  dbUsername?: string;
+  loginTempUsername?: string;
   imageModel?: string;
   image1Url?: string;
   image2Url?: string;
@@ -63,6 +92,35 @@ function getSession(userId: number): Session {
 
 function setSession(userId: number, data: Partial<Session>) {
   sessions.set(userId, { ...getSession(userId), ...data });
+}
+
+function isLoggedIn(userId: number): boolean {
+  return !!getSession(userId).dbUserId;
+}
+
+async function requireLoginAndSub(ctx: any): Promise<boolean> {
+  const userId = ctx.from.id;
+  const session = getSession(userId);
+
+  if (!session.dbUserId) {
+    await ctx.reply(
+      '🔒 Kamu belum login.\n\nKetik /login untuk masuk dengan akun XclipAI kamu.',
+    );
+    return false;
+  }
+
+  const active = await checkActiveSubscription(session.dbUserId);
+  if (!active) {
+    await ctx.reply(
+      `❌ Langganan kamu tidak aktif atau sudah expired.\n\n` +
+      `Silakan perpanjang langganan di dashboard XclipAI untuk bisa generate.\n\n` +
+      `Login sebagai: *${session.dbUsername}*`,
+      { parse_mode: 'Markdown' }
+    );
+    return false;
+  }
+
+  return true;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -241,16 +299,58 @@ function resolutionKeyboard() {
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
 bot.start((ctx) => {
+  const session = getSession(ctx.from.id);
   setSession(ctx.from.id, { mode: 'idle' });
+  if (session.dbUserId) {
+    return ctx.reply(
+      `👋 Selamat datang kembali, *${session.dbUsername}*!\n\nPilih mode generasi:`,
+      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    );
+  }
   return ctx.reply(
-    '👋 Selamat datang di *XclipAI Bot*!\n\nPilih mode generasi:',
-    { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+    '👋 Selamat datang di *XclipAI Bot*!\n\n' +
+    '🔒 Kamu perlu login terlebih dahulu.\n\n' +
+    'Ketik /login untuk masuk dengan akun XclipAI kamu.',
+    { parse_mode: 'Markdown' }
   );
 });
 
-bot.command('menu', (ctx) => {
+bot.command('menu', async (ctx) => {
+  if (!await requireLoginAndSub(ctx)) return;
   setSession(ctx.from.id, { mode: 'idle' });
   return ctx.reply('Pilih mode generasi:', mainMenuKeyboard());
+});
+
+bot.command('login', (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (session.dbUserId) {
+    return ctx.reply(
+      `✅ Kamu sudah login sebagai *${session.dbUsername}*.\n\nKetik /logout untuk keluar.`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+  setSession(ctx.from.id, { mode: 'login_wait_username' });
+  return ctx.reply('🔐 *Login XclipAI*\n\nMasukkan *username* kamu:', { parse_mode: 'Markdown' });
+});
+
+bot.command('logout', (ctx) => {
+  const session = getSession(ctx.from.id);
+  const name = session.dbUsername;
+  setSession(ctx.from.id, { mode: 'idle', dbUserId: undefined, dbUsername: undefined, loginTempUsername: undefined });
+  return ctx.reply(`✅ Berhasil logout${name ? ` dari akun *${name}*` : ''}.\n\nKetik /login untuk masuk kembali.`, { parse_mode: 'Markdown' });
+});
+
+bot.command('status', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) {
+    return ctx.reply('🔒 Belum login. Ketik /login untuk masuk.');
+  }
+  const active = await checkActiveSubscription(session.dbUserId);
+  return ctx.reply(
+    `👤 *Akun:* ${session.dbUsername}\n` +
+    `📦 *Langganan:* ${active ? '✅ Aktif' : '❌ Tidak aktif / expired'}`,
+    { parse_mode: 'Markdown' }
+  );
 });
 
 bot.command('cancel', (ctx) => {
@@ -286,6 +386,10 @@ bot.on('callback_query', async (ctx) => {
   const data = (ctx.callbackQuery as any).data as string;
   const userId = ctx.from.id;
   await ctx.answerCbQuery();
+
+  if (data !== 'back_main' && !['ratio_', 'res_'].some(p => data.startsWith(p))) {
+    if (!await requireLoginAndSub(ctx)) return;
+  }
 
   if (data === 'mode_video') {
     setSession(userId, { mode: 'video_wait_image' });
@@ -437,6 +541,7 @@ async function handleImageInput(ctx: any, fileUrl: string) {
 // ─── Photo handler ────────────────────────────────────────────────────────────
 
 bot.on('photo', async (ctx) => {
+  if (!await requireLoginAndSub(ctx)) return;
   const photo = ctx.message.photo[ctx.message.photo.length - 1];
   const fileLink = await ctx.telegram.getFileLink(photo.file_id);
   await handleImageInput(ctx, fileLink.href);
@@ -445,6 +550,7 @@ bot.on('photo', async (ctx) => {
 // ─── Video handler ────────────────────────────────────────────────────────────
 
 bot.on('video', async (ctx) => {
+  if (!await requireLoginAndSub(ctx)) return;
   const userId = ctx.from.id;
   const session = getSession(userId);
 
@@ -471,7 +577,51 @@ bot.on('text', async (ctx) => {
   const userId = ctx.from.id;
   const session = getSession(userId);
 
+  // ── Login flow ──
+  if (session.mode === 'login_wait_username') {
+    const username = ctx.message.text.trim();
+    setSession(userId, { loginTempUsername: username, mode: 'login_wait_password' });
+    return ctx.reply('🔑 Masukkan *password* kamu:', { parse_mode: 'Markdown' });
+  }
+
+  if (session.mode === 'login_wait_password') {
+    const password = ctx.message.text.trim();
+    const username = session.loginTempUsername!;
+    setSession(userId, { mode: 'idle', loginTempUsername: undefined });
+
+    try {
+      const user = await findUserByUsername(username);
+      if (!user) {
+        return ctx.reply('❌ Username tidak ditemukan. Coba lagi dengan /login');
+      }
+      const valid = await bcrypt.compare(password, user.password_hash);
+      if (!valid) {
+        return ctx.reply('❌ Password salah. Coba lagi dengan /login');
+      }
+      setSession(userId, { dbUserId: user.id, dbUsername: user.username });
+      const active = await checkActiveSubscription(user.id);
+      if (!active) {
+        return ctx.reply(
+          `✅ Login berhasil sebagai *${user.username}*!\n\n` +
+          `⚠️ Tapi langganan kamu tidak aktif atau sudah expired.\n` +
+          `Perpanjang langganan di dashboard XclipAI untuk bisa generate.`,
+          { parse_mode: 'Markdown' }
+        );
+      }
+      return ctx.reply(
+        `✅ Login berhasil! Selamat datang, *${user.username}*! 🎉\n\n` +
+        `📦 Langganan: *Aktif*\n\nPilih mode generasi:`,
+        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
+      );
+    } catch (e: any) {
+      console.error(`[${userId}] Login error:`, e.message);
+      return ctx.reply('❌ Terjadi kesalahan saat login. Coba lagi nanti.');
+    }
+  }
+
+  // ── Image prompt ──
   if (session.mode === 'img_wait_prompt') {
+    if (!await requireLoginAndSub(ctx)) return;
     const prompt = ctx.message.text.trim();
     if (!prompt) return ctx.reply('Prompt tidak boleh kosong. Ketik apa yang ingin dilakukan:');
 
@@ -501,6 +651,7 @@ bot.on('text', async (ctx) => {
 // ─── Document handler ─────────────────────────────────────────────────────────
 
 bot.on('document', async (ctx) => {
+  if (!await requireLoginAndSub(ctx)) return;
   const userId = ctx.from.id;
   const session = getSession(userId);
   const doc = ctx.message.document;
