@@ -535,29 +535,38 @@ bot.command('addkey', async (ctx) => {
   if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
   if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
-  const parts = ctx.message.text.trim().split(/\s+/);
-  if (parts.length < 2) {
+  // Ambil semua teks setelah /addkey, pisah berdasarkan spasi atau baris baru
+  const raw = ctx.message.text.replace(/^\/addkey\s*/i, '').trim();
+  if (!raw) {
     return ctx.reply(
-      '📝 *Format:* `/addkey <api_key>`\n\n_Contoh: `/addkey rf_abc123xyz`_',
-      { parse_mode: 'Markdown' }
+      '📝 Format (pisah dengan koma):\n' +
+      '/addkey rf_abc123\n\n' +
+      'Atau banyak sekaligus:\n' +
+      '/addkey rf_abc123,rf_def456,rf_ghi789'
     );
   }
 
-  const apiKey = parts[1].trim();
-  const ok = await addKeyToPool(apiKey);
-  const stats = await getPoolStats();
+  const keys = raw.split(',').map(k => k.trim()).filter(k => k.length > 0);
+  let added = 0;
+  let skipped = 0;
+  const failedKeys: string[] = [];
 
-  if (!ok) {
-    return ctx.reply(`⚠️ Key sudah ada di pool atau gagal ditambahkan.\n\n📊 Pool: ${stats.available} available, ${stats.assigned} assigned`);
+  for (const key of keys) {
+    const ok = await addKeyToPool(key);
+    if (ok) added++;
+    else { skipped++; failedKeys.push(key.slice(0, 12) + '...'); }
   }
-  return ctx.reply(
-    `✅ API key berhasil ditambahkan ke pool!\n\n` +
-    `📊 *Status pool:*\n` +
-    `• Available: ${stats.available}\n` +
-    `• Assigned: ${stats.assigned}\n` +
-    `• Dead: ${stats.dead}`,
-    { parse_mode: 'Markdown' }
-  );
+
+  const stats = await getPoolStats();
+  let msg = `✅ Selesai menambahkan key!\n\n`;
+  msg += `• Berhasil ditambah: ${added}\n`;
+  if (skipped > 0) msg += `• Sudah ada / gagal: ${skipped}\n`;
+  msg += `\n📊 Status pool sekarang:\n`;
+  msg += `• Available: ${stats.available}\n`;
+  msg += `• Assigned: ${stats.assigned}\n`;
+  msg += `• Dead: ${stats.dead}`;
+
+  return ctx.reply(msg);
 });
 
 bot.command('poolstatus', async (ctx) => {
