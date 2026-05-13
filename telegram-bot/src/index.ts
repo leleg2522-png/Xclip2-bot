@@ -209,7 +209,8 @@ function isKeyExhaustedError(raw: string): boolean {
   const lower = raw.toLowerCase();
   return lower.includes('quota') || lower.includes('exhausted') || lower.includes('limit exceeded')
     || lower.includes('rate limit') || lower.includes('insufficient') || lower.includes('402')
-    || lower.includes('balance') || lower.includes('credit') || lower.includes('payment');
+    || lower.includes('balance') || lower.includes('credit') || lower.includes('payment')
+    || lower.includes('unauthorized') || lower.includes('invalid key') || lower.includes('invalid api key');
 }
 
 function isNotFoundError(raw: string): boolean {
