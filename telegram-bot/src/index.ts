@@ -952,7 +952,6 @@ async function runVideoGeneration(chatId: number, userId: number, statusMsgId: n
     console.log(`[${userId}] Video generation started`);
 
     // Download both files so Renderful doesn't need to access Telegram URLs directly
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '⏳ Mengunduh file...');
     const [imgBuf, vidBuf] = await Promise.all([
       downloadBuffer(imageUrl),
       downloadBuffer(videoFileLink.href),
@@ -960,7 +959,6 @@ async function runVideoGeneration(chatId: number, userId: number, statusMsgId: n
     const b64Image = `data:${imgBuf.mime};base64,${imgBuf.buf.toString('base64')}`;
     const b64Video = `data:${vidBuf.mime};base64,${vidBuf.buf.toString('base64')}`;
     console.log(`[${userId}] img: ${(imgBuf.buf.length / 1024).toFixed(1)}KB, vid: ${(vidBuf.buf.length / 1024).toFixed(1)}KB`);
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '⏳ Mengirim ke Renderful...');
 
     let genRes: any;
     try {
@@ -992,11 +990,10 @@ async function runVideoGeneration(chatId: number, userId: number, statusMsgId: n
     console.log(`[${userId}] Task: ${taskId}, poll_url: ${pollUrl}`);
 
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `⏳ Video diproses (${taskId.slice(0, 8)}...)\nBiasanya 2-5 menit.`
+      '⏳ Sedang diproses...\nBiasanya 2–5 menit.'
     );
 
     const outputUrl = await pollForResult(taskId, userId, apiKey, pollUrl);
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '✅ Selesai! Mengirim...');
     await sendResult(chatId, outputUrl, '🎬 WAN 2.2 Animate\n\n/menu untuk buat lagi', true);
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
     console.log(`[${userId}] Video done`);
@@ -1027,7 +1024,6 @@ async function runKlingMotionControl(chatId: number, userId: number, statusMsgId
     console.log(`[${userId}] Kling Motion Control started`);
 
     // Download both files so Renderful doesn't need to access Telegram URLs directly
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '⏳ Mengunduh file...');
     const [imgBuf, vidBuf] = await Promise.all([
       downloadBuffer(imageUrl),
       downloadBuffer(videoFileLink.href),
@@ -1035,7 +1031,6 @@ async function runKlingMotionControl(chatId: number, userId: number, statusMsgId
     const b64Image = `data:${imgBuf.mime};base64,${imgBuf.buf.toString('base64')}`;
     const b64Video = `data:${vidBuf.mime};base64,${vidBuf.buf.toString('base64')}`;
     console.log(`[${userId}] img: ${(imgBuf.buf.length / 1024).toFixed(1)}KB, vid: ${(vidBuf.buf.length / 1024).toFixed(1)}KB`);
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '⏳ Mengirim ke Renderful...');
 
     let genRes: any;
     try {
@@ -1071,11 +1066,10 @@ async function runKlingMotionControl(chatId: number, userId: number, statusMsgId
     if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
 
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `⏳ Kling Motion Control diproses (${taskId.slice(0, 8)}...)\nBiasanya 2-5 menit.`
+      '⏳ Sedang diproses...\nBiasanya 2–5 menit.'
     );
 
     const outputUrl = await pollForResult(taskId, userId, apiKey, pollUrl);
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '✅ Selesai! Mengirim...');
     await sendResult(chatId, outputUrl, '🕹️ Kling 2.6 Pro Motion Control\n\n/menu untuk buat lagi', true);
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
     console.log(`[${userId}] Kling Motion Control done`);
@@ -1215,11 +1209,10 @@ async function runImageGeneration(
     }
 
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `⏳ Diproses dengan ${modelLabel}...\nMohon tunggu.`
+      '⏳ Sedang diproses...\nMohon tunggu.'
     );
 
     const outputUrl = await pollForResult(taskId, userId, apiKey, pollPath);
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '✅ Selesai! Mengirim...');
     await sendResult(chatId, outputUrl, `🖼️ Dibuat dengan ${modelLabel}\n\n/menu untuk buat lagi`, false);
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
     console.log(`[${userId}] Image done`);
