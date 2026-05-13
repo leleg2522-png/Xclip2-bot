@@ -338,7 +338,8 @@ async function sendResult(chatId: number, outputUrl: string, caption: string, is
     || lowerUrl.endsWith('.mp4') || lowerUrl.endsWith('.mov')
     || lowerUrl.endsWith('.webm') || lowerUrl.endsWith('.avi');
 
-  const opts = { caption, parse_mode: 'Markdown' as const };
+  // Plain text opts — no Markdown to avoid parse errors from URLs with special chars
+  const opts = { caption };
 
   // Strategy 1: download buffer and upload directly to Telegram
   try {
@@ -388,10 +389,9 @@ async function sendResult(chatId: number, outputUrl: string, caption: string, is
     console.log(`Document strategy failed: ${e.message}`);
   }
 
-  // Final fallback: send download link
+  // Final fallback: send download link (plain text, no Markdown)
   await bot.telegram.sendMessage(chatId,
-    `✅ *Hasil selesai!*\n\n📥 *Download* (link aktif ~1 jam):\n${outputUrl}\n\n${caption}`,
-    { parse_mode: 'Markdown' }
+    `✅ Hasil selesai!\n\n📥 Download (link aktif ~1 jam):\n${outputUrl}\n\n${caption}`
   );
 }
 
@@ -1004,14 +1004,14 @@ async function runVideoGeneration(chatId: number, userId: number, statusMsgId: n
     if (isKeyExhaustedError(raw)) {
       await handleDeadKey(userId, apiKey);
       await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-        `⚠️ API key habis, sudah diganti otomatis. Coba lagi dengan /menu`, { parse_mode: 'Markdown' }
+        `⚠️ API key habis, sudah diganti otomatis. Coba lagi dengan /menu`
       ).catch(() => {});
       return;
     }
     const friendly = translateError(raw);
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${friendly}\n\n/menu untuk coba lagi`, { parse_mode: 'Markdown' }
-    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`, { parse_mode: 'Markdown' }));
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
   }
 }
 
@@ -1080,14 +1080,14 @@ async function runKlingMotionControl(chatId: number, userId: number, statusMsgId
     if (isKeyExhaustedError(raw)) {
       await handleDeadKey(userId, apiKey);
       await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-        `⚠️ API key habis, sudah diganti otomatis. Coba lagi dengan /menu`, { parse_mode: 'Markdown' }
+        `⚠️ API key habis, sudah diganti otomatis. Coba lagi dengan /menu`
       ).catch(() => {});
       return;
     }
     const friendly = translateError(raw);
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${friendly}\n\n/menu untuk coba lagi`, { parse_mode: 'Markdown' }
-    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`, { parse_mode: 'Markdown' }));
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
   }
 }
 
@@ -1223,14 +1223,14 @@ async function runImageGeneration(
     if (isKeyExhaustedError(raw)) {
       await handleDeadKey(userId, apiKey);
       await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-        `⚠️ API key habis, sudah diganti otomatis. Coba lagi dengan /menu`, { parse_mode: 'Markdown' }
+        `⚠️ API key habis, sudah diganti otomatis. Coba lagi dengan /menu`
       ).catch(() => {});
       return;
     }
     const friendly = translateError(raw);
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${friendly}\n\n/menu untuk coba lagi`, { parse_mode: 'Markdown' }
-    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`, { parse_mode: 'Markdown' }));
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
   }
 }
 
