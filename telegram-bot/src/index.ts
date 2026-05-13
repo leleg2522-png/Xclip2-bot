@@ -796,11 +796,16 @@ bot.on('video', async (ctx) => {
   if (!await requireLoginAndSub(ctx)) return;
   const userId = ctx.from.id;
   const session = getSession(userId);
+  const vid = ctx.message.video;
+  const MAX_VIDEO_BYTES = 19 * 1024 * 1024; // 19MB — Telegram bot API limit is 20MB
 
   if (session.mode === 'kling_wait_video' && session.characterUrl) {
+    if (vid.file_size && vid.file_size > MAX_VIDEO_BYTES) {
+      return ctx.reply(`❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
+    }
     setSession(userId, { mode: 'idle' });
     const statusMsg = await ctx.reply('⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).');
-    runKlingMotionControl(ctx.chat.id, userId, statusMsg.message_id, ctx.message.video.file_id, session.characterUrl)
+    runKlingMotionControl(ctx.chat.id, userId, statusMsg.message_id, vid.file_id, session.characterUrl)
       .catch(e => console.error(`[${userId}] Kling gen error:`, e.message));
     return;
   }
@@ -808,9 +813,12 @@ bot.on('video', async (ctx) => {
   if (session.mode !== 'video_wait_video' || !session.characterUrl) {
     return ctx.reply('⚠️ Kirim foto karakter terlebih dahulu.', mainMenuKeyboard());
   }
+  if (vid.file_size && vid.file_size > MAX_VIDEO_BYTES) {
+    return ctx.reply(`❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
+  }
   setSession(userId, { mode: 'idle' });
   const statusMsg = await ctx.reply('⏳ Memproses animasi...\nHasil dikirim otomatis (~2-5 menit).');
-  runVideoGeneration(ctx.chat.id, userId, statusMsg.message_id, ctx.message.video.file_id, session.characterUrl)
+  runVideoGeneration(ctx.chat.id, userId, statusMsg.message_id, vid.file_id, session.characterUrl)
     .catch(e => console.error(`[${userId}] Video gen error:`, e.message));
 });
 
@@ -922,6 +930,10 @@ bot.on('document', async (ctx) => {
   }
 
   if (doc.mime_type?.startsWith('video/') && session.mode === 'kling_wait_video' && session.characterUrl) {
+    const MAX_VIDEO_BYTES = 19 * 1024 * 1024;
+    if (doc.file_size && doc.file_size > MAX_VIDEO_BYTES) {
+      return ctx.reply(`❌ Video terlalu besar (${(doc.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
+    }
     setSession(userId, { mode: 'idle' });
     const statusMsg = await ctx.reply('⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).');
     runKlingMotionControl(ctx.chat.id, userId, statusMsg.message_id, doc.file_id, session.characterUrl)
@@ -930,6 +942,10 @@ bot.on('document', async (ctx) => {
   }
 
   if (doc.mime_type?.startsWith('video/') && session.mode === 'video_wait_video' && session.characterUrl) {
+    const MAX_VIDEO_BYTES = 19 * 1024 * 1024;
+    if (doc.file_size && doc.file_size > MAX_VIDEO_BYTES) {
+      return ctx.reply(`❌ Video terlalu besar (${(doc.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
+    }
     setSession(userId, { mode: 'idle' });
     const statusMsg = await ctx.reply('⏳ Memproses animasi...\nHasil dikirim otomatis (~2-5 menit).');
     runVideoGeneration(ctx.chat.id, userId, statusMsg.message_id, doc.file_id, session.characterUrl)
