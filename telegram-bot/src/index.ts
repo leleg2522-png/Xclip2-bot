@@ -341,52 +341,49 @@ async function sendResult(chatId: number, outputUrl: string, caption: string, is
   // Plain text opts — no Markdown to avoid parse errors from URLs with special chars
   const opts = { caption };
 
-  // Strategy 1: download buffer and upload directly to Telegram
+  // Step 1: download the file (Renderful CDN requires auth so Telegram can't fetch it directly)
+  let buf: Buffer | null = null;
   try {
     const res = await telegramHttp.get(outputUrl, { responseType: 'arraybuffer', timeout: 300_000 });
-    const buf = Buffer.from(res.data);
+    buf = Buffer.from(res.data);
     const sizeMB = (buf.length / 1024 / 1024).toFixed(1);
     console.log(`Downloaded result: ${sizeMB} MB, isVideo: ${looksLikeVideo}`);
 
     if (buf.length > TELEGRAM_MAX_BYTES) {
-      console.log(`File too large (${sizeMB} MB), skipping buffer upload, using link`);
-      throw new Error('too_large');
+      console.log(`File too large (${sizeMB} MB), skipping to link fallback`);
+      buf = null;
     }
-
-    if (looksLikeVideo) {
-      await bot.telegram.sendVideo(chatId, { source: buf, filename: 'output.mp4' }, opts);
-    } else {
-      await bot.telegram.sendPhoto(chatId, { source: buf, filename: 'output.jpg' }, opts);
-    }
-    console.log(`Result sent via buffer (${sizeMB} MB)`);
-    return;
   } catch (e: any) {
-    console.log(`Buffer strategy failed: ${e.message}`);
+    console.log(`Download failed: ${e.message}`);
   }
 
-  // Strategy 2: send URL directly (let Telegram download)
-  try {
-    if (looksLikeVideo) {
-      await bot.telegram.sendVideo(chatId, outputUrl, opts);
-    } else {
-      await bot.telegram.sendPhoto(chatId, outputUrl, opts);
-    }
-    console.log(`Result sent via URL`);
-    return;
-  } catch (e: any) {
-    console.log(`URL strategy failed: ${e.message}`);
-  }
+  if (buf) {
+    const sizeMB = (buf.length / 1024 / 1024).toFixed(1);
 
-  // Strategy 3: send as document (bypasses photo/video size limits)
-  try {
-    await bot.telegram.sendDocument(chatId,
-      { url: outputUrl, filename: looksLikeVideo ? 'output.mp4' : 'output.jpg' },
-      opts
-    );
-    console.log(`Result sent as document`);
-    return;
-  } catch (e: any) {
-    console.log(`Document strategy failed: ${e.message}`);
+    // Strategy 1: send as video/photo
+    try {
+      if (looksLikeVideo) {
+        await bot.telegram.sendVideo(chatId, { source: buf, filename: 'output.mp4' }, opts);
+      } else {
+        await bot.telegram.sendPhoto(chatId, { source: buf, filename: 'output.jpg' }, opts);
+      }
+      console.log(`Result sent via buffer (${sizeMB} MB)`);
+      return;
+    } catch (e: any) {
+      console.log(`Buffer strategy failed: ${e.message}`);
+    }
+
+    // Strategy 2: send as document (fallback if video/photo fails)
+    try {
+      await bot.telegram.sendDocument(chatId,
+        { source: buf, filename: looksLikeVideo ? 'output.mp4' : 'output.jpg' },
+        opts
+      );
+      console.log(`Result sent as document (${sizeMB} MB)`);
+      return;
+    } catch (e: any) {
+      console.log(`Document strategy failed: ${e.message}`);
+    }
   }
 
   // Final fallback: send download link (plain text, no Markdown)
