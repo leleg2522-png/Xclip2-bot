@@ -3,6 +3,7 @@ import axios from 'axios';
 import FormData from 'form-data';
 import { Client, Pool } from 'pg';
 import bcrypt from 'bcryptjs';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -13,15 +14,22 @@ if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!RENDERFUL_API_KEY) throw new Error('RENDERFUL_API_KEY is required');
 if (!DATABASE_URL) throw new Error('RAILWAY_DATABASE_URL is required');
 
-const renderfulHttp = axios.create({ timeout: 30_000 });
-
-// Direct HTTP client for Telegram downloads — no proxy needed, Railway can reach Telegram directly
-const telegramHttp = axios.create({ timeout: 60_000 });
-
-const PROXY_URL = process.env.PROXY_URL;
-if (PROXY_URL) {
-  console.log(`ℹ️ PROXY_URL set but not used for Telegram downloads (Railway can reach Telegram directly)`);
+// Decodo rotating proxy — set DECODO_PROXY_URL=http://user:pass@gate.decodo.com:port
+const DECODO_PROXY_URL = process.env.DECODO_PROXY_URL;
+const renderfulHttpsAgent = DECODO_PROXY_URL ? new HttpsProxyAgent(DECODO_PROXY_URL) : undefined;
+if (DECODO_PROXY_URL) {
+  console.log(`🌐 Decodo rotating proxy aktif untuk Renderful: ${DECODO_PROXY_URL.replace(/:([^@]+)@/, ':****@')}`);
+} else {
+  console.log(`ℹ️ DECODO_PROXY_URL tidak diset — Renderful calls pakai IP Railway langsung`);
 }
+
+const renderfulHttp = axios.create({
+  timeout: 30_000,
+  ...(renderfulHttpsAgent ? { httpsAgent: renderfulHttpsAgent } : {}),
+});
+
+// Direct HTTP client for Telegram downloads — tidak pakai proxy
+const telegramHttp = axios.create({ timeout: 60_000 });
 
 // ─── Database ─────────────────────────────────────────────────────────────────
 
