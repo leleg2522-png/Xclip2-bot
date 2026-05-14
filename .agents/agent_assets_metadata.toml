@@ -126,3 +126,21 @@ id = "ilMtw4MJcsDliyTgQnWuJ"
 uri = "file://res_seedream.jpg"
 type = "image"
 title = "🌱 Seedream 5 Lite"
+
+[[outputs]]
+id = "MjjTTgZqXOyZdCe8iLZ4e"
+uri = "file://jacket_nano_banana_pro.jpg"
+type = "image"
+title = "🍌 Nano Banana Pro"
+
+[[outputs]]
+id = "g_F-MXe_2SZYQPI32qMgU"
+uri = "file://jacket_gpt_image_2.jpg"
+type = "image"
+title = "🤖 GPT Image 2"
+
+[[outputs]]
+id = "1oeUDmZGRYjIcK0gfHSvk"
+uri = "file://jacket_seedream.jpg"
+type = "image"
+title = "🌱 Seedream 5 Lite"
