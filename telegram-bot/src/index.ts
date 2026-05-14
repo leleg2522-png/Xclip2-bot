@@ -153,41 +153,47 @@ const TASK_PRESETS: Record<string, { label: string; prompt: string }> = {
   outfit: {
     label: '👗 Ganti Baju / Outfit',
     prompt:
-      'Dress the person in the exact outfit shown in the reference image. ' +
-      'The clothing must match the reference precisely — same color, cut, style, fabric texture, zipper/button details, and fit. ' +
-      'Do NOT generate a generic similar outfit; replicate the reference garment exactly. ' +
-      'Keep the person\'s face, hair, skin tone, body shape, and pose completely unchanged. Only replace the clothing.',
+      'Virtual clothing try-on task. ' +
+      'The MAIN IMAGE (image_url) is the PERSON/CHARACTER — their face, hair, skin tone, body, pose, and background must remain 100% identical, do not alter them in any way. ' +
+      'The REFERENCE IMAGE (reference_image_url) contains the CLOTHING to apply — extract only the outfit/garment from it, ignore the person wearing it. ' +
+      'Apply the exact outfit from the reference onto the character in the main image: same color, cut, style, fabric texture, and design details. ' +
+      'Only the clothing changes. Everything else about the main image person stays exactly the same.',
   },
   bag: {
     label: '👜 Ganti Tas / Aksesoris',
     prompt:
-      'Give the person the exact bag or accessory shown in the reference image. ' +
-      'Match the reference item exactly — same brand details, color, shape, size, stitching, and hardware. ' +
-      'Do NOT substitute a generic version; use the exact item from the reference. ' +
-      'Keep the person\'s face, hair, clothing, and pose completely unchanged.',
+      'Accessory replacement task. ' +
+      'The MAIN IMAGE (image_url) is the PERSON/CHARACTER — preserve everything about them (face, hair, body, clothes, pose) exactly as-is. ' +
+      'The REFERENCE IMAGE (reference_image_url) contains the BAG or ACCESSORY to apply — extract only the item, ignore whoever is holding/wearing it. ' +
+      'Place the exact bag/accessory from the reference onto the character in the main image, matching color, shape, size, and design precisely. ' +
+      'Only add or replace the accessory. Nothing else changes.',
   },
   face: {
     label: '🧑 Ganti Wajah / Karakter',
     prompt:
-      'Replace the face of the person in the main image with the face of the person from the reference image. ' +
-      'Match the reference face faithfully — same facial features, skin tone, and expression. ' +
-      'Keep the pose, clothing, background, lighting, and full body composition of the main image exactly the same. ' +
-      'Only swap the face/head.',
+      'Face swap task. ' +
+      'The MAIN IMAGE (image_url) is the BASE SCENE — keep the pose, clothing, background, lighting, and body composition completely unchanged. ' +
+      'The REFERENCE IMAGE (reference_image_url) contains the FACE/PERSON to use — extract their facial features and identity. ' +
+      'Replace only the face in the main image with the face from the reference image. ' +
+      'Blend naturally with the lighting and skin tone of the main image scene.',
   },
   style: {
     label: '🎨 Terapkan Style Referensi',
     prompt:
-      'Apply the exact visual style, color grading, lighting, and aesthetic from the reference image to the main image. ' +
-      'The result should look like the main image was shot or rendered in the same style as the reference. ' +
-      'Preserve the character\'s identity, pose, and scene composition. Only transfer the style.',
+      'Visual style transfer task. ' +
+      'The MAIN IMAGE (image_url) is the SOURCE — preserve the character identity, pose, composition, and scene elements. ' +
+      'The REFERENCE IMAGE (reference_image_url) defines the TARGET STYLE — extract its color grading, lighting mood, rendering aesthetic, and visual tone. ' +
+      'Re-render the main image in the exact style of the reference: apply the same color palette, lighting, and aesthetic. ' +
+      'The character and scene content must remain the same, only the visual style changes.',
   },
   fullswap: {
     label: '🔄 Masukkan Karakter ke Gambar',
     prompt:
-      'Insert the person from the reference image into the scene of the main image. ' +
-      'The reference person should replace the character in the main image, keeping the same pose, position, and framing. ' +
-      'The background, lighting, and overall composition of the main image must stay the same. ' +
-      'Match the reference person\'s appearance faithfully.',
+      'Character insertion task. ' +
+      'The MAIN IMAGE (image_url) is the TARGET SCENE — keep the background, lighting, pose framing, and overall composition unchanged. ' +
+      'The REFERENCE IMAGE (reference_image_url) contains the PERSON to insert — extract their appearance faithfully. ' +
+      'Replace the character in the main image scene with the person from the reference image, keeping the same pose and position. ' +
+      'The result should look natural and consistent with the scene in the main image.',
   },
   custom: {
     label: '✏️ Prompt Sendiri',
@@ -1198,12 +1204,9 @@ async function runImageGeneration(
     const b64img1 = `data:${img1.mime};base64,${img1.buf.toString('base64')}`;
     const b64img2 = `data:${img2.mime};base64,${img2.buf.toString('base64')}`;
 
-    // Field mapping per model (confirmed via live testing):
-    // - nano-banana-pro / nano-banana-2 : reference_image_url
-    // - gpt-image-2 / seedream-5.0-lite : subject_reference
-    const refField = (model === 'gpt-image-2' || model === 'seedream-5.0-lite')
-      ? 'subject_reference'
-      : 'reference_image_url';
+    // All models use reference_image_url.
+    // subject_reference was tested but causes the model to swap the character identity — wrong behavior.
+    const refField = 'reference_image_url';
 
     let genRes: any;
     const strategies = [
