@@ -108,3 +108,21 @@ id = "-ZQYFSLiMeDLZOIfvHOO5"
 uri = "file://result_seed_SWAPPED.jpg"
 type = "image"
 title = "🌱 Seedream — urutan SWAP"
+
+[[outputs]]
+id = "mg83mfK2QtQAUjQIDhTdL"
+uri = "file://res_nano_banana_pro.jpg"
+type = "image"
+title = "🍌 Nano Banana Pro"
+
+[[outputs]]
+id = "-foIlPvsgOm1DEuIIsBVK"
+uri = "file://res_gpt_image_2.jpg"
+type = "image"
+title = "🤖 GPT Image 2"
+
+[[outputs]]
+id = "ilMtw4MJcsDliyTgQnWuJ"
+uri = "file://res_seedream.jpg"
+type = "image"
+title = "🌱 Seedream 5 Lite"
