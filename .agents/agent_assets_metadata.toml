@@ -30,3 +30,9 @@ id = "y0zX_UY7tVrQFeduPNJt5"
 uri = "file://test_gpt2_result.jpg"
 type = "image"
 title = "Hasil — gpt-image-2"
+
+[[outputs]]
+id = "M6a-nrLcZeNu8mx0TUCFT"
+uri = "file://seedream_result.jpg"
+type = "image"
+title = "Hasil — Seedream 5 Lite (karakter kamu + baju pink)"
