@@ -260,13 +260,16 @@ function getNextKey(userId: number): string {
 
 function isKeyExhaustedError(raw: string): boolean {
   const lower = raw.toLowerCase();
-  // Fal.ai backend issues = Renderful's own infrastructure problem, NOT the user's API key being bad.
-  // Do not penalise the user's key for these.
+  // Renderful/fal.ai backend issues = their infrastructure, NOT the user's API key being bad.
   if (lower.includes('fal api account') || lower.includes('fal.ai') || lower.includes('user is locked')) return false;
+  // "Unauthorized" alone is too broad — it can mean model access restriction (Kling not allowed for account tier),
+  // not necessarily an invalid key. Only flag as dead if explicitly about the key itself.
+  if (lower === 'unauthorized' || lower.trim() === 'unauthorized') return false;
   return lower.includes('quota') || lower.includes('exhausted') || lower.includes('limit exceeded')
     || lower.includes('rate limit') || lower.includes('insufficient') || lower.includes('402')
     || lower.includes('balance') || lower.includes('credit') || lower.includes('payment')
-    || lower.includes('unauthorized') || lower.includes('invalid key') || lower.includes('invalid api key');
+    || lower.includes('invalid key') || lower.includes('invalid api key') || lower.includes('invalid_api_key')
+    || (lower.includes('unauthorized') && (lower.includes('key') || lower.includes('token') || lower.includes('api')));
 }
 
 function isNotFoundError(raw: string): boolean {
@@ -350,8 +353,10 @@ function translateError(raw: string): string {
     return '❌ *File tidak dapat diakses*: Gagal mengunduh file. Coba kirim file langsung ke bot.';
   if (raw.includes('InternalError.Algo'))
     return '❌ *Error internal model*: Konten foto/video tidak kompatibel. Coba dengan foto atau video yang berbeda.';
-  if (raw.includes('Exhausted balance') || raw.includes('fal.ai'))
-    return '❌ *Error backend*: Layanan sedang bermasalah. Coba lagi beberapa saat.';
+  if (raw.includes('Exhausted balance') || raw.includes('fal.ai') || raw.includes('User is locked'))
+    return '❌ *Error backend*: Layanan Renderful sedang bermasalah. Coba lagi beberapa saat.';
+  if (raw.toLowerCase().includes('unauthorized'))
+    return '❌ *Akses ditolak*: Model ini tidak tersedia untuk akun Renderful yang digunakan. Hubungi admin.';
   const short = raw.length > 200 ? raw.slice(0, 200) + '…' : raw;
   return `❌ Gagal: ${short}`;
 }
