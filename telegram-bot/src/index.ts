@@ -1105,11 +1105,13 @@ async function runImageGeneration(
     const strategies: Strategy[] = [];
     for (const mn of modelVariants) {
       strategies.push(
-        { label: `URL+ref_url [${mn}]`,    modelName: mn },
-        { label: `URL+ref [${mn}]`,         modelName: mn },
+        // Base64 first — image data is embedded in request, guaranteed to reach Renderful
         { label: `b64+ref [${mn}]`,         modelName: mn },
         { label: `b64+ref_arr [${mn}]`,     modelName: mn },
         { label: `multipart [${mn}]`,       modelName: mn, isMultipart: true },
+        // URL fallback — only if base64 fails
+        { label: `URL+ref_url [${mn}]`,     modelName: mn },
+        { label: `URL+ref [${mn}]`,         modelName: mn },
       );
     }
 
