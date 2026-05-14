@@ -1294,19 +1294,22 @@ async function runImageGeneration(
     const urlFallback = modelVariants.map(mn => ({ label: `url-fb [${mn}]`, modelName: mn, useBase64: false }));
     const b64Fallback = modelVariants.map(mn => ({ label: `b64-fb [${mn}]`, modelName: mn, useBase64: true  }));
 
-    // gpt-image-2 is strict about MIME types — Telegram URLs return application/octet-stream
-    // which GPT Image 2 rejects. Always use base64 (which includes explicit MIME) for this model.
-    const requiresB64First = model === 'gpt-image-2';
+    const strategies = usingProxy
+      ? [...urlFirst,  ...b64Fallback]   // proxy: wsrv.nl-wrapped URL first (fixes MIME), b64 last resort
+      : [...b64First,  ...urlFallback];  // no proxy: b64 first, URL fallback
 
-    const strategies = (!usingProxy || requiresB64First)
-      ? [...b64First,  ...urlFallback]   // no proxy OR gpt-image-2: b64 first
-      : [...urlFirst,  ...b64Fallback];  // proxy + other models: URL first, b64 as last resort
+    // wsrv.nl = free image proxy that re-serves any URL with proper Content-Type (image/jpeg).
+    // When Renderful/Google fetches Telegram URLs directly, they get application/octet-stream
+    // which gets rejected. Wrapping through wsrv.nl fixes the MIME type without any payload
+    // going through the proxy — only tiny JSON with the wsrv.nl URL.
+    const wrapUrl = (url: string) =>
+      `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=jpg&n=-1`;
 
     let lastErr = '';
     for (const strat of strategies) {
       try {
-        const imgVal1 = strat.useBase64 ? b64img1 : image1Url;
-        const imgVal2 = strat.useBase64 ? b64img2 : image2Url;
+        const imgVal1 = strat.useBase64 ? b64img1 : wrapUrl(image1Url);
+        const imgVal2 = strat.useBase64 ? b64img2 : wrapUrl(image2Url);
         const body: Record<string, any> = {
           type: 'image-to-image',
           model: strat.modelName,
