@@ -355,6 +355,8 @@ function translateError(raw: string): string {
     return '❌ *Error internal model*: Konten foto/video tidak kompatibel. Coba dengan foto atau video yang berbeda.';
   if (raw.includes('Exhausted balance') || raw.includes('fal.ai') || raw.includes('User is locked'))
     return '❌ *Error backend*: Layanan Renderful sedang bermasalah. Coba lagi beberapa saat.';
+  if (raw.toLowerCase().includes('developer account is disabled') || raw.toLowerCase().includes('account is disabled'))
+    return '❌ *Akun Renderful dinonaktifkan*: Akun yang terhubung ke API key ini dinonaktifkan oleh Renderful. Hubungi admin untuk ganti key.';
   if (raw.toLowerCase().includes('unauthorized'))
     return '❌ *Akses ditolak*: Model ini tidak tersedia untuk akun Renderful yang digunakan. Hubungi admin.';
   const short = raw.length > 200 ? raw.slice(0, 200) + '…' : raw;
