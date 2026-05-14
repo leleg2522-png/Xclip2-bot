@@ -36,3 +36,21 @@ id = "M6a-nrLcZeNu8mx0TUCFT"
 uri = "file://seedream_result.jpg"
 type = "image"
 title = "Hasil — Seedream 5 Lite (karakter kamu + baju pink)"
+
+[[outputs]]
+id = "T1eiATc5ijwPhEoPeomTg"
+uri = "file://sd_A_ref_image_url.jpg"
+type = "image"
+title = "A — image_url + reference_image_url (cara sekarang)"
+
+[[outputs]]
+id = "ODGcoCROphtuehXxyuMHh"
+uri = "file://sd_C_no_ref.jpg"
+type = "image"
+title = "C — image_url only (tanpa referensi)"
+
+[[outputs]]
+id = "PxG_D_cGXQOVO_3srDNa8"
+uri = "file://sd_D_style_image.jpg"
+type = "image"
+title = "D — image_url + style_image"
