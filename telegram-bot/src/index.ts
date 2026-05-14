@@ -149,6 +149,52 @@ const IMAGE_MODELS: Record<string, { label: string; cost: string; apiId?: string
   'seedream-5.0-lite': { label: '🌱 Seedream 5 Lite',  cost: '$0.04' },
 };
 
+const TASK_PRESETS: Record<string, { label: string; prompt: string }> = {
+  outfit: {
+    label: '👗 Ganti Baju / Outfit',
+    prompt:
+      'Dress the person in the exact outfit shown in the reference image. ' +
+      'The clothing must match the reference precisely — same color, cut, style, fabric texture, zipper/button details, and fit. ' +
+      'Do NOT generate a generic similar outfit; replicate the reference garment exactly. ' +
+      'Keep the person\'s face, hair, skin tone, body shape, and pose completely unchanged. Only replace the clothing.',
+  },
+  bag: {
+    label: '👜 Ganti Tas / Aksesoris',
+    prompt:
+      'Give the person the exact bag or accessory shown in the reference image. ' +
+      'Match the reference item exactly — same brand details, color, shape, size, stitching, and hardware. ' +
+      'Do NOT substitute a generic version; use the exact item from the reference. ' +
+      'Keep the person\'s face, hair, clothing, and pose completely unchanged.',
+  },
+  face: {
+    label: '🧑 Ganti Wajah / Karakter',
+    prompt:
+      'Replace the face of the person in the main image with the face of the person from the reference image. ' +
+      'Match the reference face faithfully — same facial features, skin tone, and expression. ' +
+      'Keep the pose, clothing, background, lighting, and full body composition of the main image exactly the same. ' +
+      'Only swap the face/head.',
+  },
+  style: {
+    label: '🎨 Terapkan Style Referensi',
+    prompt:
+      'Apply the exact visual style, color grading, lighting, and aesthetic from the reference image to the main image. ' +
+      'The result should look like the main image was shot or rendered in the same style as the reference. ' +
+      'Preserve the character\'s identity, pose, and scene composition. Only transfer the style.',
+  },
+  fullswap: {
+    label: '🔄 Masukkan Karakter ke Gambar',
+    prompt:
+      'Insert the person from the reference image into the scene of the main image. ' +
+      'The reference person should replace the character in the main image, keeping the same pose, position, and framing. ' +
+      'The background, lighting, and overall composition of the main image must stay the same. ' +
+      'Match the reference person\'s appearance faithfully.',
+  },
+  custom: {
+    label: '✏️ Prompt Sendiri',
+    prompt: '',
+  },
+};
+
 // ─── Session state ────────────────────────────────────────────────────────────
 
 type Mode =
@@ -163,6 +209,7 @@ type Mode =
   | 'img_wait_image2'
   | 'img_wait_ratio'
   | 'img_wait_resolution'
+  | 'img_wait_task'
   | 'img_wait_prompt';
 
 interface Session {
@@ -468,6 +515,17 @@ function resolutionKeyboard() {
   ]);
 }
 
+function taskPresetKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(TASK_PRESETS.outfit.label,   'task_outfit')],
+    [Markup.button.callback(TASK_PRESETS.bag.label,      'task_bag')],
+    [Markup.button.callback(TASK_PRESETS.face.label,     'task_face')],
+    [Markup.button.callback(TASK_PRESETS.style.label,    'task_style')],
+    [Markup.button.callback(TASK_PRESETS.fullswap.label, 'task_fullswap')],
+    [Markup.button.callback(TASK_PRESETS.custom.label,   'task_custom')],
+  ]);
+}
+
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
 bot.start((ctx) => {
@@ -627,7 +685,7 @@ bot.help((ctx) => {
     '• Syarat foto: tampak depan penuh, min. 300px, maks 10MB\n' +
     '• Syarat video: orang terlihat jelas, durasi 2–30 detik, maks 100MB\n\n' +
     '*🖼️ Image to Image:*\n' +
-    '• Langkah: pilih model → kirim gambar 1 (sumber) → kirim gambar 2 (referensi/style) → ketik prompt → tunggu hasil\n' +
+    '• Langkah: pilih model → kirim gambar utama → kirim gambar referensi → pilih task (ganti baju, tas, wajah, dll) → tunggu hasil\n' +
     '• Model: GPT Image 2, Nano Banana 2, Nano Banana Pro, Seedream 5 Lite',
     { parse_mode: 'Markdown' }
   );
@@ -640,7 +698,7 @@ bot.on('callback_query', async (ctx) => {
   const userId = ctx.from.id;
   await ctx.answerCbQuery();
 
-  if (data !== 'back_main' && !['ratio_', 'res_'].some(p => data.startsWith(p))) {
+  if (data !== 'back_main' && !['ratio_', 'res_', 'task_'].some(p => data.startsWith(p))) {
     if (!await requireLoginAndSub(ctx)) return;
   }
 
@@ -704,17 +762,59 @@ bot.on('callback_query', async (ctx) => {
 
   if (data.startsWith('res_')) {
     const resolution = data.replace('res_', '');
-    setSession(userId, { resolution, mode: 'img_wait_prompt' });
+    setSession(userId, { resolution, mode: 'img_wait_task' });
     const resLabel: Record<string, string> = { '1k': '1K', '2k': '2K', '4k': '4K' };
     return ctx.editMessageText(
       `✅ Resolusi dipilih: *${resLabel[resolution] ?? resolution}*\n\n` +
-      '*Langkah 5 dari 5:* Ketik *prompt* — apa yang ingin dilakukan?\n\n' +
-      '💡 *Tips prompt:*\n' +
-      '• Ganti karakter: _"ganti karakter di gambar utama dengan orang dari foto referensi"_\n' +
-      '• Ganti wajah saja: _"ganti wajah orang di gambar utama dengan wajah dari foto referensi, pertahankan pose, pakaian, dan background"_\n' +
-      '• Ganti outfit: _"pakaikan outfit dari foto referensi ke orang di gambar utama"_',
+      '*Langkah 5 dari 5:* Pilih *apa yang ingin dilakukan* dengan gambar referensi:',
+      { parse_mode: 'Markdown', ...taskPresetKeyboard() }
+    );
+  }
+
+  if (data.startsWith('task_')) {
+    if (!await requireLoginAndSub(ctx)) return;
+    const taskKey = data.replace('task_', '');
+
+    if (taskKey === 'custom') {
+      setSession(userId, { mode: 'img_wait_prompt' });
+      return ctx.editMessageText(
+        '✏️ Ketik prompt kamu — apa yang ingin dilakukan?\n\n' +
+        '_Contoh: "ganti baju jadi merah", "ubah background jadi pantai"_',
+        { parse_mode: 'Markdown' }
+      );
+    }
+
+    const preset = TASK_PRESETS[taskKey];
+    if (!preset) return ctx.editMessageText('❌ Task tidak dikenal.', mainMenuKeyboard());
+
+    const session = getSession(userId);
+    const model = session.imageModel!;
+    const modelInfo = IMAGE_MODELS[model];
+    const image1Url = session.image1Url!;
+    const image2Url = session.image2Url!;
+    const aspectRatio = session.aspectRatio ?? '1:1';
+    const resolution = session.resolution ?? '1k';
+
+    if (!image1Url || !image2Url) {
+      return ctx.editMessageText('❌ Gambar tidak lengkap. Mulai ulang dari menu.', mainMenuKeyboard());
+    }
+
+    setSession(userId, { mode: 'idle' });
+
+    const resLabel: Record<string, string> = { '1k': '1K', '2k': '2K', '4k': '4K' };
+    const infoLabel = model === 'nano-banana-2-i2i'
+      ? ` • Rasio: ${aspectRatio} • Resolusi: ${resLabel[resolution] ?? resolution}`
+      : '';
+
+    await ctx.editMessageText(
+      `⏳ Memproses *${preset.label}* dengan *${modelInfo.label}*...${infoLabel}\nHasil dikirim otomatis setelah selesai.`,
       { parse_mode: 'Markdown' }
     );
+
+    const statusMsgId = (ctx.callbackQuery as any).message?.message_id;
+    runImageGeneration(ctx.chat!.id, userId, statusMsgId, image1Url, image2Url, preset.prompt, model, modelInfo.label, aspectRatio, resolution)
+      .catch(e => console.error(`[${userId}] Image gen error:`, e.message));
+    return;
   }
 
   if (data === 'back_main') {
@@ -779,12 +879,11 @@ async function handleImageInput(ctx: any, fileUrl: string) {
       );
     }
 
-    setSession(userId, { image2Url: fileUrl, mode: 'img_wait_prompt' });
+    setSession(userId, { image2Url: fileUrl, mode: 'img_wait_task' });
     return ctx.reply(
-      '✅ Gambar kedua diterima!\n\n' +
-      '*Langkah 3 dari 3:* Ketik *prompt* — apa yang ingin dilakukan?\n\n' +
-      '_Contoh: "ganti baju jadi merah", "ubah background jadi pantai", "terapkan style gambar kedua"_',
-      { parse_mode: 'Markdown' }
+      '✅ Gambar referensi diterima!\n\n' +
+      '*Langkah 3 dari 3:* Pilih *apa yang ingin dilakukan* dengan gambar referensi:',
+      { parse_mode: 'Markdown', ...taskPresetKeyboard() }
     );
   }
 

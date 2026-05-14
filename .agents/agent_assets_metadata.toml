@@ -24,3 +24,9 @@ id = "0qngTW14UenENBaThLx-D"
 uri = "file://test_result_user.jpg"
 type = "image"
 title = "Hasil — nano-banana-pro (baju pink di karakter kamu)"
+
+[[outputs]]
+id = "y0zX_UY7tVrQFeduPNJt5"
+uri = "file://test_gpt2_result.jpg"
+type = "image"
+title = "Hasil — gpt-image-2"
