@@ -72,3 +72,21 @@ id = "g6f6i7ij3VOVennUhsGGV"
 uri = "file://seedream_subject_ref.jpg"
 type = "image"
 title = "Seedream 5 Lite — subject_reference field"
+
+[[outputs]]
+id = "Ak93cfCo3_CcG9XI5E8nU"
+uri = "file://result_nano_banana_pro.jpg"
+type = "image"
+title = "🍌 Nano Banana Pro"
+
+[[outputs]]
+id = "4wDGDl_T1ybdXGb6fVR0V"
+uri = "file://result_gpt_image_2.jpg"
+type = "image"
+title = "🤖 GPT Image 2"
+
+[[outputs]]
+id = "Q1X94ZESk9u3qChLEFlMT"
+uri = "file://result_seedream.jpg"
+type = "image"
+title = "🌱 Seedream 5 Lite"
