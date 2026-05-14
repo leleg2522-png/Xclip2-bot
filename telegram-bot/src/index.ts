@@ -1099,53 +1099,32 @@ async function runImageGeneration(
     const b64img1 = `data:${img1.mime};base64,${img1.buf.toString('base64')}`;
     const b64img2 = `data:${img2.mime};base64,${img2.buf.toString('base64')}`;
 
-    // Build strategies: try URL-based first (simpler), then base64, then multipart
-    // NOTE: resolution/aspect_ratio intentionally omitted — Renderful rejects them as bad request
-    type Strategy = { label: string; isMultipart?: boolean; modelName: string };
-    const strategies: Strategy[] = [];
-    for (const mn of modelVariants) {
-      strategies.push(
-        // Base64 first — image data is embedded in request, guaranteed to reach Renderful
-        { label: `b64+ref [${mn}]`,         modelName: mn },
-        { label: `b64+ref_arr [${mn}]`,     modelName: mn },
-        { label: `multipart [${mn}]`,       modelName: mn, isMultipart: true },
-        // URL fallback — only if base64 fails
-        { label: `URL+ref_url [${mn}]`,     modelName: mn },
-        { label: `URL+ref [${mn}]`,         modelName: mn },
-      );
-    }
-
+    // Renderful REQUIRES field names image_url + reference_image_url.
+    // Values can be https:// URLs OR base64 data URIs.
+    // Strategy: send base64 data URIs (images embedded in request, no expiry issues),
+    // fallback to raw Telegram URLs if encoding fails.
     let genRes: any;
+    const strategies = [
+      ...modelVariants.map(mn => ({ label: `b64-datauri [${mn}]`, modelName: mn, useBase64: true })),
+      ...modelVariants.map(mn => ({ label: `url-fallback [${mn}]`, modelName: mn, useBase64: false })),
+    ];
+
     let lastErr = '';
     for (const strat of strategies) {
       try {
-        if (strat.isMultipart) {
-          const form = new FormData();
-          form.append('type', 'image-to-image');
-          form.append('model', strat.modelName);
-          form.append('prompt', prompt);
-          form.append('image', img1.buf, { filename: `source.${img1.ext}`, contentType: img1.mime });
-          form.append('reference_image', img2.buf, { filename: `reference.${img2.ext}`, contentType: img2.mime });
-          genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, form, {
-            headers: { Authorization: `Bearer ${apiKey}`, ...form.getHeaders() },
-            maxBodyLength: Infinity,
-          });
-        } else {
-          let body: Record<string, any>;
-          if (strat.label.startsWith('URL+ref_url')) {
-            body = { type: 'image-to-image', model: strat.modelName, prompt, image_url: image1Url, reference_image_url: image2Url };
-          } else if (strat.label.startsWith('URL+ref ')) {
-            body = { type: 'image-to-image', model: strat.modelName, prompt, image_url: image1Url, reference_image: image2Url };
-          } else if (strat.label.startsWith('b64+ref ')) {
-            body = { type: 'image-to-image', model: strat.modelName, prompt, image: b64img1, reference_image: b64img2 };
-          } else {
-            body = { type: 'image-to-image', model: strat.modelName, prompt, image: b64img1, reference_images: [b64img2] };
-          }
-          genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, body, {
-            headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-            maxBodyLength: Infinity,
-          });
-        }
+        const imgVal1 = strat.useBase64 ? b64img1 : image1Url;
+        const imgVal2 = strat.useBase64 ? b64img2 : image2Url;
+        const body: Record<string, any> = {
+          type: 'image-to-image',
+          model: strat.modelName,
+          prompt,
+          image_url: imgVal1,
+          reference_image_url: imgVal2,
+        };
+        genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, body, {
+          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          maxBodyLength: Infinity,
+        });
         console.log(`[${userId}] ${strat.label} OK: ${JSON.stringify(genRes.data)}`);
         break;
       } catch (e: any) {

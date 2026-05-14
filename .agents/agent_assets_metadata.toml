@@ -1,0 +1,20 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "cHGkafcRNA9GEfS7QzxcY"
+uri = "file://test_input1.jpg"
+type = "image"
+title = "Input 1 — Orang (main image)"
+
+[[outputs]]
+id = "UfEXTDR8JoYuR4rk8SSR3"
+uri = "file://test_input2_ref.jpg"
+type = "image"
+title = "Input 2 — Jaket (reference image)"
+
+[[outputs]]
+id = "KSZKzhfO4mBPNsFL1deev"
+uri = "file://test_result.jpg"
+type = "image"
+title = "Hasil Output — nano-banana-2"
