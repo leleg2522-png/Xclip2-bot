@@ -90,3 +90,21 @@ id = "Q1X94ZESk9u3qChLEFlMT"
 uri = "file://result_seedream.jpg"
 type = "image"
 title = "🌱 Seedream 5 Lite"
+
+[[outputs]]
+id = "DQXDSsRLfxmCJfNAy9r96"
+uri = "file://result_nbpro_SWAPPED.jpg"
+type = "image"
+title = "🍌 Banana Pro — urutan SWAP (outfit jadi image_url)"
+
+[[outputs]]
+id = "bLTeOw-rrryMKUKIlKPaM"
+uri = "file://result_nbpro_NORMAL_v2.jpg"
+type = "image"
+title = "🍌 Banana Pro — normal + prompt spesifik"
+
+[[outputs]]
+id = "-ZQYFSLiMeDLZOIfvHOO5"
+uri = "file://result_seed_SWAPPED.jpg"
+type = "image"
+title = "🌱 Seedream — urutan SWAP"
