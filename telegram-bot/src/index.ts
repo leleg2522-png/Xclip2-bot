@@ -1247,8 +1247,17 @@ async function runImageGeneration(
       ? ['nano-banana-2-i2i', 'nano-banana-2']
       : [model];
 
-    // Download images upfront (Telegram URLs work for Renderful but base64 is fallback)
-    console.log(`[${userId}] Downloading images for ${model}...`);
+    // All models use reference_image_url.
+    // subject_reference was tested but causes the model to swap the character identity — wrong behavior.
+    const refField = 'reference_image_url';
+
+    // When proxy is active, large base64 payloads time out going through it.
+    // Prefer URL mode first (only JSON goes through proxy, Renderful fetches images server-side).
+    // When no proxy, prefer base64 first (more reliable than Telegram expiring URLs).
+    const usingProxy = !!DECODO_PROXY_URL;
+
+    // Download images only if we might need base64 (always pre-download so fallback is ready)
+    console.log(`[${userId}] Downloading images for ${model}... (proxy: ${usingProxy})`);
     const [img1, img2] = await Promise.all([
       downloadBuffer(image1Url),
       downloadBuffer(image2Url),
@@ -1258,15 +1267,15 @@ async function runImageGeneration(
     const b64img1 = `data:${img1.mime};base64,${img1.buf.toString('base64')}`;
     const b64img2 = `data:${img2.mime};base64,${img2.buf.toString('base64')}`;
 
-    // All models use reference_image_url.
-    // subject_reference was tested but causes the model to swap the character identity — wrong behavior.
-    const refField = 'reference_image_url';
-
     let genRes: any;
-    const strategies = [
-      ...modelVariants.map(mn => ({ label: `b64-datauri [${mn}]`, modelName: mn, useBase64: true })),
-      ...modelVariants.map(mn => ({ label: `url-fallback [${mn}]`, modelName: mn, useBase64: false })),
-    ];
+    const urlFirst  = modelVariants.map(mn => ({ label: `url [${mn}]`,     modelName: mn, useBase64: false }));
+    const b64First  = modelVariants.map(mn => ({ label: `b64 [${mn}]`,     modelName: mn, useBase64: true  }));
+    const urlFallback = modelVariants.map(mn => ({ label: `url-fb [${mn}]`, modelName: mn, useBase64: false }));
+    const b64Fallback = modelVariants.map(mn => ({ label: `b64-fb [${mn}]`, modelName: mn, useBase64: true  }));
+
+    const strategies = usingProxy
+      ? [...urlFirst,  ...b64Fallback]   // proxy: URL first, b64 as last resort
+      : [...b64First,  ...urlFallback];  // no proxy: b64 first, URL as fallback
 
     let lastErr = '';
     for (const strat of strategies) {
