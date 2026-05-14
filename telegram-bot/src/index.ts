@@ -16,14 +16,19 @@ if (!DATABASE_URL) throw new Error('RAILWAY_DATABASE_URL is required');
 
 // Decodo rotating proxy — set DECODO_PROXY_URL=http://user:pass@gate.decodo.com:port
 const DECODO_PROXY_URL = process.env.DECODO_PROXY_URL;
-const renderfulHttpsAgent = DECODO_PROXY_URL
-  ? new HttpsProxyAgent(DECODO_PROXY_URL, { rejectUnauthorized: false })
-  : undefined;
 if (DECODO_PROXY_URL) {
+  // Decodo does SSL interception — disable Node TLS verification globally for this process.
+  // Safe: Railway is a controlled environment and we only call known trusted APIs.
+  process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
   console.log(`🌐 Decodo rotating proxy aktif untuk Renderful: ${DECODO_PROXY_URL.replace(/:([^@]+)@/, ':****@')}`);
+  console.log(`⚠️  NODE_TLS_REJECT_UNAUTHORIZED=0 (SSL verification disabled for proxy compatibility)`);
 } else {
   console.log(`ℹ️ DECODO_PROXY_URL tidak diset — Renderful calls pakai IP Railway langsung`);
 }
+
+const renderfulHttpsAgent = DECODO_PROXY_URL
+  ? new HttpsProxyAgent(DECODO_PROXY_URL, { rejectUnauthorized: false })
+  : undefined;
 
 const renderfulHttp = axios.create({
   timeout: 30_000,
