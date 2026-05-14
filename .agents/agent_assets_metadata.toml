@@ -162,3 +162,9 @@ id = "g-SkUPftlVKK5X3WFTHrw"
 uri = "file://v2_seedream.jpg"
 type = "image"
 title = "🌱 Seedream 5 Lite"
+
+[[outputs]]
+id = "LXS8vOaBNU9UH69bddPM1"
+uri = "file://gpt2_newkey.jpg"
+type = "image"
+title = "🤖 GPT Image 2 — key baru"
