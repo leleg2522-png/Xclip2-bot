@@ -260,6 +260,9 @@ function getNextKey(userId: number): string {
 
 function isKeyExhaustedError(raw: string): boolean {
   const lower = raw.toLowerCase();
+  // Fal.ai backend issues = Renderful's own infrastructure problem, NOT the user's API key being bad.
+  // Do not penalise the user's key for these.
+  if (lower.includes('fal api account') || lower.includes('fal.ai') || lower.includes('user is locked')) return false;
   return lower.includes('quota') || lower.includes('exhausted') || lower.includes('limit exceeded')
     || lower.includes('rate limit') || lower.includes('insufficient') || lower.includes('402')
     || lower.includes('balance') || lower.includes('credit') || lower.includes('payment')
@@ -668,6 +671,42 @@ bot.command('removekey', async (ctx) => {
   );
   if (res.rows.length === 0) return ctx.reply('❌ Key tidak ditemukan di pool.');
   return ctx.reply('✅ Key berhasil dinonaktifkan (dead).');
+});
+
+bot.command('restorekey', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const parts = ctx.message.text.trim().split(/\s+/);
+  if (parts.length < 2) {
+    return ctx.reply('📝 *Format:* `/restorekey <api_key>`\n\nKey akan dikembalikan ke status `available`.', { parse_mode: 'Markdown' });
+  }
+
+  const apiKey = parts[1].trim();
+  const res = await db.query(
+    `UPDATE renderful_key_pool SET status = 'available', dead_at = NULL, assigned_to = NULL, slot = NULL WHERE api_key = $1 RETURNING id`,
+    [apiKey]
+  );
+  if (res.rows.length === 0) return ctx.reply('❌ Key tidak ditemukan di pool.');
+  return ctx.reply('✅ Key berhasil dipulihkan ke status *available*.', { parse_mode: 'Markdown' });
+});
+
+bot.command('restoredeadkeys', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const res = await db.query(
+    `UPDATE renderful_key_pool SET status = 'available', dead_at = NULL, assigned_to = NULL, slot = NULL WHERE status = 'dead' RETURNING api_key`
+  );
+  if (res.rows.length === 0) return ctx.reply('ℹ️ Tidak ada key berstatus dead.');
+  return ctx.reply(
+    `✅ *${res.rows.length} key* berhasil dipulihkan ke status *available*.\n\n` +
+    `_Key yang dipulihkan:_\n` +
+    res.rows.map((r: any) => `• \`${r.api_key.slice(0, 12)}...\``).join('\n'),
+    { parse_mode: 'Markdown' }
+  );
 });
 
 bot.command('cancel', (ctx) => {
