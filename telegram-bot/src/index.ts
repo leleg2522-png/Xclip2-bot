@@ -31,7 +31,8 @@ const renderfulHttpsAgent = DECODO_PROXY_URL
   : undefined;
 
 const renderfulHttp = axios.create({
-  timeout: 30_000,
+  // Longer timeout when proxy is active — base64 payloads take more time through proxy tunnel
+  timeout: DECODO_PROXY_URL ? 120_000 : 30_000,
   ...(renderfulHttpsAgent ? { httpsAgent: renderfulHttpsAgent } : {}),
 });
 
@@ -1293,9 +1294,13 @@ async function runImageGeneration(
     const urlFallback = modelVariants.map(mn => ({ label: `url-fb [${mn}]`, modelName: mn, useBase64: false }));
     const b64Fallback = modelVariants.map(mn => ({ label: `b64-fb [${mn}]`, modelName: mn, useBase64: true  }));
 
-    const strategies = usingProxy
-      ? [...urlFirst,  ...b64Fallback]   // proxy: URL first, b64 as last resort
-      : [...b64First,  ...urlFallback];  // no proxy: b64 first, URL as fallback
+    // gpt-image-2 is strict about MIME types — Telegram URLs return application/octet-stream
+    // which GPT Image 2 rejects. Always use base64 (which includes explicit MIME) for this model.
+    const requiresB64First = model === 'gpt-image-2';
+
+    const strategies = (!usingProxy || requiresB64First)
+      ? [...b64First,  ...urlFallback]   // no proxy OR gpt-image-2: b64 first
+      : [...urlFirst,  ...b64Fallback];  // proxy + other models: URL first, b64 as last resort
 
     let lastErr = '';
     for (const strat of strategies) {
