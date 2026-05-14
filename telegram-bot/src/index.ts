@@ -153,11 +153,11 @@ const TASK_PRESETS: Record<string, { label: string; prompt: string }> = {
   outfit: {
     label: '👗 Ganti Baju / Outfit',
     prompt:
-      'Virtual clothing try-on task. ' +
-      'The MAIN IMAGE (image_url) is the PERSON/CHARACTER — their face, hair, skin tone, body, pose, and background must remain 100% identical, do not alter them in any way. ' +
-      'The REFERENCE IMAGE (reference_image_url) contains the CLOTHING to apply — extract only the outfit/garment from it, ignore the person wearing it. ' +
-      'Apply the exact outfit from the reference onto the character in the main image: same color, cut, style, fabric texture, and design details. ' +
-      'Only the clothing changes. Everything else about the main image person stays exactly the same.',
+      'Virtual try-on. ' +
+      'Take the PERSON exactly as shown in image_url — keep their FACE, HAIR, SKIN TONE, BODY SHAPE, POSE, and BACKGROUND completely unchanged. ' +
+      'From reference_image_url, extract ONLY the clothing/garment — ignore the person wearing it in that image. ' +
+      'Dress the person from image_url in that exact garment: match the fabric texture, color, cut, pattern, and all design details precisely. ' +
+      'DO NOT change face, hair, lower body, legs, shoes, or background. DO NOT copy accessories or other clothing items from the reference unless they are the main garment. ONLY replace the clothing.',
   },
   bag: {
     label: '👜 Ganti Tas / Aksesoris',
