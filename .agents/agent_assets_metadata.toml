@@ -168,3 +168,9 @@ id = "LXS8vOaBNU9UH69bddPM1"
 uri = "file://gpt2_newkey.jpg"
 type = "image"
 title = "🤖 GPT Image 2 — key baru"
+
+[[outputs]]
+id = "D8C7ZDy8hbrJfbIiQ5k20"
+uri = "file://proxy_final.jpg"
+type = "image"
+title = "🍌 Nano Banana Pro — via Decodo Proxy"
