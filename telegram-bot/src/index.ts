@@ -16,7 +16,9 @@ if (!DATABASE_URL) throw new Error('RAILWAY_DATABASE_URL is required');
 
 // Decodo rotating proxy — set DECODO_PROXY_URL=http://user:pass@gate.decodo.com:port
 const DECODO_PROXY_URL = process.env.DECODO_PROXY_URL;
-const renderfulHttpsAgent = DECODO_PROXY_URL ? new HttpsProxyAgent(DECODO_PROXY_URL) : undefined;
+const renderfulHttpsAgent = DECODO_PROXY_URL
+  ? new HttpsProxyAgent(DECODO_PROXY_URL, { rejectUnauthorized: false })
+  : undefined;
 if (DECODO_PROXY_URL) {
   console.log(`🌐 Decodo rotating proxy aktif untuk Renderful: ${DECODO_PROXY_URL.replace(/:([^@]+)@/, ':****@')}`);
 } else {
