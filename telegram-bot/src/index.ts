@@ -1083,99 +1083,83 @@ async function runImageGeneration(
     let taskId: string;
     let pollPath: string | undefined;
 
-    if (model === 'nano-banana-2-i2i') {
-      console.log(`[${userId}] Downloading images for Nano Banana 2...`);
-      const [img1, img2] = await Promise.all([
-        downloadBuffer(image1Url),
-        downloadBuffer(image2Url),
-      ]);
-      console.log(`[${userId}] img1: ${img1.mime} ${(img1.buf.length / 1024).toFixed(1)}KB`);
-      console.log(`[${userId}] img2: ${img2.mime} ${(img2.buf.length / 1024).toFixed(1)}KB`);
+    // Determine model name variants to try
+    const modelVariants = model === 'nano-banana-2-i2i'
+      ? ['nano-banana-2-i2i', 'nano-banana-2']
+      : [model];
 
-      const enhancedPrompt = prompt.trim();
-      console.log(`[${userId}] Prompt: ${enhancedPrompt}`);
-      console.log(`[${userId}] Aspect ratio: ${aspectRatio}, Resolution: ${resolution}`);
+    // Download images upfront (Telegram URLs work for Renderful but base64 is fallback)
+    console.log(`[${userId}] Downloading images for ${model}...`);
+    const [img1, img2] = await Promise.all([
+      downloadBuffer(image1Url),
+      downloadBuffer(image2Url),
+    ]);
+    console.log(`[${userId}] img1: ${img1.mime} ${(img1.buf.length / 1024).toFixed(1)}KB, img2: ${img2.mime} ${(img2.buf.length / 1024).toFixed(1)}KB`);
 
-      let genRes: any;
+    const b64img1 = `data:${img1.mime};base64,${img1.buf.toString('base64')}`;
+    const b64img2 = `data:${img2.mime};base64,${img2.buf.toString('base64')}`;
 
-      const b64img1 = `data:${img1.mime};base64,${img1.buf.toString('base64')}`;
-      const b64img2 = `data:${img2.mime};base64,${img2.buf.toString('base64')}`;
+    // Build strategies: try URL-based first (simpler), then base64, then multipart
+    // NOTE: resolution/aspect_ratio intentionally omitted — Renderful rejects them as bad request
+    type Strategy = { label: string; isMultipart?: boolean; modelName: string };
+    const strategies: Strategy[] = [];
+    for (const mn of modelVariants) {
+      strategies.push(
+        { label: `URL+ref_url [${mn}]`,    modelName: mn },
+        { label: `URL+ref [${mn}]`,         modelName: mn },
+        { label: `b64+ref [${mn}]`,         modelName: mn },
+        { label: `b64+ref_arr [${mn}]`,     modelName: mn },
+        { label: `multipart [${mn}]`,       modelName: mn, isMultipart: true },
+      );
+    }
 
-      const nanoBananaStrategies = [
-        // S1: model nano-banana-2-i2i + base64 image + reference_images[]
-        { label: 'S1:nb2-i2i+b64+ref_arr', body: { type: 'image-to-image', model: 'nano-banana-2-i2i', prompt: enhancedPrompt, image: b64img1, reference_images: [b64img2], aspect_ratio: aspectRatio, resolution } },
-        // S2: model nano-banana-2 (no suffix) + base64
-        { label: 'S2:nb2+b64+ref_arr', body: { type: 'image-to-image', model: 'nano-banana-2', prompt: enhancedPrompt, image: b64img1, reference_images: [b64img2], aspect_ratio: aspectRatio, resolution } },
-        // S3: model nano-banana-2-i2i + base64 image + reference_image (singular)
-        { label: 'S3:nb2-i2i+b64+ref_single', body: { type: 'image-to-image', model: 'nano-banana-2-i2i', prompt: enhancedPrompt, image: b64img1, reference_image: b64img2, aspect_ratio: aspectRatio, resolution } },
-        // S4: model nano-banana-2 + base64 image + reference_image (singular)
-        { label: 'S4:nb2+b64+ref_single', body: { type: 'image-to-image', model: 'nano-banana-2', prompt: enhancedPrompt, image: b64img1, reference_image: b64img2, aspect_ratio: aspectRatio, resolution } },
-        // S5: multipart with nano-banana-2-i2i
-        { label: 'S5:multipart-i2i', body: null as any },
-        // S6: multipart with nano-banana-2
-        { label: 'S6:multipart-nb2', body: null as any },
-      ];
-
-      let lastErr = '';
-      for (const strat of nanoBananaStrategies) {
-        try {
-          if (strat.label.startsWith('S5') || strat.label.startsWith('S6')) {
-            const modelName = strat.label.startsWith('S5') ? 'nano-banana-2-i2i' : 'nano-banana-2';
-            const form = new FormData();
-            form.append('type', 'image-to-image');
-            form.append('model', modelName);
-            form.append('prompt', enhancedPrompt);
-            form.append('aspect_ratio', aspectRatio);
-            form.append('resolution', resolution);
-            form.append('image', img1.buf, { filename: `source.${img1.ext}`, contentType: img1.mime });
-            form.append('reference_images', img2.buf, { filename: `reference.${img2.ext}`, contentType: img2.mime });
-            genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, form, {
-              headers: { Authorization: `Bearer ${apiKey}`, ...form.getHeaders() },
-              maxBodyLength: Infinity,
-            });
+    let genRes: any;
+    let lastErr = '';
+    for (const strat of strategies) {
+      try {
+        if (strat.isMultipart) {
+          const form = new FormData();
+          form.append('type', 'image-to-image');
+          form.append('model', strat.modelName);
+          form.append('prompt', prompt);
+          form.append('image', img1.buf, { filename: `source.${img1.ext}`, contentType: img1.mime });
+          form.append('reference_image', img2.buf, { filename: `reference.${img2.ext}`, contentType: img2.mime });
+          genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, form, {
+            headers: { Authorization: `Bearer ${apiKey}`, ...form.getHeaders() },
+            maxBodyLength: Infinity,
+          });
+        } else {
+          let body: Record<string, any>;
+          if (strat.label.startsWith('URL+ref_url')) {
+            body = { type: 'image-to-image', model: strat.modelName, prompt, image_url: image1Url, reference_image_url: image2Url };
+          } else if (strat.label.startsWith('URL+ref ')) {
+            body = { type: 'image-to-image', model: strat.modelName, prompt, image_url: image1Url, reference_image: image2Url };
+          } else if (strat.label.startsWith('b64+ref ')) {
+            body = { type: 'image-to-image', model: strat.modelName, prompt, image: b64img1, reference_image: b64img2 };
           } else {
-            genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, strat.body, {
-              headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-              maxBodyLength: Infinity,
-            });
+            body = { type: 'image-to-image', model: strat.modelName, prompt, image: b64img1, reference_images: [b64img2] };
           }
-          console.log(`[${userId}] ${strat.label} OK: ${JSON.stringify(genRes.data)}`);
-          break; // success
-        } catch (e: any) {
-          const status = e?.response?.status ?? 'no-status';
-          const errBody = e?.response?.data ? JSON.stringify(e.response.data) : e.message;
-          lastErr = errBody;
-          console.log(`[${userId}] ${strat.label} FAILED [HTTP ${status}]: ${errBody}`);
-          if (strat === nanoBananaStrategies[nanoBananaStrategies.length - 1]) {
-            throw new Error(typeof e?.response?.data?.error === 'string' ? e.response.data.error : errBody);
-          }
+          genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, body, {
+            headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+            maxBodyLength: Infinity,
+          });
+        }
+        console.log(`[${userId}] ${strat.label} OK: ${JSON.stringify(genRes.data)}`);
+        break;
+      } catch (e: any) {
+        const status = e?.response?.status ?? 'no-status';
+        const errBody = e?.response?.data ? JSON.stringify(e.response.data) : e.message;
+        lastErr = errBody;
+        console.log(`[${userId}] ${strat.label} FAILED [HTTP ${status}]: ${errBody}`);
+        if (strat === strategies[strategies.length - 1]) {
+          throw new Error(typeof e?.response?.data?.error === 'string' ? e.response.data.error : lastErr);
         }
       }
-
-      taskId = genRes.data?.id;
-      pollPath = genRes.data?.poll_url;
-      if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
-    } else {
-      // Other models use JSON with image URLs
-      const payload = {
-        type: 'image-to-image',
-        model,
-        image_url: image1Url,
-        reference_image_url: image2Url,
-        prompt,
-      };
-
-      console.log(`[${userId}] Payload: ${JSON.stringify(payload)}`);
-
-      const otherRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, payload,
-        { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } }
-      );
-
-      console.log(`[${userId}] Response:`, JSON.stringify(otherRes.data));
-      taskId = otherRes.data?.id;
-      pollPath = otherRes.data?.poll_url;
-      if (!taskId) throw new Error(`No task ID: ${JSON.stringify(otherRes.data)}`);
     }
+
+    taskId = genRes.data?.id;
+    pollPath = genRes.data?.poll_url;
+    if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
 
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       '⏳ Sedang diproses...\nMohon tunggu.'
