@@ -60,3 +60,15 @@ id = "9u6diF4AETLsd1W0NS5zL"
 uri = "file://gpt2_user_result.jpg"
 type = "image"
 title = "Hasil — GPT Image 2 (karakter kamu + baju pink)"
+
+[[outputs]]
+id = "OurYzuh0HFRe2a66MiNzo"
+uri = "file://gpt2_subject_ref.jpg"
+type = "image"
+title = "GPT Image 2 — subject_reference field"
+
+[[outputs]]
+id = "g6f6i7ij3VOVennUhsGGV"
+uri = "file://seedream_subject_ref.jpg"
+type = "image"
+title = "Seedream 5 Lite — subject_reference field"
