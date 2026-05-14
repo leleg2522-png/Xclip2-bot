@@ -1198,10 +1198,13 @@ async function runImageGeneration(
     const b64img1 = `data:${img1.mime};base64,${img1.buf.toString('base64')}`;
     const b64img2 = `data:${img2.mime};base64,${img2.buf.toString('base64')}`;
 
-    // Renderful REQUIRES field names image_url + reference_image_url.
-    // Values can be https:// URLs OR base64 data URIs.
-    // Strategy: send base64 data URIs (images embedded in request, no expiry issues),
-    // fallback to raw Telegram URLs if encoding fails.
+    // Field mapping per model (confirmed via live testing):
+    // - nano-banana-pro / nano-banana-2 : reference_image_url
+    // - gpt-image-2 / seedream-5.0-lite : subject_reference
+    const refField = (model === 'gpt-image-2' || model === 'seedream-5.0-lite')
+      ? 'subject_reference'
+      : 'reference_image_url';
+
     let genRes: any;
     const strategies = [
       ...modelVariants.map(mn => ({ label: `b64-datauri [${mn}]`, modelName: mn, useBase64: true })),
@@ -1218,7 +1221,7 @@ async function runImageGeneration(
           model: strat.modelName,
           prompt,
           image_url: imgVal1,
-          reference_image_url: imgVal2,
+          [refField]: imgVal2,
         };
         genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, body, {
           headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
