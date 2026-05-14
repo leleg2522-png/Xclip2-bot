@@ -726,6 +726,19 @@ bot.command('restoredeadkeys', async (ctx) => {
   );
 });
 
+bot.command('clearpool', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const res = await db.query(`DELETE FROM renderful_key_pool RETURNING api_key`);
+  if (res.rows.length === 0) return ctx.reply('ℹ️ Pool sudah kosong.');
+  return ctx.reply(
+    `🗑️ Pool dikosongkan — *${res.rows.length} key* dihapus.`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
 bot.command('cancel', (ctx) => {
   setSession(ctx.from.id, { mode: 'idle' });
   return ctx.reply('✅ Dibatalkan.', mainMenuKeyboard());
