@@ -1208,8 +1208,6 @@ async function runKlingMotionControl(chatId: number, userId: number, statusMsgId
       image_url: imageUrl,
       video_url: videoFileLink.href,
       prompt: 'Cinematic quality, smooth motion transfer, preserve character identity',
-      character_orientation: 'video',
-      keep_original_sound: true,
     }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
     console.log(`[${userId}] Kling URL OK — ${JSON.stringify(genRes.data)}`);
     const { id: taskId, poll_url: pollUrl } = genRes.data;
