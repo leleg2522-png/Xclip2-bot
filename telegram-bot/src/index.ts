@@ -732,6 +732,75 @@ bot.command('restoredeadkeys', async (ctx) => {
   );
 });
 
+bot.command('validatekeys', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const res = await db.query(
+    `SELECT api_key, status FROM renderful_key_pool WHERE status != 'dead' ORDER BY status, id`
+  );
+  if (res.rows.length === 0) return ctx.reply('ℹ️ Tidak ada key aktif di pool.');
+
+  const total = res.rows.length;
+  const statusMsg = await ctx.reply(`🔍 Memvalidasi *${total}* key... Harap tunggu.`, { parse_mode: 'Markdown' });
+
+  const results: { key: string; status: string; valid: boolean; code?: number }[] = [];
+
+  // Validate 5 keys at a time (avoid rate limit)
+  const BATCH = 5;
+  for (let i = 0; i < res.rows.length; i += BATCH) {
+    const batch = res.rows.slice(i, i + BATCH);
+    await Promise.all(batch.map(async (row: any) => {
+      try {
+        await renderfulHttp.get(`${RENDERFUL_BASE}/generations?limit=1`, {
+          headers: { Authorization: `Bearer ${row.api_key}` },
+        });
+        results.push({ key: row.api_key, status: row.status, valid: true });
+      } catch (e: any) {
+        const code = e?.response?.status ?? 0;
+        results.push({ key: row.api_key, status: row.status, valid: false, code });
+      }
+    }));
+  }
+
+  // Auto-mark invalid keys as dead
+  const invalid = results.filter(r => !r.valid);
+  const valid = results.filter(r => r.valid);
+
+  if (invalid.length > 0) {
+    await db.query(
+      `UPDATE renderful_key_pool SET status = 'dead', dead_at = NOW(), assigned_to = NULL, slot = NULL
+       WHERE api_key = ANY($1)`,
+      [invalid.map(r => r.key)]
+    );
+  }
+
+  const poolStats = await getPoolStats();
+
+  let msg = `✅ *Validasi selesai!*\n\n`;
+  msg += `• ✅ Valid: *${valid.length}*\n`;
+  msg += `• ❌ Invalid (auto-dead): *${invalid.length}*\n`;
+  msg += `• 📦 Pool tersisa: available=${poolStats.available}, assigned=${poolStats.assigned}\n\n`;
+
+  if (valid.length > 0) {
+    msg += `*Key valid:*\n`;
+    for (const r of valid) {
+      msg += `  ✅ \`${r.key.slice(0, 16)}...\` _(${r.status})_\n`;
+    }
+  }
+  if (invalid.length > 0) {
+    msg += `\n*Key invalid (sudah di-dead):*\n`;
+    for (const r of invalid) {
+      msg += `  ❌ \`${r.key.slice(0, 16)}...\` _(HTTP ${r.code || '?'})_\n`;
+    }
+  }
+
+  await bot.telegram.editMessageText(ctx.chat.id, statusMsg.message_id, undefined, msg, { parse_mode: 'Markdown' }).catch(() =>
+    ctx.reply(msg, { parse_mode: 'Markdown' })
+  );
+});
+
 bot.command('clearpool', async (ctx) => {
   const session = getSession(ctx.from.id);
   if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
