@@ -1198,26 +1198,53 @@ async function runVideoGeneration(chatId: number, userId: number, statusMsgId: n
 
 async function runKlingMotionControl(chatId: number, userId: number, statusMsgId: number, videoFileId: string, imageUrl: string) {
   const apiKey = getNextKey(userId);
+  const MAX_ATTEMPTS = 3;
   try {
     const videoFileLink = await bot.telegram.getFileLink(videoFileId);
     console.log(`[${userId}] Kling Motion Control started — img: ${imageUrl}, vid: ${videoFileLink.href}`);
 
-    const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
-      type: 'video-to-video',
-      model: 'kling-v2-6-motion-control',
-      image_url: imageUrl,
-      video_url: videoFileLink.href,
-      prompt: 'Cinematic quality, smooth motion transfer, preserve character identity',
-    }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
-    console.log(`[${userId}] Kling URL OK — ${JSON.stringify(genRes.data)}`);
-    const { id: taskId, poll_url: pollUrl } = genRes.data;
-    if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
+    let outputUrl: string | undefined;
+    let lastErr = '';
 
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      '⏳ Sedang diproses...\nBiasanya 2–5 menit.'
-    );
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        if (attempt > 1) {
+          console.log(`[${userId}] Kling retry attempt ${attempt}/${MAX_ATTEMPTS}...`);
+          await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+            `⏳ Coba ulang (${attempt}/${MAX_ATTEMPTS})...\nServer sedang sibuk, harap tunggu.`
+          ).catch(() => {});
+          await sleep(5_000);
+        } else {
+          await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+            '⏳ Sedang diproses...\nBiasanya 2–5 menit.'
+          ).catch(() => {});
+        }
 
-    const outputUrl = await pollForResult(taskId, userId, apiKey, pollUrl);
+        const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
+          type: 'video-to-video',
+          model: 'kling-v2-6-motion-control',
+          image_url: imageUrl,
+          video_url: videoFileLink.href,
+          prompt: 'Cinematic quality, smooth motion transfer, preserve character identity',
+        }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
+
+        console.log(`[${userId}] Kling attempt ${attempt} queued — ${JSON.stringify(genRes.data)}`);
+        const { id: taskId, poll_url: pollUrl } = genRes.data;
+        if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
+
+        outputUrl = await pollForResult(taskId, userId, apiKey, pollUrl);
+        break; // success
+      } catch (e: any) {
+        const msg = e?.message ?? String(e);
+        lastErr = msg;
+        console.warn(`[${userId}] Kling attempt ${attempt} failed: ${msg}`);
+        // Only retry on timeout/server errors, not on key exhaustion or unprocessable
+        const isRetryable = /timeout|timed out|try again|server|unavailable/i.test(msg);
+        if (!isRetryable || attempt === MAX_ATTEMPTS) throw e;
+      }
+    }
+
+    if (!outputUrl) throw new Error(lastErr || 'No output');
     await sendResult(chatId, outputUrl, '🕹️ Kling 2.6 Pro Motion Control\n\n/menu untuk buat lagi', true);
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
     console.log(`[${userId}] Kling Motion Control done`);
