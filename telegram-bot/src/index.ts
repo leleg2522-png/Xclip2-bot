@@ -4,6 +4,7 @@ import FormData from 'form-data';
 import { Client, Pool } from 'pg';
 import bcrypt from 'bcryptjs';
 import { HttpsProxyAgent } from 'https-proxy-agent';
+import sharp from 'sharp';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -169,47 +170,47 @@ const TASK_PRESETS: Record<string, { label: string; prompt: string }> = {
   outfit: {
     label: '👗 Ganti Baju / Outfit',
     prompt:
-      'Virtual try-on. ' +
-      'Take the PERSON exactly as shown in image_url — keep their FACE, HAIR, SKIN TONE, BODY SHAPE, POSE, and BACKGROUND completely unchanged. ' +
-      'From reference_image_url, extract ONLY the clothing/garment — ignore the person wearing it in that image. ' +
-      'Dress the person from image_url in that exact garment: match the fabric texture, color, cut, pattern, and all design details precisely. ' +
-      'DO NOT change face, hair, lower body, legs, shoes, or background. DO NOT copy accessories or other clothing items from the reference unless they are the main garment. ONLY replace the clothing.',
+      'Virtual try-on task. This image shows two panels side by side. ' +
+      'LEFT PANEL = the PERSON. Preserve their face, hair, skin tone, glasses, body shape, pose, and background EXACTLY — do not change anything. ' +
+      'RIGHT PANEL = the CLOTHING REFERENCE. Extract the garment: fabric texture, color, cut, buttons, pattern, all design details. Ignore whoever is wearing/holding it. ' +
+      'Output: the LEFT PANEL person wearing the RIGHT PANEL garment. Show ONLY the single person result, not the two-panel layout. ' +
+      'Replace ONLY the clothing. Do not change face, hair, accessories, lower body, shoes, or background.',
   },
   bag: {
     label: '👜 Ganti Tas / Aksesoris',
     prompt:
-      'Accessory replacement task. ' +
-      'The MAIN IMAGE (image_url) is the PERSON/CHARACTER — preserve everything about them (face, hair, body, clothes, pose) exactly as-is. ' +
-      'The REFERENCE IMAGE (reference_image_url) contains the BAG or ACCESSORY to apply — extract only the item, ignore whoever is holding/wearing it. ' +
-      'Place the exact bag/accessory from the reference onto the character in the main image, matching color, shape, size, and design precisely. ' +
-      'Only add or replace the accessory. Nothing else changes.',
+      'Accessory replacement task. This image shows two panels side by side. ' +
+      'LEFT PANEL = the PERSON. Preserve everything about them — face, hair, skin tone, clothes, pose, background — exactly as-is. ' +
+      'RIGHT PANEL = the BAG or ACCESSORY. Extract the item precisely: color, shape, size, brand details. Ignore whoever is holding/wearing it. ' +
+      'Output: the LEFT PANEL person holding/wearing the RIGHT PANEL accessory. Show ONLY the single person result, not the two-panel layout. ' +
+      'Only replace/add the accessory. Nothing else changes.',
   },
   face: {
     label: '🧑 Ganti Wajah / Karakter',
     prompt:
-      'Face swap task. ' +
-      'The MAIN IMAGE (image_url) is the BASE SCENE — keep the pose, clothing, background, lighting, and body composition completely unchanged. ' +
-      'The REFERENCE IMAGE (reference_image_url) contains the FACE/PERSON to use — extract their facial features and identity. ' +
-      'Replace only the face in the main image with the face from the reference image. ' +
-      'Blend naturally with the lighting and skin tone of the main image scene.',
+      'Face swap task. This image shows two panels side by side. ' +
+      'LEFT PANEL = the BASE SCENE. Keep the pose, clothing, body, background, and lighting completely unchanged. ' +
+      'RIGHT PANEL = the FACE REFERENCE. Extract facial identity, features, and likeness. ' +
+      'Output: the LEFT PANEL scene with the RIGHT PANEL face. Show ONLY the single result, not the two-panel layout. ' +
+      'Replace only the face. Blend naturally with the lighting and skin tone of the base scene.',
   },
   style: {
     label: '🎨 Terapkan Style Referensi',
     prompt:
-      'Visual style transfer task. ' +
-      'The MAIN IMAGE (image_url) is the SOURCE — preserve the character identity, pose, composition, and scene elements. ' +
-      'The REFERENCE IMAGE (reference_image_url) defines the TARGET STYLE — extract its color grading, lighting mood, rendering aesthetic, and visual tone. ' +
-      'Re-render the main image in the exact style of the reference: apply the same color palette, lighting, and aesthetic. ' +
-      'The character and scene content must remain the same, only the visual style changes.',
+      'Visual style transfer task. This image shows two panels side by side. ' +
+      'LEFT PANEL = the SOURCE IMAGE. Preserve the character identity, pose, composition, and all scene content. ' +
+      'RIGHT PANEL = the STYLE REFERENCE. Extract the color grading, lighting mood, rendering aesthetic, and visual tone. ' +
+      'Output: the LEFT PANEL content re-rendered in the RIGHT PANEL style. Show ONLY the single result, not the two-panel layout. ' +
+      'Content stays the same — only the visual style, colors, and lighting change.',
   },
   fullswap: {
     label: '🔄 Masukkan Karakter ke Gambar',
     prompt:
-      'Character insertion task. ' +
-      'The MAIN IMAGE (image_url) is the TARGET SCENE — keep the background, lighting, pose framing, and overall composition unchanged. ' +
-      'The REFERENCE IMAGE (reference_image_url) contains the PERSON to insert — extract their appearance faithfully. ' +
-      'Replace the character in the main image scene with the person from the reference image, keeping the same pose and position. ' +
-      'The result should look natural and consistent with the scene in the main image.',
+      'Character insertion task. This image shows two panels side by side. ' +
+      'LEFT PANEL = the TARGET SCENE. Keep the background, environment, lighting, and pose framing exactly unchanged. ' +
+      'RIGHT PANEL = the PERSON to insert. Extract their appearance, clothing, and identity faithfully. ' +
+      'Output: the LEFT PANEL scene with the RIGHT PANEL person placed naturally into it. Show ONLY the single result, not the two-panel layout. ' +
+      'The person should look natural and consistent with the scene lighting and composition.',
   },
   custom: {
     label: '✏️ Prompt Sendiri',
@@ -1268,67 +1269,57 @@ async function runImageGeneration(
       ? ['nano-banana-2-i2i', 'nano-banana-2']
       : [model];
 
-    // All models use reference_image_url.
-    // subject_reference was tested but causes the model to swap the character identity — wrong behavior.
-    const refField = 'reference_image_url';
-
-    // When proxy is active, large base64 payloads time out going through it.
-    // Prefer URL mode first (only JSON goes through proxy, Renderful fetches images server-side).
-    // When no proxy, prefer base64 first (more reliable than Telegram expiring URLs).
-    const usingProxy = !!DECODO_PROXY_URL;
-
-    // Download images only if we might need base64 (always pre-download so fallback is ready)
-    console.log(`[${userId}] Downloading images for ${model}... (proxy: ${usingProxy})`);
+    // Download both images via Telegram HTTP (no proxy — Telegram is reachable directly)
+    console.log(`[${userId}] Downloading images for ${model}...`);
     const [img1, img2] = await Promise.all([
       downloadBuffer(image1Url),
       downloadBuffer(image2Url),
     ]);
     console.log(`[${userId}] img1: ${img1.mime} ${(img1.buf.length / 1024).toFixed(1)}KB, img2: ${img2.mime} ${(img2.buf.length / 1024).toFixed(1)}KB`);
 
-    const b64img1 = `data:${img1.mime};base64,${img1.buf.toString('base64')}`;
-    const b64img2 = `data:${img2.mime};base64,${img2.buf.toString('base64')}`;
+    // Build side-by-side composite: LEFT = main person/scene, RIGHT = reference (clothing/accessory/face/style).
+    // Sending a single composite image forces the model to see BOTH images together and correctly apply
+    // the reference to the subject — far more reliable than separate image_url + reference_image_url fields
+    // which general-purpose models tend to ignore or misinterpret.
+    const W = 512, H = 640;
+    const [left, right] = await Promise.all([
+      sharp(img1.buf).resize(W, H, { fit: 'cover', position: 'top' }).jpeg({ quality: 85 }).toBuffer(),
+      sharp(img2.buf).resize(W, H, { fit: 'cover', position: 'top' }).jpeg({ quality: 85 }).toBuffer(),
+    ]);
+    const compositeBuf = await sharp({
+      create: { width: W * 2, height: H, channels: 3, background: '#ffffff' },
+    })
+      .composite([
+        { input: left,  left: 0, top: 0 },
+        { input: right, left: W, top: 0 },
+      ])
+      .jpeg({ quality: 85 })
+      .toBuffer();
+    const compositeB64 = `data:image/jpeg;base64,${compositeBuf.toString('base64')}`;
+    console.log(`[${userId}] composite: ${(compositeBuf.length / 1024).toFixed(1)}KB`);
 
     let genRes: any;
-    const urlFirst  = modelVariants.map(mn => ({ label: `url [${mn}]`,     modelName: mn, useBase64: false }));
-    const b64First  = modelVariants.map(mn => ({ label: `b64 [${mn}]`,     modelName: mn, useBase64: true  }));
-    const urlFallback = modelVariants.map(mn => ({ label: `url-fb [${mn}]`, modelName: mn, useBase64: false }));
-    const b64Fallback = modelVariants.map(mn => ({ label: `b64-fb [${mn}]`, modelName: mn, useBase64: true  }));
-
-    const strategies = usingProxy
-      ? [...urlFirst,  ...b64Fallback]   // proxy: wsrv.nl-wrapped URL first (fixes MIME), b64 last resort
-      : [...b64First,  ...urlFallback];  // no proxy: b64 first, URL fallback
-
-    // wsrv.nl = free image proxy that re-serves any URL with proper Content-Type (image/jpeg).
-    // When Renderful/Google fetches Telegram URLs directly, they get application/octet-stream
-    // which gets rejected. Wrapping through wsrv.nl fixes the MIME type without any payload
-    // going through the proxy — only tiny JSON with the wsrv.nl URL.
-    const wrapUrl = (url: string) =>
-      `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=jpg&n=-1`;
-
     let lastErr = '';
-    for (const strat of strategies) {
+    for (const mn of modelVariants) {
       try {
-        const imgVal1 = strat.useBase64 ? b64img1 : wrapUrl(image1Url);
-        const imgVal2 = strat.useBase64 ? b64img2 : wrapUrl(image2Url);
         const body: Record<string, any> = {
           type: 'image-to-image',
-          model: strat.modelName,
+          model: mn,
           prompt,
-          image_url: imgVal1,
-          [refField]: imgVal2,
+          image_url: compositeB64,
         };
         genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, body, {
           headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
           maxBodyLength: Infinity,
         });
-        console.log(`[${userId}] ${strat.label} OK: ${JSON.stringify(genRes.data)}`);
+        console.log(`[${userId}] composite b64 [${mn}] OK: ${JSON.stringify(genRes.data)}`);
         break;
       } catch (e: any) {
         const status = e?.response?.status ?? 'no-status';
         const errBody = e?.response?.data ? JSON.stringify(e.response.data) : e.message;
         lastErr = errBody;
-        console.log(`[${userId}] ${strat.label} FAILED [HTTP ${status}]: ${errBody}`);
-        if (strat === strategies[strategies.length - 1]) {
+        console.log(`[${userId}] composite b64 [${mn}] FAILED [HTTP ${status}]: ${errBody}`);
+        if (mn === modelVariants[modelVariants.length - 1]) {
           throw new Error(typeof e?.response?.data?.error === 'string' ? e.response.data.error : lastErr);
         }
       }
