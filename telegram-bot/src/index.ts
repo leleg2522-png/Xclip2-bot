@@ -279,14 +279,13 @@ function isKeyExhaustedError(raw: string): boolean {
   const lower = raw.toLowerCase();
   // Renderful/fal.ai backend issues = their infrastructure, NOT the user's API key being bad.
   if (lower.includes('fal api account') || lower.includes('fal.ai') || lower.includes('user is locked')) return false;
-  // "Unauthorized" alone is too broad — it can mean model access restriction (Kling not allowed for account tier),
-  // not necessarily an invalid key. Only flag as dead if explicitly about the key itself.
-  if (lower === 'unauthorized' || lower.trim() === 'unauthorized') return false;
+  // 401 from Renderful = key invalid/revoked, rotate it out
+  if (lower.includes('status code 401') || lower.includes('401')) return true;
   return lower.includes('quota') || lower.includes('exhausted') || lower.includes('limit exceeded')
     || lower.includes('rate limit') || lower.includes('insufficient') || lower.includes('402')
     || lower.includes('balance') || lower.includes('credit') || lower.includes('payment')
     || lower.includes('invalid key') || lower.includes('invalid api key') || lower.includes('invalid_api_key')
-    || (lower.includes('unauthorized') && (lower.includes('key') || lower.includes('token') || lower.includes('api')));
+    || lower.includes('unauthorized');
 }
 
 function isNotFoundError(raw: string): boolean {
@@ -374,8 +373,8 @@ function translateError(raw: string): string {
     return '❌ *Error backend*: Layanan Renderful sedang bermasalah. Coba lagi beberapa saat.';
   if (raw.toLowerCase().includes('developer account is disabled') || raw.toLowerCase().includes('account is disabled'))
     return '❌ *Akun Renderful dinonaktifkan*: Akun yang terhubung ke API key ini dinonaktifkan oleh Renderful. Hubungi admin untuk ganti key.';
-  if (raw.toLowerCase().includes('unauthorized'))
-    return '❌ *Akses ditolak*: Model ini tidak tersedia untuk akun Renderful yang digunakan. Hubungi admin.';
+  if (raw.includes('401') || raw.toLowerCase().includes('unauthorized'))
+    return '❌ *API key tidak valid*: Key sudah diganti otomatis. Coba lagi dengan /menu';
   const short = raw.length > 200 ? raw.slice(0, 200) + '…' : raw;
   return `❌ Gagal: ${short}`;
 }
