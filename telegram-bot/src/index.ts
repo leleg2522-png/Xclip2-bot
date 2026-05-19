@@ -5,6 +5,7 @@ import { Client, Pool } from 'pg';
 import bcrypt from 'bcryptjs';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import sharp from 'sharp';
+import express from 'express';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -1449,6 +1450,16 @@ async function runImageGeneration(
 }
 
 // ─── Launch ───────────────────────────────────────────────────────────────────
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (_req, res) => res.send('OK'));
+app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+
+app.listen(PORT, () => {
+  console.log(`✅ Health check server berjalan di port ${PORT}`);
+});
 
 bot.launch({ allowedUpdates: ['message', 'callback_query'] });
 console.log('✅ Bot berjalan...');
