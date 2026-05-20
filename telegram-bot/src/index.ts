@@ -156,6 +156,30 @@ async function isAdmin(dbUserId: number): Promise<boolean> {
   return res.rows[0]?.is_admin === true;
 }
 
+// ─── Kling Daily Limit ────────────────────────────────────────────────────────
+
+const KLING_DAILY_LIMIT = 6;
+
+async function getKlingUsageToday(dbUserId: number): Promise<number> {
+  const res = await db.query(
+    `SELECT count FROM kling_daily_usage WHERE user_id = $1 AND usage_date = CURRENT_DATE`,
+    [dbUserId]
+  );
+  return parseInt(res.rows[0]?.count ?? '0');
+}
+
+async function incrementKlingUsage(dbUserId: number): Promise<number> {
+  const res = await db.query(
+    `INSERT INTO kling_daily_usage (user_id, usage_date, count)
+     VALUES ($1, CURRENT_DATE, 1)
+     ON CONFLICT (user_id, usage_date) DO UPDATE
+       SET count = kling_daily_usage.count + 1
+     RETURNING count`,
+    [dbUserId]
+  );
+  return parseInt(res.rows[0]?.count ?? '1');
+}
+
 const bot = new Telegraf(BOT_TOKEN);
 
 // ─── Model definitions ────────────────────────────────────────────────────────
@@ -609,12 +633,17 @@ bot.command('status', async (ctx) => {
   if (!session.dbUserId) {
     return ctx.reply('🔒 Belum login. Ketik /login untuk masuk.');
   }
-  const active = await checkActiveSubscription(session.dbUserId);
+  const [active, klingUsed] = await Promise.all([
+    checkActiveSubscription(session.dbUserId),
+    getKlingUsageToday(session.dbUserId),
+  ]);
   const keys = session.assignedKeys ?? [];
+  const klingRemaining = Math.max(0, KLING_DAILY_LIMIT - klingUsed);
   return ctx.reply(
     `👤 *Akun:* ${session.dbUsername}\n` +
     `📦 *Langganan:* ${active ? '✅ Aktif' : '❌ Tidak aktif / expired'}\n` +
-    `🔑 *API Key:* ${keys.length} key ditetapkan`,
+    `🔑 *API Key:* ${keys.length} key ditetapkan\n` +
+    `🕹️ *Kling hari ini:* ${klingUsed}/${KLING_DAILY_LIMIT} (sisa: ${klingRemaining})`,
     { parse_mode: 'Markdown' }
   );
 });
@@ -1063,8 +1092,14 @@ bot.on('video', async (ctx) => {
     if (vid.file_size && vid.file_size > MAX_VIDEO_BYTES) {
       return ctx.reply(`❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
     }
+    const used = await getKlingUsageToday(session.dbUserId!);
+    if (used >= KLING_DAILY_LIMIT) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`❌ Limit harian Kling Motion Control sudah habis!\n\n📊 Terpakai: *${used}/${KLING_DAILY_LIMIT}* generate hari ini.\n🕛 Reset otomatis besok.`, { parse_mode: 'Markdown' });
+    }
+    await incrementKlingUsage(session.dbUserId!);
     setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply('⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).');
+    const statusMsg = await ctx.reply(`⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).\n\n📊 Generate hari ini: *${used + 1}/${KLING_DAILY_LIMIT}*`, { parse_mode: 'Markdown' });
     runKlingMotionControl(ctx.chat.id, userId, statusMsg.message_id, vid.file_id, session.characterUrl)
       .catch(e => console.error(`[${userId}] Kling gen error:`, e.message));
     return;
@@ -1194,8 +1229,14 @@ bot.on('document', async (ctx) => {
     if (doc.file_size && doc.file_size > MAX_VIDEO_BYTES) {
       return ctx.reply(`❌ Video terlalu besar (${(doc.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
     }
+    const used = await getKlingUsageToday(session.dbUserId!);
+    if (used >= KLING_DAILY_LIMIT) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`❌ Limit harian Kling Motion Control sudah habis!\n\n📊 Terpakai: *${used}/${KLING_DAILY_LIMIT}* generate hari ini.\n🕛 Reset otomatis besok.`, { parse_mode: 'Markdown' });
+    }
+    await incrementKlingUsage(session.dbUserId!);
     setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply('⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).');
+    const statusMsg = await ctx.reply(`⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).\n\n📊 Generate hari ini: *${used + 1}/${KLING_DAILY_LIMIT}*`, { parse_mode: 'Markdown' });
     runKlingMotionControl(ctx.chat.id, userId, statusMsg.message_id, doc.file_id, session.characterUrl)
       .catch(console.error);
     return;
