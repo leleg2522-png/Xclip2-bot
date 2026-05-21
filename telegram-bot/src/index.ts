@@ -1097,10 +1097,9 @@ bot.on('video', async (ctx) => {
       setSession(userId, { mode: 'idle' });
       return ctx.reply(`❌ Limit harian Kling Motion Control sudah habis!\n\n📊 Terpakai: *${used}/${KLING_DAILY_LIMIT}* generate hari ini.\n🕛 Reset otomatis besok.`, { parse_mode: 'Markdown' });
     }
-    await incrementKlingUsage(session.dbUserId!);
     setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply(`⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).\n\n📊 Generate hari ini: *${used + 1}/${KLING_DAILY_LIMIT}*`, { parse_mode: 'Markdown' });
-    runKlingMotionControl(ctx.chat.id, userId, statusMsg.message_id, vid.file_id, session.characterUrl)
+    const statusMsg = await ctx.reply(`⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).`, { parse_mode: 'Markdown' });
+    runKlingMotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, vid.file_id, session.characterUrl)
       .catch(e => console.error(`[${userId}] Kling gen error:`, e.message));
     return;
   }
@@ -1234,10 +1233,9 @@ bot.on('document', async (ctx) => {
       setSession(userId, { mode: 'idle' });
       return ctx.reply(`❌ Limit harian Kling Motion Control sudah habis!\n\n📊 Terpakai: *${used}/${KLING_DAILY_LIMIT}* generate hari ini.\n🕛 Reset otomatis besok.`, { parse_mode: 'Markdown' });
     }
-    await incrementKlingUsage(session.dbUserId!);
     setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply(`⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).\n\n📊 Generate hari ini: *${used + 1}/${KLING_DAILY_LIMIT}*`, { parse_mode: 'Markdown' });
-    runKlingMotionControl(ctx.chat.id, userId, statusMsg.message_id, doc.file_id, session.characterUrl)
+    const statusMsg = await ctx.reply(`⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).`);
+    runKlingMotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, doc.file_id, session.characterUrl)
       .catch(console.error);
     return;
   }
@@ -1306,7 +1304,7 @@ async function runVideoGeneration(chatId: number, userId: number, statusMsgId: n
 
 // ─── Background: Kling Motion Control ────────────────────────────────────────
 
-async function runKlingMotionControl(chatId: number, userId: number, statusMsgId: number, videoFileId: string, imageUrl: string) {
+async function runKlingMotionControl(chatId: number, userId: number, dbUserId: number, statusMsgId: number, videoFileId: string, imageUrl: string) {
   const apiKey = getNextKey(userId);
   const MAX_ATTEMPTS = 3;
   try {
@@ -1355,9 +1353,14 @@ async function runKlingMotionControl(chatId: number, userId: number, statusMsgId
     }
 
     if (!outputUrl) throw new Error(lastErr || 'No output');
-    await sendResult(chatId, outputUrl, '🕹️ Kling 2.6 Pro Motion Control\n\n/menu untuk buat lagi', true);
+
+    // Hanya increment setelah berhasil
+    const newCount = await incrementKlingUsage(dbUserId);
+    const remaining = Math.max(0, KLING_DAILY_LIMIT - newCount);
+
+    await sendResult(chatId, outputUrl, `🕹️ Kling 2.6 Pro Motion Control\n📊 Generate hari ini: ${newCount}/${KLING_DAILY_LIMIT} (sisa: ${remaining})\n\n/menu untuk buat lagi`, true);
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] Kling Motion Control done`);
+    console.log(`[${userId}] Kling Motion Control done (usage: ${newCount}/${KLING_DAILY_LIMIT})`);
   } catch (err: any) {
     const rawMsg = err?.response?.data?.error ?? err?.response?.data ?? err.message ?? String(err);
     const raw = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
