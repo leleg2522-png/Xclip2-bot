@@ -530,15 +530,15 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🎬 WAN Animate', 'mode_video')],
     [Markup.button.callback('🕹️ Kling Motion Control', 'mode_kling')],
     [Markup.button.callback('🖼️ Image to Image', 'mode_image')],
-    [Markup.button.callback('🔺 AI Video Upscale (4X)', 'mode_upscale')],
+    [Markup.button.callback('🔺 ByteDance Video Upscaler', 'mode_upscale')],
   ]);
 }
 
 function upscaleResolutionKeyboard() {
   return Markup.inlineKeyboard([
     [
-      Markup.button.callback('📺 720p', 'upscale_res_720p'),
       Markup.button.callback('🖥️ 1080p', 'upscale_res_1080p'),
+      Markup.button.callback('🔷 2K', 'upscale_res_2k'),
       Markup.button.callback('💠 4K', 'upscale_res_4k'),
     ],
     [Markup.button.callback('« Kembali', 'back_main')],
@@ -936,10 +936,11 @@ bot.on('callback_query', async (ctx) => {
   if (data === 'mode_upscale') {
     setSession(userId, { mode: 'upscale_wait_video', upscaleVideoFileId: undefined, upscaleResolution: undefined });
     return ctx.editMessageText(
-      '🔺 *AI Video Upscale* (Runway 4X)\n\nTingkatkan kualitas video secara otomatis hingga 4X lebih tajam.\n\n' +
+      '🔺 *ByteDance Video Upscaler*\n\nUpscale video ke resolusi 1080p, 2K, atau 4K menggunakan AI ByteDance.\n\n' +
       '*Langkah 1:* Kirim *video* yang ingin di-upscale.\n\n' +
       '⚠️ *Syarat video:*\n' +
-      '• Format: MP4, MOV, dll\n' +
+      '• Format: MP4, WebM, MOV\n' +
+      '• Durasi: maks 10 menit\n' +
       '• Maksimal ukuran: 19MB',
       { parse_mode: 'Markdown' }
     );
@@ -954,9 +955,9 @@ bot.on('callback_query', async (ctx) => {
       return ctx.editMessageText('❌ Video tidak ditemukan. Mulai ulang dari menu.', mainMenuKeyboard());
     }
     setSession(userId, { upscaleResolution: resolution, mode: 'idle' });
-    const resLabel: Record<string, string> = { '720p': '720p HD', '1080p': '1080p Full HD', '4k': '4K Ultra HD' };
+    const resLabel: Record<string, string> = { '1080p': '1080p Full HD', '2k': '2K', '4k': '4K Ultra HD' };
     await ctx.editMessageText(
-      `⏳ Memproses *AI Video Upscale* (target: ${resLabel[resolution] ?? resolution})...\nHasil dikirim otomatis setelah selesai.`,
+      `⏳ Memproses *ByteDance Video Upscaler* ke *${resLabel[resolution] ?? resolution}*...\nHasil dikirim otomatis setelah selesai.`,
       { parse_mode: 'Markdown' }
     );
     const statusMsgId = (ctx.callbackQuery as any).message?.message_id;
@@ -1568,16 +1569,17 @@ async function runImageGeneration(
 
 async function runUpscaleGeneration(chatId: number, userId: number, statusMsgId: number, videoFileId: string, resolution: string) {
   const apiKey = getNextKey(userId);
-  const resLabel: Record<string, string> = { '720p': '720p HD', '1080p': '1080p Full HD', '4k': '4K Ultra HD' };
+  const resLabel: Record<string, string> = { '1080p': '1080p Full HD', '2k': '2K', '4k': '4K Ultra HD' };
 
   try {
     const videoFileLink = await bot.telegram.getFileLink(videoFileId);
-    console.log(`[${userId}] AI Video Upscale started — res: ${resolution}, vid: ${videoFileLink.href}`);
+    console.log(`[${userId}] ByteDance Upscale started — res: ${resolution}, vid: ${videoFileLink.href}`);
 
     const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
       type: 'video-to-video',
-      model: 'upscale-v1',
+      model: 'bytedance-video-upscaler',
       video_url: videoFileLink.href,
+      target_resolution: resolution,
     }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
 
     console.log(`[${userId}] Upscale queued: ${JSON.stringify(genRes.data)}`);
@@ -1585,11 +1587,11 @@ async function runUpscaleGeneration(chatId: number, userId: number, statusMsgId:
     if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
 
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `⏳ Sedang di-upscale (4X AI)...\nBiasanya 2–5 menit.`
+      `⏳ Sedang di-upscale ke ${resLabel[resolution] ?? resolution}...\nBiasanya 2–5 menit.`
     ).catch(() => {});
 
     const outputUrl = await pollForResult(taskId, userId, apiKey, pollUrl);
-    await sendResult(chatId, outputUrl, `🔺 AI Video Upscale 4X — ${resLabel[resolution] ?? resolution}\n\n/menu untuk buat lagi`, true);
+    await sendResult(chatId, outputUrl, `🔺 ByteDance Video Upscaler — ${resLabel[resolution] ?? resolution}\n\n/menu untuk buat lagi`, true);
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
     console.log(`[${userId}] Upscale done`);
   } catch (err: any) {
