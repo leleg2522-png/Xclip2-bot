@@ -1596,7 +1596,7 @@ async function runUpscaleGeneration(chatId: number, userId: number, statusMsgId:
         Authorization: `Bearer ${apiKey}`,
         ...form.getHeaders(),
       },
-      timeout: 180_000,
+      timeout: 600_000,
       maxBodyLength: Infinity,
     });
 
