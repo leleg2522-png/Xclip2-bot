@@ -4,13 +4,13 @@ import * as schema from "./schema";
 
 const { Pool } = pg;
 
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
-  );
+const dbUrl = process.env.RAILWAY_DATABASE_URL ?? process.env.DATABASE_URL;
+
+if (!dbUrl) {
+  throw new Error("RAILWAY_DATABASE_URL must be set.");
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+export const pool = new Pool({ connectionString: dbUrl });
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";
