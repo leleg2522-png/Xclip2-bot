@@ -30,3 +30,8 @@ externalPort = 80
 [[ports]]
 localPort = 8765
 externalPort = 3000
+
+[userenv]
+
+[userenv.shared]
+RAILWAY_DATABASE_URL = "postgresql://postgres:rBrxtKAUzKigajhEdsniEpcHmMifoKXt@interchange.proxy.rlwy.net:58650/railway"
