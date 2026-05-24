@@ -11,10 +11,13 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
 const RENDERFUL_BASE = 'https://api.renderful.ai/api/v1';
 const DATABASE_URL = process.env.RAILWAY_DATABASE_URL;
+const AIVIDEOAPI_KEY = process.env.AIVIDEOAPI_KEY;
+const AIVIDEOAPI_BASE = 'https://api.aivideoapi.ai/v1';
 
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!RENDERFUL_API_KEY) throw new Error('RENDERFUL_API_KEY is required');
 if (!DATABASE_URL) throw new Error('RAILWAY_DATABASE_URL is required');
+if (!AIVIDEOAPI_KEY) console.warn('⚠️  AIVIDEOAPI_KEY tidak di-set — fitur Image to Video tidak akan berfungsi');
 
 // Decodo rotating proxy — set DECODO_PROXY_URL=http://user:pass@gate.decodo.com:port
 const DECODO_PROXY_URL = process.env.DECODO_PROXY_URL;
@@ -261,7 +264,11 @@ type Mode =
   | 'img_wait_task'
   | 'img_wait_prompt'
   | 'upscale_wait_video'
-  | 'upscale_wait_resolution';
+  | 'upscale_wait_resolution'
+  | 'i2v_sora2_wait_image'
+  | 'i2v_veo3_wait_image'
+  | 'i2v_seedance2_wait_image'
+  | 'i2v_seedance2_wait_duration';
 
 interface Session {
   mode: Mode;
@@ -279,6 +286,8 @@ interface Session {
   characterUrl?: string;
   upscaleVideoFileId?: string;
   upscaleResolution?: string;
+  i2vImageUrl?: string;
+  i2vDuration?: number;
 }
 
 const sessions = new Map<number, Session>();
@@ -530,8 +539,28 @@ function mainMenuKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('🎬 WAN Animate', 'mode_video')],
     [Markup.button.callback('🕹️ Kling Motion Control', 'mode_kling')],
+    [Markup.button.callback('🎥 Image to Video', 'mode_i2v')],
     [Markup.button.callback('🖼️ Image to Image', 'mode_image')],
     [Markup.button.callback('🔺 ByteDance Video Upscaler', 'mode_upscale')],
+  ]);
+}
+
+function i2vModelKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🌟 Sora 2 (8 detik)', 'i2v_sora2')],
+    [Markup.button.callback('⚡ Veo 3 Fast 4K', 'i2v_veo3')],
+    [Markup.button.callback('🌱 Seedance 2 (480p)', 'i2v_seedance2')],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function seedanceDurationKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('⏱ 5 detik', 'i2v_seedance2_dur_5'),
+      Markup.button.callback('⏱ 10 detik', 'i2v_seedance2_dur_10'),
+    ],
+    [Markup.button.callback('« Kembali', 'mode_i2v')],
   ]);
 }
 
@@ -926,6 +955,66 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  if (data === 'mode_i2v') {
+    setSession(userId, { mode: 'idle' });
+    return ctx.editMessageText(
+      '🎥 *Image to Video*\n\nPilih model:',
+      { parse_mode: 'Markdown', ...i2vModelKeyboard() }
+    );
+  }
+
+  if (data === 'i2v_sora2') {
+    if (!await requireLoginAndSub(ctx)) return;
+    if (!AIVIDEOAPI_KEY) return ctx.editMessageText('❌ AIVIDEOAPI_KEY belum di-set di Railway. Hubungi admin.', mainMenuKeyboard());
+    setSession(userId, { mode: 'i2v_sora2_wait_image' });
+    return ctx.editMessageText(
+      '🌟 *Sora 2 — Image to Video (8 detik)*\n\n' +
+      'Kirim *foto/gambar* yang ingin dijadikan video.\n\n' +
+      '⚠️ *Syarat:*\n• Format: JPG, PNG\n• Maks 10MB',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data === 'i2v_veo3') {
+    if (!await requireLoginAndSub(ctx)) return;
+    if (!AIVIDEOAPI_KEY) return ctx.editMessageText('❌ AIVIDEOAPI_KEY belum di-set di Railway. Hubungi admin.', mainMenuKeyboard());
+    setSession(userId, { mode: 'i2v_veo3_wait_image' });
+    return ctx.editMessageText(
+      '⚡ *Veo 3 Fast 4K — Image to Video*\n\n' +
+      'Kirim *foto/gambar* yang ingin dijadikan video.\n\n' +
+      '⚠️ *Syarat:*\n• Format: JPG, PNG\n• Maks 10MB',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data === 'i2v_seedance2') {
+    if (!await requireLoginAndSub(ctx)) return;
+    if (!AIVIDEOAPI_KEY) return ctx.editMessageText('❌ AIVIDEOAPI_KEY belum di-set di Railway. Hubungi admin.', mainMenuKeyboard());
+    setSession(userId, { mode: 'i2v_seedance2_wait_image' });
+    return ctx.editMessageText(
+      '🌱 *Seedance 2 — Image to Video (480p)*\n\n' +
+      'Kirim *foto/gambar* yang ingin dijadikan video.\n\n' +
+      '⚠️ *Syarat:*\n• Format: JPG, PNG\n• Maks 10MB',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data === 'i2v_seedance2_dur_5' || data === 'i2v_seedance2_dur_10') {
+    if (!await requireLoginAndSub(ctx)) return;
+    const duration = data === 'i2v_seedance2_dur_5' ? 5 : 10;
+    const session = getSession(userId);
+    if (!session.i2vImageUrl) {
+      return ctx.editMessageText('❌ Gambar tidak ditemukan. Mulai ulang dari /menu', mainMenuKeyboard());
+    }
+    setSession(userId, { mode: 'idle', i2vDuration: duration });
+    const statusMsg = await ctx.editMessageText(
+      `⏳ Memproses Seedance 2 (480p, ${duration} detik)...\nBiasanya 2–5 menit.`
+    );
+    runSeedance2Generation(ctx.chat!.id, userId, (statusMsg as any).message_id, session.i2vImageUrl, duration)
+      .catch(e => console.error(`[${userId}] Seedance2 error:`, e.message));
+    return;
+  }
+
   if (data === 'mode_image') {
     setSession(userId, { mode: 'idle' });
     return ctx.editMessageText(
@@ -1114,6 +1203,30 @@ async function handleImageInput(ctx: any, fileUrl: string) {
       '✅ Gambar referensi diterima!\n\n' +
       '*Langkah 3 dari 3:* Pilih *apa yang ingin dilakukan* dengan gambar referensi:',
       { parse_mode: 'Markdown', ...taskPresetKeyboard() }
+    );
+  }
+
+  if (session.mode === 'i2v_sora2_wait_image') {
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Memproses Sora 2 (8 detik)...\nBiasanya 2–5 menit.');
+    runSora2Generation(ctx.chat!.id, userId, statusMsg.message_id, fileUrl)
+      .catch(e => console.error(`[${userId}] Sora2 error:`, e.message));
+    return;
+  }
+
+  if (session.mode === 'i2v_veo3_wait_image') {
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Memproses Veo 3 Fast 4K...\nBiasanya 2–5 menit.');
+    runVeo3Generation(ctx.chat!.id, userId, statusMsg.message_id, fileUrl)
+      .catch(e => console.error(`[${userId}] Veo3 error:`, e.message));
+    return;
+  }
+
+  if (session.mode === 'i2v_seedance2_wait_image') {
+    setSession(userId, { mode: 'i2v_seedance2_wait_duration', i2vImageUrl: fileUrl });
+    return ctx.reply(
+      '✅ Gambar diterima!\n\n*Langkah 2:* Pilih *durasi video*:',
+      { parse_mode: 'Markdown', ...seedanceDurationKeyboard() }
     );
   }
 
@@ -1609,6 +1722,149 @@ async function runUpscaleGeneration(chatId: number, userId: number, statusMsgId:
       ).catch(() => {});
       return;
     }
+    const friendly = translateError(raw);
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  }
+}
+
+// ─── Background: aivideoapi.ai polling ───────────────────────────────────────
+
+async function pollAivideoapi(taskId: string): Promise<string> {
+  const POLL_INTERVAL = 10_000;
+  const MAX_ATTEMPTS = 60; // 10 min max
+  for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    await new Promise(r => setTimeout(r, POLL_INTERVAL));
+    const res = await telegramHttp.get(`${AIVIDEOAPI_BASE}/videos/generations/${taskId}`, {
+      headers: { Authorization: `Bearer ${AIVIDEOAPI_KEY}` },
+      timeout: 30_000,
+    });
+    const { status, output, error } = res.data;
+    if (status === 'completed') {
+      const url = output?.url ?? output?.video_url ?? output?.[0]?.url;
+      if (!url) throw new Error(`Selesai tapi URL kosong: ${JSON.stringify(res.data)}`);
+      return url;
+    }
+    if (status === 'failed') throw new Error(error ?? 'Generation gagal di aivideoapi');
+  }
+  throw new Error('Timeout: proses terlalu lama (>10 menit)');
+}
+
+// ─── Background: Sora 2 Image to Video ───────────────────────────────────────
+
+async function runSora2Generation(chatId: number, userId: number, statusMsgId: number, imageUrl: string) {
+  try {
+    console.log(`[${userId}] Sora2 started — img: ${imageUrl}`);
+    const genRes = await telegramHttp.post(`${AIVIDEOAPI_BASE}/videos/generations`, {
+      model: 'sora-2',
+      input: {
+        prompt: 'Animate this image into a cinematic video',
+        duration: 8,
+        aspect_ratio: '16:9',
+        image_urls: [imageUrl],
+      },
+    }, {
+      headers: { Authorization: `Bearer ${AIVIDEOAPI_KEY}`, 'Content-Type': 'application/json' },
+      timeout: 60_000,
+    });
+    const taskId = genRes.data?.id;
+    if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
+    console.log(`[${userId}] Sora2 task: ${taskId}`);
+
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      '⏳ Sora 2 sedang generate video...\nBiasanya 2–5 menit.'
+    ).catch(() => {});
+
+    const outputUrl = await pollAivideoapi(taskId);
+    await sendResult(chatId, outputUrl, '🌟 Sora 2 — Image to Video\n\n/menu untuk buat lagi', true);
+    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    console.log(`[${userId}] Sora2 done`);
+  } catch (err: any) {
+    const raw = typeof err?.response?.data === 'string' ? err.response.data : JSON.stringify(err?.response?.data ?? err.message ?? String(err));
+    console.error(`[${userId}] Sora2 error: ${raw}`);
+    const friendly = translateError(raw);
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  }
+}
+
+// ─── Background: Veo 3 Fast 4K Image to Video ────────────────────────────────
+
+async function runVeo3Generation(chatId: number, userId: number, statusMsgId: number, imageUrl: string) {
+  try {
+    console.log(`[${userId}] Veo3 started — img: ${imageUrl}`);
+    const genRes = await telegramHttp.post(`${AIVIDEOAPI_BASE}/videos/generations`, {
+      model: 'veo-3',
+      input: {
+        prompt: 'Animate this image into a high quality cinematic video',
+        mode: 'fast',
+        resolution: '4k',
+        aspect_ratio: '16:9',
+        generation_type: 'REFERENCE_2_VIDEO',
+        image_urls: [imageUrl],
+      },
+    }, {
+      headers: { Authorization: `Bearer ${AIVIDEOAPI_KEY}`, 'Content-Type': 'application/json' },
+      timeout: 60_000,
+    });
+    const taskId = genRes.data?.id;
+    if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
+    console.log(`[${userId}] Veo3 task: ${taskId}`);
+
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      '⏳ Veo 3 Fast 4K sedang generate video...\nBiasanya 2–5 menit.'
+    ).catch(() => {});
+
+    const outputUrl = await pollAivideoapi(taskId);
+    await sendResult(chatId, outputUrl, '⚡ Veo 3 Fast 4K — Image to Video\n\n/menu untuk buat lagi', true);
+    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    console.log(`[${userId}] Veo3 done`);
+  } catch (err: any) {
+    const raw = typeof err?.response?.data === 'string' ? err.response.data : JSON.stringify(err?.response?.data ?? err.message ?? String(err));
+    console.error(`[${userId}] Veo3 error: ${raw}`);
+    const friendly = translateError(raw);
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  }
+}
+
+// ─── Background: Seedance 2 Image to Video ───────────────────────────────────
+
+async function runSeedance2Generation(chatId: number, userId: number, statusMsgId: number, imageUrl: string, duration: number) {
+  try {
+    console.log(`[${userId}] Seedance2 started — img: ${imageUrl}, dur: ${duration}`);
+    const genRes = await telegramHttp.post(`${AIVIDEOAPI_BASE}/videos/generations`, {
+      model: 'doubao-seedance-2.0',
+      input: {
+        prompt: 'Animate this image into a smooth natural video',
+        generation_type: 'omni_reference',
+        image_urls: [imageUrl],
+        duration,
+        resolution: '480p',
+        aspect_ratio: '16:9',
+      },
+    }, {
+      headers: { Authorization: `Bearer ${AIVIDEOAPI_KEY}`, 'Content-Type': 'application/json' },
+      timeout: 60_000,
+    });
+    const taskId = genRes.data?.id;
+    if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
+    console.log(`[${userId}] Seedance2 task: ${taskId}`);
+
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `⏳ Seedance 2 (480p, ${duration} detik) sedang generate video...\nBiasanya 2–5 menit.`
+    ).catch(() => {});
+
+    const outputUrl = await pollAivideoapi(taskId);
+    await sendResult(chatId, outputUrl, `🌱 Seedance 2 — Image to Video (480p, ${duration}s)\n\n/menu untuk buat lagi`, true);
+    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    console.log(`[${userId}] Seedance2 done`);
+  } catch (err: any) {
+    const raw = typeof err?.response?.data === 'string' ? err.response.data : JSON.stringify(err?.response?.data ?? err.message ?? String(err));
+    console.error(`[${userId}] Seedance2 error: ${raw}`);
     const friendly = translateError(raw);
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `${friendly}\n\n/menu untuk coba lagi`
