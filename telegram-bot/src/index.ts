@@ -41,6 +41,7 @@ const renderfulHttp = axios.create({
 // Direct HTTP client for Telegram downloads — tidak pakai proxy
 const telegramHttp = axios.create({ timeout: 60_000 });
 
+
 // ─── Database ─────────────────────────────────────────────────────────────────
 
 const db = new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } });
@@ -1573,31 +1574,20 @@ async function runUpscaleGeneration(chatId: number, userId: number, statusMsgId:
 
   try {
     const videoFileLink = await bot.telegram.getFileLink(videoFileId);
-    console.log(`[${userId}] ByteDance Upscale — downloading video from Telegram...`);
-
-    // Download video from Telegram first — ByteDance upscaler requires file upload (not URL)
-    const videoRes = await telegramHttp.get(videoFileLink.href, { responseType: 'arraybuffer', timeout: 120_000 });
-    const videoBuf = Buffer.from(videoRes.data);
-    console.log(`[${userId}] Video downloaded: ${(videoBuf.length / 1024 / 1024).toFixed(1)} MB, res: ${resolution}`);
+    console.log(`[${userId}] ByteDance Upscale started — res: ${resolution}, vid: ${videoFileLink.href}`);
 
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `⏳ Mengunggah & memproses upscale ke ${resLabel[resolution] ?? resolution}...\nBiasanya 2–5 menit.`
+      `⏳ Sedang di-upscale ke ${resLabel[resolution] ?? resolution}...\nBiasanya 2–5 menit.`
     ).catch(() => {});
 
-    // Upload as multipart form — Renderful ByteDance upscaler needs a file, not a URL
-    const form = new FormData();
-    form.append('type', 'video-to-video');
-    form.append('model', 'bytedance-video-upscaler');
-    form.append('target_resolution', resolution);
-    form.append('video', videoBuf, { filename: 'input.mp4', contentType: 'video/mp4' });
-
-    const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, form, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        ...form.getHeaders(),
-      },
+    const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
+      type: 'video-to-video',
+      model: 'bytedance-video-upscaler',
+      video_url: videoFileLink.href,
+      target_resolution: resolution,
+    }, {
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       timeout: 600_000,
-      maxBodyLength: Infinity,
     });
 
     console.log(`[${userId}] Upscale queued: ${JSON.stringify(genRes.data)}`);
