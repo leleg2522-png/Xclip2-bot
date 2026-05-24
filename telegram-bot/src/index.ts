@@ -1573,22 +1573,36 @@ async function runUpscaleGeneration(chatId: number, userId: number, statusMsgId:
 
   try {
     const videoFileLink = await bot.telegram.getFileLink(videoFileId);
-    console.log(`[${userId}] ByteDance Upscale started — res: ${resolution}, vid: ${videoFileLink.href}`);
+    console.log(`[${userId}] ByteDance Upscale — downloading video from Telegram...`);
 
-    const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
-      type: 'video-to-video',
-      model: 'bytedance-video-upscaler',
-      video_url: videoFileLink.href,
-      target_resolution: resolution,
-    }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
+    // Download video from Telegram first — ByteDance upscaler requires file upload (not URL)
+    const videoRes = await telegramHttp.get(videoFileLink.href, { responseType: 'arraybuffer', timeout: 120_000 });
+    const videoBuf = Buffer.from(videoRes.data);
+    console.log(`[${userId}] Video downloaded: ${(videoBuf.length / 1024 / 1024).toFixed(1)} MB, res: ${resolution}`);
+
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `⏳ Mengunggah & memproses upscale ke ${resLabel[resolution] ?? resolution}...\nBiasanya 2–5 menit.`
+    ).catch(() => {});
+
+    // Upload as multipart form — Renderful ByteDance upscaler needs a file, not a URL
+    const form = new FormData();
+    form.append('type', 'video-to-video');
+    form.append('model', 'bytedance-video-upscaler');
+    form.append('target_resolution', resolution);
+    form.append('video', videoBuf, { filename: 'input.mp4', contentType: 'video/mp4' });
+
+    const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, form, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        ...form.getHeaders(),
+      },
+      timeout: 180_000,
+      maxBodyLength: Infinity,
+    });
 
     console.log(`[${userId}] Upscale queued: ${JSON.stringify(genRes.data)}`);
     const { id: taskId, poll_url: pollUrl } = genRes.data;
     if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
-
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `⏳ Sedang di-upscale ke ${resLabel[resolution] ?? resolution}...\nBiasanya 2–5 menit.`
-    ).catch(() => {});
 
     const outputUrl = await pollForResult(taskId, userId, apiKey, pollUrl);
     await sendResult(chatId, outputUrl, `🔺 ByteDance Video Upscaler — ${resLabel[resolution] ?? resolution}\n\n/menu untuk buat lagi`, true);
