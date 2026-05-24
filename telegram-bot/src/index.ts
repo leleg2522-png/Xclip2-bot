@@ -11,13 +11,11 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
 const RENDERFUL_BASE = 'https://api.renderful.ai/api/v1';
 const DATABASE_URL = process.env.RAILWAY_DATABASE_URL;
-const AIVIDEOAPI_KEY = process.env.AIVIDEOAPI_KEY;
 const AIVIDEOAPI_BASE = 'https://api.aivideoapi.ai/v1';
 
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!RENDERFUL_API_KEY) throw new Error('RENDERFUL_API_KEY is required');
 if (!DATABASE_URL) throw new Error('RAILWAY_DATABASE_URL is required');
-if (!AIVIDEOAPI_KEY) console.warn('⚠️  AIVIDEOAPI_KEY tidak di-set — fitur Image to Video tidak akan berfungsi');
 
 // Decodo rotating proxy — set DECODO_PROXY_URL=http://user:pass@gate.decodo.com:port
 const DECODO_PROXY_URL = process.env.DECODO_PROXY_URL;
@@ -160,6 +158,48 @@ async function isAdmin(dbUserId: number): Promise<boolean> {
   return res.rows[0]?.is_admin === true;
 }
 
+// ─── aivideoapi Key Pool ──────────────────────────────────────────────────────
+
+let i2vKeyRoundRobinIndex = 0;
+
+async function getNextI2vKey(): Promise<string | null> {
+  const res = await db.query(
+    `SELECT id, api_key FROM aivideoapi_key_pool WHERE status = 'available' ORDER BY id`
+  );
+  if (res.rows.length === 0) return null;
+  const idx = i2vKeyRoundRobinIndex % res.rows.length;
+  i2vKeyRoundRobinIndex = (i2vKeyRoundRobinIndex + 1) % res.rows.length;
+  return res.rows[idx].api_key;
+}
+
+async function markI2vKeyDead(apiKey: string): Promise<void> {
+  await db.query(
+    `UPDATE aivideoapi_key_pool SET status = 'dead', dead_at = NOW() WHERE api_key = $1`,
+    [apiKey]
+  );
+}
+
+async function addI2vKeyToPool(apiKey: string): Promise<boolean> {
+  try {
+    await db.query(
+      `INSERT INTO aivideoapi_key_pool (api_key, status) VALUES ($1, 'available') ON CONFLICT (api_key) DO NOTHING`,
+      [apiKey]
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function getI2vPoolStats(): Promise<{ available: number; dead: number }> {
+  const res = await db.query(
+    `SELECT status, COUNT(*) AS cnt FROM aivideoapi_key_pool GROUP BY status`
+  );
+  const stats: any = { available: 0, dead: 0 };
+  for (const row of res.rows) stats[row.status] = parseInt(row.cnt);
+  return stats;
+}
+
 // ─── Kling Daily Limit ────────────────────────────────────────────────────────
 
 const KLING_DAILY_LIMIT = 6;
@@ -288,6 +328,7 @@ interface Session {
   upscaleResolution?: string;
   i2vImageUrl?: string;
   i2vDuration?: number;
+  i2vCurrentKey?: string;
 }
 
 const sessions = new Map<number, Session>();
@@ -890,6 +931,101 @@ bot.command('clearpool', async (ctx) => {
   );
 });
 
+// ─── Admin commands: aivideoapi key pool ─────────────────────────────────────
+
+bot.command('addi2vkey', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const raw = ctx.message.text.replace(/^\/addi2vkey\s*/i, '').trim();
+  if (!raw) {
+    return ctx.reply(
+      '📝 Format (pisah dengan koma):\n' +
+      '/addi2vkey aiv_abc123\n\n' +
+      'Atau banyak sekaligus:\n' +
+      '/addi2vkey aiv_abc123,aiv_def456,aiv_ghi789'
+    );
+  }
+
+  const keys = raw.split(',').map(k => k.trim()).filter(k => k.length > 0);
+  let added = 0, skipped = 0;
+
+  for (const key of keys) {
+    const ok = await addI2vKeyToPool(key);
+    if (ok) added++; else skipped++;
+  }
+
+  const stats = await getI2vPoolStats();
+  let msg = `✅ Selesai menambahkan key i2v!\n\n`;
+  msg += `• Berhasil ditambah: ${added}\n`;
+  if (skipped > 0) msg += `• Sudah ada / gagal: ${skipped}\n`;
+  msg += `\n📊 Status pool i2v sekarang:\n`;
+  msg += `• Available: ${stats.available}\n`;
+  msg += `• Dead: ${stats.dead}`;
+  return ctx.reply(msg);
+});
+
+bot.command('i2vpoolstatus', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const stats = await getI2vPoolStats();
+  const total = stats.available + stats.dead;
+  return ctx.reply(
+    `📊 *Status aivideoapi Key Pool (i2v)*\n\n` +
+    `• ✅ Available: *${stats.available}*\n` +
+    `• ❌ Dead: *${stats.dead}*\n` +
+    `• 📦 Total: *${total}*`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+bot.command('removei2vkey', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const parts = ctx.message.text.trim().split(/\s+/);
+  if (parts.length < 2) return ctx.reply('📝 *Format:* `/removei2vkey <api_key>`', { parse_mode: 'Markdown' });
+
+  const apiKey = parts[1].trim();
+  const res = await db.query(
+    `UPDATE aivideoapi_key_pool SET status = 'dead', dead_at = NOW() WHERE api_key = $1 RETURNING id`,
+    [apiKey]
+  );
+  if (res.rows.length === 0) return ctx.reply('❌ Key tidak ditemukan di pool i2v.');
+  return ctx.reply('✅ Key i2v berhasil dinonaktifkan (dead).');
+});
+
+bot.command('restorei2vkey', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const parts = ctx.message.text.trim().split(/\s+/);
+  if (parts.length < 2) return ctx.reply('📝 *Format:* `/restorei2vkey <api_key>`', { parse_mode: 'Markdown' });
+
+  const apiKey = parts[1].trim();
+  const res = await db.query(
+    `UPDATE aivideoapi_key_pool SET status = 'available', dead_at = NULL WHERE api_key = $1 RETURNING id`,
+    [apiKey]
+  );
+  if (res.rows.length === 0) return ctx.reply('❌ Key tidak ditemukan di pool i2v.');
+  return ctx.reply('✅ Key i2v berhasil dipulihkan ke status *available*.', { parse_mode: 'Markdown' });
+});
+
+bot.command('cleari2vpool', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const res = await db.query(`DELETE FROM aivideoapi_key_pool RETURNING api_key`);
+  if (res.rows.length === 0) return ctx.reply('ℹ️ Pool i2v sudah kosong.');
+  return ctx.reply(`🗑️ Pool i2v dikosongkan — *${res.rows.length} key* dihapus.`, { parse_mode: 'Markdown' });
+});
+
 bot.command('cancel', (ctx) => {
   setSession(ctx.from.id, { mode: 'idle' });
   return ctx.reply('✅ Dibatalkan.', mainMenuKeyboard());
@@ -965,7 +1101,6 @@ bot.on('callback_query', async (ctx) => {
 
   if (data === 'i2v_sora2') {
     if (!await requireLoginAndSub(ctx)) return;
-    if (!AIVIDEOAPI_KEY) return ctx.editMessageText('❌ AIVIDEOAPI_KEY belum di-set di Railway. Hubungi admin.', mainMenuKeyboard());
     setSession(userId, { mode: 'i2v_sora2_wait_image' });
     return ctx.editMessageText(
       '🌟 *Sora 2 — Image to Video (8 detik)*\n\n' +
@@ -977,7 +1112,6 @@ bot.on('callback_query', async (ctx) => {
 
   if (data === 'i2v_veo3') {
     if (!await requireLoginAndSub(ctx)) return;
-    if (!AIVIDEOAPI_KEY) return ctx.editMessageText('❌ AIVIDEOAPI_KEY belum di-set di Railway. Hubungi admin.', mainMenuKeyboard());
     setSession(userId, { mode: 'i2v_veo3_wait_image' });
     return ctx.editMessageText(
       '⚡ *Veo 3 Fast 4K — Image to Video*\n\n' +
@@ -989,7 +1123,6 @@ bot.on('callback_query', async (ctx) => {
 
   if (data === 'i2v_seedance2') {
     if (!await requireLoginAndSub(ctx)) return;
-    if (!AIVIDEOAPI_KEY) return ctx.editMessageText('❌ AIVIDEOAPI_KEY belum di-set di Railway. Hubungi admin.', mainMenuKeyboard());
     setSession(userId, { mode: 'i2v_seedance2_wait_image' });
     return ctx.editMessageText(
       '🌱 *Seedance 2 — Image to Video (480p)*\n\n' +
@@ -1731,13 +1864,13 @@ async function runUpscaleGeneration(chatId: number, userId: number, statusMsgId:
 
 // ─── Background: aivideoapi.ai polling ───────────────────────────────────────
 
-async function pollAivideoapi(taskId: string): Promise<string> {
+async function pollAivideoapi(taskId: string, apiKey: string): Promise<string> {
   const POLL_INTERVAL = 10_000;
   const MAX_ATTEMPTS = 60; // 10 min max
   for (let i = 0; i < MAX_ATTEMPTS; i++) {
     await new Promise(r => setTimeout(r, POLL_INTERVAL));
     const res = await telegramHttp.get(`${AIVIDEOAPI_BASE}/videos/generations/${taskId}`, {
-      headers: { Authorization: `Bearer ${AIVIDEOAPI_KEY}` },
+      headers: { Authorization: `Bearer ${apiKey}` },
       timeout: 30_000,
     });
     const { status, output, error } = res.data;
@@ -1751,9 +1884,23 @@ async function pollAivideoapi(taskId: string): Promise<string> {
   throw new Error('Timeout: proses terlalu lama (>10 menit)');
 }
 
+function isI2vKeyExhaustedError(raw: string): boolean {
+  const lower = raw.toLowerCase();
+  return lower.includes('401') || lower.includes('unauthorized') || lower.includes('invalid api key')
+    || lower.includes('quota') || lower.includes('exhausted') || lower.includes('limit exceeded')
+    || lower.includes('insufficient') || lower.includes('402') || lower.includes('payment required');
+}
+
 // ─── Background: Sora 2 Image to Video ───────────────────────────────────────
 
 async function runSora2Generation(chatId: number, userId: number, statusMsgId: number, imageUrl: string) {
+  const apiKey = await getNextI2vKey();
+  if (!apiKey) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      '❌ Pool key Image to Video kosong. Hubungi admin untuk mengisi key.\n\n/menu untuk kembali'
+    ).catch(() => {});
+    return;
+  }
   try {
     console.log(`[${userId}] Sora2 started — img: ${imageUrl}`);
     const genRes = await telegramHttp.post(`${AIVIDEOAPI_BASE}/videos/generations`, {
@@ -1765,7 +1912,7 @@ async function runSora2Generation(chatId: number, userId: number, statusMsgId: n
         image_urls: [imageUrl],
       },
     }, {
-      headers: { Authorization: `Bearer ${AIVIDEOAPI_KEY}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       timeout: 60_000,
     });
     const taskId = genRes.data?.id;
@@ -1776,13 +1923,21 @@ async function runSora2Generation(chatId: number, userId: number, statusMsgId: n
       '⏳ Sora 2 sedang generate video...\nBiasanya 2–5 menit.'
     ).catch(() => {});
 
-    const outputUrl = await pollAivideoapi(taskId);
+    const outputUrl = await pollAivideoapi(taskId, apiKey);
     await sendResult(chatId, outputUrl, '🌟 Sora 2 — Image to Video\n\n/menu untuk buat lagi', true);
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
     console.log(`[${userId}] Sora2 done`);
   } catch (err: any) {
     const raw = typeof err?.response?.data === 'string' ? err.response.data : JSON.stringify(err?.response?.data ?? err.message ?? String(err));
     console.error(`[${userId}] Sora2 error: ${raw}`);
+    if (isI2vKeyExhaustedError(raw)) {
+      await markI2vKeyDead(apiKey);
+      console.log(`[${userId}] i2v key marked dead: ${apiKey.slice(0, 10)}...`);
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+        '⚠️ API key i2v habis/invalid, sudah dinonaktifkan otomatis. Coba lagi dengan /menu'
+      ).catch(() => {});
+      return;
+    }
     const friendly = translateError(raw);
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `${friendly}\n\n/menu untuk coba lagi`
@@ -1793,6 +1948,13 @@ async function runSora2Generation(chatId: number, userId: number, statusMsgId: n
 // ─── Background: Veo 3 Fast 4K Image to Video ────────────────────────────────
 
 async function runVeo3Generation(chatId: number, userId: number, statusMsgId: number, imageUrl: string) {
+  const apiKey = await getNextI2vKey();
+  if (!apiKey) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      '❌ Pool key Image to Video kosong. Hubungi admin untuk mengisi key.\n\n/menu untuk kembali'
+    ).catch(() => {});
+    return;
+  }
   try {
     console.log(`[${userId}] Veo3 started — img: ${imageUrl}`);
     const genRes = await telegramHttp.post(`${AIVIDEOAPI_BASE}/videos/generations`, {
@@ -1806,7 +1968,7 @@ async function runVeo3Generation(chatId: number, userId: number, statusMsgId: nu
         image_urls: [imageUrl],
       },
     }, {
-      headers: { Authorization: `Bearer ${AIVIDEOAPI_KEY}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       timeout: 60_000,
     });
     const taskId = genRes.data?.id;
@@ -1817,13 +1979,21 @@ async function runVeo3Generation(chatId: number, userId: number, statusMsgId: nu
       '⏳ Veo 3 Fast 4K sedang generate video...\nBiasanya 2–5 menit.'
     ).catch(() => {});
 
-    const outputUrl = await pollAivideoapi(taskId);
+    const outputUrl = await pollAivideoapi(taskId, apiKey);
     await sendResult(chatId, outputUrl, '⚡ Veo 3 Fast 4K — Image to Video\n\n/menu untuk buat lagi', true);
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
     console.log(`[${userId}] Veo3 done`);
   } catch (err: any) {
     const raw = typeof err?.response?.data === 'string' ? err.response.data : JSON.stringify(err?.response?.data ?? err.message ?? String(err));
     console.error(`[${userId}] Veo3 error: ${raw}`);
+    if (isI2vKeyExhaustedError(raw)) {
+      await markI2vKeyDead(apiKey);
+      console.log(`[${userId}] i2v key marked dead: ${apiKey.slice(0, 10)}...`);
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+        '⚠️ API key i2v habis/invalid, sudah dinonaktifkan otomatis. Coba lagi dengan /menu'
+      ).catch(() => {});
+      return;
+    }
     const friendly = translateError(raw);
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `${friendly}\n\n/menu untuk coba lagi`
@@ -1834,6 +2004,13 @@ async function runVeo3Generation(chatId: number, userId: number, statusMsgId: nu
 // ─── Background: Seedance 2 Image to Video ───────────────────────────────────
 
 async function runSeedance2Generation(chatId: number, userId: number, statusMsgId: number, imageUrl: string, duration: number) {
+  const apiKey = await getNextI2vKey();
+  if (!apiKey) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      '❌ Pool key Image to Video kosong. Hubungi admin untuk mengisi key.\n\n/menu untuk kembali'
+    ).catch(() => {});
+    return;
+  }
   try {
     console.log(`[${userId}] Seedance2 started — img: ${imageUrl}, dur: ${duration}`);
     const genRes = await telegramHttp.post(`${AIVIDEOAPI_BASE}/videos/generations`, {
@@ -1847,7 +2024,7 @@ async function runSeedance2Generation(chatId: number, userId: number, statusMsgI
         aspect_ratio: '16:9',
       },
     }, {
-      headers: { Authorization: `Bearer ${AIVIDEOAPI_KEY}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       timeout: 60_000,
     });
     const taskId = genRes.data?.id;
@@ -1858,13 +2035,21 @@ async function runSeedance2Generation(chatId: number, userId: number, statusMsgI
       `⏳ Seedance 2 (480p, ${duration} detik) sedang generate video...\nBiasanya 2–5 menit.`
     ).catch(() => {});
 
-    const outputUrl = await pollAivideoapi(taskId);
+    const outputUrl = await pollAivideoapi(taskId, apiKey);
     await sendResult(chatId, outputUrl, `🌱 Seedance 2 — Image to Video (480p, ${duration}s)\n\n/menu untuk buat lagi`, true);
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
     console.log(`[${userId}] Seedance2 done`);
   } catch (err: any) {
     const raw = typeof err?.response?.data === 'string' ? err.response.data : JSON.stringify(err?.response?.data ?? err.message ?? String(err));
     console.error(`[${userId}] Seedance2 error: ${raw}`);
+    if (isI2vKeyExhaustedError(raw)) {
+      await markI2vKeyDead(apiKey);
+      console.log(`[${userId}] i2v key marked dead: ${apiKey.slice(0, 10)}...`);
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+        '⚠️ API key i2v habis/invalid, sudah dinonaktifkan otomatis. Coba lagi dengan /menu'
+      ).catch(() => {});
+      return;
+    }
     const friendly = translateError(raw);
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `${friendly}\n\n/menu untuk coba lagi`
