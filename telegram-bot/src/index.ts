@@ -258,7 +258,9 @@ type Mode =
   | 'img_wait_ratio'
   | 'img_wait_resolution'
   | 'img_wait_task'
-  | 'img_wait_prompt';
+  | 'img_wait_prompt'
+  | 'upscale_wait_video'
+  | 'upscale_wait_resolution';
 
 interface Session {
   mode: Mode;
@@ -274,6 +276,8 @@ interface Session {
   aspectRatio?: string;
   resolution?: string;
   characterUrl?: string;
+  upscaleVideoFileId?: string;
+  upscaleResolution?: string;
 }
 
 const sessions = new Map<number, Session>();
@@ -526,6 +530,18 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🎬 WAN Animate', 'mode_video')],
     [Markup.button.callback('🕹️ Kling Motion Control', 'mode_kling')],
     [Markup.button.callback('🖼️ Image to Image', 'mode_image')],
+    [Markup.button.callback('🔺 ByteDance Video Upscale', 'mode_upscale')],
+  ]);
+}
+
+function upscaleResolutionKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('📺 720p', 'upscale_res_720p'),
+      Markup.button.callback('🖥️ 1080p', 'upscale_res_1080p'),
+      Markup.button.callback('💠 4K', 'upscale_res_4k'),
+    ],
+    [Markup.button.callback('« Kembali', 'back_main')],
   ]);
 }
 
@@ -917,6 +933,38 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  if (data === 'mode_upscale') {
+    setSession(userId, { mode: 'upscale_wait_video', upscaleVideoFileId: undefined, upscaleResolution: undefined });
+    return ctx.editMessageText(
+      '🔺 *ByteDance Video Upscale*\n\nTingkatkan resolusi video hingga 4K menggunakan teknologi ByteDance.\n\n' +
+      '*Langkah 1:* Kirim *video* yang ingin di-upscale.\n\n' +
+      '⚠️ *Syarat video:*\n' +
+      '• Format: MP4, MOV, dll\n' +
+      '• Maksimal ukuran: 19MB',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data.startsWith('upscale_res_')) {
+    if (!await requireLoginAndSub(ctx)) return;
+    const resolution = data.replace('upscale_res_', '');
+    const session = getSession(userId);
+    const videoFileId = session.upscaleVideoFileId;
+    if (!videoFileId) {
+      return ctx.editMessageText('❌ Video tidak ditemukan. Mulai ulang dari menu.', mainMenuKeyboard());
+    }
+    setSession(userId, { upscaleResolution: resolution, mode: 'idle' });
+    const resLabel: Record<string, string> = { '720p': '720p HD', '1080p': '1080p Full HD', '4k': '4K Ultra HD' };
+    await ctx.editMessageText(
+      `⏳ Memproses *ByteDance Video Upscale* ke *${resLabel[resolution] ?? resolution}*...\nHasil dikirim otomatis setelah selesai.`,
+      { parse_mode: 'Markdown' }
+    );
+    const statusMsgId = (ctx.callbackQuery as any).message?.message_id;
+    runUpscaleGeneration(ctx.chat!.id, userId, statusMsgId, videoFileId, resolution)
+      .catch(e => console.error(`[${userId}] Upscale gen error:`, e.message));
+    return;
+  }
+
   if (data.startsWith('model_')) {
     const model = data.replace('model_', '');
     const modelInfo = IMAGE_MODELS[model];
@@ -1088,6 +1136,17 @@ bot.on('video', async (ctx) => {
   const vid = ctx.message.video;
   const MAX_VIDEO_BYTES = 19 * 1024 * 1024; // 19MB — Telegram bot API limit is 20MB
 
+  if (session.mode === 'upscale_wait_video') {
+    if (vid.file_size && vid.file_size > MAX_VIDEO_BYTES) {
+      return ctx.reply(`❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
+    }
+    setSession(userId, { upscaleVideoFileId: vid.file_id, mode: 'upscale_wait_resolution' });
+    return ctx.reply(
+      '✅ Video diterima!\n\n*Langkah 2:* Pilih *resolusi output*:',
+      { parse_mode: 'Markdown', ...upscaleResolutionKeyboard() }
+    );
+  }
+
   if (session.mode === 'kling_wait_video' && session.characterUrl) {
     if (vid.file_size && vid.file_size > MAX_VIDEO_BYTES) {
       return ctx.reply(`❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
@@ -1221,6 +1280,18 @@ bot.on('document', async (ctx) => {
     const fileLink = await ctx.telegram.getFileLink(doc.file_id);
     await handleImageInput(ctx, fileLink.href);
     return;
+  }
+
+  if (doc.mime_type?.startsWith('video/') && session.mode === 'upscale_wait_video') {
+    const MAX_VIDEO_BYTES = 19 * 1024 * 1024;
+    if (doc.file_size && doc.file_size > MAX_VIDEO_BYTES) {
+      return ctx.reply(`❌ Video terlalu besar (${(doc.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB.`);
+    }
+    setSession(userId, { upscaleVideoFileId: doc.file_id, mode: 'upscale_wait_resolution' });
+    return ctx.reply(
+      '✅ Video diterima!\n\n*Langkah 2:* Pilih *resolusi output*:',
+      { parse_mode: 'Markdown', ...upscaleResolutionKeyboard() }
+    );
   }
 
   if (doc.mime_type?.startsWith('video/') && session.mode === 'kling_wait_video' && session.characterUrl) {
@@ -1479,6 +1550,54 @@ async function runImageGeneration(
     const rawMsg = err?.response?.data?.error ?? err?.response?.data ?? err.message ?? String(err);
     const raw = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
     console.error(`[${userId}] Image error: ${raw}`);
+    if (isKeyExhaustedError(raw)) {
+      await handleDeadKey(userId, apiKey);
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+        `⚠️ API key habis, sudah diganti otomatis. Coba lagi dengan /menu`
+      ).catch(() => {});
+      return;
+    }
+    const friendly = translateError(raw);
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  }
+}
+
+// ─── Background: ByteDance Video Upscale ─────────────────────────────────────
+
+async function runUpscaleGeneration(chatId: number, userId: number, statusMsgId: number, videoFileId: string, resolution: string) {
+  const apiKey = getNextKey(userId);
+  const resLabel: Record<string, string> = { '720p': '720p HD', '1080p': '1080p Full HD', '4k': '4K Ultra HD' };
+  const resMap: Record<string, string> = { '720p': '720p', '1080p': '1080p', '4k': '4k' };
+
+  try {
+    const videoFileLink = await bot.telegram.getFileLink(videoFileId);
+    console.log(`[${userId}] ByteDance Upscale started — res: ${resolution}, vid: ${videoFileLink.href}`);
+
+    const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
+      type: 'video-upscale',
+      model: 'bytedance-upscale-video',
+      video_url: videoFileLink.href,
+      resolution: resMap[resolution] ?? resolution,
+    }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
+
+    console.log(`[${userId}] Upscale queued: ${JSON.stringify(genRes.data)}`);
+    const { id: taskId, poll_url: pollUrl } = genRes.data;
+    if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
+
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `⏳ Sedang di-upscale ke ${resLabel[resolution] ?? resolution}...\nBiasanya 2–5 menit.`
+    ).catch(() => {});
+
+    const outputUrl = await pollForResult(taskId, userId, apiKey, pollUrl);
+    await sendResult(chatId, outputUrl, `🔺 ByteDance Video Upscale — ${resLabel[resolution] ?? resolution}\n\n/menu untuk buat lagi`, true);
+    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    console.log(`[${userId}] Upscale done`);
+  } catch (err: any) {
+    const rawMsg = err?.response?.data?.error ?? err?.response?.data ?? err.message ?? String(err);
+    const raw = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
+    console.error(`[${userId}] Upscale error: ${raw}`);
     if (isKeyExhaustedError(raw)) {
       await handleDeadKey(userId, apiKey);
       await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
