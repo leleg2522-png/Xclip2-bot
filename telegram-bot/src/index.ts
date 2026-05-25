@@ -163,6 +163,52 @@ async function isAdmin(dbUserId: number): Promise<boolean> {
   return res.rows[0]?.is_admin === true;
 }
 
+// ─── Freepik Key Pool ─────────────────────────────────────────────────────────
+
+let freepikKeyRoundRobinIndex = 0;
+
+async function getNextFreepikKey(skipKeys?: Set<string>): Promise<string | null> {
+  const res = await db.query(
+    `SELECT id, api_key FROM freepik_key_pool WHERE status = 'available' ORDER BY id`
+  );
+  if (res.rows.length === 0) return null;
+  const available = skipKeys && skipKeys.size > 0
+    ? res.rows.filter((r: any) => !skipKeys.has(r.api_key))
+    : res.rows;
+  if (available.length === 0) return null;
+  const idx = freepikKeyRoundRobinIndex % available.length;
+  freepikKeyRoundRobinIndex = (freepikKeyRoundRobinIndex + 1) % available.length;
+  return available[idx].api_key;
+}
+
+async function markFreepikKeyDead(apiKey: string): Promise<void> {
+  await db.query(
+    `UPDATE freepik_key_pool SET status = 'dead', dead_at = NOW() WHERE api_key = $1`,
+    [apiKey]
+  );
+}
+
+async function addFreepikKeyToPool(apiKey: string): Promise<boolean> {
+  try {
+    await db.query(
+      `INSERT INTO freepik_key_pool (api_key, status) VALUES ($1, 'available') ON CONFLICT (api_key) DO NOTHING`,
+      [apiKey]
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function getFreepikPoolStats(): Promise<{ available: number; dead: number }> {
+  const res = await db.query(
+    `SELECT status, COUNT(*) AS cnt FROM freepik_key_pool GROUP BY status`
+  );
+  const stats: any = { available: 0, dead: 0 };
+  for (const row of res.rows) stats[row.status] = parseInt(row.cnt);
+  return stats;
+}
+
 // ─── aivideoapi Key Pool ──────────────────────────────────────────────────────
 
 let i2vKeyRoundRobinIndex = 0;
@@ -970,6 +1016,99 @@ bot.command('clearpool', async (ctx) => {
 
 // ─── Admin commands: aivideoapi key pool ─────────────────────────────────────
 
+bot.command('addfreepikkey', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const raw = ctx.message.text.replace(/^\/addfreepikkey\s*/i, '').trim();
+  if (!raw) {
+    return ctx.reply(
+      '📝 Format (pisah dengan koma):\n' +
+      '/addfreepikkey fpk_abc123\n\n' +
+      'Atau banyak sekaligus:\n' +
+      '/addfreepikkey fpk_abc123,fpk_def456,fpk_ghi789'
+    );
+  }
+
+  const keys = raw.split(',').map((k: string) => k.trim()).filter((k: string) => k.length > 0);
+  let added = 0, skipped = 0;
+
+  for (const key of keys) {
+    const ok = await addFreepikKeyToPool(key);
+    if (ok) added++; else skipped++;
+  }
+
+  const stats = await getFreepikPoolStats();
+  let msg = `✅ Selesai menambahkan key Freepik!\n\n`;
+  msg += `• Berhasil ditambah: ${added}\n`;
+  if (skipped > 0) msg += `• Sudah ada / gagal: ${skipped}\n`;
+  msg += `\n📊 Status pool Freepik sekarang:\n`;
+  msg += `• Available: ${stats.available}\n`;
+  msg += `• Dead: ${stats.dead}`;
+  return ctx.reply(msg);
+});
+
+bot.command('freepikpoolstatus', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const stats = await getFreepikPoolStats();
+  const total = stats.available + stats.dead;
+  return ctx.reply(
+    `📊 *Status Freepik Key Pool*\n\n` +
+    `• ✅ Available: *${stats.available}*\n` +
+    `• ❌ Dead: *${stats.dead}*\n` +
+    `• 📦 Total: *${total}*`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+bot.command('removefreepikkey', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const parts = ctx.message.text.trim().split(/\s+/);
+  if (parts.length < 2) return ctx.reply('📝 *Format:* `/removefreepikkey <api_key>`', { parse_mode: 'Markdown' });
+
+  const apiKey = parts[1].trim();
+  const res = await db.query(
+    `UPDATE freepik_key_pool SET status = 'dead', dead_at = NOW() WHERE api_key = $1 RETURNING id`,
+    [apiKey]
+  );
+  if (res.rows.length === 0) return ctx.reply('❌ Key tidak ditemukan di pool Freepik.');
+  return ctx.reply('✅ Key Freepik berhasil dinonaktifkan (dead).');
+});
+
+bot.command('restorefreepikkey', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const parts = ctx.message.text.trim().split(/\s+/);
+  if (parts.length < 2) return ctx.reply('📝 *Format:* `/restorefreepikkey <api_key>`', { parse_mode: 'Markdown' });
+
+  const apiKey = parts[1].trim();
+  const res = await db.query(
+    `UPDATE freepik_key_pool SET status = 'available', dead_at = NULL WHERE api_key = $1 RETURNING id`,
+    [apiKey]
+  );
+  if (res.rows.length === 0) return ctx.reply('❌ Key tidak ditemukan di pool Freepik.');
+  return ctx.reply('✅ Key Freepik berhasil dipulihkan ke status *available*.', { parse_mode: 'Markdown' });
+});
+
+bot.command('clearfreepikpool', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const res = await db.query(`DELETE FROM freepik_key_pool RETURNING api_key`);
+  if (res.rows.length === 0) return ctx.reply('ℹ️ Pool Freepik sudah kosong.');
+  return ctx.reply(`🗑️ Pool Freepik dikosongkan — *${res.rows.length} key* dihapus.`, { parse_mode: 'Markdown' });
+});
+
 bot.command('addi2vkey', async (ctx) => {
   const session = getSession(ctx.from.id);
   if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
@@ -1763,13 +1902,13 @@ async function runVideoGeneration(chatId: number, userId: number, statusMsgId: n
 
 // ─── Background: Kling Motion Control ────────────────────────────────────────
 
-async function pollFreepikKling(taskId: string, endpoint: string, userId: number, maxAttempts = 60): Promise<string> {
+async function pollFreepikKling(taskId: string, endpoint: string, apiKey: string, userId: number, maxAttempts = 60): Promise<string> {
   const pollUrl = `${FREEPIK_BASE}${endpoint}/${taskId}`;
   console.log(`[${userId}] Freepik polling: ${pollUrl}`);
   for (let i = 0; i < maxAttempts; i++) {
     await sleep(10_000);
     const res = await freepikHttp.get(pollUrl, {
-      headers: { 'x-freepik-api-key': FREEPIK_API_KEY },
+      headers: { 'x-freepik-api-key': apiKey },
     });
     const d = res.data?.data ?? res.data;
     const status = d?.status;
@@ -1786,80 +1925,79 @@ async function pollFreepikKling(taskId: string, endpoint: string, userId: number
   throw new Error('Timeout: proses terlalu lama (>10 menit)');
 }
 
-async function runKlingMotionControl(chatId: number, userId: number, dbUserId: number, statusMsgId: number, videoFileId: string, imageUrl: string, klingModel: 'v3' | 'v26' = 'v3') {
-  if (!FREEPIK_API_KEY) {
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      '❌ FREEPIK_API_KEY belum dikonfigurasi. Hubungi admin.'
-    ).catch(() => {});
-    return;
-  }
+function isFreepikKeyExhaustedError(raw: string): boolean {
+  return /quota|rate.?limit|limit.?exceeded|insufficient|unauthorized|401|403|429/i.test(raw);
+}
 
+async function runKlingMotionControl(chatId: number, userId: number, dbUserId: number, statusMsgId: number, videoFileId: string, imageUrl: string, klingModel: 'v3' | 'v26' = 'v3', maxKeyRetries = 10) {
   const endpoint = klingModel === 'v3'
     ? '/ai/video/kling-v3-motion-control-std'
     : '/ai/video/kling-v2-6-motion-control-std';
   const label = klingModel === 'v3' ? 'Kling v3.0' : 'Kling v2.6';
-  const MAX_ATTEMPTS = 3;
 
-  try {
-    const videoFileLink = await bot.telegram.getFileLink(videoFileId);
-    console.log(`[${userId}] ${label} Motion Control started — img: ${imageUrl}, vid: ${videoFileLink.href}`);
+  const usedKeys = new Set<string>();
 
-    let outputUrl: string | undefined;
-    let lastErr = '';
+  const videoFileLink = await bot.telegram.getFileLink(videoFileId);
+  console.log(`[${userId}] ${label} Motion Control started — img: ${imageUrl}, vid: ${videoFileLink.href}`);
 
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      try {
-        if (attempt > 1) {
-          console.log(`[${userId}] ${label} retry attempt ${attempt}/${MAX_ATTEMPTS}...`);
-          await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-            `⏳ Coba ulang (${attempt}/${MAX_ATTEMPTS})...\nServer sedang sibuk, harap tunggu.`
-          ).catch(() => {});
-          await sleep(5_000);
-        } else {
-          await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-            `⏳ ${label} sedang diproses...\nBiasanya 2–5 menit.`
-          ).catch(() => {});
-        }
-
-        const genRes = await freepikHttp.post(`${FREEPIK_BASE}${endpoint}`, {
-          image_url: imageUrl,
-          video_url: videoFileLink.href,
-          character_orientation: 'video',
-          cfg_scale: 0.5,
-        }, { headers: { 'x-freepik-api-key': FREEPIK_API_KEY, 'Content-Type': 'application/json' } });
-
-        console.log(`[${userId}] ${label} attempt ${attempt} queued — ${JSON.stringify(genRes.data)}`);
-        const taskId = genRes.data?.data?.task_id ?? genRes.data?.task_id ?? genRes.data?.id;
-        if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
-
-        outputUrl = await pollFreepikKling(taskId, endpoint, userId);
-        break;
-      } catch (e: any) {
-        const msg = e?.message ?? String(e);
-        lastErr = msg;
-        console.warn(`[${userId}] ${label} attempt ${attempt} failed: ${msg}`);
-        const isRetryable = /timeout|timed out|try again|server|unavailable/i.test(msg);
-        if (!isRetryable || attempt === MAX_ATTEMPTS) throw e;
-      }
+  for (let attempt = 1; attempt <= maxKeyRetries; attempt++) {
+    const apiKey = await getNextFreepikKey(usedKeys);
+    if (!apiKey) {
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+        '❌ Semua API key Freepik habis. Hubungi admin untuk mengisi key.\n\n/menu untuk kembali'
+      ).catch(() => {});
+      return;
     }
+    usedKeys.add(apiKey);
 
-    if (!outputUrl) throw new Error(lastErr || 'No output');
+    try {
+      console.log(`[${userId}] ${label} attempt ${attempt} — key: ${apiKey.slice(0, 10)}...`);
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+        `⏳ ${label} sedang diproses...\nBiasanya 2–5 menit.`
+      ).catch(() => {});
 
-    const newCount = await incrementKlingUsage(dbUserId);
-    const remaining = Math.max(0, KLING_DAILY_LIMIT - newCount);
+      const genRes = await freepikHttp.post(`${FREEPIK_BASE}${endpoint}`, {
+        image_url: imageUrl,
+        video_url: videoFileLink.href,
+        character_orientation: 'video',
+        cfg_scale: 0.5,
+      }, { headers: { 'x-freepik-api-key': apiKey, 'Content-Type': 'application/json' } });
 
-    await sendResult(chatId, outputUrl, `🕹️ ${label} Motion Control\n📊 Generate hari ini: ${newCount}/${KLING_DAILY_LIMIT} (sisa: ${remaining})\n\n/menu untuk buat lagi`, true);
-    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] ${label} Motion Control done (usage: ${newCount}/${KLING_DAILY_LIMIT})`);
-  } catch (err: any) {
-    const rawMsg = err?.response?.data?.message ?? err?.response?.data?.error ?? err?.response?.data ?? err.message ?? String(err);
-    const raw = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
-    console.error(`[${userId}] ${label} error: ${raw}`);
-    const friendly = translateError(raw);
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${friendly}\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+      console.log(`[${userId}] ${label} attempt ${attempt} queued — ${JSON.stringify(genRes.data)}`);
+      const taskId = genRes.data?.data?.task_id ?? genRes.data?.task_id ?? genRes.data?.id;
+      if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
+
+      const outputUrl = await pollFreepikKling(taskId, endpoint, apiKey, userId);
+
+      const newCount = await incrementKlingUsage(dbUserId);
+      const remaining = Math.max(0, KLING_DAILY_LIMIT - newCount);
+      await sendResult(chatId, outputUrl, `🕹️ ${label} Motion Control\n📊 Generate hari ini: ${newCount}/${KLING_DAILY_LIMIT} (sisa: ${remaining})\n\n/menu untuk buat lagi`, true);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] ${label} done (usage: ${newCount}/${KLING_DAILY_LIMIT})`);
+      return;
+
+    } catch (err: any) {
+      const rawMsg = err?.response?.data?.message ?? err?.response?.data?.error ?? err?.response?.data ?? err.message ?? String(err);
+      const raw = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
+      console.error(`[${userId}] ${label} error (attempt ${attempt}): ${raw}`);
+
+      if (isFreepikKeyExhaustedError(raw)) {
+        await markFreepikKeyDead(apiKey);
+        console.log(`[${userId}] Freepik key dead, retry dengan key lain: ${apiKey.slice(0, 10)}...`);
+        continue;
+      }
+
+      const friendly = translateError(raw);
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+        `${friendly}\n\n/menu untuk coba lagi`
+      ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+      return;
+    }
   }
+
+  await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+    '❌ Semua API key Freepik habis setelah beberapa percobaan. Hubungi admin.\n\n/menu untuk kembali'
+  ).catch(() => {});
 }
 
 // ─── Background: Image generation ────────────────────────────────────────────
