@@ -1960,7 +1960,7 @@ async function pollFreepikKling(taskId: string, endpoint: string, apiKey: string
 }
 
 function isFreepikKeyExhaustedError(raw: string): boolean {
-  return /quota|rate.?limit|limit.?exceeded|insufficient|unauthorized|401|403|429/i.test(raw);
+  return /quota|rate.?limit|limit.?exceeded|insufficient|unauthorized|401|403|429|free.?trial|upgrade.?to.?a.?paid|reached.?the.?limit|trial.?usage|billing/i.test(raw);
 }
 
 async function runKlingMotionControl(chatId: number, userId: number, dbUserId: number, statusMsgId: number, videoFileIdOrUrl: string, imageUrl: string, klingModel: 'v3' | 'v26' = 'v3', maxKeyRetries = 10) {
@@ -2002,6 +2002,13 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
       }, { headers: { 'x-freepik-api-key': apiKey, 'Content-Type': 'application/json' } });
 
       console.log(`[${userId}] ${label} attempt ${attempt} queued — ${JSON.stringify(genRes.data)}`);
+
+      // Cek apakah response body mengandung pesan limit/quota (HTTP 200 tapi key habis)
+      const resBodyStr = typeof genRes.data === 'string' ? genRes.data : JSON.stringify(genRes.data ?? '');
+      if (isFreepikKeyExhaustedError(resBodyStr) && !genRes.data?.data?.task_id && !genRes.data?.task_id && !genRes.data?.id) {
+        throw new Error(resBodyStr);
+      }
+
       const taskId = genRes.data?.data?.task_id ?? genRes.data?.task_id ?? genRes.data?.id;
       if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
 
