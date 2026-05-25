@@ -1969,6 +1969,10 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
 
       const outputUrl = await pollFreepikKling(taskId, endpoint, apiKey, userId);
 
+      // Key sudah dipakai sekali — langsung nonaktifkan dari pool
+      await markFreepikKeyDead(apiKey);
+      console.log(`[${userId}] Freepik key consumed & removed: ${apiKey.slice(0, 10)}...`);
+
       const newCount = await incrementKlingUsage(dbUserId);
       const remaining = Math.max(0, KLING_DAILY_LIMIT - newCount);
       await sendResult(chatId, outputUrl, `🕹️ ${label} Motion Control\n📊 Generate hari ini: ${newCount}/${KLING_DAILY_LIMIT} (sisa: ${remaining})\n\n/menu untuk buat lagi`, true);
