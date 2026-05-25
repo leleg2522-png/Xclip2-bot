@@ -1876,7 +1876,7 @@ async function pollAivideoapi(taskId: string, apiKey: string): Promise<string> {
     const { status, output, error } = res.data;
     console.log(`[pollAivideoapi] attempt ${i + 1}: status=${status}`);
     if (status === 'completed' || status === 'succeed' || status === 'success') {
-      const url = output?.url ?? output?.video_url ?? output?.[0]?.url ?? output?.videos?.[0]?.url;
+      const url = output?.urls?.[0] ?? output?.url ?? output?.video_url ?? output?.[0]?.url ?? output?.videos?.[0]?.url;
       if (!url) throw new Error(`Selesai tapi URL kosong: ${JSON.stringify(res.data)}`);
       return url;
     }
