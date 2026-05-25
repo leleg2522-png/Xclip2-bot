@@ -1917,12 +1917,30 @@ async function pollFreepikKling(taskId: string, endpoint: string, apiKey: string
     const res = await freepikHttp.get(pollUrl, {
       headers: { 'x-freepik-api-key': apiKey },
     });
-    const d = res.data?.data ?? res.data;
+
+    // Log raw response structure for debugging
+    const raw = res.data;
+    const d = raw?.data ?? raw;
     const status = (d?.status ?? '').toLowerCase();
-    console.log(`[${userId}] Freepik poll ${i + 1}: ${d?.status}`);
+    console.log(`[${userId}] Freepik poll ${i + 1}: ${d?.status} | raw keys: ${Object.keys(raw ?? {}).join(',')} | d keys: ${Object.keys(d ?? {}).join(',')}`);
+
     if (status === 'completed' || status === 'succeed' || status === 'succeeded') {
-      const url = d?.output?.video_url ?? d?.output?.url ?? d?.generated?.[0]?.url ?? d?.video_url ?? d?.url;
-      if (!url) throw new Error(`Completed tapi tidak ada URL video. Response: ${JSON.stringify(d)}`);
+      console.log(`[${userId}] Completed — raw.data: ${JSON.stringify(raw?.data)?.slice(0, 200)} | d.generated: ${JSON.stringify(d?.generated)?.slice(0, 200)} | d.output: ${JSON.stringify(d?.output)?.slice(0, 200)}`);
+
+      // Try every possible location Freepik might put the video URL
+      let url: string | undefined;
+      if (typeof d?.output?.video_url === 'string' && d.output.video_url) url = d.output.video_url;
+      else if (typeof d?.output?.url === 'string' && d.output.url) url = d.output.url;
+      else if (Array.isArray(d?.generated) && d.generated.length > 0 && d.generated[0]?.url) url = String(d.generated[0].url);
+      else if (typeof d?.video_url === 'string' && d.video_url) url = d.video_url;
+      else if (typeof d?.url === 'string' && d.url) url = d.url;
+      // Also check top-level raw in case no nesting
+      else if (Array.isArray(raw?.generated) && raw.generated.length > 0 && raw.generated[0]?.url) url = String(raw.generated[0].url);
+      else if (typeof raw?.video_url === 'string' && raw.video_url) url = raw.video_url;
+      else if (typeof raw?.url === 'string' && raw.url) url = raw.url;
+
+      if (!url) throw new Error(`Completed tapi tidak ada URL video. Full response: ${JSON.stringify(raw)?.slice(0, 500)}`);
+      console.log(`[${userId}] Video URL found: ${url.slice(0, 80)}...`);
       return url;
     }
     if (status === 'failed' || status === 'error') {
