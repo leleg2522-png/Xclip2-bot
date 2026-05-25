@@ -180,3 +180,9 @@ id = "2BWdKu8k5hfYqtUzg_oEB"
 uri = "file://seedance_result.mp4"
 type = "video"
 title = "Hasil Seedance 2 — Image to Video (480p, 5 detik)"
+
+[[outputs]]
+id = "NkVE0WZyzD4be8T65_uho"
+uri = "file://sora2_result.mp4"
+type = "video"
+title = "Hasil Sora 2 — Image to Video (8 detik, ~2.75 menit)"
