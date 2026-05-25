@@ -264,7 +264,7 @@ async function getI2vPoolStats(): Promise<{ available: number; dead: number }> {
 
 // ─── Kling Daily Limit ────────────────────────────────────────────────────────
 
-const KLING_DAILY_LIMIT = 6;
+const KLING_DAILY_LIMIT = 10;
 
 async function getKlingUsageToday(dbUserId: number): Promise<number> {
   const res = await db.query(
