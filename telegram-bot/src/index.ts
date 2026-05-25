@@ -1911,11 +1911,11 @@ async function pollFreepikKling(taskId: string, endpoint: string, apiKey: string
       headers: { 'x-freepik-api-key': apiKey },
     });
     const d = res.data?.data ?? res.data;
-    const status = d?.status;
-    console.log(`[${userId}] Freepik poll ${i + 1}: ${status}`);
+    const status = (d?.status ?? '').toLowerCase();
+    console.log(`[${userId}] Freepik poll ${i + 1}: ${d?.status}`);
     if (status === 'completed' || status === 'succeed' || status === 'succeeded') {
-      const url = d?.output?.video_url ?? d?.generated?.[0]?.url ?? d?.video_url;
-      if (!url) throw new Error('Completed tapi tidak ada URL video');
+      const url = d?.output?.video_url ?? d?.output?.url ?? d?.generated?.[0]?.url ?? d?.video_url ?? d?.url;
+      if (!url) throw new Error(`Completed tapi tidak ada URL video. Response: ${JSON.stringify(d)}`);
       return url;
     }
     if (status === 'failed' || status === 'error') {
