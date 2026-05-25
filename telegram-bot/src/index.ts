@@ -1931,13 +1931,22 @@ async function pollFreepikKling(taskId: string, endpoint: string, apiKey: string
       let url: string | undefined;
       if (typeof d?.output?.video_url === 'string' && d.output.video_url) url = d.output.video_url;
       else if (typeof d?.output?.url === 'string' && d.output.url) url = d.output.url;
-      else if (Array.isArray(d?.generated) && d.generated.length > 0 && d.generated[0]?.url) url = String(d.generated[0].url);
-      else if (typeof d?.video_url === 'string' && d.video_url) url = d.video_url;
-      else if (typeof d?.url === 'string' && d.url) url = d.url;
+      else if (Array.isArray(d?.generated) && d.generated.length > 0) {
+        const first = d.generated[0];
+        // generated can be array of strings OR array of objects {url: "..."}
+        if (typeof first === 'string' && first) url = first;
+        else if (first?.url) url = String(first.url);
+      }
+      if (!url && typeof d?.video_url === 'string' && d.video_url) url = d.video_url;
+      if (!url && typeof d?.url === 'string' && d.url) url = d.url;
       // Also check top-level raw in case no nesting
-      else if (Array.isArray(raw?.generated) && raw.generated.length > 0 && raw.generated[0]?.url) url = String(raw.generated[0].url);
-      else if (typeof raw?.video_url === 'string' && raw.video_url) url = raw.video_url;
-      else if (typeof raw?.url === 'string' && raw.url) url = raw.url;
+      if (!url && Array.isArray(raw?.generated) && raw.generated.length > 0) {
+        const first = raw.generated[0];
+        if (typeof first === 'string' && first) url = first;
+        else if (first?.url) url = String(first.url);
+      }
+      if (!url && typeof raw?.video_url === 'string' && raw.video_url) url = raw.video_url;
+      if (!url && typeof raw?.url === 'string' && raw.url) url = raw.url;
 
       if (!url) throw new Error(`Completed tapi tidak ada URL video. Full response: ${JSON.stringify(raw)?.slice(0, 500)}`);
       console.log(`[${userId}] Video URL found: ${url.slice(0, 80)}...`);
