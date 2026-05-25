@@ -1869,17 +1869,21 @@ async function pollAivideoapi(taskId: string, apiKey: string): Promise<string> {
   const MAX_ATTEMPTS = 60; // 10 min max
   for (let i = 0; i < MAX_ATTEMPTS; i++) {
     await new Promise(r => setTimeout(r, POLL_INTERVAL));
-    const res = await telegramHttp.get(`${AIVIDEOAPI_BASE}/videos/generations/${taskId}`, {
+    const res = await telegramHttp.get(`${AIVIDEOAPI_BASE}/tasks/${taskId}`, {
       headers: { Authorization: `Bearer ${apiKey}` },
       timeout: 30_000,
     });
     const { status, output, error } = res.data;
-    if (status === 'completed') {
-      const url = output?.url ?? output?.video_url ?? output?.[0]?.url;
+    console.log(`[pollAivideoapi] attempt ${i + 1}: status=${status}`);
+    if (status === 'completed' || status === 'succeed' || status === 'success') {
+      const url = output?.url ?? output?.video_url ?? output?.[0]?.url ?? output?.videos?.[0]?.url;
       if (!url) throw new Error(`Selesai tapi URL kosong: ${JSON.stringify(res.data)}`);
       return url;
     }
-    if (status === 'failed') throw new Error(error ?? 'Generation gagal di aivideoapi');
+    if (status === 'failed' || status === 'error') {
+      const errMsg = typeof error === 'string' ? error : (error?.message ?? JSON.stringify(error) ?? 'Generation gagal di aivideoapi');
+      throw new Error(errMsg);
+    }
   }
   throw new Error('Timeout: proses terlalu lama (>10 menit)');
 }
@@ -1915,7 +1919,7 @@ async function runSora2Generation(chatId: number, userId: number, statusMsgId: n
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       timeout: 60_000,
     });
-    const taskId = genRes.data?.id;
+    const taskId = genRes.data?.data?.taskId ?? genRes.data?.data?.id ?? genRes.data?.taskId ?? genRes.data?.id;
     if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
     console.log(`[${userId}] Sora2 task: ${taskId}`);
 
@@ -1971,7 +1975,7 @@ async function runVeo3Generation(chatId: number, userId: number, statusMsgId: nu
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       timeout: 60_000,
     });
-    const taskId = genRes.data?.id;
+    const taskId = genRes.data?.data?.taskId ?? genRes.data?.data?.id ?? genRes.data?.taskId ?? genRes.data?.id;
     if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
     console.log(`[${userId}] Veo3 task: ${taskId}`);
 
@@ -2027,7 +2031,7 @@ async function runSeedance2Generation(chatId: number, userId: number, statusMsgI
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       timeout: 60_000,
     });
-    const taskId = genRes.data?.id;
+    const taskId = genRes.data?.data?.taskId ?? genRes.data?.data?.id ?? genRes.data?.taskId ?? genRes.data?.id;
     if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
     console.log(`[${userId}] Seedance2 task: ${taskId}`);
 
