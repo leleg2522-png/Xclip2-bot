@@ -454,9 +454,9 @@ function translateError(raw: string): string {
   if (raw.includes('InternalError.Algo'))
     return '❌ *Error internal model*: Konten foto/video tidak kompatibel. Coba dengan foto atau video yang berbeda.';
   if (raw.includes('Exhausted balance') || raw.includes('fal.ai') || raw.includes('User is locked'))
-    return '❌ *Error backend*: Layanan Renderful sedang bermasalah. Coba lagi beberapa saat.';
+    return '❌ *Error*: Layanan AI sedang bermasalah. Coba lagi beberapa saat.';
   if (raw.toLowerCase().includes('developer account is disabled') || raw.toLowerCase().includes('account is disabled'))
-    return '❌ *Akun Renderful dinonaktifkan*: Akun yang terhubung ke API key ini dinonaktifkan oleh Renderful. Hubungi admin untuk ganti key.';
+    return '❌ *Error*: API key tidak aktif. Hubungi admin.';
   if (raw.includes('401') || raw.toLowerCase().includes('unauthorized'))
     return '❌ *API key tidak valid*: Key sudah diganti otomatis. Coba lagi dengan /menu';
   const short = raw.length > 200 ? raw.slice(0, 200) + '…' : raw;
@@ -592,9 +592,9 @@ function mainMenuKeyboard() {
 
 function i2vModelKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('🌟 Sora 2 (8 detik)', 'i2v_sora2')],
-    [Markup.button.callback('⚡ Veo 3 Fast 4K', 'i2v_veo3')],
-    [Markup.button.callback('🌱 Seedance 2 (480p)', 'i2v_seedance2')],
+    [Markup.button.callback('🌟 Cinematic HD (8 detik)', 'i2v_sora2')],
+    [Markup.button.callback('⚡ Ultra 4K Fast', 'i2v_veo3')],
+    [Markup.button.callback('🌱 Natural Motion (480p)', 'i2v_seedance2')],
     [Markup.button.callback('« Kembali', 'back_main')],
   ]);
 }
@@ -1107,7 +1107,7 @@ bot.on('callback_query', async (ctx) => {
     if (!await requireLoginAndSub(ctx)) return;
     setSession(userId, { mode: 'i2v_sora2_wait_image' });
     return ctx.editMessageText(
-      '🌟 *Sora 2 — Image to Video (8 detik)*\n\n' +
+      '🌟 *Cinematic HD — Image to Video (8 detik)*\n\n' +
       'Kirim *foto/gambar* yang ingin dijadikan video.\n\n' +
       '⚠️ *Syarat:*\n• Format: JPG, PNG\n• Maks 10MB',
       { parse_mode: 'Markdown' }
@@ -1118,7 +1118,7 @@ bot.on('callback_query', async (ctx) => {
     if (!await requireLoginAndSub(ctx)) return;
     setSession(userId, { mode: 'i2v_veo3_wait_image' });
     return ctx.editMessageText(
-      '⚡ *Veo 3 Fast 4K — Image to Video*\n\n' +
+      '⚡ *Ultra 4K Fast — Image to Video*\n\n' +
       'Kirim *foto/gambar* yang ingin dijadikan video.\n\n' +
       '⚠️ *Syarat:*\n• Format: JPG, PNG\n• Maks 10MB',
       { parse_mode: 'Markdown' }
@@ -1129,7 +1129,7 @@ bot.on('callback_query', async (ctx) => {
     if (!await requireLoginAndSub(ctx)) return;
     setSession(userId, { mode: 'i2v_seedance2_wait_image' });
     return ctx.editMessageText(
-      '🌱 *Seedance 2 — Image to Video (480p)*\n\n' +
+      '🌱 *Natural Motion — Image to Video (480p)*\n\n' +
       'Kirim *foto/gambar* yang ingin dijadikan video.\n\n' +
       '⚠️ *Syarat:*\n• Format: JPG, PNG\n• Maks 10MB',
       { parse_mode: 'Markdown' }
@@ -1145,7 +1145,7 @@ bot.on('callback_query', async (ctx) => {
     }
     setSession(userId, { mode: 'idle', i2vDuration: duration });
     const statusMsg = await ctx.editMessageText(
-      `⏳ Memproses Seedance 2 (480p, ${duration} detik)...\nBiasanya 2–5 menit.`
+      `⏳ Memproses video (480p, ${duration} detik)...\nBiasanya 2–5 menit.`
     );
     runSeedance2Generation(ctx.chat!.id, userId, (statusMsg as any).message_id, session.i2vImageUrl, duration)
       .catch(e => console.error(`[${userId}] Seedance2 error:`, e.message));
@@ -1345,7 +1345,7 @@ async function handleImageInput(ctx: any, fileUrl: string) {
 
   if (session.mode === 'i2v_sora2_wait_image') {
     setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply('⏳ Memproses Sora 2 (8 detik)...\nBiasanya 2–5 menit.');
+    const statusMsg = await ctx.reply('⏳ Memproses video (8 detik)...\nBiasanya 2–5 menit.');
     runSora2Generation(ctx.chat!.id, userId, statusMsg.message_id, fileUrl)
       .catch(e => console.error(`[${userId}] Sora2 error:`, e.message));
     return;
@@ -1353,7 +1353,7 @@ async function handleImageInput(ctx: any, fileUrl: string) {
 
   if (session.mode === 'i2v_veo3_wait_image') {
     setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply('⏳ Memproses Veo 3 Fast 4K...\nBiasanya 2–5 menit.');
+    const statusMsg = await ctx.reply('⏳ Memproses video 4K...\nBiasanya 2–5 menit.');
     runVeo3Generation(ctx.chat!.id, userId, statusMsg.message_id, fileUrl)
       .catch(e => console.error(`[${userId}] Veo3 error:`, e.message));
     return;
@@ -1982,8 +1982,8 @@ async function runSora2Generation(chatId: number, userId: number, statusMsgId: n
         image_urls: [imageUrl],
       },
     }),
-    '⏳ Sora 2 sedang generate video...\nBiasanya 2–5 menit.',
-    '🌟 Sora 2 — Image to Video\n\n/menu untuk buat lagi',
+    '⏳ Sedang generate video...\nBiasanya 2–5 menit.',
+    '🌟 Cinematic HD — Image to Video\n\n/menu untuk buat lagi',
   );
 }
 
@@ -2004,8 +2004,8 @@ async function runVeo3Generation(chatId: number, userId: number, statusMsgId: nu
         image_urls: [imageUrl],
       },
     }),
-    '⏳ Veo 3 Fast 4K sedang generate video...\nBiasanya 2–5 menit.',
-    '⚡ Veo 3 Fast 4K — Image to Video\n\n/menu untuk buat lagi',
+    '⏳ Sedang generate video 4K...\nBiasanya 2–5 menit.',
+    '⚡ Ultra 4K Fast — Image to Video\n\n/menu untuk buat lagi',
   );
 }
 
@@ -2026,8 +2026,8 @@ async function runSeedance2Generation(chatId: number, userId: number, statusMsgI
         aspect_ratio: '16:9',
       },
     }),
-    `⏳ Seedance 2 (480p, ${duration} detik) sedang generate video...\nBiasanya 2–5 menit.`,
-    `🌱 Seedance 2 — Image to Video (480p, ${duration}s)\n\n/menu untuk buat lagi`,
+    `⏳ Sedang generate video (480p, ${duration} detik)...\nBiasanya 2–5 menit.`,
+    `🌱 Natural Motion — Image to Video (480p, ${duration}s)\n\n/menu untuk buat lagi`,
   );
 }
 
