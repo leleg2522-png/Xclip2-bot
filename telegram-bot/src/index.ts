@@ -162,14 +162,18 @@ async function isAdmin(dbUserId: number): Promise<boolean> {
 
 let i2vKeyRoundRobinIndex = 0;
 
-async function getNextI2vKey(): Promise<string | null> {
+async function getNextI2vKey(skipKeys?: Set<string>): Promise<string | null> {
   const res = await db.query(
     `SELECT id, api_key FROM aivideoapi_key_pool WHERE status = 'available' ORDER BY id`
   );
   if (res.rows.length === 0) return null;
-  const idx = i2vKeyRoundRobinIndex % res.rows.length;
-  i2vKeyRoundRobinIndex = (i2vKeyRoundRobinIndex + 1) % res.rows.length;
-  return res.rows[idx].api_key;
+  const available = skipKeys && skipKeys.size > 0
+    ? res.rows.filter((r: any) => !skipKeys.has(r.api_key))
+    : res.rows;
+  if (available.length === 0) return null;
+  const idx = i2vKeyRoundRobinIndex % available.length;
+  i2vKeyRoundRobinIndex = (i2vKeyRoundRobinIndex + 1) % available.length;
+  return available[idx].api_key;
 }
 
 async function markI2vKeyDead(apiKey: string): Promise<void> {
@@ -1895,19 +1899,81 @@ function isI2vKeyExhaustedError(raw: string): boolean {
     || lower.includes('insufficient') || lower.includes('402') || lower.includes('payment required');
 }
 
+// ─── Helper: run i2v generation with automatic key retry ─────────────────────
+
+async function runI2vWithRetry(
+  userId: number,
+  chatId: number,
+  statusMsgId: number,
+  label: string,
+  buildBody: () => object,
+  statusMsg: string,
+  resultCaption: string,
+  maxRetries = 10,
+): Promise<void> {
+  const usedKeys = new Set<string>();
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const apiKey = await getNextI2vKey(usedKeys);
+    if (!apiKey) {
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+        '❌ Semua API key i2v habis. Hubungi admin untuk mengisi key.\n\n/menu untuk kembali'
+      ).catch(() => {});
+      return;
+    }
+    usedKeys.add(apiKey);
+
+    try {
+      console.log(`[${userId}] ${label} attempt ${attempt} — key: ${apiKey.slice(0, 10)}...`);
+      const genRes = await telegramHttp.post(`${AIVIDEOAPI_BASE}/videos/generations`, buildBody(), {
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        timeout: 60_000,
+      });
+
+      const taskId = genRes.data?.data?.taskId ?? genRes.data?.data?.id ?? genRes.data?.taskId ?? genRes.data?.id;
+      if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
+      console.log(`[${userId}] ${label} task: ${taskId}`);
+
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined, statusMsg).catch(() => {});
+
+      const outputUrl = await pollAivideoapi(taskId, apiKey);
+      await sendResult(chatId, outputUrl, resultCaption, true);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] ${label} done`);
+      return;
+
+    } catch (err: any) {
+      const raw = typeof err?.response?.data === 'string'
+        ? err.response.data
+        : JSON.stringify(err?.response?.data ?? err.message ?? String(err));
+      console.error(`[${userId}] ${label} error (attempt ${attempt}): ${raw}`);
+
+      if (isI2vKeyExhaustedError(raw)) {
+        await markI2vKeyDead(apiKey);
+        console.log(`[${userId}] i2v key dead, retry dengan key lain: ${apiKey.slice(0, 10)}...`);
+        continue;
+      }
+
+      const friendly = translateError(raw);
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+        `${friendly}\n\n/menu untuk coba lagi`
+      ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+      return;
+    }
+  }
+
+  await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+    '❌ Semua API key i2v habis setelah beberapa percobaan. Hubungi admin.\n\n/menu untuk kembali'
+  ).catch(() => {});
+}
+
 // ─── Background: Sora 2 Image to Video ───────────────────────────────────────
 
 async function runSora2Generation(chatId: number, userId: number, statusMsgId: number, imageUrl: string) {
-  const apiKey = await getNextI2vKey();
-  if (!apiKey) {
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      '❌ Pool key Image to Video kosong. Hubungi admin untuk mengisi key.\n\n/menu untuk kembali'
-    ).catch(() => {});
-    return;
-  }
-  try {
-    console.log(`[${userId}] Sora2 started — img: ${imageUrl}`);
-    const genRes = await telegramHttp.post(`${AIVIDEOAPI_BASE}/videos/generations`, {
+  await runI2vWithRetry(
+    userId, chatId, statusMsgId,
+    'Sora2',
+    () => ({
       model: 'sora-2',
       input: {
         prompt: 'Animate this image into a cinematic video',
@@ -1915,53 +1981,19 @@ async function runSora2Generation(chatId: number, userId: number, statusMsgId: n
         aspect_ratio: '16:9',
         image_urls: [imageUrl],
       },
-    }, {
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      timeout: 60_000,
-    });
-    const taskId = genRes.data?.data?.taskId ?? genRes.data?.data?.id ?? genRes.data?.taskId ?? genRes.data?.id;
-    if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
-    console.log(`[${userId}] Sora2 task: ${taskId}`);
-
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      '⏳ Sora 2 sedang generate video...\nBiasanya 2–5 menit.'
-    ).catch(() => {});
-
-    const outputUrl = await pollAivideoapi(taskId, apiKey);
-    await sendResult(chatId, outputUrl, '🌟 Sora 2 — Image to Video\n\n/menu untuk buat lagi', true);
-    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] Sora2 done`);
-  } catch (err: any) {
-    const raw = typeof err?.response?.data === 'string' ? err.response.data : JSON.stringify(err?.response?.data ?? err.message ?? String(err));
-    console.error(`[${userId}] Sora2 error: ${raw}`);
-    if (isI2vKeyExhaustedError(raw)) {
-      await markI2vKeyDead(apiKey);
-      console.log(`[${userId}] i2v key marked dead: ${apiKey.slice(0, 10)}...`);
-      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-        '⚠️ API key i2v habis/invalid, sudah dinonaktifkan otomatis. Coba lagi dengan /menu'
-      ).catch(() => {});
-      return;
-    }
-    const friendly = translateError(raw);
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${friendly}\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
-  }
+    }),
+    '⏳ Sora 2 sedang generate video...\nBiasanya 2–5 menit.',
+    '🌟 Sora 2 — Image to Video\n\n/menu untuk buat lagi',
+  );
 }
 
 // ─── Background: Veo 3 Fast 4K Image to Video ────────────────────────────────
 
 async function runVeo3Generation(chatId: number, userId: number, statusMsgId: number, imageUrl: string) {
-  const apiKey = await getNextI2vKey();
-  if (!apiKey) {
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      '❌ Pool key Image to Video kosong. Hubungi admin untuk mengisi key.\n\n/menu untuk kembali'
-    ).catch(() => {});
-    return;
-  }
-  try {
-    console.log(`[${userId}] Veo3 started — img: ${imageUrl}`);
-    const genRes = await telegramHttp.post(`${AIVIDEOAPI_BASE}/videos/generations`, {
+  await runI2vWithRetry(
+    userId, chatId, statusMsgId,
+    'Veo3',
+    () => ({
       model: 'veo-3',
       input: {
         prompt: 'Animate this image into a high quality cinematic video',
@@ -1971,53 +2003,19 @@ async function runVeo3Generation(chatId: number, userId: number, statusMsgId: nu
         generation_type: 'REFERENCE_2_VIDEO',
         image_urls: [imageUrl],
       },
-    }, {
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      timeout: 60_000,
-    });
-    const taskId = genRes.data?.data?.taskId ?? genRes.data?.data?.id ?? genRes.data?.taskId ?? genRes.data?.id;
-    if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
-    console.log(`[${userId}] Veo3 task: ${taskId}`);
-
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      '⏳ Veo 3 Fast 4K sedang generate video...\nBiasanya 2–5 menit.'
-    ).catch(() => {});
-
-    const outputUrl = await pollAivideoapi(taskId, apiKey);
-    await sendResult(chatId, outputUrl, '⚡ Veo 3 Fast 4K — Image to Video\n\n/menu untuk buat lagi', true);
-    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] Veo3 done`);
-  } catch (err: any) {
-    const raw = typeof err?.response?.data === 'string' ? err.response.data : JSON.stringify(err?.response?.data ?? err.message ?? String(err));
-    console.error(`[${userId}] Veo3 error: ${raw}`);
-    if (isI2vKeyExhaustedError(raw)) {
-      await markI2vKeyDead(apiKey);
-      console.log(`[${userId}] i2v key marked dead: ${apiKey.slice(0, 10)}...`);
-      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-        '⚠️ API key i2v habis/invalid, sudah dinonaktifkan otomatis. Coba lagi dengan /menu'
-      ).catch(() => {});
-      return;
-    }
-    const friendly = translateError(raw);
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${friendly}\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
-  }
+    }),
+    '⏳ Veo 3 Fast 4K sedang generate video...\nBiasanya 2–5 menit.',
+    '⚡ Veo 3 Fast 4K — Image to Video\n\n/menu untuk buat lagi',
+  );
 }
 
 // ─── Background: Seedance 2 Image to Video ───────────────────────────────────
 
 async function runSeedance2Generation(chatId: number, userId: number, statusMsgId: number, imageUrl: string, duration: number) {
-  const apiKey = await getNextI2vKey();
-  if (!apiKey) {
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      '❌ Pool key Image to Video kosong. Hubungi admin untuk mengisi key.\n\n/menu untuk kembali'
-    ).catch(() => {});
-    return;
-  }
-  try {
-    console.log(`[${userId}] Seedance2 started — img: ${imageUrl}, dur: ${duration}`);
-    const genRes = await telegramHttp.post(`${AIVIDEOAPI_BASE}/videos/generations`, {
+  await runI2vWithRetry(
+    userId, chatId, statusMsgId,
+    'Seedance2',
+    () => ({
       model: 'doubao-seedance-2.0',
       input: {
         prompt: 'Animate this image into a smooth natural video',
@@ -2027,38 +2025,10 @@ async function runSeedance2Generation(chatId: number, userId: number, statusMsgI
         resolution: '480p',
         aspect_ratio: '16:9',
       },
-    }, {
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      timeout: 60_000,
-    });
-    const taskId = genRes.data?.data?.taskId ?? genRes.data?.data?.id ?? genRes.data?.taskId ?? genRes.data?.id;
-    if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
-    console.log(`[${userId}] Seedance2 task: ${taskId}`);
-
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `⏳ Seedance 2 (480p, ${duration} detik) sedang generate video...\nBiasanya 2–5 menit.`
-    ).catch(() => {});
-
-    const outputUrl = await pollAivideoapi(taskId, apiKey);
-    await sendResult(chatId, outputUrl, `🌱 Seedance 2 — Image to Video (480p, ${duration}s)\n\n/menu untuk buat lagi`, true);
-    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] Seedance2 done`);
-  } catch (err: any) {
-    const raw = typeof err?.response?.data === 'string' ? err.response.data : JSON.stringify(err?.response?.data ?? err.message ?? String(err));
-    console.error(`[${userId}] Seedance2 error: ${raw}`);
-    if (isI2vKeyExhaustedError(raw)) {
-      await markI2vKeyDead(apiKey);
-      console.log(`[${userId}] i2v key marked dead: ${apiKey.slice(0, 10)}...`);
-      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-        '⚠️ API key i2v habis/invalid, sudah dinonaktifkan otomatis. Coba lagi dengan /menu'
-      ).catch(() => {});
-      return;
-    }
-    const friendly = translateError(raw);
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${friendly}\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
-  }
+    }),
+    `⏳ Seedance 2 (480p, ${duration} detik) sedang generate video...\nBiasanya 2–5 menit.`,
+    `🌱 Seedance 2 — Image to Video (480p, ${duration}s)\n\n/menu untuk buat lagi`,
+  );
 }
 
 // ─── Launch ───────────────────────────────────────────────────────────────────
