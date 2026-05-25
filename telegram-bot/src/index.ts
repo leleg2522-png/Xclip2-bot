@@ -2019,13 +2019,19 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
       return;
 
     } catch (err: any) {
+      const httpStatus = err?.response?.status;
       const rawMsg = err?.response?.data?.message ?? err?.response?.data?.error ?? err?.response?.data ?? err.message ?? String(err);
       const raw = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
-      console.error(`[${userId}] ${label} error (attempt ${attempt}): ${raw}`);
+      console.error(`[${userId}] ${label} error (attempt ${attempt}) HTTP ${httpStatus ?? 'N/A'}: ${raw}`);
 
-      if (isFreepikKeyExhaustedError(raw)) {
+      // 429 = rate limit, 401/403 = key invalid — buang key & retry otomatis dengan key baru
+      const isRateLimit = httpStatus === 429 || httpStatus === 401 || httpStatus === 403;
+      if (isRateLimit || isFreepikKeyExhaustedError(raw)) {
         await markFreepikKeyDead(apiKey);
-        console.log(`[${userId}] Freepik key dead, retry dengan key lain: ${apiKey.slice(0, 10)}...`);
+        console.log(`[${userId}] Key 429/limit — dibuang, auto-retry dengan key baru (attempt ${attempt + 1}): ${apiKey.slice(0, 10)}...`);
+        await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+          `⏳ ${label} sedang diproses...\nBiasanya 2–5 menit.`
+        ).catch(() => {});
         continue;
       }
 
