@@ -174,3 +174,9 @@ id = "D8C7ZDy8hbrJfbIiQ5k20"
 uri = "file://proxy_final.jpg"
 type = "image"
 title = "🍌 Nano Banana Pro — via Decodo Proxy"
+
+[[outputs]]
+id = "2BWdKu8k5hfYqtUzg_oEB"
+uri = "file://seedance_result.mp4"
+type = "video"
+title = "Hasil Seedance 2 — Image to Video (480p, 5 detik)"
