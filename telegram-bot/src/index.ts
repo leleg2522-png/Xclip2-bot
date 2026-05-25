@@ -41,8 +41,15 @@ const renderfulHttp = axios.create({
   ...(renderfulHttpsAgent ? { httpsAgent: renderfulHttpsAgent } : {}),
 });
 
-// Freepik HTTP client — untuk Kling Motion Control
-const freepikHttp = axios.create({ timeout: 120_000 });
+// Freepik HTTP client — untuk Kling Motion Control (pakai proxy Decodo jika aktif)
+const freepikHttpsAgent = DECODO_PROXY_URL
+  ? new HttpsProxyAgent(DECODO_PROXY_URL, { rejectUnauthorized: false })
+  : undefined;
+
+const freepikHttp = axios.create({
+  timeout: 120_000,
+  ...(freepikHttpsAgent ? { httpsAgent: freepikHttpsAgent } : {}),
+});
 
 // Direct HTTP client for Telegram downloads — tidak pakai proxy
 const telegramHttp = axios.create({ timeout: 60_000 });
