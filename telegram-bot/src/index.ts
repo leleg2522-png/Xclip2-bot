@@ -1996,7 +1996,7 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
 
       const genRes = await freepikHttp.post(`${FREEPIK_BASE}${endpoint}`, {
         image_url: imageUrl,
-        video_url: videoFileLink.href,
+        video_url: videoUrl,
         character_orientation: 'video',
         cfg_scale: 0.5,
       }, { headers: { 'x-freepik-api-key': apiKey, 'Content-Type': 'application/json' } });
