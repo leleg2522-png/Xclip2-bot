@@ -1546,7 +1546,7 @@ async function handleImageInput(ctx: any, fileUrl: string) {
       '⚠️ *Syarat video:*\n' +
       '• Orang terlihat jelas dalam video\n' +
       '• Durasi 2–30 detik\n' +
-      '• Maks ukuran file: 10MB',
+      '• Maks ukuran file: 19MB',
       { parse_mode: 'Markdown' }
     );
   }
