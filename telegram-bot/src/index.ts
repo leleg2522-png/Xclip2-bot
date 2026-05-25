@@ -1963,7 +1963,7 @@ function isFreepikKeyExhaustedError(raw: string): boolean {
   return /quota|rate.?limit|limit.?exceeded|insufficient|unauthorized|401|403|429/i.test(raw);
 }
 
-async function runKlingMotionControl(chatId: number, userId: number, dbUserId: number, statusMsgId: number, videoFileId: string, imageUrl: string, klingModel: 'v3' | 'v26' = 'v3', maxKeyRetries = 10) {
+async function runKlingMotionControl(chatId: number, userId: number, dbUserId: number, statusMsgId: number, videoFileIdOrUrl: string, imageUrl: string, klingModel: 'v3' | 'v26' = 'v3', maxKeyRetries = 10) {
   const endpoint = klingModel === 'v3'
     ? '/ai/video/kling-v3-motion-control-std'
     : '/ai/video/kling-v2-6-motion-control-std';
@@ -1971,8 +1971,12 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
 
   const usedKeys = new Set<string>();
 
-  const videoFileLink = await bot.telegram.getFileLink(videoFileId);
-  console.log(`[${userId}] ${label} Motion Control started — img: ${imageUrl}, vid: ${videoFileLink.href}`);
+  // Support both Telegram file ID and direct URL
+  const isDirectUrl = videoFileIdOrUrl.startsWith('http://') || videoFileIdOrUrl.startsWith('https://');
+  const videoUrl = isDirectUrl
+    ? videoFileIdOrUrl
+    : (await bot.telegram.getFileLink(videoFileIdOrUrl)).href;
+  console.log(`[${userId}] ${label} Motion Control started — img: ${imageUrl}, vid: ${videoUrl}`);
 
   for (let attempt = 1; attempt <= maxKeyRetries; attempt++) {
     const apiKey = await getNextFreepikKey(usedKeys);
