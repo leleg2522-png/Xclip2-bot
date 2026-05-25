@@ -12,6 +12,8 @@ const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
 const RENDERFUL_BASE = 'https://api.renderful.ai/api/v1';
 const DATABASE_URL = process.env.RAILWAY_DATABASE_URL;
 const AIVIDEOAPI_BASE = 'https://api.aivideoapi.ai/v1';
+const FREEPIK_API_KEY = process.env.FREEPIK_API_KEY;
+const FREEPIK_BASE = 'https://api.freepik.com/v1';
 
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!RENDERFUL_API_KEY) throw new Error('RENDERFUL_API_KEY is required');
@@ -38,6 +40,9 @@ const renderfulHttp = axios.create({
   timeout: DECODO_PROXY_URL ? 120_000 : 30_000,
   ...(renderfulHttpsAgent ? { httpsAgent: renderfulHttpsAgent } : {}),
 });
+
+// Freepik HTTP client — untuk Kling Motion Control
+const freepikHttp = axios.create({ timeout: 120_000 });
 
 // Direct HTTP client for Telegram downloads — tidak pakai proxy
 const telegramHttp = axios.create({ timeout: 60_000 });
@@ -299,6 +304,7 @@ type Mode =
   | 'login_wait_password'
   | 'video_wait_image'
   | 'video_wait_video'
+  | 'kling_wait_model'
   | 'kling_wait_image'
   | 'kling_wait_video'
   | 'img_wait_image1'
@@ -341,6 +347,7 @@ interface Session {
   i2vAspectRatio?: string;
   i2vDuration?: number;
   i2vCurrentKey?: string;
+  klingModel?: 'v3' | 'v26';
 }
 
 const sessions = new Map<number, Session>();
@@ -595,6 +602,14 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🎥 Image to Video', 'mode_i2v')],
     [Markup.button.callback('🖼️ Image to Image', 'mode_image')],
     [Markup.button.callback('🔺 ByteDance Video Upscaler', 'mode_upscale')],
+  ]);
+}
+
+function klingModelKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🆕 Kling v3.0 Motion Control', 'kling_v3')],
+    [Markup.button.callback('🕹️ Kling v2.6 Motion Control', 'kling_v26')],
+    [Markup.button.callback('« Kembali', 'back_main')],
   ]);
 }
 
@@ -1100,9 +1115,20 @@ bot.on('callback_query', async (ctx) => {
   }
 
   if (data === 'mode_kling') {
-    setSession(userId, { mode: 'kling_wait_image' });
+    setSession(userId, { mode: 'kling_wait_model' });
     return ctx.editMessageText(
-      '🕹️ *Kling Motion Control* — Transfer gerakan sinematik ke karakter\n\n' +
+      '🕹️ *Kling Motion Control*\n\nPilih versi model:',
+      { parse_mode: 'Markdown', ...klingModelKeyboard() }
+    );
+  }
+
+  if (data === 'kling_v3' || data === 'kling_v26') {
+    if (!await requireLoginAndSub(ctx)) return;
+    const model = data === 'kling_v3' ? 'v3' : 'v26';
+    const label = model === 'v3' ? 'Kling v3.0' : 'Kling v2.6';
+    setSession(userId, { mode: 'kling_wait_image', klingModel: model });
+    return ctx.editMessageText(
+      `🕹️ *${label} Motion Control*\n\n` +
       '*Langkah 1:* Kirim *foto karakter* yang ingin dianimasikan.\n\n' +
       '⚠️ *Syarat foto:*\n' +
       '• Tampilkan seluruh tubuh dari depan\n' +
@@ -1479,9 +1505,10 @@ bot.on('video', async (ctx) => {
       setSession(userId, { mode: 'idle' });
       return ctx.reply(`❌ Limit harian Kling Motion Control sudah habis!\n\n📊 Terpakai: *${used}/${KLING_DAILY_LIMIT}* generate hari ini.\n🕛 Reset otomatis besok.`, { parse_mode: 'Markdown' });
     }
+    const klingModel = session.klingModel ?? 'v3';
     setSession(userId, { mode: 'idle' });
     const statusMsg = await ctx.reply(`⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).`, { parse_mode: 'Markdown' });
-    runKlingMotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, vid.file_id, session.characterUrl)
+    runKlingMotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, vid.file_id, session.characterUrl, klingModel)
       .catch(e => console.error(`[${userId}] Kling gen error:`, e.message));
     return;
   }
@@ -1664,9 +1691,10 @@ bot.on('document', async (ctx) => {
       setSession(userId, { mode: 'idle' });
       return ctx.reply(`❌ Limit harian Kling Motion Control sudah habis!\n\n📊 Terpakai: *${used}/${KLING_DAILY_LIMIT}* generate hari ini.\n🕛 Reset otomatis besok.`, { parse_mode: 'Markdown' });
     }
+    const klingModel = session.klingModel ?? 'v3';
     setSession(userId, { mode: 'idle' });
     const statusMsg = await ctx.reply(`⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).`);
-    runKlingMotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, doc.file_id, session.characterUrl)
+    runKlingMotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, doc.file_id, session.characterUrl, klingModel)
       .catch(console.error);
     return;
   }
@@ -1735,12 +1763,46 @@ async function runVideoGeneration(chatId: number, userId: number, statusMsgId: n
 
 // ─── Background: Kling Motion Control ────────────────────────────────────────
 
-async function runKlingMotionControl(chatId: number, userId: number, dbUserId: number, statusMsgId: number, videoFileId: string, imageUrl: string) {
-  const apiKey = getNextKey(userId);
+async function pollFreepikKling(taskId: string, endpoint: string, userId: number, maxAttempts = 60): Promise<string> {
+  const pollUrl = `${FREEPIK_BASE}${endpoint}/${taskId}`;
+  console.log(`[${userId}] Freepik polling: ${pollUrl}`);
+  for (let i = 0; i < maxAttempts; i++) {
+    await sleep(10_000);
+    const res = await freepikHttp.get(pollUrl, {
+      headers: { 'x-freepik-api-key': FREEPIK_API_KEY },
+    });
+    const d = res.data?.data ?? res.data;
+    const status = d?.status;
+    console.log(`[${userId}] Freepik poll ${i + 1}: ${status}`);
+    if (status === 'completed' || status === 'succeed' || status === 'succeeded') {
+      const url = d?.output?.video_url ?? d?.generated?.[0]?.url ?? d?.video_url;
+      if (!url) throw new Error('Completed tapi tidak ada URL video');
+      return url;
+    }
+    if (status === 'failed' || status === 'error') {
+      throw new Error(d?.error?.message ?? d?.error ?? 'Generation gagal');
+    }
+  }
+  throw new Error('Timeout: proses terlalu lama (>10 menit)');
+}
+
+async function runKlingMotionControl(chatId: number, userId: number, dbUserId: number, statusMsgId: number, videoFileId: string, imageUrl: string, klingModel: 'v3' | 'v26' = 'v3') {
+  if (!FREEPIK_API_KEY) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      '❌ FREEPIK_API_KEY belum dikonfigurasi. Hubungi admin.'
+    ).catch(() => {});
+    return;
+  }
+
+  const endpoint = klingModel === 'v3'
+    ? '/ai/video/kling-v3-motion-control-std'
+    : '/ai/video/kling-v2-6-motion-control-std';
+  const label = klingModel === 'v3' ? 'Kling v3.0' : 'Kling v2.6';
   const MAX_ATTEMPTS = 3;
+
   try {
     const videoFileLink = await bot.telegram.getFileLink(videoFileId);
-    console.log(`[${userId}] Kling Motion Control started — img: ${imageUrl}, vid: ${videoFileLink.href}`);
+    console.log(`[${userId}] ${label} Motion Control started — img: ${imageUrl}, vid: ${videoFileLink.href}`);
 
     let outputUrl: string | undefined;
     let lastErr = '';
@@ -1748,36 +1810,34 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
         if (attempt > 1) {
-          console.log(`[${userId}] Kling retry attempt ${attempt}/${MAX_ATTEMPTS}...`);
+          console.log(`[${userId}] ${label} retry attempt ${attempt}/${MAX_ATTEMPTS}...`);
           await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
             `⏳ Coba ulang (${attempt}/${MAX_ATTEMPTS})...\nServer sedang sibuk, harap tunggu.`
           ).catch(() => {});
           await sleep(5_000);
         } else {
           await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-            '⏳ Sedang diproses...\nBiasanya 2–5 menit.'
+            `⏳ ${label} sedang diproses...\nBiasanya 2–5 menit.`
           ).catch(() => {});
         }
 
-        const genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, {
-          type: 'video-to-video',
-          model: 'kling-v2-6-motion-control',
+        const genRes = await freepikHttp.post(`${FREEPIK_BASE}${endpoint}`, {
           image_url: imageUrl,
           video_url: videoFileLink.href,
-          prompt: 'Cinematic quality, smooth motion transfer, preserve character identity',
-        }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
+          character_orientation: 'video',
+          cfg_scale: 0.5,
+        }, { headers: { 'x-freepik-api-key': FREEPIK_API_KEY, 'Content-Type': 'application/json' } });
 
-        console.log(`[${userId}] Kling attempt ${attempt} queued — ${JSON.stringify(genRes.data)}`);
-        const { id: taskId, poll_url: pollUrl } = genRes.data;
+        console.log(`[${userId}] ${label} attempt ${attempt} queued — ${JSON.stringify(genRes.data)}`);
+        const taskId = genRes.data?.data?.task_id ?? genRes.data?.task_id ?? genRes.data?.id;
         if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
 
-        outputUrl = await pollForResult(taskId, userId, apiKey, pollUrl);
-        break; // success
+        outputUrl = await pollFreepikKling(taskId, endpoint, userId);
+        break;
       } catch (e: any) {
         const msg = e?.message ?? String(e);
         lastErr = msg;
-        console.warn(`[${userId}] Kling attempt ${attempt} failed: ${msg}`);
-        // Only retry on timeout/server errors, not on key exhaustion or unprocessable
+        console.warn(`[${userId}] ${label} attempt ${attempt} failed: ${msg}`);
         const isRetryable = /timeout|timed out|try again|server|unavailable/i.test(msg);
         if (!isRetryable || attempt === MAX_ATTEMPTS) throw e;
       }
@@ -1785,24 +1845,16 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
 
     if (!outputUrl) throw new Error(lastErr || 'No output');
 
-    // Hanya increment setelah berhasil
     const newCount = await incrementKlingUsage(dbUserId);
     const remaining = Math.max(0, KLING_DAILY_LIMIT - newCount);
 
-    await sendResult(chatId, outputUrl, `🕹️ Kling 2.6 Pro Motion Control\n📊 Generate hari ini: ${newCount}/${KLING_DAILY_LIMIT} (sisa: ${remaining})\n\n/menu untuk buat lagi`, true);
+    await sendResult(chatId, outputUrl, `🕹️ ${label} Motion Control\n📊 Generate hari ini: ${newCount}/${KLING_DAILY_LIMIT} (sisa: ${remaining})\n\n/menu untuk buat lagi`, true);
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] Kling Motion Control done (usage: ${newCount}/${KLING_DAILY_LIMIT})`);
+    console.log(`[${userId}] ${label} Motion Control done (usage: ${newCount}/${KLING_DAILY_LIMIT})`);
   } catch (err: any) {
-    const rawMsg = err?.response?.data?.error ?? err?.response?.data ?? err.message ?? String(err);
+    const rawMsg = err?.response?.data?.message ?? err?.response?.data?.error ?? err?.response?.data ?? err.message ?? String(err);
     const raw = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
-    console.error(`[${userId}] Kling error: ${raw}`);
-    if (isKeyExhaustedError(raw)) {
-      await handleDeadKey(userId, apiKey);
-      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-        `⚠️ API key habis, sudah diganti otomatis. Coba lagi dengan /menu`
-      ).catch(() => {});
-      return;
-    }
+    console.error(`[${userId}] ${label} error: ${raw}`);
     const friendly = translateError(raw);
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `${friendly}\n\n/menu untuk coba lagi`
