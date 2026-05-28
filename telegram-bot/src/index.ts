@@ -439,9 +439,11 @@ type Mode =
   | 'i2v_kling21pro_wait_image'
   | 'i2v_kling21pro_wait_prompt'
   | 'i2v_kling21pro_wait_ratio'
+  | 'i2v_kling21pro_wait_duration'
   | 'i2v_kling26pro_wait_image'
   | 'i2v_kling26pro_wait_prompt'
-  | 'i2v_kling26pro_wait_ratio';
+  | 'i2v_kling26pro_wait_ratio'
+  | 'i2v_kling26pro_wait_duration';
 
 interface Session {
   mode: Mode;
@@ -746,6 +748,16 @@ function seedanceDurationKeyboard() {
     [
       Markup.button.callback('⏱ 5 detik', 'i2v_seedance2_dur_5'),
       Markup.button.callback('⏱ 10 detik', 'i2v_seedance2_dur_10'),
+    ],
+    [Markup.button.callback('« Kembali', 'mode_i2v')],
+  ]);
+}
+
+function klingDurationKeyboard(model: 'kling21pro' | 'kling26pro') {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('⏱ 5 detik', `i2v_kling_dur_${model}_5`),
+      Markup.button.callback('⏱ 10 detik', `i2v_kling_dur_${model}_10`),
     ],
     [Markup.button.callback('« Kembali', 'mode_i2v')],
   ]);
@@ -1559,12 +1571,11 @@ bot.on('callback_query', async (ctx) => {
       if (!session.i2vImageUrl || !session.i2vPrompt) {
         return ctx.editMessageText('❌ Data tidak ditemukan. Mulai ulang dari /menu', mainMenuKeyboard());
       }
-      const { i2vImageUrl, i2vPrompt } = session;
-      setSession(userId, { mode: 'idle', i2vAspectRatio: ratio });
-      const statusMsg = await ctx.editMessageText('⏳ Memproses Kling 2.1 Pro (Leonardo AI)...\nBiasanya 2–5 menit.');
-      runLeonardoKlingGeneration(ctx.chat!.id, userId, (statusMsg as any).message_id, i2vImageUrl, i2vPrompt, ratio, 'kling21pro')
-        .catch(e => console.error(`[${userId}] Kling21Pro error:`, e.message));
-      return;
+      setSession(userId, { mode: 'i2v_kling21pro_wait_duration', i2vAspectRatio: ratio });
+      return ctx.editMessageText(
+        '✅ Rasio dipilih!\n\n*Langkah 4:* Pilih *durasi video*:',
+        { parse_mode: 'Markdown', ...klingDurationKeyboard('kling21pro') }
+      );
     }
     if (data.startsWith('i2v_ratio_kling26pro_')) {
       const ratioKey = data.replace('i2v_ratio_kling26pro_', '');
@@ -1572,13 +1583,33 @@ bot.on('callback_query', async (ctx) => {
       if (!session.i2vImageUrl || !session.i2vPrompt) {
         return ctx.editMessageText('❌ Data tidak ditemukan. Mulai ulang dari /menu', mainMenuKeyboard());
       }
-      const { i2vImageUrl, i2vPrompt } = session;
-      setSession(userId, { mode: 'idle', i2vAspectRatio: ratio });
-      const statusMsg = await ctx.editMessageText('⏳ Memproses Kling 2.5 Pro (Leonardo AI)...\nBiasanya 2–5 menit.');
-      runLeonardoKlingGeneration(ctx.chat!.id, userId, (statusMsg as any).message_id, i2vImageUrl, i2vPrompt, ratio, 'kling26pro')
-        .catch(e => console.error(`[${userId}] Kling25Pro error:`, e.message));
-      return;
+      setSession(userId, { mode: 'i2v_kling26pro_wait_duration', i2vAspectRatio: ratio });
+      return ctx.editMessageText(
+        '✅ Rasio dipilih!\n\n*Langkah 4:* Pilih *durasi video*:',
+        { parse_mode: 'Markdown', ...klingDurationKeyboard('kling26pro') }
+      );
     }
+    return;
+  }
+
+  // ── Kling duration callbacks ──
+  if (data.startsWith('i2v_kling_dur_')) {
+    if (!await requireLoginAndSub(ctx)) return;
+    const session = getSession(userId);
+    // format: i2v_kling_dur_{kling21pro|kling26pro}_{5|10}
+    const parts = data.replace('i2v_kling_dur_', '').split('_');
+    // model can be 'kling21pro' or 'kling26pro' — last part is duration
+    const duration = parseInt(parts[parts.length - 1], 10) || 5;
+    const model = parts.slice(0, -1).join('_') as 'kling21pro' | 'kling26pro';
+    const label = model === 'kling21pro' ? 'Kling 2.1 Pro' : 'Kling 2.5 Pro';
+    if (!session.i2vImageUrl || !session.i2vPrompt || !session.i2vAspectRatio) {
+      return ctx.editMessageText('❌ Data tidak ditemukan. Mulai ulang dari /menu', mainMenuKeyboard());
+    }
+    const { i2vImageUrl, i2vPrompt, i2vAspectRatio } = session;
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.editMessageText(`⏳ Memproses ${label} (${duration}s, ${i2vAspectRatio})...\nBiasanya 2–5 menit.`);
+    runLeonardoKlingGeneration(ctx.chat!.id, userId, (statusMsg as any).message_id, i2vImageUrl, i2vPrompt, i2vAspectRatio, model, duration)
+      .catch(e => console.error(`[${userId}] ${label} error:`, e.message));
     return;
   }
 
@@ -2622,6 +2653,7 @@ async function runLeonardoKlingGeneration(
   prompt: string,
   aspectRatio = '16:9',
   model: 'kling21pro' | 'kling26pro' = 'kling26pro',
+  duration = 5,
   maxKeyRetries = 10,
 ) {
   const label = model === 'kling21pro' ? 'Kling 2.1 Pro' : 'Kling 2.5 Pro';
@@ -2706,7 +2738,7 @@ async function runLeonardoKlingGeneration(
         imageId,
         imageType: 'UPLOADED',
         resolution: 'RESOLUTION_1080',
-        duration: 5,
+        duration,
         height,
         width,
         model: leonardoModel,
