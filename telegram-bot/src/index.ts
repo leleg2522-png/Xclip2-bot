@@ -736,7 +736,7 @@ function i2vModelKeyboard() {
     [Markup.button.callback('⚡ Veo 3 Fast 4K', 'i2v_veo3')],
     [Markup.button.callback('🌱 Seedance 2 (480p)', 'i2v_seedance2')],
     [Markup.button.callback('🎬 Kling 2.1 Pro (Leonardo)', 'i2v_kling21pro')],
-    [Markup.button.callback('🎬 Kling 2.6 Pro (Leonardo)', 'i2v_kling26pro')],
+    [Markup.button.callback('🎬 Kling 2.5 Pro (Leonardo)', 'i2v_kling26pro')],
     [Markup.button.callback('« Kembali', 'back_main')],
   ]);
 }
@@ -1501,7 +1501,7 @@ bot.on('callback_query', async (ctx) => {
     if (!await requireLoginAndSub(ctx)) return;
     setSession(userId, { mode: 'i2v_kling26pro_wait_image' });
     return ctx.editMessageText(
-      '🎬 *Kling 2.6 Pro — Image to Video (Leonardo AI)*\n\n' +
+      '🎬 *Kling 2.5 Pro — Image to Video (Leonardo AI)*\n\n' +
       'Kirim *foto/gambar* yang ingin dijadikan video.\n\n' +
       '⚠️ *Syarat:*\n• Format: JPG, PNG\n• Maks 10MB',
       { parse_mode: 'Markdown' }
@@ -1574,9 +1574,9 @@ bot.on('callback_query', async (ctx) => {
       }
       const { i2vImageUrl, i2vPrompt } = session;
       setSession(userId, { mode: 'idle', i2vAspectRatio: ratio });
-      const statusMsg = await ctx.editMessageText('⏳ Memproses Kling 2.6 Pro (Leonardo AI)...\nBiasanya 2–5 menit.');
+      const statusMsg = await ctx.editMessageText('⏳ Memproses Kling 2.5 Pro (Leonardo AI)...\nBiasanya 2–5 menit.');
       runLeonardoKlingGeneration(ctx.chat!.id, userId, (statusMsg as any).message_id, i2vImageUrl, i2vPrompt, ratio, 'kling26pro')
-        .catch(e => console.error(`[${userId}] Kling26Pro error:`, e.message));
+        .catch(e => console.error(`[${userId}] Kling25Pro error:`, e.message));
       return;
     }
     return;
@@ -2612,7 +2612,7 @@ async function runVeo3Generation(chatId: number, userId: number, statusMsgId: nu
   );
 }
 
-// ─── Background: Leonardo AI Kling 2.1 Pro / 2.6 Pro Image to Video ──────────
+// ─── Background: Leonardo AI Kling 2.1 Pro / 2.5 Pro Image to Video ──────────
 
 async function runLeonardoKlingGeneration(
   chatId: number,
@@ -2624,10 +2624,17 @@ async function runLeonardoKlingGeneration(
   model: 'kling21pro' | 'kling26pro' = 'kling26pro',
   maxKeyRetries = 10,
 ) {
-  const label = model === 'kling21pro' ? 'Kling 2.1 Pro' : 'Kling 2.6 Pro';
-  const modelId = model === 'kling21pro'
-    ? (process.env.LEONARDO_KLING21_PRO_MODEL_ID ?? 'aa77f04e-3eec-4034-9c07-d0f619684628')
-    : (process.env.LEONARDO_KLING26_PRO_MODEL_ID ?? '6b645e3a-d64f-4341-a6d8-7a3690fbf042');
+  const label = model === 'kling21pro' ? 'Kling 2.1 Pro' : 'Kling 2.5 Pro';
+  // Leonardo AI model token strings (confirmed via API validation)
+  const leonardoModel = model === 'kling21pro' ? 'KLING2_1' : 'KLING2_5';
+
+  // Map aspect ratio to width/height for RESOLUTION_1080
+  const dimensionMap: Record<string, { width: number; height: number }> = {
+    '16:9': { width: 1920, height: 1080 },
+    '9:16': { width: 1080, height: 1920 },
+    '1:1':  { width: 1080, height: 1080 },
+  };
+  const { width, height } = dimensionMap[aspectRatio] ?? { width: 1920, height: 1080 };
 
   const usedKeys = new Set<string>();
 
@@ -2647,11 +2654,11 @@ async function runLeonardoKlingGeneration(
         `⏳ ${label} sedang diproses...\nBiasanya 2–5 menit.`
       ).catch(() => {});
 
-      // Step 1: Download the image and convert to buffer
+      // Step 1: Download the image
       const imgData = await downloadBuffer(imageUrl);
       console.log(`[${userId}] ${label} image downloaded: ${imgData.mime} ${(imgData.buf.length / 1024).toFixed(1)}KB`);
 
-      // Step 2: Init image upload on Leonardo AI
+      // Step 2: Get presigned S3 URL from Leonardo AI
       const initRes = await leonardoHttp.post(`${LEONARDO_BASE}/init-image`, {
         extension: imgData.ext === 'png' ? 'png' : 'jpg',
       }, {
@@ -2666,7 +2673,7 @@ async function runLeonardoKlingGeneration(
       const { url: s3Url, fields, id: imageId } = uploadData;
       console.log(`[${userId}] ${label} init-image OK — imageId: ${imageId}`);
 
-      // Step 3: Upload image to S3 using presigned URL
+      // Step 3: Upload image to S3 via presigned URL
       const formData = new FormData();
       if (fields && typeof fields === 'object') {
         for (const [k, v] of Object.entries(fields)) {
@@ -2684,27 +2691,28 @@ async function runLeonardoKlingGeneration(
       });
       console.log(`[${userId}] ${label} S3 upload OK`);
 
-      // Step 4: Create image-to-video generation
-      const genBody: Record<string, any> = {
-        imageId,
-        motionStrength: 5,
-        isInitImage: true,
-        modelId,
-        aspectRatio,
+      // Step 4: Create image-to-video generation via confirmed endpoint
+      const genRes = await leonardoHttp.post(`${LEONARDO_BASE}/generations-image-to-video`, {
         prompt,
-      };
-      const genRes = await leonardoHttp.post(`${LEONARDO_BASE}/generations/image2video`, genBody, {
+        imageId,
+        imageType: 'UPLOADED',
+        resolution: 'RESOLUTION_1080',
+        duration: 5,
+        height,
+        width,
+        model: leonardoModel,
+      }, {
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         timeout: 60_000,
       });
 
-      const generationId = genRes.data?.sdGenerationJob?.generationId
+      const generationId = genRes.data?.motionVideoGenerationJob?.generationId
         ?? genRes.data?.generationId
         ?? genRes.data?.id;
       if (!generationId) throw new Error(`No generation ID: ${JSON.stringify(genRes.data)}`);
       console.log(`[${userId}] ${label} generation queued — ID: ${generationId}`);
 
-      // Step 5: Poll for result
+      // Step 5: Poll for result (uses GET /generations/{id} → generated_images[0].motionMP4URL)
       const outputUrl = await pollLeonardoGeneration(generationId, apiKey, userId, label);
       await sendResult(chatId, outputUrl, `🎬 ${label} — Image to Video\n\n/menu untuk buat lagi`, true);
       await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
@@ -2751,10 +2759,14 @@ async function pollLeonardoGeneration(generationId: string, apiKey: string, user
     if (status === 'complete' || status === 'completed' || status === 'success' || status === 'finished') {
       const images = gen?.generated_images ?? gen?.generatedImages ?? gen?.outputs ?? gen?.videos;
       let url: string | undefined;
+      // Prioritize motionMP4URL (Kling/video generations) over static image URL
       if (Array.isArray(images) && images.length > 0) {
         const first = images[0];
-        url = typeof first === 'string' ? first : (first?.url ?? first?.video_url ?? first?.motionMP4URL);
+        url = typeof first === 'string'
+          ? first
+          : (first?.motionMP4URL ?? first?.url ?? first?.video_url);
       }
+      if (!url && typeof gen?.motionMP4URL === 'string') url = gen.motionMP4URL;
       if (!url && typeof gen?.url === 'string') url = gen.url;
       if (!url && typeof gen?.video_url === 'string') url = gen.video_url;
       if (!url) throw new Error(`Selesai tapi URL kosong. Response: ${JSON.stringify(res.data)?.slice(0, 300)}`);
