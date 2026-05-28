@@ -2670,15 +2670,24 @@ async function runLeonardoKlingGeneration(
       if (!uploadData?.url || !uploadData?.id) {
         throw new Error(`Init-image gagal: ${JSON.stringify(initRes.data)}`);
       }
-      const { url: s3Url, fields, id: imageId } = uploadData;
-      console.log(`[${userId}] ${label} init-image OK — imageId: ${imageId}`);
+      const { url: s3Url, fields: rawFields, id: imageId } = uploadData;
+      console.log(`[${userId}] ${label} init-image OK — imageId: ${imageId} fields type: ${typeof rawFields}`);
 
       // Step 3: Upload image to S3 via presigned URL
+      // fields can be a JSON string or an object depending on Leonardo API response
+      let parsedFields: Record<string, string> = {};
+      if (rawFields && typeof rawFields === 'string') {
+        try { parsedFields = JSON.parse(rawFields); } catch { parsedFields = {}; }
+      } else if (rawFields && typeof rawFields === 'object') {
+        parsedFields = rawFields as Record<string, string>;
+      }
+      console.log(`[${userId}] ${label} S3 fields keys: ${Object.keys(parsedFields).join(', ')}`);
+
       const formData = new FormData();
-      if (fields && typeof fields === 'object') {
-        for (const [k, v] of Object.entries(fields)) {
-          formData.append(k, String(v));
-        }
+      // S3 requires 'key' to be first — append it explicitly before other fields
+      if (parsedFields['key']) formData.append('key', parsedFields['key']);
+      for (const [k, v] of Object.entries(parsedFields)) {
+        if (k !== 'key') formData.append(k, String(v));
       }
       formData.append('file', imgData.buf, {
         filename: `image.${imgData.ext === 'png' ? 'png' : 'jpg'}`,
