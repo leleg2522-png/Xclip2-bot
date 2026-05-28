@@ -14,6 +14,7 @@ const DATABASE_URL = process.env.RAILWAY_DATABASE_URL;
 const AIVIDEOAPI_BASE = 'https://api.aivideoapi.ai/v1';
 const FREEPIK_API_KEY = process.env.FREEPIK_API_KEY;
 const FREEPIK_BASE = 'https://api.freepik.com/v1';
+const LEONARDO_BASE = 'https://cloud.leonardo.ai/api/rest/v1';
 
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!RENDERFUL_API_KEY) throw new Error('RENDERFUL_API_KEY is required');
@@ -50,6 +51,9 @@ const freepikHttp = axios.create({
   timeout: 120_000,
   ...(freepikHttpsAgent ? { httpsAgent: freepikHttpsAgent } : {}),
 });
+
+// Leonardo AI HTTP client — untuk Kling 2.1 Pro dan Kling 2.6 Pro
+const leonardoHttp = axios.create({ timeout: 120_000 });
 
 // Direct HTTP client for Telegram downloads — tidak pakai proxy
 const telegramHttp = axios.create({ timeout: 60_000 });
@@ -262,6 +266,60 @@ async function getI2vPoolStats(): Promise<{ available: number; dead: number }> {
   return stats;
 }
 
+// ─── Leonardo AI Key Pool ─────────────────────────────────────────────────────
+
+let leonardoKeyRoundRobinIndex = 0;
+
+async function getNextLeonardoKey(skipKeys?: Set<string>): Promise<string | null> {
+  const res = await db.query(
+    `SELECT id, api_key FROM leonardo_key_pool WHERE status = 'available' ORDER BY id`
+  );
+  if (res.rows.length === 0) return null;
+  const available = skipKeys && skipKeys.size > 0
+    ? res.rows.filter((r: any) => !skipKeys.has(r.api_key))
+    : res.rows;
+  if (available.length === 0) return null;
+  const idx = leonardoKeyRoundRobinIndex % available.length;
+  leonardoKeyRoundRobinIndex = (leonardoKeyRoundRobinIndex + 1) % available.length;
+  return available[idx].api_key;
+}
+
+async function markLeonardoKeyDead(apiKey: string): Promise<void> {
+  await db.query(
+    `UPDATE leonardo_key_pool SET status = 'dead', dead_at = NOW() WHERE api_key = $1`,
+    [apiKey]
+  );
+}
+
+async function addLeonardoKeyToPool(apiKey: string): Promise<boolean> {
+  try {
+    await db.query(
+      `INSERT INTO leonardo_key_pool (api_key, status) VALUES ($1, 'available') ON CONFLICT (api_key) DO NOTHING`,
+      [apiKey]
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function getLeonardoPoolStats(): Promise<{ available: number; dead: number }> {
+  const res = await db.query(
+    `SELECT status, COUNT(*) AS cnt FROM leonardo_key_pool GROUP BY status`
+  );
+  const stats: any = { available: 0, dead: 0 };
+  for (const row of res.rows) stats[row.status] = parseInt(row.cnt);
+  return stats;
+}
+
+function isLeonardoKeyExhaustedError(raw: string): boolean {
+  const lower = raw.toLowerCase();
+  return lower.includes('401') || lower.includes('unauthorized') || lower.includes('invalid api key')
+    || lower.includes('quota') || lower.includes('exhausted') || lower.includes('limit exceeded')
+    || lower.includes('insufficient') || lower.includes('402') || lower.includes('payment required')
+    || lower.includes('forbidden') || lower.includes('403') || lower.includes('token limit');
+}
+
 // ─── Kling Daily Limit ────────────────────────────────────────────────────────
 
 const KLING_DAILY_LIMIT = 10;
@@ -377,7 +435,13 @@ type Mode =
   | 'i2v_seedance2_wait_image'
   | 'i2v_seedance2_wait_prompt'
   | 'i2v_seedance2_wait_ratio'
-  | 'i2v_seedance2_wait_duration';
+  | 'i2v_seedance2_wait_duration'
+  | 'i2v_kling21pro_wait_image'
+  | 'i2v_kling21pro_wait_prompt'
+  | 'i2v_kling21pro_wait_ratio'
+  | 'i2v_kling26pro_wait_image'
+  | 'i2v_kling26pro_wait_prompt'
+  | 'i2v_kling26pro_wait_ratio';
 
 interface Session {
   mode: Mode;
@@ -671,6 +735,8 @@ function i2vModelKeyboard() {
     [Markup.button.callback('🌟 Sora 2 (8 detik)', 'i2v_sora2')],
     [Markup.button.callback('⚡ Veo 3 Fast 4K', 'i2v_veo3')],
     [Markup.button.callback('🌱 Seedance 2 (480p)', 'i2v_seedance2')],
+    [Markup.button.callback('🎬 Kling 2.1 Pro (Leonardo)', 'i2v_kling21pro')],
+    [Markup.button.callback('🎬 Kling 2.6 Pro (Leonardo)', 'i2v_kling26pro')],
     [Markup.button.callback('« Kembali', 'back_main')],
   ]);
 }
@@ -685,7 +751,7 @@ function seedanceDurationKeyboard() {
   ]);
 }
 
-function i2vAspectRatioKeyboard(model: 'sora2' | 'veo3' | 'seedance2') {
+function i2vAspectRatioKeyboard(model: 'sora2' | 'veo3' | 'seedance2' | 'kling21pro' | 'kling26pro') {
   return Markup.inlineKeyboard([
     [
       Markup.button.callback('📺 16:9', `i2v_ratio_${model}_16_9`),
@@ -1209,6 +1275,100 @@ bot.command('cleari2vpool', async (ctx) => {
   return ctx.reply(`🗑️ Pool i2v dikosongkan — *${res.rows.length} key* dihapus.`, { parse_mode: 'Markdown' });
 });
 
+// ─── Admin: Leonardo AI Key Pool ─────────────────────────────────────────────
+
+bot.command('addleonardokey', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const raw = ctx.message.text.replace(/^\/addleonardokey\s*/i, '').trim();
+  if (!raw) {
+    return ctx.reply(
+      '📝 Format (pisah dengan koma):\n' +
+      '/addleonardokey abc123key\n\n' +
+      'Atau banyak sekaligus:\n' +
+      '/addleonardokey key1,key2,key3'
+    );
+  }
+
+  const keys = raw.split(',').map(k => k.trim()).filter(k => k.length > 0);
+  let added = 0, skipped = 0;
+  for (const key of keys) {
+    const ok = await addLeonardoKeyToPool(key);
+    if (ok) added++; else skipped++;
+  }
+
+  const stats = await getLeonardoPoolStats();
+  let msg = `✅ Selesai menambahkan key Leonardo AI!\n\n`;
+  msg += `• Berhasil ditambah: ${added}\n`;
+  if (skipped > 0) msg += `• Sudah ada / gagal: ${skipped}\n`;
+  msg += `\n📊 Status pool Leonardo AI sekarang:\n`;
+  msg += `• Available: ${stats.available}\n`;
+  msg += `• Dead: ${stats.dead}`;
+  return ctx.reply(msg);
+});
+
+bot.command('leonardopoolstatus', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const stats = await getLeonardoPoolStats();
+  const total = stats.available + stats.dead;
+  return ctx.reply(
+    `📊 *Status Leonardo AI Key Pool*\n\n` +
+    `• ✅ Available: *${stats.available}*\n` +
+    `• ❌ Dead: *${stats.dead}*\n` +
+    `• 📦 Total: *${total}*`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+bot.command('removeleonardokey', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const parts = ctx.message.text.trim().split(/\s+/);
+  if (parts.length < 2) return ctx.reply('📝 *Format:* `/removeleonardokey <api_key>`', { parse_mode: 'Markdown' });
+
+  const apiKey = parts[1].trim();
+  const res = await db.query(
+    `UPDATE leonardo_key_pool SET status = 'dead', dead_at = NOW() WHERE api_key = $1 RETURNING id`,
+    [apiKey]
+  );
+  if (res.rows.length === 0) return ctx.reply('❌ Key tidak ditemukan di pool Leonardo AI.');
+  return ctx.reply('✅ Key Leonardo AI berhasil dinonaktifkan (dead).');
+});
+
+bot.command('restoreleonardokey', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const parts = ctx.message.text.trim().split(/\s+/);
+  if (parts.length < 2) return ctx.reply('📝 *Format:* `/restoreleonardokey <api_key>`', { parse_mode: 'Markdown' });
+
+  const apiKey = parts[1].trim();
+  const res = await db.query(
+    `UPDATE leonardo_key_pool SET status = 'available', dead_at = NULL WHERE api_key = $1 RETURNING id`,
+    [apiKey]
+  );
+  if (res.rows.length === 0) return ctx.reply('❌ Key tidak ditemukan di pool Leonardo AI.');
+  return ctx.reply('✅ Key Leonardo AI berhasil dipulihkan ke status *available*.', { parse_mode: 'Markdown' });
+});
+
+bot.command('clearleonardopool', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const res = await db.query(`DELETE FROM leonardo_key_pool RETURNING api_key`);
+  if (res.rows.length === 0) return ctx.reply('ℹ️ Pool Leonardo AI sudah kosong.');
+  return ctx.reply(`🗑️ Pool Leonardo AI dikosongkan — *${res.rows.length} key* dihapus.`, { parse_mode: 'Markdown' });
+});
+
 bot.command('cancel', (ctx) => {
   setSession(ctx.from.id, { mode: 'idle' });
   return ctx.reply('✅ Dibatalkan.', mainMenuKeyboard());
@@ -1326,6 +1486,28 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  if (data === 'i2v_kling21pro') {
+    if (!await requireLoginAndSub(ctx)) return;
+    setSession(userId, { mode: 'i2v_kling21pro_wait_image' });
+    return ctx.editMessageText(
+      '🎬 *Kling 2.1 Pro — Image to Video (Leonardo AI)*\n\n' +
+      'Kirim *foto/gambar* yang ingin dijadikan video.\n\n' +
+      '⚠️ *Syarat:*\n• Format: JPG, PNG\n• Maks 10MB',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data === 'i2v_kling26pro') {
+    if (!await requireLoginAndSub(ctx)) return;
+    setSession(userId, { mode: 'i2v_kling26pro_wait_image' });
+    return ctx.editMessageText(
+      '🎬 *Kling 2.6 Pro — Image to Video (Leonardo AI)*\n\n' +
+      'Kirim *foto/gambar* yang ingin dijadikan video.\n\n' +
+      '⚠️ *Syarat:*\n• Format: JPG, PNG\n• Maks 10MB',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   // ── i2v aspect ratio callbacks ──
   if (data.startsWith('i2v_ratio_')) {
     if (!await requireLoginAndSub(ctx)) return;
@@ -1370,6 +1552,32 @@ bot.on('callback_query', async (ctx) => {
         '✅ Rasio diterima!\n\n*Langkah 4:* Pilih *durasi video*:',
         { parse_mode: 'Markdown', ...seedanceDurationKeyboard() }
       );
+    }
+    if (data.startsWith('i2v_ratio_kling21pro_')) {
+      const ratioKey = data.replace('i2v_ratio_kling21pro_', '');
+      const ratio = ratioMap[ratioKey] ?? '16:9';
+      if (!session.i2vImageUrl || !session.i2vPrompt) {
+        return ctx.editMessageText('❌ Data tidak ditemukan. Mulai ulang dari /menu', mainMenuKeyboard());
+      }
+      const { i2vImageUrl, i2vPrompt } = session;
+      setSession(userId, { mode: 'idle', i2vAspectRatio: ratio });
+      const statusMsg = await ctx.editMessageText('⏳ Memproses Kling 2.1 Pro (Leonardo AI)...\nBiasanya 2–5 menit.');
+      runLeonardoKlingGeneration(ctx.chat!.id, userId, (statusMsg as any).message_id, i2vImageUrl, i2vPrompt, ratio, 'kling21pro')
+        .catch(e => console.error(`[${userId}] Kling21Pro error:`, e.message));
+      return;
+    }
+    if (data.startsWith('i2v_ratio_kling26pro_')) {
+      const ratioKey = data.replace('i2v_ratio_kling26pro_', '');
+      const ratio = ratioMap[ratioKey] ?? '16:9';
+      if (!session.i2vImageUrl || !session.i2vPrompt) {
+        return ctx.editMessageText('❌ Data tidak ditemukan. Mulai ulang dari /menu', mainMenuKeyboard());
+      }
+      const { i2vImageUrl, i2vPrompt } = session;
+      setSession(userId, { mode: 'idle', i2vAspectRatio: ratio });
+      const statusMsg = await ctx.editMessageText('⏳ Memproses Kling 2.6 Pro (Leonardo AI)...\nBiasanya 2–5 menit.');
+      runLeonardoKlingGeneration(ctx.chat!.id, userId, (statusMsg as any).message_id, i2vImageUrl, i2vPrompt, ratio, 'kling26pro')
+        .catch(e => console.error(`[${userId}] Kling26Pro error:`, e.message));
+      return;
     }
     return;
   }
@@ -1610,6 +1818,24 @@ async function handleImageInput(ctx: any, fileUrl: string) {
     );
   }
 
+  if (session.mode === 'i2v_kling21pro_wait_image') {
+    setSession(userId, { mode: 'i2v_kling21pro_wait_prompt', i2vImageUrl: fileUrl });
+    return ctx.reply(
+      '✅ Gambar diterima!\n\n*Langkah 2:* Ketik *prompt* untuk video ini.\n\n' +
+      '💡 _Contoh: "The character walks forward confidently, cinematic"_',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'i2v_kling26pro_wait_image') {
+    setSession(userId, { mode: 'i2v_kling26pro_wait_prompt', i2vImageUrl: fileUrl });
+    return ctx.reply(
+      '✅ Gambar diterima!\n\n*Langkah 2:* Ketik *prompt* untuk video ini.\n\n' +
+      '💡 _Contoh: "The character waves and smiles naturally, 4K cinematic"_',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   return ctx.reply('Pilih mode terlebih dahulu:', mainMenuKeyboard());
 }
 
@@ -1797,6 +2023,30 @@ bot.on('text', async (ctx) => {
     return ctx.reply(
       '✅ Prompt diterima!\n\n*Langkah 3:* Pilih *rasio aspek video*:',
       { parse_mode: 'Markdown', ...i2vAspectRatioKeyboard('seedance2') }
+    );
+  }
+
+  if (session.mode === 'i2v_kling21pro_wait_prompt') {
+    if (!await requireLoginAndSub(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) return ctx.reply('Prompt tidak boleh kosong. Ketik deskripsi untuk videonya:');
+    if (!session.i2vImageUrl) return ctx.reply('❌ Gambar tidak ditemukan. Mulai ulang dari /menu', mainMenuKeyboard());
+    setSession(userId, { mode: 'i2v_kling21pro_wait_ratio', i2vPrompt: prompt });
+    return ctx.reply(
+      '✅ Prompt diterima!\n\n*Langkah 3:* Pilih *rasio aspek video*:',
+      { parse_mode: 'Markdown', ...i2vAspectRatioKeyboard('kling21pro') }
+    );
+  }
+
+  if (session.mode === 'i2v_kling26pro_wait_prompt') {
+    if (!await requireLoginAndSub(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) return ctx.reply('Prompt tidak boleh kosong. Ketik deskripsi untuk videonya:');
+    if (!session.i2vImageUrl) return ctx.reply('❌ Gambar tidak ditemukan. Mulai ulang dari /menu', mainMenuKeyboard());
+    setSession(userId, { mode: 'i2v_kling26pro_wait_ratio', i2vPrompt: prompt });
+    return ctx.reply(
+      '✅ Prompt diterima!\n\n*Langkah 3:* Pilih *rasio aspek video*:',
+      { parse_mode: 'Markdown', ...i2vAspectRatioKeyboard('kling26pro') }
     );
   }
 });
@@ -2360,6 +2610,162 @@ async function runVeo3Generation(chatId: number, userId: number, statusMsgId: nu
     '⏳ Veo 3 Fast 4K sedang generate video...\nBiasanya 2–5 menit.',
     '⚡ Veo 3 Fast 4K — Image to Video\n\n/menu untuk buat lagi',
   );
+}
+
+// ─── Background: Leonardo AI Kling 2.1 Pro / 2.6 Pro Image to Video ──────────
+
+async function runLeonardoKlingGeneration(
+  chatId: number,
+  userId: number,
+  statusMsgId: number,
+  imageUrl: string,
+  prompt: string,
+  aspectRatio = '16:9',
+  model: 'kling21pro' | 'kling26pro' = 'kling26pro',
+  maxKeyRetries = 10,
+) {
+  const label = model === 'kling21pro' ? 'Kling 2.1 Pro' : 'Kling 2.6 Pro';
+  const modelId = model === 'kling21pro'
+    ? (process.env.LEONARDO_KLING21_PRO_MODEL_ID ?? 'aa77f04e-3eec-4034-9c07-d0f619684628')
+    : (process.env.LEONARDO_KLING26_PRO_MODEL_ID ?? '6b645e3a-d64f-4341-a6d8-7a3690fbf042');
+
+  const usedKeys = new Set<string>();
+
+  for (let attempt = 1; attempt <= maxKeyRetries; attempt++) {
+    const apiKey = await getNextLeonardoKey(usedKeys);
+    if (!apiKey) {
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+        '❌ Semua API key Leonardo AI habis. Hubungi admin untuk mengisi key.\n\n/menu untuk kembali'
+      ).catch(() => {});
+      return;
+    }
+    usedKeys.add(apiKey);
+
+    try {
+      console.log(`[${userId}] ${label} attempt ${attempt} — key: ${apiKey.slice(0, 10)}...`);
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+        `⏳ ${label} sedang diproses...\nBiasanya 2–5 menit.`
+      ).catch(() => {});
+
+      // Step 1: Download the image and convert to buffer
+      const imgData = await downloadBuffer(imageUrl);
+      console.log(`[${userId}] ${label} image downloaded: ${imgData.mime} ${(imgData.buf.length / 1024).toFixed(1)}KB`);
+
+      // Step 2: Init image upload on Leonardo AI
+      const initRes = await leonardoHttp.post(`${LEONARDO_BASE}/init-image`, {
+        extension: imgData.ext === 'png' ? 'png' : 'jpg',
+      }, {
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        timeout: 30_000,
+      });
+
+      const uploadData = initRes.data?.uploadInitImage;
+      if (!uploadData?.url || !uploadData?.id) {
+        throw new Error(`Init-image gagal: ${JSON.stringify(initRes.data)}`);
+      }
+      const { url: s3Url, fields, id: imageId } = uploadData;
+      console.log(`[${userId}] ${label} init-image OK — imageId: ${imageId}`);
+
+      // Step 3: Upload image to S3 using presigned URL
+      const formData = new FormData();
+      if (fields && typeof fields === 'object') {
+        for (const [k, v] of Object.entries(fields)) {
+          formData.append(k, String(v));
+        }
+      }
+      formData.append('file', imgData.buf, {
+        filename: `image.${imgData.ext === 'png' ? 'png' : 'jpg'}`,
+        contentType: imgData.mime,
+      });
+      await telegramHttp.post(s3Url, formData, {
+        headers: { ...formData.getHeaders() },
+        timeout: 60_000,
+        maxBodyLength: Infinity,
+      });
+      console.log(`[${userId}] ${label} S3 upload OK`);
+
+      // Step 4: Create image-to-video generation
+      const genBody: Record<string, any> = {
+        imageId,
+        motionStrength: 5,
+        isInitImage: true,
+        modelId,
+        aspectRatio,
+        prompt,
+      };
+      const genRes = await leonardoHttp.post(`${LEONARDO_BASE}/generations/image2video`, genBody, {
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        timeout: 60_000,
+      });
+
+      const generationId = genRes.data?.sdGenerationJob?.generationId
+        ?? genRes.data?.generationId
+        ?? genRes.data?.id;
+      if (!generationId) throw new Error(`No generation ID: ${JSON.stringify(genRes.data)}`);
+      console.log(`[${userId}] ${label} generation queued — ID: ${generationId}`);
+
+      // Step 5: Poll for result
+      const outputUrl = await pollLeonardoGeneration(generationId, apiKey, userId, label);
+      await sendResult(chatId, outputUrl, `🎬 ${label} — Image to Video\n\n/menu untuk buat lagi`, true);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] ${label} done`);
+      return;
+
+    } catch (err: any) {
+      const rawMsg = err?.response?.data ? JSON.stringify(err.response.data) : (err.message ?? String(err));
+      const raw = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
+      console.error(`[${userId}] ${label} error (attempt ${attempt}): ${raw}`);
+
+      if (isLeonardoKeyExhaustedError(raw)) {
+        await markLeonardoKeyDead(apiKey);
+        console.log(`[${userId}] Leonardo key dead, retry: ${apiKey.slice(0, 10)}...`);
+        continue;
+      }
+
+      const friendly = translateError(raw);
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+        `${friendly}\n\n/menu untuk coba lagi`
+      ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+      return;
+    }
+  }
+
+  await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+    '❌ Semua API key Leonardo AI habis setelah beberapa percobaan. Hubungi admin.\n\n/menu untuk kembali'
+  ).catch(() => {});
+}
+
+async function pollLeonardoGeneration(generationId: string, apiKey: string, userId: number, label: string): Promise<string> {
+  const MAX_ATTEMPTS = 60;
+  const POLL_INTERVAL = 10_000;
+  for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    await sleep(POLL_INTERVAL);
+    const res = await leonardoHttp.get(`${LEONARDO_BASE}/generations/${generationId}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      timeout: 30_000,
+    });
+    const gen = res.data?.generations_by_pk ?? res.data?.generation ?? res.data;
+    const status = (gen?.status ?? '').toLowerCase();
+    console.log(`[${userId}] ${label} poll ${i + 1}: status=${status}`);
+
+    if (status === 'complete' || status === 'completed' || status === 'success' || status === 'finished') {
+      const images = gen?.generated_images ?? gen?.generatedImages ?? gen?.outputs ?? gen?.videos;
+      let url: string | undefined;
+      if (Array.isArray(images) && images.length > 0) {
+        const first = images[0];
+        url = typeof first === 'string' ? first : (first?.url ?? first?.video_url ?? first?.motionMP4URL);
+      }
+      if (!url && typeof gen?.url === 'string') url = gen.url;
+      if (!url && typeof gen?.video_url === 'string') url = gen.video_url;
+      if (!url) throw new Error(`Selesai tapi URL kosong. Response: ${JSON.stringify(res.data)?.slice(0, 300)}`);
+      console.log(`[${userId}] ${label} URL found: ${url.slice(0, 80)}...`);
+      return url;
+    }
+    if (status === 'failed' || status === 'error') {
+      throw new Error(gen?.error ?? gen?.reason ?? 'Generation gagal di Leonardo AI');
+    }
+  }
+  throw new Error('Timeout: proses terlalu lama (>10 menit)');
 }
 
 // ─── Background: Seedance 2 Image to Video ───────────────────────────────────
