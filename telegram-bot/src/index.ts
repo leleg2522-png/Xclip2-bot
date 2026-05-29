@@ -348,11 +348,11 @@ const bot = new Telegraf(BOT_TOKEN);
 
 // ─── Model definitions ────────────────────────────────────────────────────────
 
-const IMAGE_MODELS: Record<string, { label: string; cost: string; apiId?: string }> = {
-  'gpt-image-2':       { label: '🤖 GPT Image 2',     cost: '$0.03' },
-  'nano-banana-2-i2i': { label: '🍌 Nano Banana 2',   cost: '$0.04' },
-  'nano-banana-pro':   { label: '🍌 Nano Banana Pro',  cost: '$0.14' },
-  'seedream-5.0-lite': { label: '🌱 Seedream 5 Lite',  cost: '$0.04' },
+const IMAGE_MODELS: Record<string, { label: string; cost: string }> = {
+  'flux-kontext-pro': { label: '⚡ Flux Kontext Pro', cost: '$0.04' },
+  'flux-kontext-max': { label: '🔥 Flux Kontext Max', cost: '$0.08' },
+  'gpt-image-1':      { label: '🤖 GPT Image 1',      cost: '$0.04' },
+  'seedream-3.0':     { label: '🌱 Seedream 3.0',     cost: '$0.03' },
 };
 
 const TASK_PRESETS: Record<string, { label: string; prompt: string }> = {
@@ -786,11 +786,11 @@ function upscaleResolutionKeyboard() {
 
 function imageModelKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('🤖 GPT Image 2 ($0.03)',      'model_gpt-image-2')],
-    [Markup.button.callback('🍌 Nano Banana 2 ($0.04)',    'model_nano-banana-2-i2i')],
-    [Markup.button.callback('🍌 Nano Banana Pro ($0.14)',  'model_nano-banana-pro')],
-    [Markup.button.callback('🌱 Seedream 5 Lite ($0.04)', 'model_seedream-5.0-lite')],
-    [Markup.button.callback('« Kembali',                  'back_main')],
+    [Markup.button.callback('⚡ Flux Kontext Pro ($0.04)', 'model_flux-kontext-pro')],
+    [Markup.button.callback('🔥 Flux Kontext Max ($0.08)', 'model_flux-kontext-max')],
+    [Markup.button.callback('🤖 GPT Image 1 ($0.04)',      'model_gpt-image-1')],
+    [Markup.button.callback('🌱 Seedream 3.0 ($0.03)',     'model_seedream-3.0')],
+    [Markup.button.callback('« Kembali',                   'back_main')],
   ]);
 }
 
@@ -1677,11 +1677,8 @@ bot.on('callback_query', async (ctx) => {
     const modelInfo = IMAGE_MODELS[model];
     if (!modelInfo) return ctx.editMessageText(`❌ Model tidak dikenal: ${model}`, mainMenuKeyboard());
     setSession(userId, { mode: 'img_wait_image1', imageModel: model, image1Url: undefined, image2Url: undefined });
-    const step1Text = model === 'nano-banana-2-i2i'
-      ? `🖼️ *${modelInfo.label}* (${modelInfo.cost})\n\n` +
-        '*Langkah 1 dari 5:* Kirim *gambar utama* (poster/foto yang ingin diedit karakternya).'
-      : `🖼️ *${modelInfo.label}* (${modelInfo.cost})\n\n` +
-        '*Langkah 1 dari 3:* Kirim *gambar pertama* (gambar sumber yang ingin diedit).';
+    const step1Text = `🖼️ *${modelInfo.label}* (${modelInfo.cost})\n\n` +
+      '*Langkah 1 dari 3:* Kirim *gambar pertama* (gambar sumber yang ingin diedit).';
     return ctx.editMessageText(step1Text, { parse_mode: 'Markdown' });
   }
 
@@ -1736,13 +1733,8 @@ bot.on('callback_query', async (ctx) => {
 
     setSession(userId, { mode: 'idle' });
 
-    const resLabel: Record<string, string> = { '1k': '1K', '2k': '2K', '4k': '4K' };
-    const infoLabel = model === 'nano-banana-2-i2i'
-      ? ` • Rasio: ${aspectRatio} • Resolusi: ${resLabel[resolution] ?? resolution}`
-      : '';
-
     await ctx.editMessageText(
-      `⏳ Memproses *${preset.label}* dengan *${modelInfo.label}*...${infoLabel}\nHasil dikirim otomatis setelah selesai.`,
+      `⏳ Memproses *${preset.label}* dengan *${modelInfo.label}*...\nHasil dikirim otomatis setelah selesai.`,
       { parse_mode: 'Markdown' }
     );
 
@@ -1791,29 +1783,15 @@ async function handleImageInput(ctx: any, fileUrl: string) {
   }
 
   if (session.mode === 'img_wait_image1') {
-    const isNanoBanana2 = session.imageModel === 'nano-banana-2-i2i';
     setSession(userId, { image1Url: fileUrl, mode: 'img_wait_image2' });
-    const step2Text = isNanoBanana2
-      ? '✅ Gambar utama diterima!\n\n' +
-        '*Langkah 2 dari 5:* Kirim *foto karakter referensi* (orang yang ingin dimasukkan ke gambar utama).'
-      : '✅ Gambar pertama diterima!\n\n' +
-        '*Langkah 2 dari 3:* Kirim *gambar kedua* (gambar referensi/style).';
-    return ctx.reply(step2Text, { parse_mode: 'Markdown' });
+    return ctx.reply(
+      '✅ Gambar pertama diterima!\n\n' +
+      '*Langkah 2 dari 3:* Kirim *gambar kedua* (gambar referensi/style).',
+      { parse_mode: 'Markdown' }
+    );
   }
 
   if (session.mode === 'img_wait_image2') {
-    const model = session.imageModel;
-    const isNanoBanana2 = model === 'nano-banana-2-i2i';
-
-    if (isNanoBanana2) {
-      setSession(userId, { image2Url: fileUrl, mode: 'img_wait_ratio' });
-      return ctx.reply(
-        '✅ Gambar referensi diterima!\n\n' +
-        '*Langkah 3 dari 5:* Pilih *rasio output*:',
-        { parse_mode: 'Markdown', ...aspectRatioKeyboard() }
-      );
-    }
-
     setSession(userId, { image2Url: fileUrl, mode: 'img_wait_task' });
     return ctx.reply(
       '✅ Gambar referensi diterima!\n\n' +
@@ -2006,12 +1984,8 @@ bot.on('text', async (ctx) => {
     const resolution = session.resolution ?? '1k';
     setSession(userId, { mode: 'idle' });
 
-    const resLabel: Record<string, string> = { '1k': '1K', '2k': '2K', '4k': '4K' };
-    const infoLabel = model === 'nano-banana-2-i2i'
-      ? ` • Rasio: ${aspectRatio} • Resolusi: ${resLabel[resolution] ?? resolution}`
-      : '';
     const statusMsg = await ctx.reply(
-      `⏳ Memproses dengan *${modelInfo.label}*...${infoLabel}\nHasil dikirim otomatis setelah selesai.`,
+      `⏳ Memproses dengan *${modelInfo.label}*...\nHasil dikirim otomatis setelah selesai.`,
       { parse_mode: 'Markdown' }
     );
 
@@ -2350,104 +2324,112 @@ async function runImageGeneration(
   image1Url: string, image2Url: string, prompt: string,
   model: string, modelLabel: string, aspectRatio: string = '1:1', resolution: string = '1k'
 ) {
-  const apiKey = getNextKey(userId);
-  try {
-    console.log(`[${userId}] Image generation: ${model}`);
-    console.log(`[${userId}] image1: ${image1Url}`);
-    console.log(`[${userId}] image2: ${image2Url}`);
+  const usedKeys = new Set<string>();
+  const MAX_RETRIES = 10;
 
-    let taskId: string;
-    let pollPath: string | undefined;
-
-    // Determine model name variants to try
-    const modelVariants = model === 'nano-banana-2-i2i'
-      ? ['nano-banana-2-i2i', 'nano-banana-2']
-      : [model];
-
-    // Download both images via Telegram HTTP (no proxy — Telegram is reachable directly)
-    console.log(`[${userId}] Downloading images for ${model}...`);
-    const [img1, img2] = await Promise.all([
-      downloadBuffer(image1Url),
-      downloadBuffer(image2Url),
-    ]);
-    console.log(`[${userId}] img1: ${img1.mime} ${(img1.buf.length / 1024).toFixed(1)}KB, img2: ${img2.mime} ${(img2.buf.length / 1024).toFixed(1)}KB`);
-
-    // Build side-by-side composite: LEFT = main person/scene, RIGHT = reference (clothing/accessory/face/style).
-    // Sending a single composite image forces the model to see BOTH images together and correctly apply
-    // the reference to the subject — far more reliable than separate image_url + reference_image_url fields
-    // which general-purpose models tend to ignore or misinterpret.
-    const W = 512, H = 640;
-    const [left, right] = await Promise.all([
-      sharp(img1.buf).resize(W, H, { fit: 'cover', position: 'top' }).jpeg({ quality: 85 }).toBuffer(),
-      sharp(img2.buf).resize(W, H, { fit: 'cover', position: 'top' }).jpeg({ quality: 85 }).toBuffer(),
-    ]);
-    const compositeBuf = await sharp({
-      create: { width: W * 2, height: H, channels: 3, background: '#ffffff' },
-    })
-      .composite([
-        { input: left,  left: 0, top: 0 },
-        { input: right, left: W, top: 0 },
-      ])
-      .jpeg({ quality: 85 })
-      .toBuffer();
-    const compositeB64 = `data:image/jpeg;base64,${compositeBuf.toString('base64')}`;
-    console.log(`[${userId}] composite: ${(compositeBuf.length / 1024).toFixed(1)}KB`);
-
-    let genRes: any;
-    let lastErr = '';
-    for (const mn of modelVariants) {
-      try {
-        const body: Record<string, any> = {
-          type: 'image-to-image',
-          model: mn,
-          prompt,
-          image_url: compositeB64,
-        };
-        genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, body, {
-          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-          maxBodyLength: Infinity,
-        });
-        console.log(`[${userId}] composite b64 [${mn}] OK: ${JSON.stringify(genRes.data)}`);
-        break;
-      } catch (e: any) {
-        const status = e?.response?.status ?? 'no-status';
-        const errBody = e?.response?.data ? JSON.stringify(e.response.data) : e.message;
-        lastErr = errBody;
-        console.log(`[${userId}] composite b64 [${mn}] FAILED [HTTP ${status}]: ${errBody}`);
-        if (mn === modelVariants[modelVariants.length - 1]) {
-          throw new Error(typeof e?.response?.data?.error === 'string' ? e.response.data.error : lastErr);
-        }
-      }
-    }
-
-    taskId = genRes.data?.id;
-    pollPath = genRes.data?.poll_url;
-    if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
-
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      '⏳ Sedang diproses...\nMohon tunggu.'
-    );
-
-    const outputUrl = await pollForResult(taskId, userId, apiKey, pollPath);
-    await sendResult(chatId, outputUrl, `🖼️ Dibuat dengan ${modelLabel}\n\n/menu untuk buat lagi`, false);
-    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] Image done`);
-  } catch (err: any) {
-    const rawMsg = err?.response?.data?.error ?? err?.response?.data ?? err.message ?? String(err);
-    const raw = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
-    console.error(`[${userId}] Image error: ${raw}`);
-    if (isKeyExhaustedError(raw)) {
-      await handleDeadKey(userId, apiKey);
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const apiKey = await getNextI2vKey(usedKeys);
+    if (!apiKey) {
       await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-        `⚠️ API key habis, sudah diganti otomatis. Coba lagi dengan /menu`
+        '❌ Semua API key image generation habis. Hubungi admin untuk mengisi key.\n\n/menu untuk kembali'
       ).catch(() => {});
       return;
     }
-    const friendly = translateError(raw);
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${friendly}\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+    usedKeys.add(apiKey);
+
+    try {
+      console.log(`[${userId}] Image generation aivideoapi: ${model} attempt ${attempt}`);
+      console.log(`[${userId}] image1: ${image1Url}`);
+      console.log(`[${userId}] image2: ${image2Url}`);
+
+      // Download both images
+      const [img1, img2] = await Promise.all([
+        downloadBuffer(image1Url),
+        downloadBuffer(image2Url),
+      ]);
+      console.log(`[${userId}] img1: ${img1.mime} ${(img1.buf.length / 1024).toFixed(1)}KB, img2: ${img2.mime} ${(img2.buf.length / 1024).toFixed(1)}KB`);
+
+      // Build side-by-side composite: LEFT = main image, RIGHT = reference.
+      // Single composite image lets the model see both simultaneously.
+      const W = 512, H = 640;
+      const [left, right] = await Promise.all([
+        sharp(img1.buf).resize(W, H, { fit: 'cover', position: 'top' }).jpeg({ quality: 85 }).toBuffer(),
+        sharp(img2.buf).resize(W, H, { fit: 'cover', position: 'top' }).jpeg({ quality: 85 }).toBuffer(),
+      ]);
+      const compositeBuf = await sharp({
+        create: { width: W * 2, height: H, channels: 3, background: '#ffffff' },
+      })
+        .composite([
+          { input: left,  left: 0, top: 0 },
+          { input: right, left: W, top: 0 },
+        ])
+        .jpeg({ quality: 85 })
+        .toBuffer();
+      const compositeB64 = `data:image/jpeg;base64,${compositeBuf.toString('base64')}`;
+      console.log(`[${userId}] composite: ${(compositeBuf.length / 1024).toFixed(1)}KB`);
+
+      // Call aivideoapi image generation
+      const genRes = await telegramHttp.post(`${AIVIDEOAPI_BASE}/images/generations`, {
+        model,
+        input: {
+          prompt,
+          image_url: compositeB64,
+          aspect_ratio: aspectRatio,
+        },
+      }, {
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        maxBodyLength: Infinity,
+        timeout: 60_000,
+      });
+
+      console.log(`[${userId}] aivideoapi image response: ${JSON.stringify(genRes.data)?.slice(0, 200)}`);
+
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+        '⏳ Sedang diproses...\nMohon tunggu.'
+      );
+
+      // Check if response is async (has taskId) or synchronous (has URL directly)
+      const taskId = genRes.data?.data?.taskId ?? genRes.data?.data?.id ?? genRes.data?.taskId ?? genRes.data?.id;
+      let outputUrl: string;
+
+      if (taskId) {
+        console.log(`[${userId}] Image task id: ${taskId}, polling...`);
+        outputUrl = await pollAivideoapi(taskId, apiKey);
+      } else {
+        // Synchronous response — URL is returned immediately
+        const d = genRes.data?.data ?? genRes.data;
+        const url = d?.urls?.[0] ?? d?.url ?? d?.image_url ?? d?.output?.url ?? d?.output?.urls?.[0];
+        if (!url) throw new Error(`No output URL in response: ${JSON.stringify(genRes.data)}`);
+        outputUrl = url;
+      }
+
+      await sendResult(chatId, outputUrl, `🖼️ Dibuat dengan ${modelLabel}\n\n/menu untuk buat lagi`, false);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] Image done`);
+      return;
+
+    } catch (err: any) {
+      const rawMsg = err?.response?.data?.error ?? err?.response?.data ?? err.message ?? String(err);
+      const raw = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
+      console.error(`[${userId}] Image error (attempt ${attempt}): ${raw}`);
+
+      if (isI2vKeyExhaustedError(raw)) {
+        await markI2vKeyDead(apiKey);
+        console.log(`[${userId}] i2v key dead, retry dengan key lain: ${apiKey.slice(0, 10)}...`);
+        continue;
+      }
+
+      const friendly = translateError(raw);
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+        `${friendly}\n\n/menu untuk coba lagi`
+      ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+      return;
+    }
   }
+
+  await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+    '❌ Semua API key image generation habis setelah beberapa percobaan. Hubungi admin.\n\n/menu untuk kembali'
+  ).catch(() => {});
 }
 
 // ─── Background: ByteDance Video Upscale ─────────────────────────────────────
