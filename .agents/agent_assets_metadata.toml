@@ -186,3 +186,45 @@ id = "NkVE0WZyzD4be8T65_uho"
 uri = "file://sora2_result.mp4"
 type = "video"
 title = "Hasil Sora 2 — Image to Video (8 detik, ~2.75 menit)"
+
+[[outputs]]
+id = "A0gd7P-aOZ-1KjiX3cx-L"
+uri = "file://test_results/nano_banana_2_tryon.jpg"
+type = "image"
+title = "Nano Banana 2 — Virtual Try-On (baju hitam dipakaikan ke karakter)"
+
+[[outputs]]
+id = "5kB3SJdfuAGS2vgHuF093"
+uri = "file://test_results/gpt_square_1024x1024.png"
+type = "image"
+title = "GPT Image 2 — Square 1024x1024"
+
+[[outputs]]
+id = "5HkwxCKelPLxYtUbqR7oP"
+uri = "file://test_results/gpt_portrait_1024x1792.png"
+type = "image"
+title = "GPT Image 2 — Portrait 1024x1792"
+
+[[outputs]]
+id = "a3Rndy0Deqof9o8ab9vLn"
+uri = "file://test_results/gpt_landscape_1792x1024.png"
+type = "image"
+title = "GPT Image 2 — Landscape 1792x1024"
+
+[[outputs]]
+id = "RiBNgLXI_nfW6-m3u1taC"
+uri = "file://test_results/nb2_original.jpg"
+type = "image"
+title = "Nano Banana 2 — Baju asli (prompt: preserve face)"
+
+[[outputs]]
+id = "LKFFqTyqMe840rgM52V8e"
+uri = "file://test_results/nb2_cropped.jpg"
+type = "image"
+title = "Nano Banana 2 — Baju di-crop (hapus kepala model baju)"
+
+[[outputs]]
+id = "CNqJ6YEYFMNqLYpOZrS-U"
+uri = "file://test_results/gpt_person_only.png"
+type = "image"
+title = "GPT Image 2 — Hanya foto karakter + deskripsi baju di prompt"

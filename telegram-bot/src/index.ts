@@ -2355,9 +2355,9 @@ async function runImageGeneration(
         requestBody = {
           model,
           input: {
+            prompt: prompt || 'The person is wearing the garment shown.',
             person_image_url: personB64,
             garment_image_url: garmentB64,
-            ...(prompt ? { prompt } : {}),
           },
         };
       } else {
