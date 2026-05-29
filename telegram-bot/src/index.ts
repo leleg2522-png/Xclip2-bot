@@ -349,10 +349,8 @@ const bot = new Telegraf(BOT_TOKEN);
 // ─── Model definitions ────────────────────────────────────────────────────────
 
 const IMAGE_MODELS: Record<string, { label: string; cost: string }> = {
-  'flux-kontext-pro': { label: '⚡ Flux Kontext Pro', cost: '$0.04' },
-  'flux-kontext-max': { label: '🔥 Flux Kontext Max', cost: '$0.08' },
-  'gpt-image-1':      { label: '🤖 GPT Image 1',      cost: '$0.04' },
-  'seedream-3.0':     { label: '🌱 Seedream 3.0',     cost: '$0.03' },
+  'gpt-image-2':    { label: '🤖 GPT Image 2',    cost: '$0.03' },
+  'nano-banana-2':  { label: '🍌 Nano Banana 2',  cost: '$0.04' },
 };
 
 const TASK_PRESETS: Record<string, { label: string; prompt: string }> = {
@@ -786,11 +784,9 @@ function upscaleResolutionKeyboard() {
 
 function imageModelKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('⚡ Flux Kontext Pro ($0.04)', 'model_flux-kontext-pro')],
-    [Markup.button.callback('🔥 Flux Kontext Max ($0.08)', 'model_flux-kontext-max')],
-    [Markup.button.callback('🤖 GPT Image 1 ($0.04)',      'model_gpt-image-1')],
-    [Markup.button.callback('🌱 Seedream 3.0 ($0.03)',     'model_seedream-3.0')],
-    [Markup.button.callback('« Kembali',                   'back_main')],
+    [Markup.button.callback('🤖 GPT Image 2 ($0.03)',   'model_gpt-image-2')],
+    [Markup.button.callback('🍌 Nano Banana 2 ($0.04)', 'model_nano-banana-2')],
+    [Markup.button.callback('« Kembali',                'back_main')],
   ]);
 }
 
@@ -1678,7 +1674,7 @@ bot.on('callback_query', async (ctx) => {
     if (!modelInfo) return ctx.editMessageText(`❌ Model tidak dikenal: ${model}`, mainMenuKeyboard());
     setSession(userId, { mode: 'img_wait_image1', imageModel: model, image1Url: undefined, image2Url: undefined });
     const step1Text = `🖼️ *${modelInfo.label}* (${modelInfo.cost})\n\n` +
-      '*Langkah 1 dari 3:* Kirim *gambar pertama* (gambar sumber yang ingin diedit).';
+      '*Langkah 1 dari 4:* Kirim *gambar pertama* (gambar sumber yang ingin diedit).';
     return ctx.editMessageText(step1Text, { parse_mode: 'Markdown' });
   }
 
@@ -1698,7 +1694,7 @@ bot.on('callback_query', async (ctx) => {
     const resLabel: Record<string, string> = { '1k': '1K', '2k': '2K', '4k': '4K' };
     return ctx.editMessageText(
       `✅ Resolusi dipilih: *${resLabel[resolution] ?? resolution}*\n\n` +
-      '*Langkah 5 dari 5:* Pilih *apa yang ingin dilakukan* dengan gambar referensi:',
+      '*Langkah 4 dari 4:* Pilih *apa yang ingin dilakukan* dengan gambar referensi:',
       { parse_mode: 'Markdown', ...taskPresetKeyboard() }
     );
   }
@@ -1786,17 +1782,17 @@ async function handleImageInput(ctx: any, fileUrl: string) {
     setSession(userId, { image1Url: fileUrl, mode: 'img_wait_image2' });
     return ctx.reply(
       '✅ Gambar pertama diterima!\n\n' +
-      '*Langkah 2 dari 3:* Kirim *gambar kedua* (gambar referensi/style).',
+      '*Langkah 2 dari 4:* Kirim *gambar kedua* (gambar referensi/style).',
       { parse_mode: 'Markdown' }
     );
   }
 
   if (session.mode === 'img_wait_image2') {
-    setSession(userId, { image2Url: fileUrl, mode: 'img_wait_task' });
+    setSession(userId, { image2Url: fileUrl, mode: 'img_wait_resolution' });
     return ctx.reply(
       '✅ Gambar referensi diterima!\n\n' +
-      '*Langkah 3 dari 3:* Pilih *apa yang ingin dilakukan* dengan gambar referensi:',
-      { parse_mode: 'Markdown', ...taskPresetKeyboard() }
+      '*Langkah 3 dari 4:* Pilih *resolusi output*:',
+      { parse_mode: 'Markdown', ...resolutionKeyboard() }
     );
   }
 
@@ -2368,6 +2364,10 @@ async function runImageGeneration(
       const compositeB64 = `data:image/jpeg;base64,${compositeBuf.toString('base64')}`;
       console.log(`[${userId}] composite: ${(compositeBuf.length / 1024).toFixed(1)}KB`);
 
+      // Map resolution label to pixel count for aivideoapi
+      const resolutionMap: Record<string, number> = { '1k': 1024, '2k': 2048, '4k': 4096 };
+      const outputSize = resolutionMap[resolution] ?? 1024;
+
       // Call aivideoapi image generation
       const genRes = await telegramHttp.post(`${AIVIDEOAPI_BASE}/images/generations`, {
         model,
@@ -2375,6 +2375,7 @@ async function runImageGeneration(
           prompt,
           image_url: compositeB64,
           aspect_ratio: aspectRatio,
+          output_quality: outputSize,
         },
       }, {
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
