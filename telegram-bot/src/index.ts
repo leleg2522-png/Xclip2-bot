@@ -1673,8 +1673,10 @@ bot.on('callback_query', async (ctx) => {
     const modelInfo = IMAGE_MODELS[model];
     if (!modelInfo) return ctx.editMessageText(`❌ Model tidak dikenal: ${model}`, mainMenuKeyboard());
     setSession(userId, { mode: 'img_wait_image1', imageModel: model, image1Url: undefined, image2Url: undefined });
-    const step1Text = `🖼️ *${modelInfo.label}* (${modelInfo.cost})\n\n` +
-      '*Langkah 1 dari 4:* Kirim *gambar pertama* (gambar sumber yang ingin diedit).';
+    const isNanoBanana = model === 'nano-banana-2';
+    const step1Text = isNanoBanana
+      ? `🍌 *${modelInfo.label}* (${modelInfo.cost})\n\n*Virtual Try-On — Langkah 1 dari 4:*\nKirim *foto ORANG* (yang akan dipakaikan baju).`
+      : `🖼️ *${modelInfo.label}* (${modelInfo.cost})\n\n*Langkah 1 dari 4:* Kirim *gambar pertama* (gambar sumber yang ingin diedit).`;
     return ctx.editMessageText(step1Text, { parse_mode: 'Markdown' });
   }
 
@@ -1779,21 +1781,21 @@ async function handleImageInput(ctx: any, fileUrl: string) {
   }
 
   if (session.mode === 'img_wait_image1') {
+    const isNanoBanana = session.imageModel === 'nano-banana-2';
     setSession(userId, { image1Url: fileUrl, mode: 'img_wait_image2' });
-    return ctx.reply(
-      '✅ Gambar pertama diterima!\n\n' +
-      '*Langkah 2 dari 4:* Kirim *gambar kedua* (gambar referensi/style).',
-      { parse_mode: 'Markdown' }
-    );
+    const step2Text = isNanoBanana
+      ? '✅ Foto orang diterima!\n\n*Langkah 2 dari 4:* Kirim *foto BAJU / GARMEN* yang ingin dipakaikan.'
+      : '✅ Gambar pertama diterima!\n\n*Langkah 2 dari 4:* Kirim *gambar kedua* (gambar referensi/style).';
+    return ctx.reply(step2Text, { parse_mode: 'Markdown' });
   }
 
   if (session.mode === 'img_wait_image2') {
+    const isNanoBanana = session.imageModel === 'nano-banana-2';
     setSession(userId, { image2Url: fileUrl, mode: 'img_wait_resolution' });
-    return ctx.reply(
-      '✅ Gambar referensi diterima!\n\n' +
-      '*Langkah 3 dari 4:* Pilih *resolusi output*:',
-      { parse_mode: 'Markdown', ...resolutionKeyboard() }
-    );
+    const step3Text = isNanoBanana
+      ? '✅ Foto baju diterima!\n\n*Langkah 3 dari 4:* Pilih *resolusi output*:'
+      : '✅ Gambar referensi diterima!\n\n*Langkah 3 dari 4:* Pilih *resolusi output*:';
+    return ctx.reply(step3Text, { parse_mode: 'Markdown', ...resolutionKeyboard() });
   }
 
   if (session.mode === 'i2v_sora2_wait_image') {
@@ -2335,8 +2337,6 @@ async function runImageGeneration(
 
     try {
       console.log(`[${userId}] Image generation aivideoapi: ${model} attempt ${attempt}`);
-      console.log(`[${userId}] image1: ${image1Url}`);
-      console.log(`[${userId}] image2: ${image2Url}`);
 
       // Download both images
       const [img1, img2] = await Promise.all([
@@ -2345,39 +2345,52 @@ async function runImageGeneration(
       ]);
       console.log(`[${userId}] img1: ${img1.mime} ${(img1.buf.length / 1024).toFixed(1)}KB, img2: ${img2.mime} ${(img2.buf.length / 1024).toFixed(1)}KB`);
 
-      // Build side-by-side composite: LEFT = main image, RIGHT = reference.
-      // Single composite image lets the model see both simultaneously.
-      const W = 512, H = 640;
-      const [left, right] = await Promise.all([
-        sharp(img1.buf).resize(W, H, { fit: 'cover', position: 'top' }).jpeg({ quality: 85 }).toBuffer(),
-        sharp(img2.buf).resize(W, H, { fit: 'cover', position: 'top' }).jpeg({ quality: 85 }).toBuffer(),
-      ]);
-      const compositeBuf = await sharp({
-        create: { width: W * 2, height: H, channels: 3, background: '#ffffff' },
-      })
-        .composite([
-          { input: left,  left: 0, top: 0 },
-          { input: right, left: W, top: 0 },
-        ])
-        .jpeg({ quality: 85 })
-        .toBuffer();
-      const compositeB64 = `data:image/jpeg;base64,${compositeBuf.toString('base64')}`;
-      console.log(`[${userId}] composite: ${(compositeBuf.length / 1024).toFixed(1)}KB`);
+      let requestBody: object;
 
-      // Map resolution label to pixel count for aivideoapi
-      const resolutionMap: Record<string, number> = { '1k': 1024, '2k': 2048, '4k': 4096 };
-      const outputSize = resolutionMap[resolution] ?? 1024;
+      if (model === 'nano-banana-2') {
+        // Nano Banana 2: virtual try-on model — sends person & garment separately, no composite
+        const personB64 = `data:${img1.mime};base64,${img1.buf.toString('base64')}`;
+        const garmentB64 = `data:${img2.mime};base64,${img2.buf.toString('base64')}`;
+        console.log(`[${userId}] nano-banana-2 person: ${(img1.buf.length / 1024).toFixed(1)}KB, garment: ${(img2.buf.length / 1024).toFixed(1)}KB`);
+        requestBody = {
+          model,
+          input: {
+            person_image_url: personB64,
+            garment_image_url: garmentB64,
+            ...(prompt ? { prompt } : {}),
+          },
+        };
+      } else {
+        // GPT Image 2: composite side-by-side + editing prompt
+        const W = 512, H = 640;
+        const [left, right] = await Promise.all([
+          sharp(img1.buf).resize(W, H, { fit: 'cover', position: 'top' }).jpeg({ quality: 85 }).toBuffer(),
+          sharp(img2.buf).resize(W, H, { fit: 'cover', position: 'top' }).jpeg({ quality: 85 }).toBuffer(),
+        ]);
+        const compositeBuf = await sharp({
+          create: { width: W * 2, height: H, channels: 3, background: '#ffffff' },
+        })
+          .composite([
+            { input: left,  left: 0, top: 0 },
+            { input: right, left: W, top: 0 },
+          ])
+          .jpeg({ quality: 85 })
+          .toBuffer();
+        const compositeB64 = `data:image/jpeg;base64,${compositeBuf.toString('base64')}`;
+        const sizeMap: Record<string, string> = { '1k': '1024x1024', '2k': '2048x2048', '4k': '4096x4096' };
+        console.log(`[${userId}] gpt-image-2 composite: ${(compositeBuf.length / 1024).toFixed(1)}KB, size: ${sizeMap[resolution] ?? '1024x1024'}`);
+        requestBody = {
+          model,
+          input: {
+            prompt,
+            image_url: compositeB64,
+            size: sizeMap[resolution] ?? '1024x1024',
+          },
+        };
+      }
 
       // Call aivideoapi image generation
-      const genRes = await telegramHttp.post(`${AIVIDEOAPI_BASE}/images/generations`, {
-        model,
-        input: {
-          prompt,
-          image_url: compositeB64,
-          aspect_ratio: aspectRatio,
-          output_quality: outputSize,
-        },
-      }, {
+      const genRes = await telegramHttp.post(`${AIVIDEOAPI_BASE}/images/generations`, requestBody, {
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         maxBodyLength: Infinity,
         timeout: 60_000,
@@ -2497,7 +2510,9 @@ async function pollAivideoapi(taskId: string, apiKey: string): Promise<string> {
     const { status, output, error } = res.data;
     console.log(`[pollAivideoapi] attempt ${i + 1}: status=${status}`);
     if (status === 'completed' || status === 'succeed' || status === 'success') {
-      const url = output?.urls?.[0] ?? output?.url ?? output?.video_url ?? output?.[0]?.url ?? output?.videos?.[0]?.url;
+      const url = output?.urls?.[0] ?? output?.url ?? output?.video_url ?? output?.image_url
+               ?? output?.images?.[0]?.url ?? output?.images?.[0]
+               ?? output?.[0]?.url ?? output?.videos?.[0]?.url;
       if (!url) throw new Error(`Selesai tapi URL kosong: ${JSON.stringify(res.data)}`);
       return url;
     }
