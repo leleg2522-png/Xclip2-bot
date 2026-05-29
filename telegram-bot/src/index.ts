@@ -348,9 +348,11 @@ const bot = new Telegraf(BOT_TOKEN);
 
 // ─── Model definitions ────────────────────────────────────────────────────────
 
-const IMAGE_MODELS: Record<string, { label: string; cost: string }> = {
-  'gpt-image-2':    { label: '🤖 GPT Image 2',    cost: '$0.03' },
-  'nano-banana-2':  { label: '🍌 Nano Banana 2',  cost: '$0.04' },
+const IMAGE_MODELS: Record<string, { label: string; cost: string; apiId?: string }> = {
+  'gpt-image-2':       { label: '🤖 GPT Image 2',     cost: '$0.03' },
+  'nano-banana-2-i2i': { label: '🍌 Nano Banana 2',   cost: '$0.04' },
+  'nano-banana-pro':   { label: '🍌 Nano Banana Pro',  cost: '$0.14' },
+  'seedream-5.0-lite': { label: '🌱 Seedream 5 Lite',  cost: '$0.04' },
 };
 
 const TASK_PRESETS: Record<string, { label: string; prompt: string }> = {
@@ -784,9 +786,11 @@ function upscaleResolutionKeyboard() {
 
 function imageModelKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('🤖 GPT Image 2 ($0.03)',   'model_gpt-image-2')],
-    [Markup.button.callback('🍌 Nano Banana 2 ($0.04)', 'model_nano-banana-2')],
-    [Markup.button.callback('« Kembali',                'back_main')],
+    [Markup.button.callback('🤖 GPT Image 2 ($0.03)',      'model_gpt-image-2')],
+    [Markup.button.callback('🍌 Nano Banana 2 ($0.04)',    'model_nano-banana-2-i2i')],
+    [Markup.button.callback('🍌 Nano Banana Pro ($0.14)',  'model_nano-banana-pro')],
+    [Markup.button.callback('🌱 Seedream 5 Lite ($0.04)', 'model_seedream-5.0-lite')],
+    [Markup.button.callback('« Kembali',                   'back_main')],
   ]);
 }
 
@@ -1673,9 +1677,8 @@ bot.on('callback_query', async (ctx) => {
     const modelInfo = IMAGE_MODELS[model];
     if (!modelInfo) return ctx.editMessageText(`❌ Model tidak dikenal: ${model}`, mainMenuKeyboard());
     setSession(userId, { mode: 'img_wait_image1', imageModel: model, image1Url: undefined, image2Url: undefined });
-    const isNanoBanana = model === 'nano-banana-2';
-    const step1Text = isNanoBanana
-      ? `🍌 *${modelInfo.label}* (${modelInfo.cost})\n\n*Virtual Try-On — Langkah 1 dari 4:*\nKirim *foto ORANG* (yang akan dipakaikan baju).`
+    const step1Text = model === 'nano-banana-2-i2i'
+      ? `🍌 *${modelInfo.label}* (${modelInfo.cost})\n\n*Langkah 1 dari 4:* Kirim *foto ORANG* (yang akan dipakaikan baju).`
       : `🖼️ *${modelInfo.label}* (${modelInfo.cost})\n\n*Langkah 1 dari 4:* Kirim *gambar pertama* (gambar sumber yang ingin diedit).`;
     return ctx.editMessageText(step1Text, { parse_mode: 'Markdown' });
   }
@@ -1781,18 +1784,18 @@ async function handleImageInput(ctx: any, fileUrl: string) {
   }
 
   if (session.mode === 'img_wait_image1') {
-    const isNanoBanana = session.imageModel === 'nano-banana-2';
+    const isNanoBanana2 = session.imageModel === 'nano-banana-2-i2i';
     setSession(userId, { image1Url: fileUrl, mode: 'img_wait_image2' });
-    const step2Text = isNanoBanana
+    const step2Text = isNanoBanana2
       ? '✅ Foto orang diterima!\n\n*Langkah 2 dari 4:* Kirim *foto BAJU / GARMEN* yang ingin dipakaikan.'
       : '✅ Gambar pertama diterima!\n\n*Langkah 2 dari 4:* Kirim *gambar kedua* (gambar referensi/style).';
     return ctx.reply(step2Text, { parse_mode: 'Markdown' });
   }
 
   if (session.mode === 'img_wait_image2') {
-    const isNanoBanana = session.imageModel === 'nano-banana-2';
+    const isNanoBanana2 = session.imageModel === 'nano-banana-2-i2i';
     setSession(userId, { image2Url: fileUrl, mode: 'img_wait_resolution' });
-    const step3Text = isNanoBanana
+    const step3Text = isNanoBanana2
       ? '✅ Foto baju diterima!\n\n*Langkah 3 dari 4:* Pilih *resolusi output*:'
       : '✅ Gambar referensi diterima!\n\n*Langkah 3 dari 4:* Pilih *resolusi output*:';
     return ctx.reply(step3Text, { parse_mode: 'Markdown', ...resolutionKeyboard() });
@@ -2322,128 +2325,111 @@ async function runImageGeneration(
   image1Url: string, image2Url: string, prompt: string,
   model: string, modelLabel: string, aspectRatio: string = '1:1', resolution: string = '1k'
 ) {
-  const usedKeys = new Set<string>();
-  const MAX_RETRIES = 10;
+  const apiKey = getNextKey(userId);
+  try {
+    console.log(`[${userId}] Image generation: ${model}`);
+    console.log(`[${userId}] image1: ${image1Url}`);
+    console.log(`[${userId}] image2: ${image2Url}`);
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    const apiKey = await getNextI2vKey(usedKeys);
-    if (!apiKey) {
+    let taskId: string;
+    let pollPath: string | undefined;
+
+    // Determine model name variants to try (multiple fallbacks for each model)
+    const modelVariants: string[] =
+      model === 'nano-banana-2-i2i' ? ['nano-banana-2-i2i', 'nano-banana-2', 'nano-banana'] :
+      model === 'nano-banana-pro'   ? ['nano-banana-pro', 'nano-banana-2-pro', 'nano-banana-pro-v2'] :
+      model === 'seedream-5.0-lite' ? ['seedream-5.0-lite', 'seedream-5-lite', 'seedream-5.0'] :
+      [model];
+
+    // Download both images via Telegram HTTP (no proxy — Telegram is reachable directly)
+    console.log(`[${userId}] Downloading images for ${model}...`);
+    const [img1, img2] = await Promise.all([
+      downloadBuffer(image1Url),
+      downloadBuffer(image2Url),
+    ]);
+    console.log(`[${userId}] img1: ${img1.mime} ${(img1.buf.length / 1024).toFixed(1)}KB, img2: ${img2.mime} ${(img2.buf.length / 1024).toFixed(1)}KB`);
+
+    // Build side-by-side composite: LEFT = main person/scene, RIGHT = reference (clothing/accessory/face/style).
+    const W = 512, H = 640;
+    const [left, right] = await Promise.all([
+      sharp(img1.buf).resize(W, H, { fit: 'cover', position: 'top' }).jpeg({ quality: 85 }).toBuffer(),
+      sharp(img2.buf).resize(W, H, { fit: 'cover', position: 'top' }).jpeg({ quality: 85 }).toBuffer(),
+    ]);
+    const compositeBuf = await sharp({
+      create: { width: W * 2, height: H, channels: 3, background: '#ffffff' },
+    })
+      .composite([
+        { input: left,  left: 0, top: 0 },
+        { input: right, left: W, top: 0 },
+      ])
+      .jpeg({ quality: 85 })
+      .toBuffer();
+    const compositeB64 = `data:image/jpeg;base64,${compositeBuf.toString('base64')}`;
+    console.log(`[${userId}] composite: ${(compositeBuf.length / 1024).toFixed(1)}KB`);
+
+    // Build all attempts: each model name × (with type field, then without type field as fallback)
+    const attempts: Array<{ mn: string; useType: boolean }> = [];
+    for (const mn of modelVariants) {
+      attempts.push({ mn, useType: true });
+      attempts.push({ mn, useType: false });
+    }
+
+    let genRes: any;
+    let lastErr = '';
+    for (const { mn, useType } of attempts) {
+      try {
+        const body: Record<string, any> = {
+          ...(useType ? { type: 'image-to-image' } : {}),
+          model: mn,
+          prompt,
+          image_url: compositeB64,
+        };
+        genRes = await renderfulHttp.post(`${RENDERFUL_BASE}/generations`, body, {
+          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          maxBodyLength: Infinity,
+        });
+        console.log(`[${userId}] [${mn}${useType ? '' : ' no-type'}] OK: ${JSON.stringify(genRes.data)}`);
+        break;
+      } catch (e: any) {
+        const status = e?.response?.status ?? 'no-status';
+        const errBody = e?.response?.data ? JSON.stringify(e.response.data) : e.message;
+        lastErr = errBody;
+        const isLast = mn === attempts[attempts.length - 1].mn && useType === attempts[attempts.length - 1].useType;
+        console.log(`[${userId}] [${mn}${useType ? '' : ' no-type'}] FAILED [HTTP ${status}]: ${errBody}`);
+        if (isLast) {
+          throw new Error(typeof e?.response?.data?.error === 'string' ? e.response.data.error : lastErr);
+        }
+      }
+    }
+
+    taskId = genRes.data?.id;
+    pollPath = genRes.data?.poll_url;
+    if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
+
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      '⏳ Sedang diproses...\nMohon tunggu.'
+    );
+
+    const outputUrl = await pollForResult(taskId, userId, apiKey, pollPath);
+    await sendResult(chatId, outputUrl, `🖼️ Dibuat dengan ${modelLabel}\n\n/menu untuk buat lagi`, false);
+    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    console.log(`[${userId}] Image done`);
+  } catch (err: any) {
+    const rawMsg = err?.response?.data?.error ?? err?.response?.data ?? err.message ?? String(err);
+    const raw = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
+    console.error(`[${userId}] Image error: ${raw}`);
+    if (isKeyExhaustedError(raw)) {
+      await handleDeadKey(userId, apiKey);
       await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-        '❌ Semua API key image generation habis. Hubungi admin untuk mengisi key.\n\n/menu untuk kembali'
+        `⚠️ API key habis, sudah diganti otomatis. Coba lagi dengan /menu`
       ).catch(() => {});
       return;
     }
-    usedKeys.add(apiKey);
-
-    try {
-      console.log(`[${userId}] Image generation aivideoapi: ${model} attempt ${attempt}`);
-
-      // Download both images
-      const [img1, img2] = await Promise.all([
-        downloadBuffer(image1Url),
-        downloadBuffer(image2Url),
-      ]);
-      console.log(`[${userId}] img1: ${img1.mime} ${(img1.buf.length / 1024).toFixed(1)}KB, img2: ${img2.mime} ${(img2.buf.length / 1024).toFixed(1)}KB`);
-
-      let requestBody: object;
-
-      if (model === 'nano-banana-2') {
-        // Nano Banana 2: virtual try-on model — sends person & garment separately, no composite
-        const personB64 = `data:${img1.mime};base64,${img1.buf.toString('base64')}`;
-        const garmentB64 = `data:${img2.mime};base64,${img2.buf.toString('base64')}`;
-        console.log(`[${userId}] nano-banana-2 person: ${(img1.buf.length / 1024).toFixed(1)}KB, garment: ${(img2.buf.length / 1024).toFixed(1)}KB`);
-        requestBody = {
-          model,
-          input: {
-            prompt: prompt || 'The person is wearing the garment shown.',
-            person_image_url: personB64,
-            garment_image_url: garmentB64,
-          },
-        };
-      } else {
-        // GPT Image 2: composite side-by-side + editing prompt
-        const W = 512, H = 640;
-        const [left, right] = await Promise.all([
-          sharp(img1.buf).resize(W, H, { fit: 'cover', position: 'top' }).jpeg({ quality: 85 }).toBuffer(),
-          sharp(img2.buf).resize(W, H, { fit: 'cover', position: 'top' }).jpeg({ quality: 85 }).toBuffer(),
-        ]);
-        const compositeBuf = await sharp({
-          create: { width: W * 2, height: H, channels: 3, background: '#ffffff' },
-        })
-          .composite([
-            { input: left,  left: 0, top: 0 },
-            { input: right, left: W, top: 0 },
-          ])
-          .jpeg({ quality: 85 })
-          .toBuffer();
-        const compositeB64 = `data:image/jpeg;base64,${compositeBuf.toString('base64')}`;
-        const sizeMap: Record<string, string> = { '1k': '1024x1024', '2k': '2048x2048', '4k': '4096x4096' };
-        console.log(`[${userId}] gpt-image-2 composite: ${(compositeBuf.length / 1024).toFixed(1)}KB, size: ${sizeMap[resolution] ?? '1024x1024'}`);
-        requestBody = {
-          model,
-          input: {
-            prompt,
-            image_url: compositeB64,
-            size: sizeMap[resolution] ?? '1024x1024',
-          },
-        };
-      }
-
-      // Call aivideoapi image generation
-      const genRes = await telegramHttp.post(`${AIVIDEOAPI_BASE}/images/generations`, requestBody, {
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        maxBodyLength: Infinity,
-        timeout: 60_000,
-      });
-
-      console.log(`[${userId}] aivideoapi image response: ${JSON.stringify(genRes.data)?.slice(0, 200)}`);
-
-      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-        '⏳ Sedang diproses...\nMohon tunggu.'
-      );
-
-      // Check if response is async (has taskId) or synchronous (has URL directly)
-      const taskId = genRes.data?.data?.taskId ?? genRes.data?.data?.id ?? genRes.data?.taskId ?? genRes.data?.id;
-      let outputUrl: string;
-
-      if (taskId) {
-        console.log(`[${userId}] Image task id: ${taskId}, polling...`);
-        outputUrl = await pollAivideoapi(taskId, apiKey);
-      } else {
-        // Synchronous response — URL is returned immediately
-        const d = genRes.data?.data ?? genRes.data;
-        const url = d?.urls?.[0] ?? d?.url ?? d?.image_url ?? d?.output?.url ?? d?.output?.urls?.[0];
-        if (!url) throw new Error(`No output URL in response: ${JSON.stringify(genRes.data)}`);
-        outputUrl = url;
-      }
-
-      await sendResult(chatId, outputUrl, `🖼️ Dibuat dengan ${modelLabel}\n\n/menu untuk buat lagi`, false);
-      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-      console.log(`[${userId}] Image done`);
-      return;
-
-    } catch (err: any) {
-      const rawMsg = err?.response?.data?.error ?? err?.response?.data ?? err.message ?? String(err);
-      const raw = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
-      console.error(`[${userId}] Image error (attempt ${attempt}): ${raw}`);
-
-      if (isI2vKeyExhaustedError(raw)) {
-        await markI2vKeyDead(apiKey);
-        console.log(`[${userId}] i2v key dead, retry dengan key lain: ${apiKey.slice(0, 10)}...`);
-        continue;
-      }
-
-      const friendly = translateError(raw);
-      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-        `${friendly}\n\n/menu untuk coba lagi`
-      ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
-      return;
-    }
+    const friendly = translateError(raw);
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
   }
-
-  await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-    '❌ Semua API key image generation habis setelah beberapa percobaan. Hubungi admin.\n\n/menu untuk kembali'
-  ).catch(() => {});
 }
 
 // ─── Background: ByteDance Video Upscale ─────────────────────────────────────
