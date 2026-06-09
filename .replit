@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-20", "web"]
 
 [deployment]
 router = "application"
@@ -35,3 +35,6 @@ externalPort = 3000
 
 [userenv.shared]
 RAILWAY_DATABASE_URL = "postgresql://postgres:rBrxtKAUzKigajhEdsniEpcHmMifoKXt@interchange.proxy.rlwy.net:58650/railway"
+
+[nix]
+channel = "stable-25_05"
