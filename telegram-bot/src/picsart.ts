@@ -98,7 +98,12 @@ async function getActiveCredential(): Promise<CredRow | null> {
 
 // Admin: register a refresh token (rt:...). Supersedes any previous active one.
 export async function addRefreshToken(rt: string, label?: string): Promise<boolean> {
-  const token = rt.trim();
+  let token = rt.trim();
+  // Cookie values copied from the browser are URL-encoded, so the leading
+  // colon arrives as `rt%3A...`. Decode so `rt:` validation passes.
+  if (/%[0-9a-f]{2}/i.test(token)) {
+    try { token = decodeURIComponent(token); } catch { /* keep raw */ }
+  }
   if (!token.startsWith('rt:')) return false;
   await db.query(`UPDATE picsart_credentials SET status = 'replaced', updated_at = NOW() WHERE status = 'available'`);
   await db.query(
