@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import sharp from 'sharp';
 import express from 'express';
+import * as picsart from './picsart';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -17,8 +18,8 @@ const FREEPIK_BASE = 'https://api.freepik.com/v1';
 const LEONARDO_BASE = 'https://cloud.leonardo.ai/api/rest/v1';
 
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
-if (!RENDERFUL_API_KEY) throw new Error('RENDERFUL_API_KEY is required');
 if (!DATABASE_URL) throw new Error('RAILWAY_DATABASE_URL is required');
+if (!RENDERFUL_API_KEY) console.warn('⚠️ RENDERFUL_API_KEY tidak diset — backend Renderful nonaktif (Kling Motion Control kini pakai Picsart).');
 
 // Decodo rotating proxy — set DECODO_PROXY_URL=http://user:pass@gate.decodo.com:port
 const DECODO_PROXY_URL = process.env.DECODO_PROXY_URL;
@@ -346,6 +347,13 @@ async function incrementKlingUsage(dbUserId: number): Promise<number> {
 
 const bot = new Telegraf(BOT_TOKEN);
 
+// ─── Picsart backend ──────────────────────────────────────────────────────────
+picsart.initPicsart(db, (msg: string) => {
+  console.error('[picsart]', msg);
+  const owner = process.env.PICSART_OWNER_CHAT_ID;
+  if (owner) bot.telegram.sendMessage(owner, msg).catch(() => {});
+});
+
 // ─── Model definitions ────────────────────────────────────────────────────────
 
 const IMAGE_MODELS: Record<string, { label: string; cost: string; apiId?: string }> = {
@@ -607,6 +615,30 @@ function detectMime(buf: Buffer): { mime: string; ext: string } {
   if (buf.slice(0, 4).toString('ascii') === 'RIFF' && buf.slice(8, 12).toString('ascii') === 'WEBP')
     return { mime: 'image/webp', ext: 'webp' };
   return { mime: 'image/jpeg', ext: 'jpg' };
+}
+
+// Detect a VIDEO container — detectMime() only handles images and defaults unknown to jpeg,
+// which would mislabel Telegram video bytes. Falls back to the source URL extension, then mp4.
+function detectVideoType(buf: Buffer, sourceUrl?: string): { mime: string; ext: string } {
+  if (buf.slice(4, 8).toString('ascii') === 'ftyp') {
+    const brand = buf.slice(8, 12).toString('ascii').toLowerCase();
+    if (brand.startsWith('qt')) return { mime: 'video/quicktime', ext: 'mov' };
+    return { mime: 'video/mp4', ext: 'mp4' };
+  }
+  if (buf[0] === 0x1A && buf[1] === 0x45 && buf[2] === 0xDF && buf[3] === 0xA3)
+    return { mime: 'video/webm', ext: 'webm' };
+  if (buf.slice(0, 4).toString('ascii') === 'RIFF' && buf.slice(8, 12).toString('ascii') === 'AVI ')
+    return { mime: 'video/x-msvideo', ext: 'avi' };
+  const m = (sourceUrl ?? '').toLowerCase().split('?')[0].match(/\.(mp4|m4v|mov|webm|avi|mkv)$/);
+  if (m) {
+    const ext = m[1];
+    const map: Record<string, string> = {
+      mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime',
+      webm: 'video/webm', avi: 'video/x-msvideo', mkv: 'video/x-matroska',
+    };
+    return { mime: map[ext] ?? 'video/mp4', ext };
+  }
+  return { mime: 'video/mp4', ext: 'mp4' };
 }
 
 async function toDataUri(telegramUrl: string): Promise<string> {
@@ -1165,6 +1197,62 @@ bot.command('removefreepikkey', async (ctx) => {
   );
   if (res.rows.length === 0) return ctx.reply('❌ Key tidak ditemukan di pool Freepik.');
   return ctx.reply('✅ Key Freepik berhasil dinonaktifkan (dead).');
+});
+
+// ─── Picsart admin commands ───────────────────────────────────────────────────
+bot.command('addpicsartkey', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const raw = ctx.message.text.replace(/^\/addpicsartkey\s*/i, '').trim();
+  if (!raw) {
+    return ctx.reply(
+      '📝 Format:\n' +
+      '/addpicsartkey rt:xxxxx\n\n' +
+      'Ambil dari picsart.com (sudah login):\n' +
+      'F12 → Application → Cookies → nilai cookie REFRESH_TOKEN (diawali "rt:")'
+    );
+  }
+  const ok = await picsart.addRefreshToken(raw);
+  if (!ok) return ctx.reply('❌ Token tidak valid. Harus diawali "rt:".');
+  try {
+    const c = await picsart.getCredits();
+    return ctx.reply(
+      `✅ Token Picsart tersimpan & aktif!\n💳 Sisa kredit: ${c.credits}` +
+      (c.renewDate ? `\n🔄 Reset: ${new Date(c.renewDate).toLocaleDateString('id-ID')}` : '')
+    );
+  } catch (e: any) {
+    return ctx.reply(`⚠️ Token tersimpan, tapi verifikasi gagal: ${String(e.message).slice(0, 140)}`);
+  }
+});
+
+bot.command('picsartstatus', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+  const st = await picsart.getStatus();
+  const counts = Object.entries(st.counts).map(([k, v]) => `• ${k}: ${v}`).join('\n') || '• (kosong)';
+  return ctx.reply(
+    `📊 *Status Picsart*\n\nToken aktif: ${st.hasActive ? '✅ ada' : '❌ tidak ada'}\n${counts}`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+bot.command('picsartcredits', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+  try {
+    const c = await picsart.getCredits();
+    return ctx.reply(
+      `💳 Sisa kredit Picsart: *${c.credits}*` +
+      (c.renewDate ? `\n🔄 Reset: ${new Date(c.renewDate).toLocaleDateString('id-ID')}` : ''),
+      { parse_mode: 'Markdown' }
+    );
+  } catch (e: any) {
+    return ctx.reply(`❌ Gagal cek kredit: ${String(e.message).slice(0, 150)}`);
+  }
 });
 
 bot.command('restorefreepikkey', async (ctx) => {
@@ -2219,96 +2307,73 @@ function isFreepikKeyExhaustedError(raw: string): boolean {
   return /quota|rate.?limit|limit.?exceeded|insufficient|unauthorized|401|403|429|free.?trial|upgrade.?to.?a.?paid|reached.?the.?limit|trial.?usage|billing/i.test(raw);
 }
 
-async function runKlingMotionControl(chatId: number, userId: number, dbUserId: number, statusMsgId: number, videoFileIdOrUrl: string, imageUrl: string, klingModel: 'v3' | 'v26' = 'v3', maxKeyRetries = 10) {
-  const endpoint = klingModel === 'v3'
-    ? '/ai/video/kling-v3-motion-control-std'
-    : '/ai/video/kling-v2-6-motion-control-std';
+async function runKlingMotionControl(chatId: number, userId: number, dbUserId: number, statusMsgId: number, videoFileIdOrUrl: string, imageUrl: string, klingModel: 'v3' | 'v26' = 'v3') {
   const label = klingModel === 'v3' ? 'Kling v3.0' : 'Kling v2.6';
-
-  const usedKeys = new Set<string>();
 
   // Support both Telegram file ID and direct URL
   const isDirectUrl = videoFileIdOrUrl.startsWith('http://') || videoFileIdOrUrl.startsWith('https://');
   const videoUrl = isDirectUrl
     ? videoFileIdOrUrl
     : (await bot.telegram.getFileLink(videoFileIdOrUrl)).href;
-  console.log(`[${userId}] ${label} Motion Control started — img: ${imageUrl}, vid: ${videoUrl}`);
+  console.log(`[${userId}] ${label} Motion Control (Picsart) started — img: ${imageUrl}, vid: ${videoUrl}`);
 
-  for (let attempt = 1; attempt <= maxKeyRetries; attempt++) {
-    const apiKey = await getNextFreepikKey(usedKeys);
-    if (!apiKey) {
-      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-        '❌ Semua API key Freepik habis. Hubungi admin untuk mengisi key.\n\n/menu untuk kembali'
-      ).catch(() => {});
-      return;
+  try {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `⏳ ${label} sedang diproses...\nBiasanya 5–8 menit.`
+    ).catch(() => {});
+
+    // Download both media via Telegram (no proxy — Telegram reachable directly)
+    const [img, vid] = await Promise.all([
+      downloadBuffer(imageUrl),
+      downloadBuffer(videoUrl),
+    ]);
+    // downloadBuffer() uses detectMime() which only knows images and would mislabel the
+    // video as image/jpeg — detect the real video container instead.
+    const vidType = detectVideoType(vid.buf, videoUrl);
+    console.log(`[${userId}] ${label} media — img: ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB, vid: ${vidType.mime} ${(vid.buf.length / 1024).toFixed(1)}KB`);
+
+    const result = await picsart.generateKlingMotionControl({
+      imageBuffer: img.buf, imageName: `character.${img.ext}`, imageMime: img.mime,
+      videoBuffer: vid.buf, videoName: `driver.${vidType.ext}`, videoMime: vidType.mime,
+      prompt: '',
+      model: klingModel,
+      onStatus: (stage) => {
+        const text = stage === 'upload'
+          ? `⏳ ${label}: mengunggah media ke Picsart...`
+          : stage === 'submit'
+            ? `⏳ ${label}: mengirim job ke Picsart...`
+            : `⏳ ${label} sedang diproses...\nBiasanya 5–8 menit.`;
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+      },
+    });
+
+    const newCount = await incrementKlingUsage(dbUserId);
+    const remaining = Math.max(0, KLING_DAILY_LIMIT - newCount);
+    const doneLabel = result.usedModel === 'v3' ? 'Kling v3.0' : 'Kling v2.6';
+    const fallbackNote = result.usedModel !== klingModel ? ' (v2.6 belum tersedia — otomatis pakai v3.0)' : '';
+    await sendResult(chatId, result.url, `🕹️ ${doneLabel} Motion Control${fallbackNote}\n📊 Generate hari ini: ${newCount}/${KLING_DAILY_LIMIT} (sisa: ${remaining})\n\n/menu untuk buat lagi`, true);
+    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    console.log(`[${userId}] ${label} done via Picsart as ${result.usedModel} (usage: ${newCount}/${KLING_DAILY_LIMIT}, credits used: ${result.credits ?? '?'})`);
+
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    console.error(`[${userId}] ${label} Picsart error: ${msg}`);
+    let friendly: string;
+    if (msg.includes('PICSART_NO_CREDENTIAL') || msg.includes('PICSART_REFRESH_DEAD')) {
+      friendly = '❌ Backend Picsart belum siap (token login habis/kosong). Hubungi admin untuk update token.';
+    } else if (msg.includes('PICSART_TIMEOUT')) {
+      friendly = '❌ Proses terlalu lama / timeout. Coba lagi nanti.';
+    } else if (msg.includes('PICSART_GEN_FAILED')) {
+      friendly = '❌ Generate gagal diproses Picsart (mungkin kredit habis atau media tidak cocok). Coba lagi.';
+    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
+      friendly = '❌ Gagal mengunggah media ke Picsart. Coba file lain.';
+    } else {
+      friendly = '❌ Gagal memproses. Coba lagi nanti.';
     }
-    usedKeys.add(apiKey);
-
-    try {
-      console.log(`[${userId}] ${label} attempt ${attempt} — key: ${apiKey.slice(0, 10)}...`);
-      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-        `⏳ ${label} sedang diproses...\nBiasanya 2–5 menit.`
-      ).catch(() => {});
-
-      const genRes = await freepikHttp.post(`${FREEPIK_BASE}${endpoint}`, {
-        image_url: imageUrl,
-        video_url: videoUrl,
-        character_orientation: 'video',
-        cfg_scale: 0.5,
-      }, { headers: { 'x-freepik-api-key': apiKey, 'Content-Type': 'application/json' } });
-
-      console.log(`[${userId}] ${label} attempt ${attempt} queued — ${JSON.stringify(genRes.data)}`);
-
-      // Cek apakah response body mengandung pesan limit/quota (HTTP 200 tapi key habis)
-      const resBodyStr = typeof genRes.data === 'string' ? genRes.data : JSON.stringify(genRes.data ?? '');
-      if (isFreepikKeyExhaustedError(resBodyStr) && !genRes.data?.data?.task_id && !genRes.data?.task_id && !genRes.data?.id) {
-        throw new Error(resBodyStr);
-      }
-
-      const taskId = genRes.data?.data?.task_id ?? genRes.data?.task_id ?? genRes.data?.id;
-      if (!taskId) throw new Error(`No task ID: ${JSON.stringify(genRes.data)}`);
-
-      const outputUrl = await pollFreepikKling(taskId, endpoint, apiKey, userId);
-
-      // Key sudah dipakai sekali — langsung nonaktifkan dari pool
-      await markFreepikKeyDead(apiKey);
-      console.log(`[${userId}] Freepik key consumed & removed: ${apiKey.slice(0, 10)}...`);
-
-      const newCount = await incrementKlingUsage(dbUserId);
-      const remaining = Math.max(0, KLING_DAILY_LIMIT - newCount);
-      await sendResult(chatId, outputUrl, `🕹️ ${label} Motion Control\n📊 Generate hari ini: ${newCount}/${KLING_DAILY_LIMIT} (sisa: ${remaining})\n\n/menu untuk buat lagi`, true);
-      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-      console.log(`[${userId}] ${label} done (usage: ${newCount}/${KLING_DAILY_LIMIT})`);
-      return;
-
-    } catch (err: any) {
-      const httpStatus = err?.response?.status;
-      const rawMsg = err?.response?.data?.message ?? err?.response?.data?.error ?? err?.response?.data ?? err.message ?? String(err);
-      const raw = typeof rawMsg === 'string' ? rawMsg : JSON.stringify(rawMsg);
-      console.error(`[${userId}] ${label} error (attempt ${attempt}) HTTP ${httpStatus ?? 'N/A'}: ${raw}`);
-
-      // 429 = rate limit, 401/403 = key invalid — buang key & retry otomatis dengan key baru
-      const isRateLimit = httpStatus === 429 || httpStatus === 401 || httpStatus === 403;
-      if (isRateLimit || isFreepikKeyExhaustedError(raw)) {
-        await markFreepikKeyDead(apiKey);
-        console.log(`[${userId}] Key 429/limit — dibuang, auto-retry dengan key baru (attempt ${attempt + 1}): ${apiKey.slice(0, 10)}...`);
-        await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-          `⏳ ${label} sedang diproses...\nBiasanya 2–5 menit.`
-        ).catch(() => {});
-        continue;
-      }
-
-      const friendly = translateError(raw);
-      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-        `${friendly}\n\n/menu untuk coba lagi`
-      ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
-      return;
-    }
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
   }
-
-  await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-    '❌ Semua API key Freepik habis setelah beberapa percobaan. Hubungi admin.\n\n/menu untuk kembali'
-  ).catch(() => {});
 }
 
 // ─── Background: Image generation ────────────────────────────────────────────
@@ -2839,8 +2904,18 @@ app.listen(PORT, () => {
   console.log(`✅ Health check server berjalan di port ${PORT}`);
 });
 
-bot.launch({ allowedUpdates: ['message', 'callback_query'] });
-console.log('✅ Bot berjalan...');
+// Ensure the Picsart schema exists BEFORE handlers go live, so an early
+// /addpicsartkey can't hit a missing table on cold start.
+(async () => {
+  try {
+    await picsart.ensurePicsartSchema();
+    console.log('✅ Picsart schema siap');
+  } catch (e: any) {
+    console.error('❌ Picsart schema gagal:', e?.message ?? e);
+  }
+  bot.launch({ allowedUpdates: ['message', 'callback_query'] });
+  console.log('✅ Bot berjalan...');
+})();
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
