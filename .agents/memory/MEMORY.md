@@ -1,1 +1,2 @@
 - [Leonardo AI i2v endpoint](leonardo-i2v.md) — correct image-to-video endpoint is /generations-image-to-video with model strings KLING2_1/KLING2_5; Kling 2.6 does not exist on Leonardo AI
+- [Picsart AI Playground internal API](picsart-ai-playground-api.md) — undocumented upload→submit→poll flow; auth is fragile browser session cookie (expires); HAR sanitizes cookies, use Copy-as-cURL
