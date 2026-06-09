@@ -7,10 +7,16 @@ description: Reverse-engineered (undocumented) endpoints + flow for generating v
 
 Host: `https://api.picsart.com`, uploads on `https://upload.picsart.com`, result media on `https://cdn-editing-temp.picsart.com`.
 
-## Auth — session/cookie based (the fragile part)
-- Requests carry NO stable API key. Auth is the logged-in browser **session cookie** (and possibly a bearer token). Chrome "Save as HAR" **sanitizes** cookies + `authorization`, so they never appear in a plain HAR — must grab via "Copy as cURL" instead.
-- **Why it matters:** the bot must impersonate a real logged-in Picsart session. The cookie/token **expires** (hours–days). When it dies, every call 401s and the user must re-capture and update the stored credential. This is inherent to the API-interception approach; there is no service-account path.
-- Required custom headers on every call: `deviceid: <a.c....>`, `platform: website`, `x-touchpoint: com.picsart.ai-playground`, `origin: https://picsart.com`, `referer: https://picsart.com/`. `deviceid` is tied to the captured session.
+## Auth — refresh-token exchange (VERIFIED live against the API)
+- Two tokens (from signin `POST /user-account/auth/signin` body `{username,password,redirectAfterEmailConfirmation}` → `{token:{access_token, refresh_token, expires_in:1799, refresh_token_expires_in:2591999}}`):
+  - **access_token**: JWT Bearer, scope `user-global`, lives ~30 min (`expires_in` 1799s).
+  - **refresh_token**: `rt:...` string (~178 chars), lives ~30 DAYS (`refresh_token_expires_in` ~2591999s).
+- **Refresh (the mechanism the bot uses):** `POST https://api.picsart.com/oauth2/refresh` with JSON body `{"refresh_token":"rt:..."}` and header `x-app-authorization: Bearer <STATIC app token>`. Returns `{response:{access_token, refresh_token, id_token, scope, token_type:"Bearer", expires_in:1799, refresh_token_expires_in, active}}`. The browser sends an empty `{}` body (rt rides in an httpOnly cookie) but the API ALSO accepts the rt in the JSON body — that is the clean path for a server.
+- **The refresh token is REUSABLE — it does NOT rotate.** Calling refresh twice with the same rt both return 200. So: user pastes their `rt:` once, bot exchanges it for a fresh access_token on demand for ~30 days. No rotation bookkeeping needed; just re-prompt the user when the rt finally expires (or any refresh returns 400 `invalid_arguments` / `Refresh token should be present`).
+- **`x-app-authorization`** is a STATIC, public app-level JWT (iat 2023, no exp, empty scope) — a constant, same for every user. Captured once from any HAR `/oauth2/refresh` request; hardcode it as the app token. It is NOT the user's token.
+- Normal API calls (upload/submit/poll/credits) use `authorization: Bearer <access_token>` (the user token), NOT x-app-authorization.
+- Required custom headers on every call: `deviceid: <a.c....>`, `platform: website`, `x-touchpoint: com.picsart.ai-playground`, `origin: https://picsart.com`, `referer: https://picsart.com/`. `deviceid` can be any stable value of that shape; the captured one works.
+- **Verified:** refresh→access_token→`GET /guard/credits` returned 200 with a real balance, proving the whole chain works from a plain server (Replit), no browser/cookie needed.
 
 ## Flow (i2v / video-to-video example: Kling Motion Control)
 1. **Upload media** → `POST https://upload.picsart.com/v2/files`, multipart form fields `file` (binary) + `type`. Returns `{response:{url, download_url}}` pointing at `cdn-editing-temp.picsart.com/editing-temp/{uuid}.ext`.
