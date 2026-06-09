@@ -1014,7 +1014,7 @@ bot.command('addpicsartkey', async (ctx) => {
       (c.renewDate ? `\n🔄 Reset: ${new Date(c.renewDate).toLocaleDateString('id-ID')}` : '')
     );
   } catch (e: any) {
-    return ctx.reply(`⚠️ Token tersimpan, tapi verifikasi gagal: ${String(e.message).slice(0, 140)}`);
+    return ctx.reply(`⚠️ Token tersimpan, tapi verifikasi gagal:\n${String(e.message).slice(0, 280)}`);
   }
 });
 

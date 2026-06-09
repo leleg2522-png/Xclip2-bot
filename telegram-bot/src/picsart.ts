@@ -163,17 +163,18 @@ async function doRefresh(force = false): Promise<string> {
 
   const access = resp.data?.response?.access_token;
   if (resp.status !== 200 || !access) {
+    const detail = `status ${resp.status}: ${JSON.stringify(resp.data).slice(0, 200)}`;
     if (resp.status === 400 || resp.status === 401 || resp.status === 403) {
       await db.query(
         `UPDATE picsart_credentials SET status = 'dead', dead_at = NOW(), updated_at = NOW() WHERE id = $1`,
         [cred.id]
       );
       notifyOwner(
-        '⚠️ Picsart refresh token MATI (invalid_grant). Tambahkan token baru:\n/addpicsartkey rt:...'
+        `⚠️ Picsart refresh token DITOLAK (${detail}). Tambahkan token baru:\n/addpicsartkey rt:...`
       );
-      throw new Error('PICSART_REFRESH_DEAD');
+      throw new Error(`PICSART_REFRESH_DEAD ${detail}`);
     }
-    throw new Error(`PICSART_REFRESH_FAILED status ${resp.status}: ${JSON.stringify(resp.data).slice(0, 200)}`);
+    throw new Error(`PICSART_REFRESH_FAILED ${detail}`);
   }
 
   const expiresIn = resp.data?.response?.expires_in ?? 1799;
