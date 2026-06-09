@@ -1571,9 +1571,9 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
       model: klingModel,
       onStatus: (stage) => {
         const text = stage === 'upload'
-          ? `⏳ ${label}: mengunggah media ke Picsart...`
+          ? `⏳ ${label}: mengunggah media ke server...`
           : stage === 'submit'
-            ? `⏳ ${label}: mengirim job ke Picsart...`
+            ? `⏳ ${label}: mengirim job ke server...`
             : `⏳ ${label} sedang diproses...\nBiasanya 5–8 menit.`;
         bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
       },
@@ -1591,14 +1591,10 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
     const msg = err?.message ?? String(err);
     console.error(`[${userId}] ${label} Picsart error: ${msg}`);
     let friendly: string;
-    if (msg.includes('PICSART_NO_CREDENTIAL') || msg.includes('PICSART_REFRESH_DEAD')) {
-      friendly = '❌ Backend Picsart belum siap (token login habis/kosong). Hubungi admin untuk update token.';
-    } else if (msg.includes('PICSART_TIMEOUT')) {
-      friendly = '❌ Proses terlalu lama / timeout. Coba lagi nanti.';
-    } else if (msg.includes('PICSART_GEN_FAILED')) {
-      friendly = '❌ Generate gagal diproses Picsart (mungkin kredit habis atau media tidak cocok). Coba lagi.';
+    if (msg.includes('PICSART_TIMEOUT')) {
+      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
     } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
-      friendly = '❌ Gagal mengunggah media ke Picsart. Coba file lain.';
+      friendly = '❌ Media tidak bisa diproses. Coba file lain.';
     } else {
       friendly = '❌ Gagal memproses. Coba lagi nanti.';
     }
