@@ -35,6 +35,9 @@ const USER_AGENT = process.env.PICSART_UA ||
 
 const http = axios.create({ timeout: 120_000 });
 
+// Picsart returns any 2xx (e.g. 200 OK or 201 Created) on success.
+const ok2xx = (s: number) => s >= 200 && s < 300;
+
 // Kling model_name mapping. v3 is live-verified; v26 string is a best-guess pending capture.
 export const KLING_MODELS = {
   v3: { modelName: 'kling-v3', modelLabel: 'kling-motion-control-v3' },
@@ -162,7 +165,7 @@ async function doRefresh(force = false): Promise<string> {
   );
 
   const access = resp.data?.response?.access_token;
-  if (resp.status !== 200 || !access) {
+  if (!ok2xx(resp.status) || !access) {
     const detail = `status ${resp.status}: ${JSON.stringify(resp.data).slice(0, 200)}`;
     if (resp.status === 400 || resp.status === 401 || resp.status === 403) {
       await db.query(
@@ -224,7 +227,7 @@ export async function getCredits(): Promise<{ credits: number; renewDate?: strin
     headers: commonHeaders({ authorization: `Bearer ${access}` }),
     validateStatus: () => true,
   });
-  if (r.status !== 200) throw new Error(`PICSART_CREDITS_FAILED status ${r.status}`);
+  if (!ok2xx(r.status)) throw new Error(`PICSART_CREDITS_FAILED status ${r.status}`);
   return { credits: r.data?.response?.credits ?? r.data?.credits, renewDate: r.data?.response?.renewDate };
 }
 
@@ -240,7 +243,7 @@ export async function uploadFile(buf: Buffer, filename: string, contentType: str
     validateStatus: () => true,
   });
   const url = r.data?.response?.url;
-  if (r.status !== 200 || !url) {
+  if (!ok2xx(r.status) || !url) {
     throw new Error(`PICSART_UPLOAD_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 200)}`);
   }
   return url;
@@ -287,7 +290,7 @@ export async function submitKlingMotionControl(input: {
     validateStatus: () => true,
   });
   const id = r.data?.response?.id;
-  if (r.status !== 200 || !id) {
+  if (!ok2xx(r.status) || !id) {
     throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
   }
   return id;
@@ -306,7 +309,7 @@ export async function pollKlingResult(
       headers: commonHeaders({ authorization: `Bearer ${access}` }),
       validateStatus: () => true,
     });
-    if (r.status !== 200) continue;
+    if (!ok2xx(r.status)) continue;
     const resp = r.data?.response;
     const status = String(resp?.status ?? '').toUpperCase();
     if (status === 'COMPLETED') {
