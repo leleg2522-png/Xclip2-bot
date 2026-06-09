@@ -5,7 +5,8 @@
  * Picsart Media Downloader API
  * OpenAPI spec version: 0.1.0
  */
+import type { Board } from "./board";
 
-export interface HealthStatus {
-  status: string;
+export interface BoardsResponse {
+  boards: Board[];
 }
