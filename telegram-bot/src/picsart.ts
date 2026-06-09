@@ -135,12 +135,14 @@ function extractRotatedRefreshToken(setCookie: unknown): string | null {
 
 let refreshInFlight: Promise<string> | null = null;
 
-async function doRefresh(): Promise<string> {
+async function doRefresh(force = false): Promise<string> {
   const cred = await getActiveCredential();
   if (!cred) throw new Error('PICSART_NO_CREDENTIAL');
 
   // Re-use cached access token while it has >2 min of life left.
-  if (cred.access_token && cred.access_expires_at) {
+  // `force` (used by the keepalive) skips the cache to actually roll the
+  // refresh-token's 30-day window forward.
+  if (!force && cred.access_token && cred.access_expires_at) {
     const msLeft = new Date(cred.access_expires_at).getTime() - Date.now();
     if (msLeft > 120_000) return cred.access_token;
   }
@@ -186,8 +188,28 @@ async function doRefresh(): Promise<string> {
 
 export async function getAccessToken(): Promise<string> {
   if (refreshInFlight) return refreshInFlight;
-  refreshInFlight = doRefresh().finally(() => { refreshInFlight = null; });
+  refreshInFlight = doRefresh(false).finally(() => { refreshInFlight = null; });
   return refreshInFlight;
+}
+
+// Keepalive: periodically force a refresh so the refresh-token's ~30-day window
+// keeps rolling forward even when nobody generates. On a dedicated account this
+// makes the token effectively permanent — the user only seeds it ONCE.
+export function startPicsartKeepalive(intervalMs = 3 * 24 * 60 * 60 * 1000): NodeJS.Timeout {
+  const tick = async () => {
+    try {
+      if (refreshInFlight) { await refreshInFlight; return; }
+      refreshInFlight = doRefresh(true).finally(() => { refreshInFlight = null; });
+      await refreshInFlight;
+      console.log('[picsart] keepalive refresh ok');
+    } catch (e: any) {
+      // PICSART_NO_CREDENTIAL (nothing seeded yet) or PICSART_REFRESH_DEAD (owner already notified) — just skip.
+      console.warn('[picsart] keepalive skip:', e?.message ?? e);
+    }
+  };
+  const timer = setInterval(tick, intervalMs);
+  if (typeof timer.unref === 'function') timer.unref();
+  return timer;
 }
 
 export async function getCredits(): Promise<{ credits: number; renewDate?: string }> {

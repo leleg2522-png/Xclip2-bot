@@ -2910,6 +2910,9 @@ app.listen(PORT, () => {
   try {
     await picsart.ensurePicsartSchema();
     console.log('✅ Picsart schema siap');
+    // Keep the refresh token alive forever on a dedicated account (seed once).
+    picsart.startPicsartKeepalive();
+    console.log('✅ Picsart keepalive aktif (refresh tiap 3 hari)');
   } catch (e: any) {
     console.error('❌ Picsart schema gagal:', e?.message ?? e);
   }
