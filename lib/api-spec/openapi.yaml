@@ -1,22 +1,22 @@
 openapi: 3.1.0
 info:
+  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: Picsart Media Downloader API
+  description: API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
-  - name: picsart
-    description: Picsart proxy operations
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
+      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,74 +24,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
-  /picsart/boards:
-    post:
-      operationId: fetchBoards
-      tags: [picsart]
-      summary: Fetch user boards from Picsart
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AuthInput"
-      responses:
-        "200":
-          description: List of boards
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BoardsResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /picsart/media:
-    post:
-      operationId: fetchMedia
-      tags: [picsart]
-      summary: Fetch media from a board
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/MediaInput"
-      responses:
-        "200":
-          description: List of media items
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MediaResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /picsart/proxy-download:
-    post:
-      operationId: proxyDownload
-      tags: [picsart]
-      summary: Proxy download a media file
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/DownloadInput"
-      responses:
-        "200":
-          description: File binary stream
-        "400":
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -101,81 +33,3 @@ components:
           type: string
       required:
         - status
-    AuthInput:
-      type: object
-      required: [authToken]
-      properties:
-        authToken:
-          type: string
-    MediaInput:
-      type: object
-      required: [authToken, boardId]
-      properties:
-        authToken:
-          type: string
-        boardId:
-          type: string
-        limit:
-          type: ["integer", "null"]
-    DownloadInput:
-      type: object
-      required: [url, authToken]
-      properties:
-        url:
-          type: string
-        authToken:
-          type: string
-        filename:
-          type: ["string", "null"]
-    Board:
-      type: object
-      required: [id, name]
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        mediaCount:
-          type: ["integer", "null"]
-        thumbnailUrl:
-          type: ["string", "null"]
-    MediaItem:
-      type: object
-      required: [id, type, url]
-      properties:
-        id:
-          type: string
-        type:
-          type: string
-        url:
-          type: string
-        thumbnailUrl:
-          type: ["string", "null"]
-        filename:
-          type: ["string", "null"]
-        createdAt:
-          type: ["string", "null"]
-        prompt:
-          type: ["string", "null"]
-    BoardsResponse:
-      type: object
-      required: [boards]
-      properties:
-        boards:
-          type: array
-          items:
-            $ref: "#/components/schemas/Board"
-    MediaResponse:
-      type: object
-      required: [items]
-      properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/MediaItem"
-    ErrorResponse:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: string
