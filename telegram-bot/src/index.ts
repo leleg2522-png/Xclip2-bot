@@ -363,7 +363,9 @@ type Mode =
   | 'login_wait_password'
   | 'kling_wait_model'
   | 'kling_wait_image'
-  | 'kling_wait_video';
+  | 'kling_wait_video'
+  | 'seedance_wait_image'
+  | 'seedance_wait_prompt';
 
 interface Session {
   mode: Mode;
@@ -375,6 +377,13 @@ interface Session {
   loginTempUsername?: string;
   characterUrl?: string;
   klingModel?: 'v3' | 'v26';
+  // Seedance 2.0 wizard state
+  seedanceInputMode?: 'i2v' | 't2v';
+  seedanceDuration?: number;
+  seedanceRatio?: string;
+  seedanceResolution?: string;
+  seedanceAudio?: boolean;
+  seedanceImageUrl?: string;
 }
 
 const sessions = new Map<number, Session>();
@@ -649,6 +658,7 @@ async function pollForResult(taskId: string, userId: number, apiKey: string, pol
 function mainMenuKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('🕹️ Kling Motion Control', 'mode_kling')],
+    [Markup.button.callback('🎬 Seedance 2.0', 'mode_seedance')],
   ]);
 }
 
@@ -659,6 +669,57 @@ function klingModelKeyboard() {
     [Markup.button.callback('« Kembali', 'back_main')],
   ]);
 }
+
+// ─── Seedance 2.0 wizard keyboards ────────────────────────────────────────────
+
+function seedanceInputKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🖼️ Foto + Prompt', 'sd_in_i2v')],
+    [Markup.button.callback('✍️ Prompt Saja', 'sd_in_t2v')],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function seedanceDurationKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('5 detik', 'sd_dur_5'),
+      Markup.button.callback('10 detik', 'sd_dur_10'),
+      Markup.button.callback('15 detik', 'sd_dur_15'),
+    ],
+    [Markup.button.callback('« Kembali', 'mode_seedance')],
+  ]);
+}
+
+function seedanceRatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('📱 9:16', 'sd_ratio_916'),
+      Markup.button.callback('🖥️ 16:9', 'sd_ratio_169'),
+      Markup.button.callback('⬛ 1:1', 'sd_ratio_11'),
+    ],
+  ]);
+}
+
+function seedanceResolutionKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('720p', 'sd_res_720p'),
+      Markup.button.callback('1080p (HD)', 'sd_res_1080p'),
+    ],
+  ]);
+}
+
+function seedanceAudioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('🔊 Audio Nyala', 'sd_audio_on'),
+      Markup.button.callback('🔇 Audio Mati', 'sd_audio_off'),
+    ],
+  ]);
+}
+
+const SD_RATIO_MAP: Record<string, string> = { '916': '9:16', '169': '16:9', '11': '1:1' };
 
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
@@ -1316,6 +1377,77 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  // ── Seedance 2.0 wizard ──
+  if (data === 'mode_seedance') {
+    setSession(userId, {
+      mode: 'idle',
+      seedanceInputMode: undefined,
+      seedanceDuration: undefined,
+      seedanceRatio: undefined,
+      seedanceResolution: undefined,
+      seedanceAudio: undefined,
+      seedanceImageUrl: undefined,
+    });
+    return ctx.editMessageText(
+      '🎬 *Seedance 2.0*\n\nPilih cara membuat video:',
+      { parse_mode: 'Markdown', ...seedanceInputKeyboard() }
+    );
+  }
+
+  if (data === 'sd_in_i2v' || data === 'sd_in_t2v') {
+    setSession(userId, { seedanceInputMode: data === 'sd_in_i2v' ? 'i2v' : 't2v' });
+    return ctx.editMessageText(
+      '🎬 *Seedance 2.0*\n\n*Langkah 1:* Pilih durasi video:',
+      { parse_mode: 'Markdown', ...seedanceDurationKeyboard() }
+    );
+  }
+
+  if (data.startsWith('sd_dur_')) {
+    const dur = parseInt(data.replace('sd_dur_', ''), 10);
+    setSession(userId, { seedanceDuration: dur });
+    return ctx.editMessageText(
+      `🎬 *Seedance 2.0*\n\nDurasi: *${dur} detik*\n\n*Langkah 2:* Pilih rasio layar:`,
+      { parse_mode: 'Markdown', ...seedanceRatioKeyboard() }
+    );
+  }
+
+  if (data.startsWith('sd_ratio_')) {
+    const ratio = SD_RATIO_MAP[data.replace('sd_ratio_', '')] ?? '9:16';
+    setSession(userId, { seedanceRatio: ratio });
+    return ctx.editMessageText(
+      `🎬 *Seedance 2.0*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Pilih resolusi:`,
+      { parse_mode: 'Markdown', ...seedanceResolutionKeyboard() }
+    );
+  }
+
+  if (data.startsWith('sd_res_')) {
+    const res = data.replace('sd_res_', '');
+    setSession(userId, { seedanceResolution: res });
+    return ctx.editMessageText(
+      `🎬 *Seedance 2.0*\n\nResolusi: *${res}*\n\n*Langkah 4:* Audio video?`,
+      { parse_mode: 'Markdown', ...seedanceAudioKeyboard() }
+    );
+  }
+
+  if (data === 'sd_audio_on' || data === 'sd_audio_off') {
+    const audio = data === 'sd_audio_on';
+    const session = getSession(userId);
+    if (session.seedanceInputMode === 'i2v') {
+      setSession(userId, { seedanceAudio: audio, mode: 'seedance_wait_image' });
+      return ctx.editMessageText(
+        `🎬 *Seedance 2.0*\n\nAudio: *${audio ? 'Nyala' : 'Mati'}*\n\n` +
+        '*Langkah 5:* Kirim *foto acuan* untuk video kamu.',
+        { parse_mode: 'Markdown' }
+      );
+    }
+    setSession(userId, { seedanceAudio: audio, mode: 'seedance_wait_prompt' });
+    return ctx.editMessageText(
+      `🎬 *Seedance 2.0*\n\nAudio: *${audio ? 'Nyala' : 'Mati'}*\n\n` +
+      '*Langkah 5:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (data === 'back_main') {
     setSession(userId, { mode: 'idle' });
     return ctx.editMessageText('Pilih mode generasi:', mainMenuKeyboard());
@@ -1337,6 +1469,15 @@ async function handleImageInput(ctx: any, fileUrl: string) {
       '• Orang terlihat jelas dalam video\n' +
       '• Durasi 2–30 detik\n' +
       '• Maks ukuran file: 19MB',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'seedance_wait_image') {
+    setSession(userId, { seedanceImageUrl: fileUrl, mode: 'seedance_wait_prompt' });
+    return ctx.reply(
+      '✅ Foto acuan diterima!\n\n' +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
       { parse_mode: 'Markdown' }
     );
   }
@@ -1444,6 +1585,44 @@ bot.on('text', async (ctx) => {
       console.error(`[${userId}] Login error:`, e.message);
       return ctx.reply('❌ Terjadi kesalahan saat login. Coba lagi nanti.');
     }
+  }
+
+  // ── Seedance prompt ──
+  if (session.mode === 'seedance_wait_prompt') {
+    if (!await requireLoginAndSub(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
+    }
+    const used = await getKlingUsageToday(session.dbUserId!);
+    if (used >= KLING_DAILY_LIMIT) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`❌ Limit harian video sudah habis!\n\n📊 Terpakai: *${used}/${KLING_DAILY_LIMIT}* generate hari ini.\n🕛 Reset otomatis besok.`, { parse_mode: 'Markdown' });
+    }
+    const opts = {
+      inputMode: session.seedanceInputMode ?? 't2v',
+      imageUrl: session.seedanceImageUrl,
+      duration: session.seedanceDuration ?? 5,
+      ratio: session.seedanceRatio ?? '9:16',
+      resolution: session.seedanceResolution ?? '1080p',
+      audio: session.seedanceAudio ?? true,
+    };
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Memproses Seedance 2.0...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
+    runSeedance(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
+      .catch(e => console.error(`[${userId}] Seedance gen error:`, e.message));
+    return;
+  }
+
+  // ── Guard: modes that expect a photo/video, not text ──
+  if (session.mode === 'seedance_wait_image') {
+    return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+  }
+  if (session.mode === 'kling_wait_image') {
+    return ctx.reply('📸 Kirim *foto karakter* dulu ya, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+  }
+  if (session.mode === 'kling_wait_video') {
+    return ctx.reply('🎥 Kirim *video referensi gerakan*, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
 
 });
@@ -1595,6 +1774,84 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
       friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
     } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
       friendly = '❌ Media tidak bisa diproses. Coba file lain.';
+    } else {
+      friendly = '❌ Gagal memproses. Coba lagi nanti.';
+    }
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  }
+}
+
+// ─── Background: Seedance 2.0 ─────────────────────────────────────────────────
+
+async function runSeedance(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  opts: {
+    inputMode: 'i2v' | 't2v';
+    imageUrl?: string;
+    duration: number;
+    ratio: string;
+    resolution: string;
+    audio: boolean;
+  }
+) {
+  console.log(`[${userId}] Seedance started — mode: ${opts.inputMode}, dur: ${opts.duration}s, ratio: ${opts.ratio}, res: ${opts.resolution}, audio: ${opts.audio}`);
+
+  try {
+    let imageBuffer: Buffer | undefined;
+    let imageName: string | undefined;
+    let imageMime: string | undefined;
+    if (opts.inputMode === 'i2v' && opts.imageUrl) {
+      const img = await downloadBuffer(opts.imageUrl);
+      imageBuffer = img.buf;
+      imageName = `reference.${img.ext}`;
+      imageMime = img.mime;
+      console.log(`[${userId}] Seedance ref image — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
+    }
+
+    const result = await picsart.generateSeedance({
+      prompt,
+      imageBuffer,
+      imageName,
+      imageMime,
+      duration: opts.duration,
+      ratio: opts.ratio,
+      resolution: opts.resolution,
+      generateAudio: opts.audio,
+      onStatus: (stage) => {
+        const text = stage === 'upload'
+          ? '⏳ Seedance 2.0: mengunggah foto ke server...'
+          : stage === 'submit'
+            ? '⏳ Seedance 2.0: mengirim job ke server...'
+            : '⏳ Seedance 2.0 sedang diproses...\nBiasanya 3–8 menit.';
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+      },
+    });
+
+    const newCount = await incrementKlingUsage(dbUserId);
+    const remaining = Math.max(0, KLING_DAILY_LIMIT - newCount);
+    await sendResult(
+      chatId,
+      result.url,
+      `🎬 Seedance 2.0 (${opts.duration}s · ${opts.ratio} · ${opts.resolution}${opts.audio ? ' · audio' : ''})\n📊 Generate hari ini: ${newCount}/${KLING_DAILY_LIMIT} (sisa: ${remaining})\n\n/menu untuk buat lagi`,
+      true
+    );
+    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    console.log(`[${userId}] Seedance done (usage: ${newCount}/${KLING_DAILY_LIMIT}, credits used: ${result.credits ?? '?'})`);
+
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    console.error(`[${userId}] Seedance error: ${msg}`);
+    let friendly: string;
+    if (msg.includes('PICSART_TIMEOUT')) {
+      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
+    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
+      friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
     } else {
       friendly = '❌ Gagal memproses. Coba lagi nanti.';
     }

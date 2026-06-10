@@ -33,3 +33,9 @@ Host: `https://api.picsart.com`, uploads on `https://upload.picsart.com`, result
 ## Other endpoints
 - Credits: `GET /guard/credits` → `{credits, tierCredits, addonCredits, renewDate}`.
 - Library list: `GET /cloud-storage/v1/me/files?...`; spaces: `GET /cloud-storage/v1/me/storages`.
+
+## Seedance 2.0 (image/text-to-video)
+- Submit: POST `/workflows/seedance/submit` with `{params:{model:"seedance_2_0", content:[...], ratio, duration(NUMBER), resolution, generate_audio}}`.
+- content: i2v = `[{type:"image_url",image_url:{url},role:"reference_image"},{type:"text",text}]`; t2v = text item only.
+- Result: GET `/workflows/seedance/{id}/result` → **`response.result.video_url`** (GOTCHA: NOT `result.url` like Kling), credits at `response.usage.credits`, status COMPLETED.
+- Pricing pre-check endpoint `/workflows/seedance/options` mirrors the submit body (no `drive` wrapper). Proven combo 9:16/15s/1080p/audio = 180 credits.

@@ -45,6 +45,10 @@ export const KLING_MODELS = {
 } as const;
 export type KlingModelKey = keyof typeof KLING_MODELS;
 
+// Seedance 2.0 — image/text-to-video. Submit payload mirrors the AI Playground
+// `/workflows/seedance/options` pricing pre-check captured from the web app.
+export const SEEDANCE_MODEL = 'seedance_2_0';
+
 let db: Pool;
 let notifyOwner: (msg: string) => void = () => {};
 
@@ -363,4 +367,101 @@ export async function generateKlingMotionControl(input: {
   input.onStatus?.('poll');
   const res = await pollKlingResult(id);
   return { ...res, usedModel };
+}
+
+// ─── Seedance 2.0 ─────────────────────────────────────────────────────────────
+
+export async function submitSeedance(input: {
+  prompt: string;
+  imageUrl?: string;
+  duration: number;
+  ratio: string;
+  resolution: string;
+  generateAudio: boolean;
+}): Promise<string> {
+  const access = await getAccessToken();
+  const content: Array<Record<string, unknown>> = [];
+  if (input.imageUrl) {
+    content.push({ type: 'image_url', image_url: { url: input.imageUrl }, role: 'reference_image' });
+  }
+  content.push({ type: 'text', text: input.prompt ?? '' });
+  const params = {
+    model: SEEDANCE_MODEL,
+    content,
+    ratio: input.ratio,
+    duration: input.duration,
+    resolution: input.resolution,
+    generate_audio: input.generateAudio,
+  };
+  const r = await http.post(`${API_BASE}/workflows/seedance/submit`, { params }, {
+    headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
+    validateStatus: () => true,
+  });
+  const id = r.data?.response?.id;
+  if (!ok2xx(r.status) || !id) {
+    throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+  }
+  return id;
+}
+
+export async function pollSeedanceResult(
+  id: string,
+  opts?: { maxAttempts?: number; intervalMs?: number }
+): Promise<{ url: string; credits?: number }> {
+  const maxAttempts = opts?.maxAttempts ?? 180; // ~15 min at 5s
+  const intervalMs = opts?.intervalMs ?? 5000;
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((res) => setTimeout(res, intervalMs));
+    const access = await getAccessToken();
+    const r = await http.get(`${API_BASE}/workflows/seedance/${id}/result`, {
+      headers: commonHeaders({ authorization: `Bearer ${access}` }),
+      validateStatus: () => true,
+    });
+    if (!ok2xx(r.status)) continue;
+    const resp = r.data?.response;
+    const status = String(resp?.status ?? '').toUpperCase();
+    if (status === 'COMPLETED') {
+      const url = resp?.result?.video_url;
+      if (!url) throw new Error('PICSART_NO_RESULT_URL');
+      return { url, credits: resp.usage?.credits };
+    }
+    if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
+      throw new Error(`PICSART_GEN_FAILED: ${JSON.stringify(resp).slice(0, 200)}`);
+    }
+  }
+  throw new Error('PICSART_TIMEOUT');
+}
+
+// High-level orchestrator: optional image upload -> submit -> poll -> result URL.
+export async function generateSeedance(input: {
+  prompt: string;
+  imageBuffer?: Buffer;
+  imageName?: string;
+  imageMime?: string;
+  duration: number;
+  ratio: string;
+  resolution: string;
+  generateAudio: boolean;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
+}): Promise<{ url: string; credits?: number }> {
+  let imageUrl: string | undefined;
+  if (input.imageBuffer) {
+    input.onStatus?.('upload');
+    imageUrl = await uploadFile(
+      input.imageBuffer,
+      input.imageName || 'reference.jpg',
+      input.imageMime || 'image/jpeg'
+    );
+  }
+  input.onStatus?.('submit');
+  const id = await submitSeedance({
+    prompt: input.prompt,
+    imageUrl,
+    duration: input.duration,
+    ratio: input.ratio,
+    resolution: input.resolution,
+    generateAudio: input.generateAudio,
+  });
+  input.onStatus?.('poll');
+  return pollSeedanceResult(id);
 }
