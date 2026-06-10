@@ -406,12 +406,14 @@ export async function submitSeedance(input: {
 
 export async function pollSeedanceResult(
   id: string,
-  opts?: { maxAttempts?: number; intervalMs?: number }
+  opts?: { maxAttempts?: number; intervalMs?: number; onTick?: (elapsedMs: number) => void }
 ): Promise<{ url: string; credits?: number }> {
   const maxAttempts = opts?.maxAttempts ?? 180; // ~15 min at 5s
   const intervalMs = opts?.intervalMs ?? 5000;
+  const start = Date.now();
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((res) => setTimeout(res, intervalMs));
+    opts?.onTick?.(Date.now() - start);
     const access = await getAccessToken();
     const r = await http.get(`${API_BASE}/workflows/seedance/${id}/result`, {
       headers: commonHeaders({ authorization: `Bearer ${access}` }),
@@ -443,6 +445,7 @@ export async function generateSeedance(input: {
   resolution: string;
   generateAudio: boolean;
   onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
+  onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
   let imageUrl: string | undefined;
   if (input.imageBuffer) {
@@ -463,5 +466,7 @@ export async function generateSeedance(input: {
     generateAudio: input.generateAudio,
   });
   input.onStatus?.('poll');
-  return pollSeedanceResult(id);
+  return pollSeedanceResult(id, {
+    onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+  });
 }

@@ -1814,6 +1814,7 @@ async function runSeedance(
       console.log(`[${userId}] Seedance ref image — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
     }
 
+    let lastEdit = 0;
     const result = await picsart.generateSeedance({
       prompt,
       imageBuffer,
@@ -1825,11 +1826,25 @@ async function runSeedance(
       generateAudio: opts.audio,
       onStatus: (stage) => {
         const text = stage === 'upload'
-          ? '⏳ Seedance 2.0: mengunggah foto ke server...'
+          ? '⏳ Seedance 2.0: mengunggah foto ke server... (1/3)'
           : stage === 'submit'
-            ? '⏳ Seedance 2.0: mengirim job ke server...'
-            : '⏳ Seedance 2.0 sedang diproses...\nBiasanya 3–8 menit.';
+            ? '⏳ Seedance 2.0: mengirim perintah ke server... (2/3)'
+            : '⏳ Seedance 2.0: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 3–8 menit. Jangan tutup chat ini.';
+        lastEdit = Date.now();
         bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+      },
+      onPoll: (elapsedSec) => {
+        // Heartbeat: refresh the status with a running timer every ~30s so the
+        // user can see the bot is still working (not stuck).
+        if (Date.now() - lastEdit < 30_000) return;
+        lastEdit = Date.now();
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = elapsedSec % 60;
+        const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
+        bot.telegram.editMessageText(
+          chatId, statusMsgId, undefined,
+          `⏳ Seedance 2.0: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${timer} (biasanya 3–8 menit).\nJangan tutup chat ini, video dikirim otomatis.`
+        ).catch(() => {});
       },
     });
 
