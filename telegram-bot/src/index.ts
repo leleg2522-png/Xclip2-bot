@@ -323,7 +323,7 @@ function isLeonardoKeyExhaustedError(raw: string): boolean {
 
 // ─── Kling Daily Limit ────────────────────────────────────────────────────────
 
-const KLING_DAILY_LIMIT = 10;
+const KLING_DAILY_LIMIT = 15;
 
 async function getKlingUsageToday(dbUserId: number): Promise<number> {
   const res = await db.query(
