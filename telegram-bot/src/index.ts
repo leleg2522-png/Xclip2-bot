@@ -365,7 +365,9 @@ type Mode =
   | 'kling_wait_image'
   | 'kling_wait_video'
   | 'seedance_wait_image'
-  | 'seedance_wait_prompt';
+  | 'seedance_wait_prompt'
+  | 'grok_wait_image'
+  | 'grok_wait_prompt';
 
 interface Session {
   mode: Mode;
@@ -384,6 +386,10 @@ interface Session {
   seedanceResolution?: string;
   seedanceAudio?: boolean;
   seedanceImageUrl?: string;
+  // Grok Imagine wizard state (image-to-video only)
+  grokDuration?: number;
+  grokRatio?: string;
+  grokImageUrl?: string;
 }
 
 const sessions = new Map<number, Session>();
@@ -659,6 +665,7 @@ function mainMenuKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('🕹️ Kling Motion Control', 'mode_kling')],
     [Markup.button.callback('🎬 Seedance 2.0', 'mode_seedance')],
+    [Markup.button.callback('🤖 Grok Imagine', 'mode_grok')],
   ]);
 }
 
@@ -720,6 +727,29 @@ function seedanceAudioKeyboard() {
 }
 
 const SD_RATIO_MAP: Record<string, string> = { '916': '9:16', '169': '16:9', '11': '1:1' };
+
+// ─── Grok Imagine wizard keyboards (image-to-video only) ──────────────────────
+
+function grokDurationKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('10 detik', 'gk_dur_10'),
+      Markup.button.callback('15 detik', 'gk_dur_15'),
+    ],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function grokRatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('📱 9:16', 'gk_ratio_916'),
+      Markup.button.callback('🖥️ 16:9', 'gk_ratio_169'),
+      Markup.button.callback('⬛ 1:1', 'gk_ratio_11'),
+    ],
+    [Markup.button.callback('« Kembali', 'mode_grok')],
+  ]);
+}
 
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
@@ -1448,6 +1478,38 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  // ── Grok Imagine wizard (image-to-video only) ──
+  if (data === 'mode_grok') {
+    setSession(userId, {
+      mode: 'idle',
+      grokDuration: undefined,
+      grokRatio: undefined,
+      grokImageUrl: undefined,
+    });
+    return ctx.editMessageText(
+      '🤖 *Grok Imagine*\n\nVideo dibuat dari *foto + prompt*.\n\n*Langkah 1:* Pilih durasi video:',
+      { parse_mode: 'Markdown', ...grokDurationKeyboard() }
+    );
+  }
+
+  if (data.startsWith('gk_dur_')) {
+    const dur = parseInt(data.replace('gk_dur_', ''), 10);
+    setSession(userId, { grokDuration: dur });
+    return ctx.editMessageText(
+      `🤖 *Grok Imagine*\n\nDurasi: *${dur} detik*\n\n*Langkah 2:* Pilih rasio layar:`,
+      { parse_mode: 'Markdown', ...grokRatioKeyboard() }
+    );
+  }
+
+  if (data.startsWith('gk_ratio_')) {
+    const ratio = SD_RATIO_MAP[data.replace('gk_ratio_', '')] ?? '9:16';
+    setSession(userId, { grokRatio: ratio, mode: 'grok_wait_image' });
+    return ctx.editMessageText(
+      `🤖 *Grok Imagine*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Kirim *foto acuan* untuk video kamu.`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (data === 'back_main') {
     setSession(userId, { mode: 'idle' });
     return ctx.editMessageText('Pilih mode generasi:', mainMenuKeyboard());
@@ -1475,6 +1537,15 @@ async function handleImageInput(ctx: any, fileUrl: string) {
 
   if (session.mode === 'seedance_wait_image') {
     setSession(userId, { seedanceImageUrl: fileUrl, mode: 'seedance_wait_prompt' });
+    return ctx.reply(
+      '✅ Foto acuan diterima!\n\n' +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'grok_wait_image') {
+    setSession(userId, { grokImageUrl: fileUrl, mode: 'grok_wait_prompt' });
     return ctx.reply(
       '✅ Foto acuan diterima!\n\n' +
       '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
@@ -1614,8 +1685,39 @@ bot.on('text', async (ctx) => {
     return;
   }
 
+  // ── Grok prompt ──
+  if (session.mode === 'grok_wait_prompt') {
+    if (!await requireLoginAndSub(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
+    }
+    const used = await getKlingUsageToday(session.dbUserId!);
+    if (used >= KLING_DAILY_LIMIT) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`❌ Limit harian video sudah habis!\n\n📊 Terpakai: *${used}/${KLING_DAILY_LIMIT}* generate hari ini.\n🕛 Reset otomatis besok.`, { parse_mode: 'Markdown' });
+    }
+    if (!session.grokImageUrl) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply('⚠️ Foto acuan tidak ditemukan. Mulai lagi dari /menu.');
+    }
+    const opts = {
+      imageUrl: session.grokImageUrl,
+      duration: session.grokDuration ?? 10,
+      ratio: session.grokRatio ?? '9:16',
+    };
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Memproses Grok Imagine...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
+    runGrok(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
+      .catch(e => console.error(`[${userId}] Grok gen error:`, e.message));
+    return;
+  }
+
   // ── Guard: modes that expect a photo/video, not text ──
   if (session.mode === 'seedance_wait_image') {
+    return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+  }
+  if (session.mode === 'grok_wait_image') {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
   if (session.mode === 'kling_wait_image') {
@@ -1862,6 +1964,84 @@ async function runSeedance(
   } catch (err: any) {
     const msg = err?.message ?? String(err);
     console.error(`[${userId}] Seedance error: ${msg}`);
+    let friendly: string;
+    if (msg.includes('PICSART_TIMEOUT')) {
+      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
+    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
+      friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
+    } else {
+      friendly = '❌ Gagal memproses. Coba lagi nanti.';
+    }
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  }
+}
+
+// ─── Background: Grok Imagine (image-to-video) ────────────────────────────────
+
+async function runGrok(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  opts: {
+    imageUrl: string;
+    duration: number;
+    ratio: string;
+  }
+) {
+  console.log(`[${userId}] Grok started — dur: ${opts.duration}s, ratio: ${opts.ratio}`);
+
+  try {
+    const img = await downloadBuffer(opts.imageUrl);
+    console.log(`[${userId}] Grok ref image — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
+
+    let lastEdit = 0;
+    const result = await picsart.generateGrok({
+      prompt,
+      imageBuffer: img.buf,
+      imageName: `reference.${img.ext}`,
+      imageMime: img.mime,
+      duration: opts.duration,
+      ratio: opts.ratio,
+      onStatus: (stage) => {
+        const text = stage === 'upload'
+          ? '⏳ Grok Imagine: mengunggah foto ke server... (1/3)'
+          : stage === 'submit'
+            ? '⏳ Grok Imagine: mengirim perintah ke server... (2/3)'
+            : '⏳ Grok Imagine: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 3–8 menit. Jangan tutup chat ini.';
+        lastEdit = Date.now();
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+      },
+      onPoll: (elapsedSec) => {
+        if (Date.now() - lastEdit < 30_000) return;
+        lastEdit = Date.now();
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = elapsedSec % 60;
+        const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
+        bot.telegram.editMessageText(
+          chatId, statusMsgId, undefined,
+          `⏳ Grok Imagine: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${timer} (biasanya 3–8 menit).\nJangan tutup chat ini, video dikirim otomatis.`
+        ).catch(() => {});
+      },
+    });
+
+    const newCount = await incrementKlingUsage(dbUserId);
+    const remaining = Math.max(0, KLING_DAILY_LIMIT - newCount);
+    await sendResult(
+      chatId,
+      result.url,
+      `🤖 Grok Imagine (${opts.duration}s · ${opts.ratio})\n📊 Generate hari ini: ${newCount}/${KLING_DAILY_LIMIT} (sisa: ${remaining})\n\n/menu untuk buat lagi`,
+      true
+    );
+    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    console.log(`[${userId}] Grok done (usage: ${newCount}/${KLING_DAILY_LIMIT}, credits used: ${result.credits ?? '?'})`);
+
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    console.error(`[${userId}] Grok error: ${msg}`);
     let friendly: string;
     if (msg.includes('PICSART_TIMEOUT')) {
       friendly = '❌ Proses terlalu lama. Coba lagi nanti.';

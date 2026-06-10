@@ -30,6 +30,15 @@ Host: `https://api.picsart.com`, uploads on `https://upload.picsart.com`, result
 - Kling Motion Control: submit `/workflows/kling-motion-control/submit`, poll `/workflows/kling-motion-control/{id}/result`, `model_name:"kling-v3"`.
 - Grok Imagine (x-ai) video: poll `/workflows/x-ai/v1/videos/generations/{id}/result` (different nested shape). Each workflow/model has its own sub-path + payload schema; capture per model before relying on it.
 
+## Grok Imagine — image-to-video (implemented in bot)
+- Model string `grok-imagine-video-1.5-preview`. **Always image-to-video** (requires a reference image); toolId `image-to-video.grok-imagine-video-1.5-preview.720p` (fixed 720p).
+- Submit: POST `/workflows/x-ai/v1/videos/generations/submit` with `{params:{model, prompt, image:{url}, duration(NUMBER), aspect_ratio}}`. (Browser also nests an `options.drive{...}` library-save block; omitted — not needed for generation, mirrors Seedance.)
+- Result: GET `/workflows/x-ai/v1/videos/generations/{id}/result` → **`response.result.url`** (NOT `video_url` like Seedance), credits at `response.usage.credits`, status ACCEPTED→COMPLETED. Pricing ~5 credits/sec (durations 10/12/15 seen).
+
+## Kling text-to-video vs Kling V3 image-to-video (IMPORTANT distinction)
+- HAR `pichar_baru` only captured **`/workflows/kling-text-to-video/{submit,options,result}`** — submit `{params:{prompt, aspect_ratio, duration(STRING), model_name:"kling-v3", sound:"on", mode:"4k", multi_shot, shot_type, options:{...}}}`, result `response.result.url`, options toolId `text-to-video.kling-v3.4k.audio` (15s=120 credits).
+- User wants **Kling V3 image-to-video / start-frame+end-frame**, which is a DIFFERENT endpoint NOT present in that HAR (no `kling-image-to-video`/i2v path captured). Must obtain a fresh HAR of the Kling V3 image-to-video (and start/end frame) run before implementing — do not guess the payload.
+
 ## Other endpoints
 - Credits: `GET /guard/credits` → `{credits, tierCredits, addonCredits, renewDate}`.
 - Library list: `GET /cloud-storage/v1/me/files?...`; spaces: `GET /cloud-storage/v1/me/storages`.
