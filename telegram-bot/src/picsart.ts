@@ -53,6 +53,11 @@ export const SEEDANCE_MODEL = 'seedance_2_0';
 // `/workflows/x-ai/v1/videos/generations/*`. Pricing ~5 credits/sec.
 export const GROK_MODEL = 'grok-imagine-video-1.5-preview';
 
+// Kling V3 image-to-video — endpoint `/workflows/kling-image-to-video/*`.
+// Same endpoint serves both single-image (image only) and start/end-frame
+// (image + image_tail). Uses `mode: "pro"`. Pricing ~3 credits/sec.
+export const KLING_I2V_MODEL = 'kling-v3';
+
 let db: Pool;
 let notifyOwner: (msg: string) => void = () => {};
 
@@ -559,6 +564,112 @@ export async function generateGrok(input: {
   });
   input.onStatus?.('poll');
   return pollGrokResult(id, {
+    onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+  });
+}
+
+// ─── Kling V3 image-to-video ──────────────────────────────────────────────────
+// Single image (image-to-video) or two images (start frame + end frame).
+
+export async function submitKlingI2V(input: {
+  prompt: string;
+  imageUrl: string;
+  imageTailUrl?: string;
+  duration: number;
+  ratio: string;
+}): Promise<string> {
+  const access = await getAccessToken();
+  const params: Record<string, unknown> = {
+    prompt: input.prompt ?? '',
+    aspect_ratio: input.ratio,
+    duration: String(input.duration),
+    model_name: KLING_I2V_MODEL,
+    image: input.imageUrl,
+    mode: 'pro',
+    multi_shot: false,
+    shot_type: 'customize',
+  };
+  if (input.imageTailUrl) params.image_tail = input.imageTailUrl;
+  const r = await http.post(`${API_BASE}/workflows/kling-image-to-video/submit`, { params }, {
+    headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
+    validateStatus: () => true,
+  });
+  const id = r.data?.response?.id;
+  if (!ok2xx(r.status) || !id) {
+    throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+  }
+  return id;
+}
+
+export async function pollKlingI2VResult(
+  id: string,
+  opts?: { maxAttempts?: number; intervalMs?: number; onTick?: (elapsedMs: number) => void }
+): Promise<{ url: string; credits?: number }> {
+  const maxAttempts = opts?.maxAttempts ?? 180; // ~15 min at 5s
+  const intervalMs = opts?.intervalMs ?? 5000;
+  const start = Date.now();
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((res) => setTimeout(res, intervalMs));
+    opts?.onTick?.(Date.now() - start);
+    const access = await getAccessToken();
+    const r = await http.get(`${API_BASE}/workflows/kling-image-to-video/${id}/result`, {
+      headers: commonHeaders({ authorization: `Bearer ${access}` }),
+      validateStatus: () => true,
+    });
+    if (!ok2xx(r.status)) continue;
+    const resp = r.data?.response;
+    const status = String(resp?.status ?? '').toUpperCase();
+    if (status === 'COMPLETED') {
+      const url = resp?.result?.url;
+      if (!url) throw new Error('PICSART_NO_RESULT_URL');
+      return { url, credits: resp.usage?.credits };
+    }
+    if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
+      throw new Error(`PICSART_GEN_FAILED: ${JSON.stringify(resp).slice(0, 200)}`);
+    }
+  }
+  throw new Error('PICSART_TIMEOUT');
+}
+
+// High-level orchestrator: upload start image (and optional end image) ->
+// submit -> poll -> result URL. A start image is always required.
+export async function generateKlingI2V(input: {
+  prompt: string;
+  imageBuffer: Buffer;
+  imageName?: string;
+  imageMime?: string;
+  imageTailBuffer?: Buffer;
+  imageTailName?: string;
+  imageTailMime?: string;
+  duration: number;
+  ratio: string;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  input.onStatus?.('upload');
+  const imageUrl = await uploadFile(
+    input.imageBuffer,
+    input.imageName || 'start.jpg',
+    input.imageMime || 'image/jpeg'
+  );
+  let imageTailUrl: string | undefined;
+  if (input.imageTailBuffer) {
+    imageTailUrl = await uploadFile(
+      input.imageTailBuffer,
+      input.imageTailName || 'end.jpg',
+      input.imageTailMime || 'image/jpeg'
+    );
+  }
+  input.onStatus?.('submit');
+  const id = await submitKlingI2V({
+    prompt: input.prompt,
+    imageUrl,
+    imageTailUrl,
+    duration: input.duration,
+    ratio: input.ratio,
+  });
+  input.onStatus?.('poll');
+  return pollKlingI2VResult(id, {
     onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
   });
 }

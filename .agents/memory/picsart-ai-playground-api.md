@@ -35,9 +35,15 @@ Host: `https://api.picsart.com`, uploads on `https://upload.picsart.com`, result
 - Submit: POST `/workflows/x-ai/v1/videos/generations/submit` with `{params:{model, prompt, image:{url}, duration(NUMBER), aspect_ratio}}`. (Browser also nests an `options.drive{...}` library-save block; omitted — not needed for generation, mirrors Seedance.)
 - Result: GET `/workflows/x-ai/v1/videos/generations/{id}/result` → **`response.result.url`** (NOT `video_url` like Seedance), credits at `response.usage.credits`, status ACCEPTED→COMPLETED. Pricing ~5 credits/sec (durations 10/12/15 seen).
 
-## Kling text-to-video vs Kling V3 image-to-video (IMPORTANT distinction)
-- HAR `pichar_baru` only captured **`/workflows/kling-text-to-video/{submit,options,result}`** — submit `{params:{prompt, aspect_ratio, duration(STRING), model_name:"kling-v3", sound:"on", mode:"4k", multi_shot, shot_type, options:{...}}}`, result `response.result.url`, options toolId `text-to-video.kling-v3.4k.audio` (15s=120 credits).
-- User wants **Kling V3 image-to-video / start-frame+end-frame**, which is a DIFFERENT endpoint NOT present in that HAR (no `kling-image-to-video`/i2v path captured). Must obtain a fresh HAR of the Kling V3 image-to-video (and start/end frame) run before implementing — do not guess the payload.
+## Kling V3 image-to-video (implemented in bot) — distinct from text-to-video
+- Endpoint family `/workflows/kling-image-to-video/{submit, {id}/result}` (DIFFERENT from `kling-text-to-video`). ONE submit endpoint serves BOTH sub-modes.
+- Submit: POST `/workflows/kling-image-to-video/submit` with `{params:{prompt, aspect_ratio, duration(STRING e.g. "15"), model_name:"kling-v3", image:<startUrl>, image_tail?:<endUrl>, mode:"pro", multi_shot:false, shot_type:"customize"}}`.
+  - **image-to-video** = `image` only (single ref photo).
+  - **start frame + end frame** = `image` (start) + `image_tail` (end).
+  - Browser also sends `static_mask` (product-lock mask) + `options.drive{...}` library-save block — BOTH OMITTED in bot (mask not needed; drive mirrors Seedance omission). Verified COMPLETED without them is the captured browser run's shape; bot omits the extras.
+- Result: GET `/workflows/kling-image-to-video/{id}/result` → status ACCEPTED/IN_PROGRESS→COMPLETED (watch FAILED), **`response.result.url`** (.mp4), `response.result.duration`, credits `response.usage.credits`, progress `response.progress.percent`. Verified live: 15s pro = 45 credits.
+- Pricing pre-check reuses `/workflows/kling-text-to-video/options` (same body) → toolId `text-to-video.kling-v3.pro`; pro ~3 credits/sec (10s=30, 15s=45). `image` field is `image_url` STRING here (NOT `{url}` object like Grok).
+- The earlier `pichar_baru` HAR only had `kling-text-to-video` (t2v: submit `{prompt, aspect_ratio, duration(STRING), model_name:"kling-v3", sound:"on", mode:"4k", multi_shot, shot_type}`, toolId `text-to-video.kling-v3.4k.audio`). NOT used by the bot.
 
 ## Other endpoints
 - Credits: `GET /guard/credits` → `{credits, tierCredits, addonCredits, renewDate}`.
