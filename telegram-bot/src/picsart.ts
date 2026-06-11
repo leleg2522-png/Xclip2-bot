@@ -167,14 +167,17 @@ async function acquireAccount(userId: number, exclude: number[] = []): Promise<n
   return credId;
 }
 
-// Mark an account as out of credits so it stops being assigned. The keepalive
-// re-checks exhausted accounts and flips them back to 'available' once credits
-// renew, so this is self-healing.
-async function markExhausted(credId: number): Promise<void> {
-  await db.query(
-    `UPDATE picsart_credentials SET status = 'exhausted', updated_at = NOW()
-      WHERE id = $1 AND status = 'available'`,
-    [credId]
+// Account is out of credits — discard it entirely (per owner's request: a
+// credit-exhausted account is thrown away, not kept around). The ON DELETE
+// CASCADE on picsart_user_accounts unpins any users, so they get reassigned to
+// another account on their next request.
+async function discardAccount(credId: number): Promise<void> {
+  const cred = await loadCredential(credId);
+  await db.query(`DELETE FROM picsart_credentials WHERE id = $1`, [credId]);
+  const who = cred?.label ? `"${cred.label}" (#${credId})` : `#${credId}`;
+  notifyOwner(
+    `🗑️ Akun Picsart ${who} kehabisan kredit dan sudah dibuang dari pool.\n` +
+    `Tambahkan akun baru bila perlu:\n/addpicsartkey rt:...`
   );
 }
 
@@ -208,7 +211,7 @@ async function runWithAccount<T>(userId: number, fn: (credId: number) => Promise
         continue;
       }
       if (msg.includes('PICSART_SUBMIT_FAILED') && isCreditError(msg)) {
-        await markExhausted(credId);
+        await discardAccount(credId);
         continue;
       }
       // Any other error (bad input, timeout, transient network) is not an
@@ -355,16 +358,16 @@ export async function getAccessToken(credId: number): Promise<string> {
   return p;
 }
 
-// Keepalive: periodically force a refresh on EVERY account so each
+// Keepalive: periodically force a refresh on EVERY available account so each
 // refresh-token's ~30-day window keeps rolling forward even when nobody
-// generates. Also re-checks exhausted accounts and restores them to
-// 'available' once their credits have renewed.
+// generates. Credit-exhausted accounts are discarded on use, so there is
+// nothing to self-heal here.
 export function startPicsartKeepalive(intervalMs = 3 * 24 * 60 * 60 * 1000): NodeJS.Timeout {
   const tick = async () => {
     let rows: Array<{ id: number; status: string }> = [];
     try {
       const r = await db.query(
-        `SELECT id, status FROM picsart_credentials WHERE status IN ('available', 'exhausted')`
+        `SELECT id, status FROM picsart_credentials WHERE status = 'available'`
       );
       rows = r.rows;
     } catch (e: any) {
@@ -380,20 +383,6 @@ export function startPicsartKeepalive(intervalMs = 3 * 24 * 60 * 60 * 1000): Nod
           const p = doRefresh(row.id, true).finally(() => { refreshInFlight.delete(row.id); });
           refreshInFlight.set(row.id, p);
           await p;
-        }
-        // Self-heal: an exhausted account whose credits have renewed rejoins the pool.
-        if (row.status === 'exhausted') {
-          try {
-            const c = await getCredits(row.id);
-            if (typeof c.credits === 'number' && c.credits > 0) {
-              await db.query(
-                `UPDATE picsart_credentials SET status = 'available', updated_at = NOW()
-                  WHERE id = $1 AND status = 'exhausted'`,
-                [row.id]
-              );
-              console.log(`[picsart] account #${row.id} restored (credits: ${c.credits})`);
-            }
-          } catch { /* credit check failed — leave exhausted */ }
         }
         console.log(`[picsart] keepalive refresh ok for #${row.id}`);
       } catch (e: any) {
