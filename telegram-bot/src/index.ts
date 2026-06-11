@@ -6,14 +6,11 @@ import bcrypt from 'bcryptjs';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import sharp from 'sharp';
 import express from 'express';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-import { promises as fsp } from 'fs';
+import { promises as fsp, createReadStream } from 'fs';
 import os from 'os';
 import path from 'path';
+import crypto from 'crypto';
 import * as picsart from './picsart';
-
-const execFileP = promisify(execFile);
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -589,82 +586,57 @@ async function toDataUri(telegramUrl: string): Promise<string> {
   return `data:${mime};base64,${b64}`;
 }
 
-// ─── Result sender ────────────────────────────────────────────────────────────
+// ─── Self-hosted media links ────────────────────────────────────────────────
+// When a result is too big to push through Telegram (or sending fails), we serve
+// it from our own server and hand the user a link on OUR domain. This both hides
+// the upstream provider (the user only ever sees our Railway URL) and sidesteps
+// Telegram's ~50MB upload cap, since a download has no such limit.
 
-// Re-package a result video before delivery: always strip container metadata
-// (so nothing identifies the upstream provider) and, when the file is over the
-// size cap, transcode it down so it fits. Returns the processed buffer, or null
-// if it could not be brought under `maxBytes`.
-async function prepareVideoForTelegram(buf: Buffer, maxBytes: number): Promise<Buffer | null> {
-  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'tgvid-'));
-  const inPath = path.join(dir, 'in.mp4');
-  const outPath = path.join(dir, 'out.mp4');
-  const cleanup = async () => { try { await fsp.rm(dir, { recursive: true, force: true }); } catch {} };
-  try {
-    await fsp.writeFile(inPath, buf);
+const MEDIA_DIR = path.join(os.tmpdir(), 'tg-media');
+const MEDIA_TTL_MS = 24 * 60 * 60 * 1000; // links live 24h
+type MediaEntry = { filePath: string; filename: string; contentType: string; expiresAt: number };
+const mediaStore = new Map<string, MediaEntry>();
 
-    // Probe duration (seconds) so we can target a bitrate that fits the cap.
-    let duration = 0;
-    try {
-      const { stdout } = await execFileP('ffprobe', [
-        '-v', 'error', '-show_entries', 'format=duration',
-        '-of', 'default=noprint_wrappers=1:nokey=1', inPath,
-      ]);
-      duration = parseFloat(stdout.trim()) || 0;
-    } catch { /* unknown duration — handled below */ }
-
-    // Small enough already → fast remux that just drops metadata (no re-encode).
-    if (buf.length <= maxBytes) {
-      try {
-        await execFileP('ffmpeg', [
-          '-loglevel', 'error', '-y', '-i', inPath,
-          '-map_metadata', '-1', '-map_chapters', '-1',
-          '-c', 'copy', '-movflags', '+faststart', outPath,
-        ]);
-        const out = await fsp.readFile(outPath);
-        if (out.length <= maxBytes) return out;
-      } catch { /* fall through to transcode */ }
-    }
-
-    // Too big (or remux grew it) → transcode to a bitrate that fits, escalating
-    // to lower resolution + bitrate if the encoder overshoots the cap.
-    const target = maxBytes * 0.92; // headroom for container overhead
-    const audioK = 128;
-    const attempts = [
-      { scale: 1280, factor: 1.0 },
-      { scale: 960, factor: 0.8 },
-      { scale: 720, factor: 0.6 },
-      { scale: 540, factor: 0.45 },
-    ];
-    for (const a of attempts) {
-      let vK = duration > 0
-        ? Math.floor(((target * 8) / 1024 / duration - audioK) * a.factor)
-        : Math.floor(2500 * a.factor);
-      if (vK < 200) vK = 200;
-      try {
-        await execFileP('ffmpeg', [
-          '-loglevel', 'error', '-y', '-i', inPath,
-          '-map_metadata', '-1', '-map_chapters', '-1',
-          '-vf', `scale='min(${a.scale},iw)':-2`,
-          '-c:v', 'libx264', '-preset', 'veryfast',
-          '-b:v', `${vK}k`, '-maxrate', `${Math.floor(vK * 1.45)}k`, '-bufsize', `${vK * 2}k`,
-          '-c:a', 'aac', '-b:a', `${audioK}k`,
-          '-movflags', '+faststart', outPath,
-        ], { maxBuffer: 1024 * 1024 * 16 });
-        const out = await fsp.readFile(outPath);
-        if (out.length <= maxBytes) return out;
-      } catch (e: any) {
-        console.log(`Transcode attempt (scale ${a.scale}) failed: ${e.message}`);
-      }
-    }
-    return null;
-  } catch (e: any) {
-    console.log(`Video prep failed: ${e.message}`);
-    return null;
-  } finally {
-    await cleanup();
-  }
+// Base URL of our own server. Railway injects RAILWAY_PUBLIC_DOMAIN automatically;
+// PUBLIC_BASE_URL lets you override it (e.g. a custom domain).
+function publicBaseUrl(): string {
+  const explicit = process.env.PUBLIC_BASE_URL;
+  if (explicit) return explicit.replace(/\/+$/, '');
+  const rw = process.env.RAILWAY_PUBLIC_DOMAIN;
+  if (rw) return `https://${rw}`;
+  return `http://localhost:${process.env.PORT || 3000}`;
 }
+
+// Persist a result buffer to disk and return a public download link on our domain.
+async function publishMedia(buf: Buffer, isVideo: boolean, sourceUrl?: string): Promise<string> {
+  await fsp.mkdir(MEDIA_DIR, { recursive: true });
+  // Derive the real format from the bytes (with the URL as a hint) so the link's
+  // extension and Content-Type match the actual file (mp4/mov/webm/avi, jpg/png/…).
+  const { mime, ext } = isVideo ? detectVideoType(buf, sourceUrl) : detectMime(buf);
+  const token = crypto.randomBytes(16).toString('hex');
+  const filePath = path.join(MEDIA_DIR, `${token}.${ext}`);
+  await fsp.writeFile(filePath, buf);
+  mediaStore.set(token, {
+    filePath,
+    filename: `output.${ext}`,
+    contentType: mime,
+    expiresAt: Date.now() + MEDIA_TTL_MS,
+  });
+  return `${publicBaseUrl()}/dl/${token}`;
+}
+
+// Sweep expired media off disk hourly so we don't leak storage.
+setInterval(async () => {
+  const now = Date.now();
+  for (const [token, e] of mediaStore) {
+    if (e.expiresAt < now) {
+      mediaStore.delete(token);
+      try { await fsp.rm(e.filePath, { force: true }); } catch {}
+    }
+  }
+}, 60 * 60 * 1000).unref();
+
+// ─── Result sender ────────────────────────────────────────────────────────────
 
 async function sendResult(chatId: number, outputUrl: string, caption: string, isVideo: boolean) {
   const TELEGRAM_MAX_BYTES = 48 * 1024 * 1024; // 48MB safe limit
@@ -678,7 +650,8 @@ async function sendResult(chatId: number, outputUrl: string, caption: string, is
   // Plain text opts — no Markdown to avoid parse errors from URLs with special chars
   const opts = { caption };
 
-  // Step 1: download the file (provider CDN requires auth so Telegram can't fetch it directly)
+  // Download the file server-side. The user must NEVER see the upstream CDN URL,
+  // so everything is fetched by us and re-delivered from our own side.
   let buf: Buffer | null = null;
   try {
     const res = await telegramHttp.get(outputUrl, { responseType: 'arraybuffer', timeout: 300_000 });
@@ -688,21 +661,18 @@ async function sendResult(chatId: number, outputUrl: string, caption: string, is
     console.log(`Download failed: ${e.message}`);
   }
 
-  // Step 2: for videos, always re-package — strip provider metadata and, when
-  // the file is over Telegram's cap, transcode it down so it fits. This keeps us
-  // under the size limit AND makes the upstream provider unidentifiable, so we
-  // never have to fall back to exposing the raw CDN link.
-  if (buf && looksLikeVideo) {
-    buf = await prepareVideoForTelegram(buf, TELEGRAM_MAX_BYTES);
-    if (!buf) console.log('Video could not be brought under the size cap');
-  } else if (buf && buf.length > TELEGRAM_MAX_BYTES) {
-    buf = null; // non-video over the cap can't be sent through the bot
+  if (!buf) {
+    await bot.telegram.sendMessage(chatId,
+      `✅ Hasil selesai, tapi gagal mengambil file. Coba lagi sebentar ya.\n\n${caption}`
+    );
+    return;
   }
 
-  if (buf) {
-    const sizeMB = (buf.length / 1024 / 1024).toFixed(1);
+  const sizeMB = (buf.length / 1024 / 1024).toFixed(1);
 
-    // Strategy 1: send as video/photo
+  // Small enough for Telegram → send inline so it plays right in the chat. We
+  // upload our own bytes (never a URL), so the upstream provider stays hidden.
+  if (buf.length <= TELEGRAM_MAX_BYTES) {
     try {
       if (looksLikeVideo) {
         await bot.telegram.sendVideo(chatId, { source: buf, filename: 'output.mp4' }, opts);
@@ -715,7 +685,6 @@ async function sendResult(chatId: number, outputUrl: string, caption: string, is
       console.log(`Buffer strategy failed: ${e.message}`);
     }
 
-    // Strategy 2: send as document (fallback if video/photo fails)
     try {
       await bot.telegram.sendDocument(chatId,
         { source: buf, filename: looksLikeVideo ? 'output.mp4' : 'output.jpg' },
@@ -728,12 +697,21 @@ async function sendResult(chatId: number, outputUrl: string, caption: string, is
     }
   }
 
-  // Final fallback: NEVER expose the upstream CDN link (it would reveal the
-  // provider). Report a generic delivery failure instead.
-  await bot.telegram.sendMessage(chatId,
-    `✅ Hasil selesai, tapi gagal dikirim lewat Telegram (kemungkinan ukuran ${looksLikeVideo ? 'video' : 'file'} terlalu besar).\n` +
-    `Coba lagi dengan durasi atau resolusi lebih kecil.\n\n${caption}`
-  );
+  // Too big for Telegram (or the upload failed) → host it on our own server and
+  // hand the user a download link on our domain. No size cap on a download, and
+  // the link points at us, so the upstream provider is never exposed.
+  try {
+    const link = await publishMedia(buf, looksLikeVideo, outputUrl);
+    await bot.telegram.sendMessage(chatId,
+      `✅ Hasil selesai!\n\n📥 Download (${sizeMB} MB — segera simpan, link berlaku sementara):\n${link}\n\n${caption}`
+    );
+    console.log(`Result delivered via self-hosted link (${sizeMB} MB)`);
+  } catch (e: any) {
+    console.log(`Self-hosted link failed: ${e.message}`);
+    await bot.telegram.sendMessage(chatId,
+      `✅ Hasil selesai, tapi gagal mengirim file. Coba lagi sebentar ya.\n\n${caption}`
+    );
+  }
 }
 
 async function pollForResult(taskId: string, userId: number, apiKey: string, pollPath?: string, maxAttempts = 60): Promise<string> {
@@ -2450,6 +2428,22 @@ const PORT = process.env.PORT || 3000;
 
 app.get('/', (_req, res) => res.send('OK'));
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+
+// Serve self-hosted result files. The token is an unguessable random id mapped to
+// a file we wrote ourselves — it is never used to build a path, so there's no way
+// to traverse the filesystem with it.
+app.get('/dl/:token', (req, res) => {
+  const entry = mediaStore.get(req.params.token);
+  if (!entry || entry.expiresAt < Date.now()) {
+    res.status(404).send('Link sudah tidak berlaku.');
+    return;
+  }
+  res.setHeader('Content-Type', entry.contentType);
+  res.setHeader('Content-Disposition', `inline; filename="${entry.filename}"`);
+  const stream = createReadStream(entry.filePath);
+  stream.on('error', () => { if (!res.headersSent) res.status(404).end(); });
+  stream.pipe(res);
+});
 
 app.listen(PORT, () => {
   console.log(`✅ Health check server berjalan di port ${PORT}`);
