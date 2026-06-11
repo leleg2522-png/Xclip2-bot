@@ -1138,16 +1138,21 @@ bot.command('addpicsartkey', async (ctx) => {
       'F12 → Application → Cookies → nilai cookie REFRESH_TOKEN (diawali "rt:")'
     );
   }
-  const ok = await picsart.addRefreshToken(raw);
-  if (!ok) return ctx.reply('❌ Token tidak valid. Harus diawali "rt:".');
+  // Optional label after the token: /addpicsartkey rt:xxx Akun Utama
+  const parts = raw.split(/\s+/);
+  const token = parts[0];
+  const label = parts.slice(1).join(' ') || undefined;
+  const credId = await picsart.addRefreshToken(token, label);
+  if (credId == null) return ctx.reply('❌ Token tidak valid. Harus diawali "rt:".');
   try {
-    const c = await picsart.getCredits();
+    const c = await picsart.getCredits(credId);
     return ctx.reply(
-      `✅ Token Picsart tersimpan & aktif!\n💳 Sisa kredit: ${c.credits}` +
-      (c.renewDate ? `\n🔄 Reset: ${new Date(c.renewDate).toLocaleDateString('id-ID')}` : '')
+      `✅ Akun Picsart baru ditambahkan ke pool!${label ? `\n🏷️ Label: ${label}` : ''}\n💳 Sisa kredit: ${c.credits}` +
+      (c.renewDate ? `\n🔄 Reset: ${new Date(c.renewDate).toLocaleDateString('id-ID')}` : '') +
+      `\n\n🗂️ Lihat semua akun: /picsartpool`
     );
   } catch (e: any) {
-    return ctx.reply(`⚠️ Token tersimpan, tapi verifikasi gagal:\n${String(e.message).slice(0, 280)}`);
+    return ctx.reply(`⚠️ Akun tersimpan, tapi verifikasi gagal:\n${String(e.message).slice(0, 280)}`);
   }
 });
 
@@ -1158,7 +1163,7 @@ bot.command('picsartstatus', async (ctx) => {
   const st = await picsart.getStatus();
   const counts = Object.entries(st.counts).map(([k, v]) => `• ${k}: ${v}`).join('\n') || '• (kosong)';
   return ctx.reply(
-    `📊 *Status Picsart*\n\nToken aktif: ${st.hasActive ? '✅ ada' : '❌ tidak ada'}\n${counts}`,
+    `📊 *Status Picsart*\n\nAkun siap pakai: ${st.available}\nUser terdaftar: ${st.totalUsers}\n\n${counts}`,
     { parse_mode: 'Markdown' }
   );
 });
@@ -1168,15 +1173,43 @@ bot.command('picsartcredits', async (ctx) => {
   if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
   if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
   try {
-    const c = await picsart.getCredits();
-    return ctx.reply(
-      `💳 Sisa kredit Picsart: *${c.credits}*` +
-      (c.renewDate ? `\n🔄 Reset: ${new Date(c.renewDate).toLocaleDateString('id-ID')}` : ''),
-      { parse_mode: 'Markdown' }
-    );
+    const pool = await picsart.getPool();
+    if (pool.length === 0) return ctx.reply('❌ Belum ada akun. Tambah dengan /addpicsartkey rt:...');
+    const lines = await Promise.all(pool.map(async (acc) => {
+      const name = acc.label ? acc.label : `#${acc.id}`;
+      if (acc.status !== 'available' && acc.status !== 'exhausted') {
+        return `• ${name}: ${acc.status}`;
+      }
+      try {
+        const c = await picsart.getCredits(acc.id);
+        return `• ${name}: 💳 ${c.credits} (${acc.status})`;
+      } catch {
+        return `• ${name}: ⚠️ gagal cek (${acc.status})`;
+      }
+    }));
+    return ctx.reply(`💳 *Kredit per akun*\n\n${lines.join('\n')}`, { parse_mode: 'Markdown' });
   } catch (e: any) {
     return ctx.reply(`❌ Gagal cek kredit: ${String(e.message).slice(0, 150)}`);
   }
+});
+
+bot.command('picsartpool', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+  const pool = await picsart.getPool();
+  if (pool.length === 0) return ctx.reply('📭 Pool akun kosong. Tambah dengan /addpicsartkey rt:...');
+  const icon: Record<string, string> = { available: '✅', exhausted: '🪫', dead: '💀', replaced: '🔁' };
+  const lines = pool.map((acc) => {
+    const name = acc.label ? acc.label : `#${acc.id}`;
+    const badge = icon[acc.status] ?? '•';
+    return `${badge} ${name} — ${acc.status} · 👤 ${acc.users} user`;
+  });
+  const totalUsers = pool.reduce((s, a) => s + a.users, 0);
+  return ctx.reply(
+    `🗂️ *Pool Akun Picsart* (${pool.length} akun · ${totalUsers} user)\n\n${lines.join('\n')}`,
+    { parse_mode: 'Markdown' }
+  );
 });
 
 bot.command('restorefreepikkey', async (ctx) => {
@@ -2009,6 +2042,7 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
     console.log(`[${userId}] ${label} media — img: ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB, vid: ${vidType.mime} ${(vid.buf.length / 1024).toFixed(1)}KB`);
 
     const result = await picsart.generateKlingMotionControl({
+      userId: dbUserId,
       imageBuffer: img.buf, imageName: `character.${img.ext}`, imageMime: img.mime,
       videoBuffer: vid.buf, videoName: `driver.${vidType.ext}`, videoMime: vidType.mime,
       prompt: '',
@@ -2081,6 +2115,7 @@ async function runSeedance(
 
     let lastEdit = 0;
     const result = await picsart.generateSeedance({
+      userId: dbUserId,
       prompt,
       imageBuffer,
       imageName,
@@ -2163,6 +2198,7 @@ async function runGrok(
 
     let lastEdit = 0;
     const result = await picsart.generateGrok({
+      userId: dbUserId,
       prompt,
       imageBuffer: img.buf,
       imageName: `reference.${img.ext}`,
@@ -2248,6 +2284,7 @@ async function runKlingI2V(
 
     let lastEdit = 0;
     const result = await picsart.generateKlingI2V({
+      userId: dbUserId,
       prompt,
       imageBuffer: startImg.buf,
       imageName: `start.${startImg.ext}`,

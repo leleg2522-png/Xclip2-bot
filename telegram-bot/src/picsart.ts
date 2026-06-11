@@ -61,6 +61,11 @@ export const KLING_I2V_MODEL = 'kling-v3';
 let db: Pool;
 let notifyOwner: (msg: string) => void = () => {};
 
+// Absolute safety ceiling on failover attempts, so a logic error can never spin
+// forever. The real bound is the pool size (see runWithAccount): failover keeps
+// moving to the next available account until every account has been tried.
+const MAX_ACCOUNT_ATTEMPTS = 50;
+
 export function initPicsart(pool: Pool, notify?: (msg: string) => void) {
   db = pool;
   if (notify) notifyOwner = notify;
@@ -78,6 +83,15 @@ export async function ensurePicsartSchema(): Promise<void> {
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW(),
       dead_at TIMESTAMPTZ
+    )
+  `);
+  // Sticky mapping: each user gets ONE dedicated account so concurrent users
+  // never share an account (no collisions, no results leaking across users).
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS picsart_user_accounts (
+      user_id BIGINT PRIMARY KEY,
+      credential_id INTEGER NOT NULL REFERENCES picsart_credentials(id) ON DELETE CASCADE,
+      assigned_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 }
@@ -101,44 +115,166 @@ interface CredRow {
   access_token: string | null;
   access_expires_at: string | null;
   status: string;
+  label: string | null;
 }
 
-async function getActiveCredential(): Promise<CredRow | null> {
+async function loadCredential(credId: number): Promise<CredRow | null> {
   const r = await db.query(
-    `SELECT id, refresh_token, access_token, access_expires_at, status
-       FROM picsart_credentials WHERE status = 'available'
-       ORDER BY updated_at DESC LIMIT 1`
+    `SELECT id, refresh_token, access_token, access_expires_at, status, label
+       FROM picsart_credentials WHERE id = $1`,
+    [credId]
   );
   return r.rows[0] ?? null;
 }
 
-// Admin: register a refresh token (rt:...). Supersedes any previous active one.
-export async function addRefreshToken(rt: string, label?: string): Promise<boolean> {
+// Pick the account for a user (sticky 1-user-1-account).
+//  • If the user already has an assignment to an available account → reuse it.
+//  • Otherwise assign the available account with the FEWEST users (so users
+//    spread out 1:1 across accounts whenever there are enough accounts).
+//  • `exclude` lets the failover loop skip accounts that just failed.
+// Returns the credential id, or null when no usable account exists.
+async function acquireAccount(userId: number, exclude: number[] = []): Promise<number | null> {
+  const existing = await db.query(
+    `SELECT a.credential_id AS id
+       FROM picsart_user_accounts a
+       JOIN picsart_credentials c ON c.id = a.credential_id
+      WHERE a.user_id = $1 AND c.status = 'available'
+        AND NOT (a.credential_id = ANY($2::int[]))`,
+    [userId, exclude]
+  );
+  if (existing.rows[0]) return existing.rows[0].id as number;
+
+  const pick = await db.query(
+    `SELECT c.id
+       FROM picsart_credentials c
+       LEFT JOIN picsart_user_accounts a ON a.credential_id = c.id
+      WHERE c.status = 'available' AND NOT (c.id = ANY($1::int[]))
+      GROUP BY c.id
+      ORDER BY COUNT(a.user_id) ASC, c.updated_at ASC
+      LIMIT 1`,
+    [exclude]
+  );
+  const credId = pick.rows[0]?.id as number | undefined;
+  if (credId == null) return null;
+
+  await db.query(
+    `INSERT INTO picsart_user_accounts (user_id, credential_id, assigned_at)
+       VALUES ($1, $2, NOW())
+     ON CONFLICT (user_id)
+       DO UPDATE SET credential_id = EXCLUDED.credential_id, assigned_at = NOW()`,
+    [userId, credId]
+  );
+  return credId;
+}
+
+// Mark an account as out of credits so it stops being assigned. The keepalive
+// re-checks exhausted accounts and flips them back to 'available' once credits
+// renew, so this is self-healing.
+async function markExhausted(credId: number): Promise<void> {
+  await db.query(
+    `UPDATE picsart_credentials SET status = 'exhausted', updated_at = NOW()
+      WHERE id = $1 AND status = 'available'`,
+    [credId]
+  );
+}
+
+function isCreditError(msg: string): boolean {
+  return /\b402\b|insufficient|not[_\s-]?enough|credit|quota|payment|balance|limit.?exceeded/i.test(msg);
+}
+
+// Run a generation for `userId` on its assigned account. If that account is
+// dead (token rejected) or out of credits, transparently move the user to
+// another available account and retry — so a single exhausted account never
+// fails the user while others still have credits.
+async function runWithAccount<T>(userId: number, fn: (credId: number) => Promise<T>): Promise<T> {
+  const tried: number[] = [];
+  let lastErr: unknown = null;
+  // Try every account in the pool before giving up (acquireAccount returns null
+  // once all available accounts are excluded). MAX_ACCOUNT_ATTEMPTS is only a
+  // hard safety ceiling against an unexpected infinite loop.
+  const poolCount = await db.query(`SELECT COUNT(*)::int AS n FROM picsart_credentials`);
+  const ceiling = Math.min(MAX_ACCOUNT_ATTEMPTS, Math.max(1, poolCount.rows[0]?.n ?? 1));
+  for (let attempt = 0; attempt < ceiling; attempt++) {
+    const credId = await acquireAccount(userId, tried);
+    if (credId == null) break;
+    tried.push(credId);
+    try {
+      return await fn(credId);
+    } catch (e: any) {
+      lastErr = e;
+      const msg = String(e?.message ?? '');
+      if (msg.includes('PICSART_REFRESH_DEAD')) {
+        // Account already marked 'dead' inside doRefresh — move to next account.
+        continue;
+      }
+      if (msg.includes('PICSART_SUBMIT_FAILED') && isCreditError(msg)) {
+        await markExhausted(credId);
+        continue;
+      }
+      // Any other error (bad input, timeout, transient network) is not an
+      // account problem — surface it instead of burning through the pool.
+      throw e;
+    }
+  }
+  throw lastErr ?? new Error('PICSART_NO_CREDENTIAL');
+}
+
+// Admin: register a refresh token (rt:...) as a NEW account in the pool.
+// Unlike before, this does NOT replace existing accounts — all stay active so
+// the bot can spread users across them. Returns the new credential id, or null
+// when the token is malformed.
+export async function addRefreshToken(rt: string, label?: string): Promise<number | null> {
   let token = rt.trim();
   // Cookie values copied from the browser are URL-encoded, so the leading
   // colon arrives as `rt%3A...`. Decode so `rt:` validation passes.
   if (/%[0-9a-f]{2}/i.test(token)) {
     try { token = decodeURIComponent(token); } catch { /* keep raw */ }
   }
-  if (!token.startsWith('rt:')) return false;
-  await db.query(`UPDATE picsart_credentials SET status = 'replaced', updated_at = NOW() WHERE status = 'available'`);
-  await db.query(
-    `INSERT INTO picsart_credentials (refresh_token, label, status) VALUES ($1, $2, 'available')`,
+  if (!token.startsWith('rt:')) return null;
+  const r = await db.query(
+    `INSERT INTO picsart_credentials (refresh_token, label, status) VALUES ($1, $2, 'available') RETURNING id`,
     [token, label ?? null]
   );
-  return true;
+  return r.rows[0].id as number;
 }
 
 export async function getStatus(): Promise<{
   counts: Record<string, number>;
-  hasActive: boolean;
-  accessValidUntil: string | null;
+  available: number;
+  totalUsers: number;
 }> {
   const r = await db.query(`SELECT status, COUNT(*)::int AS cnt FROM picsart_credentials GROUP BY status`);
   const counts: Record<string, number> = {};
   for (const row of r.rows) counts[row.status] = row.cnt;
-  const active = await getActiveCredential();
-  return { counts, hasActive: !!active, accessValidUntil: active?.access_expires_at ?? null };
+  const u = await db.query(`SELECT COUNT(*)::int AS cnt FROM picsart_user_accounts`);
+  return { counts, available: counts['available'] ?? 0, totalUsers: u.rows[0]?.cnt ?? 0 };
+}
+
+// Admin: full view of the account pool, with how many users are pinned to each.
+export async function getPool(): Promise<Array<{
+  id: number;
+  label: string | null;
+  status: string;
+  users: number;
+  accessValidUntil: string | null;
+  createdAt: string;
+}>> {
+  const r = await db.query(
+    `SELECT c.id, c.label, c.status, c.access_expires_at, c.created_at,
+            COUNT(a.user_id)::int AS users
+       FROM picsart_credentials c
+       LEFT JOIN picsart_user_accounts a ON a.credential_id = c.id
+      GROUP BY c.id
+      ORDER BY c.id ASC`
+  );
+  return r.rows.map((row) => ({
+    id: row.id,
+    label: row.label,
+    status: row.status,
+    users: row.users,
+    accessValidUntil: row.access_expires_at,
+    createdAt: row.created_at,
+  }));
 }
 
 function extractRotatedRefreshToken(setCookie: unknown): string | null {
@@ -154,10 +290,12 @@ function extractRotatedRefreshToken(setCookie: unknown): string | null {
   return null;
 }
 
-let refreshInFlight: Promise<string> | null = null;
+// One in-flight refresh promise PER account, so concurrent calls on the same
+// account dedupe but different accounts refresh independently.
+const refreshInFlight = new Map<number, Promise<string>>();
 
-async function doRefresh(force = false): Promise<string> {
-  const cred = await getActiveCredential();
+async function doRefresh(credId: number, force = false): Promise<string> {
+  const cred = await loadCredential(credId);
   if (!cred) throw new Error('PICSART_NO_CREDENTIAL');
 
   // Re-use cached access token while it has >2 min of life left.
@@ -185,8 +323,9 @@ async function doRefresh(force = false): Promise<string> {
         `UPDATE picsart_credentials SET status = 'dead', dead_at = NOW(), updated_at = NOW() WHERE id = $1`,
         [cred.id]
       );
+      const who = cred.label ? `"${cred.label}" (#${cred.id})` : `#${cred.id}`;
       notifyOwner(
-        `⚠️ Picsart refresh token DITOLAK (${detail}). Tambahkan token baru:\n/addpicsartkey rt:...`
+        `⚠️ Akun Picsart ${who} DITOLAK (${detail}). Tambahkan token baru:\n/addpicsartkey rt:...`
       );
       throw new Error(`PICSART_REFRESH_DEAD ${detail}`);
     }
@@ -208,25 +347,59 @@ async function doRefresh(force = false): Promise<string> {
   return access;
 }
 
-export async function getAccessToken(): Promise<string> {
-  if (refreshInFlight) return refreshInFlight;
-  refreshInFlight = doRefresh(false).finally(() => { refreshInFlight = null; });
-  return refreshInFlight;
+export async function getAccessToken(credId: number): Promise<string> {
+  const existing = refreshInFlight.get(credId);
+  if (existing) return existing;
+  const p = doRefresh(credId, false).finally(() => { refreshInFlight.delete(credId); });
+  refreshInFlight.set(credId, p);
+  return p;
 }
 
-// Keepalive: periodically force a refresh so the refresh-token's ~30-day window
-// keeps rolling forward even when nobody generates. On a dedicated account this
-// makes the token effectively permanent — the user only seeds it ONCE.
+// Keepalive: periodically force a refresh on EVERY account so each
+// refresh-token's ~30-day window keeps rolling forward even when nobody
+// generates. Also re-checks exhausted accounts and restores them to
+// 'available' once their credits have renewed.
 export function startPicsartKeepalive(intervalMs = 3 * 24 * 60 * 60 * 1000): NodeJS.Timeout {
   const tick = async () => {
+    let rows: Array<{ id: number; status: string }> = [];
     try {
-      if (refreshInFlight) { await refreshInFlight; return; }
-      refreshInFlight = doRefresh(true).finally(() => { refreshInFlight = null; });
-      await refreshInFlight;
-      console.log('[picsart] keepalive refresh ok');
+      const r = await db.query(
+        `SELECT id, status FROM picsart_credentials WHERE status IN ('available', 'exhausted')`
+      );
+      rows = r.rows;
     } catch (e: any) {
-      // PICSART_NO_CREDENTIAL (nothing seeded yet) or PICSART_REFRESH_DEAD (owner already notified) — just skip.
-      console.warn('[picsart] keepalive skip:', e?.message ?? e);
+      console.warn('[picsart] keepalive query failed:', e?.message ?? e);
+      return;
+    }
+    for (const row of rows) {
+      try {
+        const inflight = refreshInFlight.get(row.id);
+        if (inflight) {
+          await inflight;
+        } else {
+          const p = doRefresh(row.id, true).finally(() => { refreshInFlight.delete(row.id); });
+          refreshInFlight.set(row.id, p);
+          await p;
+        }
+        // Self-heal: an exhausted account whose credits have renewed rejoins the pool.
+        if (row.status === 'exhausted') {
+          try {
+            const c = await getCredits(row.id);
+            if (typeof c.credits === 'number' && c.credits > 0) {
+              await db.query(
+                `UPDATE picsart_credentials SET status = 'available', updated_at = NOW()
+                  WHERE id = $1 AND status = 'exhausted'`,
+                [row.id]
+              );
+              console.log(`[picsart] account #${row.id} restored (credits: ${c.credits})`);
+            }
+          } catch { /* credit check failed — leave exhausted */ }
+        }
+        console.log(`[picsart] keepalive refresh ok for #${row.id}`);
+      } catch (e: any) {
+        // PICSART_REFRESH_DEAD (owner already notified) — just skip this account.
+        console.warn(`[picsart] keepalive skip #${row.id}:`, e?.message ?? e);
+      }
     }
   };
   const timer = setInterval(tick, intervalMs);
@@ -234,8 +407,8 @@ export function startPicsartKeepalive(intervalMs = 3 * 24 * 60 * 60 * 1000): Nod
   return timer;
 }
 
-export async function getCredits(): Promise<{ credits: number; renewDate?: string }> {
-  const access = await getAccessToken();
+export async function getCredits(credId: number): Promise<{ credits: number; renewDate?: string }> {
+  const access = await getAccessToken(credId);
   const r = await http.get(`${API_BASE}/guard/credits`, {
     headers: commonHeaders({ authorization: `Bearer ${access}` }),
     validateStatus: () => true,
@@ -244,8 +417,8 @@ export async function getCredits(): Promise<{ credits: number; renewDate?: strin
   return { credits: r.data?.response?.credits ?? r.data?.credits, renewDate: r.data?.response?.renewDate };
 }
 
-export async function uploadFile(buf: Buffer, filename: string, contentType: string): Promise<string> {
-  const access = await getAccessToken();
+export async function uploadFile(credId: number, buf: Buffer, filename: string, contentType: string): Promise<string> {
+  const access = await getAccessToken(credId);
   const fd = new FormData();
   fd.append('file', buf, { filename, contentType });
   fd.append('type', 'editing-temp');
@@ -262,14 +435,14 @@ export async function uploadFile(buf: Buffer, filename: string, contentType: str
   return url;
 }
 
-export async function submitKlingMotionControl(input: {
+export async function submitKlingMotionControl(credId: number, input: {
   prompt: string;
   imageUrl: string;
   videoUrl: string;
   model: KlingModelKey;
   outputName?: string;
 }): Promise<string> {
-  const access = await getAccessToken();
+  const access = await getAccessToken(credId);
   const { modelName, modelLabel } = KLING_MODELS[input.model];
   const params = {
     prompt: input.prompt ?? '',
@@ -310,6 +483,7 @@ export async function submitKlingMotionControl(input: {
 }
 
 export async function pollKlingResult(
+  credId: number,
   id: string,
   opts?: { maxAttempts?: number; intervalMs?: number }
 ): Promise<{ url: string; duration?: string; credits?: number }> {
@@ -317,7 +491,7 @@ export async function pollKlingResult(
   const intervalMs = opts?.intervalMs ?? 5000;
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((res) => setTimeout(res, intervalMs));
-    const access = await getAccessToken();
+    const access = await getAccessToken(credId);
     const r = await http.get(`${API_BASE}/workflows/kling-motion-control/${id}/result`, {
       headers: commonHeaders({ authorization: `Bearer ${access}` }),
       validateStatus: () => true,
@@ -338,7 +512,10 @@ export async function pollKlingResult(
 }
 
 // High-level orchestrator: upload media -> submit -> poll -> return result URL.
+// `userId` selects the user's dedicated account (with automatic failover to
+// another account if this one is dead or out of credits).
 export async function generateKlingMotionControl(input: {
+  userId: number;
   imageBuffer: Buffer;
   imageName: string;
   imageMime: string;
@@ -349,38 +526,42 @@ export async function generateKlingMotionControl(input: {
   model: KlingModelKey;
   onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
 }): Promise<{ url: string; credits?: number; duration?: string; usedModel: KlingModelKey }> {
-  input.onStatus?.('upload');
-  const imageUrl = await uploadFile(input.imageBuffer, input.imageName, input.imageMime);
-  const videoUrl = await uploadFile(input.videoBuffer, input.videoName, input.videoMime);
-  input.onStatus?.('submit');
+  return runWithAccount(input.userId, async (credId) => {
+    input.onStatus?.('upload');
+    const imageUrl = await uploadFile(credId, input.imageBuffer, input.imageName, input.imageMime);
+    const videoUrl = await uploadFile(credId, input.videoBuffer, input.videoName, input.videoMime);
+    input.onStatus?.('submit');
 
-  let usedModel: KlingModelKey = input.model;
-  let id: string;
-  try {
-    id = await submitKlingMotionControl({
-      prompt: input.prompt, imageUrl, videoUrl, model: input.model, outputName: input.videoName,
-    });
-  } catch (e: any) {
-    // The v2.6 model_name is a best-guess (not yet HAR-verified). If Picsart rejects the
-    // submit, transparently fall back to the verified v3 so the user still gets a result.
-    if (input.model !== 'v3' && String(e?.message ?? '').includes('PICSART_SUBMIT_FAILED')) {
-      usedModel = 'v3';
-      id = await submitKlingMotionControl({
-        prompt: input.prompt, imageUrl, videoUrl, model: 'v3', outputName: input.videoName,
+    let usedModel: KlingModelKey = input.model;
+    let id: string;
+    try {
+      id = await submitKlingMotionControl(credId, {
+        prompt: input.prompt, imageUrl, videoUrl, model: input.model, outputName: input.videoName,
       });
-    } else {
-      throw e;
+    } catch (e: any) {
+      // The v2.6 model_name is a best-guess (not yet HAR-verified). If Picsart rejects the
+      // submit, transparently fall back to the verified v3 so the user still gets a result.
+      // A credit error is re-thrown so runWithAccount can move to another account.
+      const msg = String(e?.message ?? '');
+      if (input.model !== 'v3' && msg.includes('PICSART_SUBMIT_FAILED') && !isCreditError(msg)) {
+        usedModel = 'v3';
+        id = await submitKlingMotionControl(credId, {
+          prompt: input.prompt, imageUrl, videoUrl, model: 'v3', outputName: input.videoName,
+        });
+      } else {
+        throw e;
+      }
     }
-  }
 
-  input.onStatus?.('poll');
-  const res = await pollKlingResult(id);
-  return { ...res, usedModel };
+    input.onStatus?.('poll');
+    const res = await pollKlingResult(credId, id);
+    return { ...res, usedModel };
+  });
 }
 
 // ─── Seedance 2.0 ─────────────────────────────────────────────────────────────
 
-export async function submitSeedance(input: {
+export async function submitSeedance(credId: number, input: {
   prompt: string;
   imageUrl?: string;
   duration: number;
@@ -388,7 +569,7 @@ export async function submitSeedance(input: {
   resolution: string;
   generateAudio: boolean;
 }): Promise<string> {
-  const access = await getAccessToken();
+  const access = await getAccessToken(credId);
   const content: Array<Record<string, unknown>> = [];
   if (input.imageUrl) {
     content.push({ type: 'image_url', image_url: { url: input.imageUrl }, role: 'reference_image' });
@@ -414,6 +595,7 @@ export async function submitSeedance(input: {
 }
 
 export async function pollSeedanceResult(
+  credId: number,
   id: string,
   opts?: { maxAttempts?: number; intervalMs?: number; onTick?: (elapsedMs: number) => void }
 ): Promise<{ url: string; credits?: number }> {
@@ -423,7 +605,7 @@ export async function pollSeedanceResult(
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((res) => setTimeout(res, intervalMs));
     opts?.onTick?.(Date.now() - start);
-    const access = await getAccessToken();
+    const access = await getAccessToken(credId);
     const r = await http.get(`${API_BASE}/workflows/seedance/${id}/result`, {
       headers: commonHeaders({ authorization: `Bearer ${access}` }),
       validateStatus: () => true,
@@ -445,6 +627,7 @@ export async function pollSeedanceResult(
 
 // High-level orchestrator: optional image upload -> submit -> poll -> result URL.
 export async function generateSeedance(input: {
+  userId: number;
   prompt: string;
   imageBuffer?: Buffer;
   imageName?: string;
@@ -456,39 +639,42 @@ export async function generateSeedance(input: {
   onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
-  let imageUrl: string | undefined;
-  if (input.imageBuffer) {
-    input.onStatus?.('upload');
-    imageUrl = await uploadFile(
-      input.imageBuffer,
-      input.imageName || 'reference.jpg',
-      input.imageMime || 'image/jpeg'
-    );
-  }
-  input.onStatus?.('submit');
-  const id = await submitSeedance({
-    prompt: input.prompt,
-    imageUrl,
-    duration: input.duration,
-    ratio: input.ratio,
-    resolution: input.resolution,
-    generateAudio: input.generateAudio,
-  });
-  input.onStatus?.('poll');
-  return pollSeedanceResult(id, {
-    onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+  return runWithAccount(input.userId, async (credId) => {
+    let imageUrl: string | undefined;
+    if (input.imageBuffer) {
+      input.onStatus?.('upload');
+      imageUrl = await uploadFile(
+        credId,
+        input.imageBuffer,
+        input.imageName || 'reference.jpg',
+        input.imageMime || 'image/jpeg'
+      );
+    }
+    input.onStatus?.('submit');
+    const id = await submitSeedance(credId, {
+      prompt: input.prompt,
+      imageUrl,
+      duration: input.duration,
+      ratio: input.ratio,
+      resolution: input.resolution,
+      generateAudio: input.generateAudio,
+    });
+    input.onStatus?.('poll');
+    return pollSeedanceResult(credId, id, {
+      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+    });
   });
 }
 
 // ─── Grok Imagine (image-to-video) ────────────────────────────────────────────
 
-export async function submitGrok(input: {
+export async function submitGrok(credId: number, input: {
   prompt: string;
   imageUrl: string;
   duration: number;
   ratio: string;
 }): Promise<string> {
-  const access = await getAccessToken();
+  const access = await getAccessToken(credId);
   const params = {
     model: GROK_MODEL,
     prompt: input.prompt ?? '',
@@ -508,6 +694,7 @@ export async function submitGrok(input: {
 }
 
 export async function pollGrokResult(
+  credId: number,
   id: string,
   opts?: { maxAttempts?: number; intervalMs?: number; onTick?: (elapsedMs: number) => void }
 ): Promise<{ url: string; credits?: number }> {
@@ -517,7 +704,7 @@ export async function pollGrokResult(
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((res) => setTimeout(res, intervalMs));
     opts?.onTick?.(Date.now() - start);
-    const access = await getAccessToken();
+    const access = await getAccessToken(credId);
     const r = await http.get(`${API_BASE}/workflows/x-ai/v1/videos/generations/${id}/result`, {
       headers: commonHeaders({ authorization: `Bearer ${access}` }),
       validateStatus: () => true,
@@ -540,6 +727,7 @@ export async function pollGrokResult(
 // High-level orchestrator: image upload -> submit -> poll -> result URL.
 // Grok is image-to-video only, so a reference image is required.
 export async function generateGrok(input: {
+  userId: number;
   prompt: string;
   imageBuffer: Buffer;
   imageName?: string;
@@ -549,36 +737,39 @@ export async function generateGrok(input: {
   onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
-  input.onStatus?.('upload');
-  const imageUrl = await uploadFile(
-    input.imageBuffer,
-    input.imageName || 'reference.jpg',
-    input.imageMime || 'image/jpeg'
-  );
-  input.onStatus?.('submit');
-  const id = await submitGrok({
-    prompt: input.prompt,
-    imageUrl,
-    duration: input.duration,
-    ratio: input.ratio,
-  });
-  input.onStatus?.('poll');
-  return pollGrokResult(id, {
-    onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+  return runWithAccount(input.userId, async (credId) => {
+    input.onStatus?.('upload');
+    const imageUrl = await uploadFile(
+      credId,
+      input.imageBuffer,
+      input.imageName || 'reference.jpg',
+      input.imageMime || 'image/jpeg'
+    );
+    input.onStatus?.('submit');
+    const id = await submitGrok(credId, {
+      prompt: input.prompt,
+      imageUrl,
+      duration: input.duration,
+      ratio: input.ratio,
+    });
+    input.onStatus?.('poll');
+    return pollGrokResult(credId, id, {
+      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+    });
   });
 }
 
 // ─── Kling V3 image-to-video ──────────────────────────────────────────────────
 // Single image (image-to-video) or two images (start frame + end frame).
 
-export async function submitKlingI2V(input: {
+export async function submitKlingI2V(credId: number, input: {
   prompt: string;
   imageUrl: string;
   imageTailUrl?: string;
   duration: number;
   ratio: string;
 }): Promise<string> {
-  const access = await getAccessToken();
+  const access = await getAccessToken(credId);
   const params: Record<string, unknown> = {
     prompt: input.prompt ?? '',
     aspect_ratio: input.ratio,
@@ -602,6 +793,7 @@ export async function submitKlingI2V(input: {
 }
 
 export async function pollKlingI2VResult(
+  credId: number,
   id: string,
   opts?: { maxAttempts?: number; intervalMs?: number; onTick?: (elapsedMs: number) => void }
 ): Promise<{ url: string; credits?: number }> {
@@ -611,7 +803,7 @@ export async function pollKlingI2VResult(
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((res) => setTimeout(res, intervalMs));
     opts?.onTick?.(Date.now() - start);
-    const access = await getAccessToken();
+    const access = await getAccessToken(credId);
     const r = await http.get(`${API_BASE}/workflows/kling-image-to-video/${id}/result`, {
       headers: commonHeaders({ authorization: `Bearer ${access}` }),
       validateStatus: () => true,
@@ -634,6 +826,7 @@ export async function pollKlingI2VResult(
 // High-level orchestrator: upload start image (and optional end image) ->
 // submit -> poll -> result URL. A start image is always required.
 export async function generateKlingI2V(input: {
+  userId: number;
   prompt: string;
   imageBuffer: Buffer;
   imageName?: string;
@@ -646,30 +839,34 @@ export async function generateKlingI2V(input: {
   onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
-  input.onStatus?.('upload');
-  const imageUrl = await uploadFile(
-    input.imageBuffer,
-    input.imageName || 'start.jpg',
-    input.imageMime || 'image/jpeg'
-  );
-  let imageTailUrl: string | undefined;
-  if (input.imageTailBuffer) {
-    imageTailUrl = await uploadFile(
-      input.imageTailBuffer,
-      input.imageTailName || 'end.jpg',
-      input.imageTailMime || 'image/jpeg'
+  return runWithAccount(input.userId, async (credId) => {
+    input.onStatus?.('upload');
+    const imageUrl = await uploadFile(
+      credId,
+      input.imageBuffer,
+      input.imageName || 'start.jpg',
+      input.imageMime || 'image/jpeg'
     );
-  }
-  input.onStatus?.('submit');
-  const id = await submitKlingI2V({
-    prompt: input.prompt,
-    imageUrl,
-    imageTailUrl,
-    duration: input.duration,
-    ratio: input.ratio,
-  });
-  input.onStatus?.('poll');
-  return pollKlingI2VResult(id, {
-    onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+    let imageTailUrl: string | undefined;
+    if (input.imageTailBuffer) {
+      imageTailUrl = await uploadFile(
+        credId,
+        input.imageTailBuffer,
+        input.imageTailName || 'end.jpg',
+        input.imageTailMime || 'image/jpeg'
+      );
+    }
+    input.onStatus?.('submit');
+    const id = await submitKlingI2V(credId, {
+      prompt: input.prompt,
+      imageUrl,
+      imageTailUrl,
+      duration: input.duration,
+      ratio: input.ratio,
+    });
+    input.onStatus?.('poll');
+    return pollKlingI2VResult(credId, id, {
+      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+    });
   });
 }
