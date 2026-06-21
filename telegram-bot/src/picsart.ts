@@ -58,6 +58,11 @@ export const GROK_MODEL = 'grok-imagine-video-1.5-preview';
 // (image + image_tail). Uses `mode: "pro"`. Pricing ~3 credits/sec.
 export const KLING_I2V_MODEL = 'kling-v3';
 
+// Kling V3 Turbo image-to-video — same endpoint as KV3 but with model_name
+// "kling-v3-turbo". No mode/multi_shot/shot_type fields. Has resolution param.
+// Pricing: 45 credits for 720p 15s, 60 credits for 1080p 15s.
+export const KLING_I2V_TURBO_MODEL = 'kling-v3-turbo';
+
 let db: Pool;
 let notifyOwner: (msg: string) => void = () => {};
 
@@ -743,6 +748,72 @@ export async function generateGrok(input: {
     });
     input.onStatus?.('poll');
     return pollGrokResult(credId, id, {
+      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+    });
+  });
+}
+
+// ─── Kling V3 Turbo image-to-video ────────────────────────────────────────────
+// Single image only. Params: prompt, aspect_ratio, duration (string), model_name,
+// resolution (720p|1080p), image URL. No mode/multi_shot/shot_type fields.
+
+export async function submitKlingI2VTurbo(credId: number, input: {
+  prompt: string;
+  imageUrl: string;
+  duration: number;
+  ratio: string;
+  resolution: string;
+}): Promise<string> {
+  const access = await getAccessToken(credId);
+  const params: Record<string, unknown> = {
+    prompt: input.prompt ?? '',
+    aspect_ratio: input.ratio,
+    duration: String(input.duration),
+    model_name: KLING_I2V_TURBO_MODEL,
+    resolution: input.resolution,
+    image: input.imageUrl,
+  };
+  const r = await http.post(`${API_BASE}/workflows/kling-image-to-video/submit`, { params }, {
+    headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
+    validateStatus: () => true,
+  });
+  const id = r.data?.response?.id;
+  if (!ok2xx(r.status) || !id) {
+    throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+  }
+  return id;
+}
+
+export async function generateKlingI2VTurbo(input: {
+  userId: number;
+  prompt: string;
+  imageBuffer: Buffer;
+  imageName?: string;
+  imageMime?: string;
+  duration: number;
+  ratio: string;
+  resolution: string;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  return runWithAccount(input.userId, async (credId) => {
+    input.onStatus?.('upload');
+    const imageUrl = await uploadFile(
+      credId,
+      input.imageBuffer,
+      input.imageName || 'start.jpg',
+      input.imageMime || 'image/jpeg'
+    );
+    input.onStatus?.('submit');
+    const id = await submitKlingI2VTurbo(credId, {
+      prompt: input.prompt,
+      imageUrl,
+      duration: input.duration,
+      ratio: input.ratio,
+      resolution: input.resolution,
+    });
+    input.onStatus?.('poll');
+    return pollKlingI2VResult(credId, id, {
       onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
     });
   });
