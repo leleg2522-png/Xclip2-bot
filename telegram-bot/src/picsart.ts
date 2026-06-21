@@ -45,9 +45,9 @@ export const KLING_MODELS = {
 } as const;
 export type KlingModelKey = keyof typeof KLING_MODELS;
 
-// Seedance 2.0 — image/text-to-video. Submit payload mirrors the AI Playground
+// Seedance 2.0 Fast — image/text-to-video. Submit payload mirrors the AI Playground
 // `/workflows/seedance/options` pricing pre-check captured from the web app.
-export const SEEDANCE_MODEL = 'seedance_2_0';
+export const SEEDANCE_MODEL = 'seedance_2_0_fast';
 
 // Grok Imagine — image-to-video only (requires a reference image). Endpoint
 // `/workflows/x-ai/v1/videos/generations/*`. Pricing ~5 credits/sec.

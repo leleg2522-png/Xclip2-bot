@@ -387,7 +387,7 @@ interface Session {
   loginTempUsername?: string;
   characterUrl?: string;
   klingModel?: 'v3' | 'v26';
-  // Seedance 2.0 wizard state
+  // Seedance 2.0 Fast wizard state
   seedanceInputMode?: 'i2v' | 't2v';
   seedanceDuration?: number;
   seedanceRatio?: string;
@@ -741,7 +741,7 @@ async function pollForResult(taskId: string, userId: number, apiKey: string, pol
 function mainMenuKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('🕹️ Kling Motion Control', 'mode_kling')],
-    [Markup.button.callback('🎬 Seedance 2.0', 'mode_seedance')],
+    [Markup.button.callback('🎬 Seedance 2.0 Fast', 'mode_seedance')],
     [Markup.button.callback('🤖 Grok Imagine', 'mode_grok')],
     [Markup.button.callback('🎞️ Kling V3 (Image to Video)', 'mode_kv3')],
   ]);
@@ -755,7 +755,7 @@ function klingModelKeyboard() {
   ]);
 }
 
-// ─── Seedance 2.0 wizard keyboards ────────────────────────────────────────────
+// ─── Seedance 2.0 Fast wizard keyboards ────────────────────────────────────────────
 
 function seedanceInputKeyboard() {
   return Markup.inlineKeyboard([
@@ -1549,7 +1549,7 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
-  // ── Seedance 2.0 wizard ──
+  // ── Seedance 2.0 Fast wizard ──
   if (data === 'mode_seedance') {
     setSession(userId, {
       mode: 'idle',
@@ -1561,7 +1561,7 @@ bot.on('callback_query', async (ctx) => {
       seedanceImageUrl: undefined,
     });
     return ctx.editMessageText(
-      '🎬 *Seedance 2.0*\n\nPilih cara membuat video:',
+      '🎬 *Seedance 2.0 Fast*\n\nPilih cara membuat video:',
       { parse_mode: 'Markdown', ...seedanceInputKeyboard() }
     );
   }
@@ -1569,7 +1569,7 @@ bot.on('callback_query', async (ctx) => {
   if (data === 'sd_in_i2v' || data === 'sd_in_t2v') {
     setSession(userId, { seedanceInputMode: data === 'sd_in_i2v' ? 'i2v' : 't2v' });
     return ctx.editMessageText(
-      '🎬 *Seedance 2.0*\n\n*Langkah 1:* Pilih durasi video:',
+      '🎬 *Seedance 2.0 Fast*\n\n*Langkah 1:* Pilih durasi video:',
       { parse_mode: 'Markdown', ...seedanceDurationKeyboard() }
     );
   }
@@ -1578,7 +1578,7 @@ bot.on('callback_query', async (ctx) => {
     const dur = parseInt(data.replace('sd_dur_', ''), 10);
     setSession(userId, { seedanceDuration: dur });
     return ctx.editMessageText(
-      `🎬 *Seedance 2.0*\n\nDurasi: *${dur} detik*\n\n*Langkah 2:* Pilih rasio layar:`,
+      `🎬 *Seedance 2.0 Fast*\n\nDurasi: *${dur} detik*\n\n*Langkah 2:* Pilih rasio layar:`,
       { parse_mode: 'Markdown', ...seedanceRatioKeyboard() }
     );
   }
@@ -1587,7 +1587,7 @@ bot.on('callback_query', async (ctx) => {
     const ratio = SD_RATIO_MAP[data.replace('sd_ratio_', '')] ?? '9:16';
     setSession(userId, { seedanceRatio: ratio });
     return ctx.editMessageText(
-      `🎬 *Seedance 2.0*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Pilih resolusi:`,
+      `🎬 *Seedance 2.0 Fast*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Pilih resolusi:`,
       { parse_mode: 'Markdown', ...seedanceResolutionKeyboard() }
     );
   }
@@ -1596,7 +1596,7 @@ bot.on('callback_query', async (ctx) => {
     const res = data.replace('sd_res_', '');
     setSession(userId, { seedanceResolution: res });
     return ctx.editMessageText(
-      `🎬 *Seedance 2.0*\n\nResolusi: *${res}*\n\n*Langkah 4:* Audio video?`,
+      `🎬 *Seedance 2.0 Fast*\n\nResolusi: *${res}*\n\n*Langkah 4:* Audio video?`,
       { parse_mode: 'Markdown', ...seedanceAudioKeyboard() }
     );
   }
@@ -1607,14 +1607,14 @@ bot.on('callback_query', async (ctx) => {
     if (session.seedanceInputMode === 'i2v') {
       setSession(userId, { seedanceAudio: audio, mode: 'seedance_wait_image' });
       return ctx.editMessageText(
-        `🎬 *Seedance 2.0*\n\nAudio: *${audio ? 'Nyala' : 'Mati'}*\n\n` +
+        `🎬 *Seedance 2.0 Fast*\n\nAudio: *${audio ? 'Nyala' : 'Mati'}*\n\n` +
         '*Langkah 5:* Kirim *foto acuan* untuk video kamu.',
         { parse_mode: 'Markdown' }
       );
     }
     setSession(userId, { seedanceAudio: audio, mode: 'seedance_wait_prompt' });
     return ctx.editMessageText(
-      `🎬 *Seedance 2.0*\n\nAudio: *${audio ? 'Nyala' : 'Mati'}*\n\n` +
+      `🎬 *Seedance 2.0 Fast*\n\nAudio: *${audio ? 'Nyala' : 'Mati'}*\n\n` +
       '*Langkah 5:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
       { parse_mode: 'Markdown' }
     );
@@ -1900,7 +1900,7 @@ bot.on('text', async (ctx) => {
       audio: session.seedanceAudio ?? true,
     };
     setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply('⏳ Memproses Seedance 2.0...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
+    const statusMsg = await ctx.reply('⏳ Memproses Seedance 2.0 Fast...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
     runSeedance(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
       .catch(e => console.error(`[${userId}] Seedance gen error:`, e.message));
     return;
@@ -2149,7 +2149,7 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
   }
 }
 
-// ─── Background: Seedance 2.0 ─────────────────────────────────────────────────
+// ─── Background: Seedance 2.0 Fast ─────────────────────────────────────────────────
 
 async function runSeedance(
   chatId: number,
@@ -2193,10 +2193,10 @@ async function runSeedance(
       generateAudio: opts.audio,
       onStatus: (stage) => {
         const text = stage === 'upload'
-          ? '⏳ Seedance 2.0: mengunggah foto ke server... (1/3)'
+          ? '⏳ Seedance 2.0 Fast: mengunggah foto ke server... (1/3)'
           : stage === 'submit'
-            ? '⏳ Seedance 2.0: mengirim perintah ke server... (2/3)'
-            : '⏳ Seedance 2.0: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 3–8 menit. Jangan tutup chat ini.';
+            ? '⏳ Seedance 2.0 Fast: mengirim perintah ke server... (2/3)'
+            : '⏳ Seedance 2.0 Fast: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 3–8 menit. Jangan tutup chat ini.';
         lastEdit = Date.now();
         bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
       },
@@ -2210,7 +2210,7 @@ async function runSeedance(
         const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
         bot.telegram.editMessageText(
           chatId, statusMsgId, undefined,
-          `⏳ Seedance 2.0: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${timer} (biasanya 3–8 menit).\nJangan tutup chat ini, video dikirim otomatis.`
+          `⏳ Seedance 2.0 Fast: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${timer} (biasanya 3–8 menit).\nJangan tutup chat ini, video dikirim otomatis.`
         ).catch(() => {});
       },
     });
@@ -2220,7 +2220,7 @@ async function runSeedance(
     await sendResult(
       chatId,
       result.url,
-      `🎬 Seedance 2.0 (${opts.duration}s · ${opts.ratio} · ${opts.resolution}${opts.audio ? ' · audio' : ''})\n📊 Generate hari ini: ${newCount}/${KLING_DAILY_LIMIT} (sisa: ${remaining})\n\n/menu untuk buat lagi`,
+      `🎬 Seedance 2.0 Fast (${opts.duration}s · ${opts.ratio} · ${opts.resolution}${opts.audio ? ' · audio' : ''})\n📊 Generate hari ini: ${newCount}/${KLING_DAILY_LIMIT} (sisa: ${remaining})\n\n/menu untuk buat lagi`,
       true
     );
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
