@@ -80,7 +80,7 @@ Output "SUCCESS" when the invite is sent successfully.
   `.trim();
 
   const taskId = await createTask(task, { owner_password: ownerPassword });
-  const result = await pollTask(taskId, 180_000);
+  const result = await pollTask(taskId, 600_000);
 
   if (result.output?.includes('ALREADY_MEMBER')) {
     throw new Error('INVITE_ALREADY_MEMBER');
@@ -104,7 +104,7 @@ Output "NOT_FOUND" if no invite email was found after waiting.
   `.trim();
 
   const taskId = await createTask(task, { gmail_password: gmailPassword });
-  const result = await pollTask(taskId, 240_000);
+  const result = await pollTask(taskId, 600_000);
 
   if (result.output?.includes('NOT_FOUND')) {
     throw new Error('ACCEPT_INVITE_NOT_FOUND: No invite email found in Gmail');
@@ -126,7 +126,7 @@ Output ONLY the full cookie value starting with "rt:" — nothing else.
   `.trim();
 
   const taskId = await createTask(task, { gmail_password: gmailPassword });
-  const result = await pollTask(taskId, 180_000);
+  const result = await pollTask(taskId, 600_000);
 
   const output = (result.output ?? '').trim();
   if (!output.startsWith('rt:')) {
@@ -147,7 +147,7 @@ Output a JSON object like: {"available": 13, "total": 14, "members": 1}
   `.trim();
 
   const taskId = await createTask(task, { owner_password: ownerPassword });
-  const result = await pollTask(taskId, 120_000);
+  const result = await pollTask(taskId, 300_000);
 
   try {
     const m = (result.output ?? '').match(/\{[^}]+\}/);
