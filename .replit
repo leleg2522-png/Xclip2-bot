@@ -42,7 +42,6 @@ externalPort = 3001
 [userenv]
 
 [userenv.shared]
-CREDENTIAL_ENCRYPTION_KEY = "wtLjmyZck2ve0oESKeKypOhdw+lFkGuiAh0XbNd3L4Y="
 
 [nix]
 channel = "stable-25_05"

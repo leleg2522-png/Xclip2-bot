@@ -55,8 +55,15 @@ export type DbSource = 'panel' | 'env' | 'none';
 async function getConfiguredRailwayUrl(): Promise<{ url: string | null; source: DbSource }> {
   const stored = (await getSetting('railway_db_url'))?.trim();
   if (stored) {
-    const url = isEncrypted(stored) ? decrypt(stored) : stored;
-    return { url, source: 'panel' };
+    try {
+      const url = isEncrypted(stored) ? decrypt(stored) : stored;
+      return { url, source: 'panel' };
+    } catch {
+      // Stored value can't be decrypted (e.g. the encryption key was rotated).
+      // Treat it as unusable and fall back so the panel still loads and the
+      // operator can re-enter the connection string.
+      console.warn('[invite-runner] stored railway_db_url could not be decrypted; ignoring it');
+    }
   }
   const fromEnv = process.env.RAILWAY_DATABASE_URL?.trim();
   if (fromEnv) return { url: fromEnv, source: 'env' };
