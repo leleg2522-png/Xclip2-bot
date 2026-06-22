@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const BROWSER_USE_API_KEY = process.env.BROWSER_USE_API_KEY;
-const BROWSER_USE_BASE = 'https://api.browser-use.com/api/v1';
+const BROWSER_USE_BASE = 'https://api.browser-use.com/api/v2';
 
 const http = axios.create({ timeout: 30_000 });
 
@@ -16,17 +16,17 @@ async function createTask(description: string, sensitiveData?: Record<string, st
   if (!BROWSER_USE_API_KEY) throw new Error('BROWSER_USE_API_KEY not set');
 
   const body: Record<string, unknown> = { task: description };
-  if (sensitiveData) body.sensitive_data = sensitiveData;
+  if (sensitiveData) body.secrets = sensitiveData;
 
-  const r = await http.post(`${BROWSER_USE_BASE}/run-task`, body, {
+  const r = await http.post(`${BROWSER_USE_BASE}/tasks`, body, {
     headers: {
-      Authorization: `Bearer ${BROWSER_USE_API_KEY}`,
+      'X-Browser-Use-API-Key': BROWSER_USE_API_KEY,
       'Content-Type': 'application/json',
     },
     validateStatus: () => true,
   });
 
-  if (r.status !== 200 && r.status !== 201) {
+  if (r.status !== 200 && r.status !== 201 && r.status !== 202) {
     throw new Error(`BROWSER_USE_CREATE_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
   }
 
@@ -45,8 +45,8 @@ async function pollTask(taskId: string, maxWaitMs = 300_000): Promise<TaskResult
     await new Promise(res => setTimeout(res, intervalMs));
     intervalMs = Math.min(intervalMs * 1.2, 10_000);
 
-    const r = await http.get(`${BROWSER_USE_BASE}/task/${taskId}`, {
-      headers: { Authorization: `Bearer ${BROWSER_USE_API_KEY}` },
+    const r = await http.get(`${BROWSER_USE_BASE}/tasks/${taskId}`, {
+      headers: { 'X-Browser-Use-API-Key': BROWSER_USE_API_KEY },
       validateStatus: () => true,
     });
 
