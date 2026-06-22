@@ -1,3 +1,4 @@
 - [Leonardo AI i2v endpoint](leonardo-i2v.md) — correct image-to-video endpoint is /generations-image-to-video with model strings KLING2_1/KLING2_5; Kling 2.6 does not exist on Leonardo AI
 - [Picsart AI Playground internal API](picsart-ai-playground-api.md) — undocumented upload→submit→poll flow; auth is fragile browser session cookie (expires); HAR sanitizes cookies, use Copy-as-cURL
 - [Telegram bot self-hosted result links](telegram-bot-media-links.md) — big results bypass Telegram's ~50MB cap via /dl/:token on own Railway domain; storage is ephemeral tmpdir so links die on redeploy
+- [Invite-panel two-DB architecture](invite-panel-db-architecture.md) — panel state in local Replit PG; configurable Railway target DB string stored encrypted in app_settings (UI-set), masked in responses, never in .replit

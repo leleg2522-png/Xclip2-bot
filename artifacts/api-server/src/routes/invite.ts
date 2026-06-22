@@ -8,6 +8,9 @@ import {
   RunInviteJobParams,
   RunInviteJobResponse,
   GetPicsartSlotsResponse,
+  GetDbSettingsResponse,
+  UpdateDbSettingsBody,
+  UpdateDbSettingsResponse,
 } from '@workspace/api-zod';
 import {
   listJobs,
@@ -16,6 +19,8 @@ import {
   runAllPendingJobs,
   deleteJob,
   ensureInviteSchema,
+  getDbSettings,
+  setRailwayDbUrl,
 } from '../lib/invite-runner.js';
 import { getPicsartTeamSlots } from '../lib/browser-use.js';
 
@@ -91,6 +96,27 @@ router.post('/invite-jobs/:id/run', async (req, res) => {
     res.json(data);
   } catch (err: unknown) {
     res.status(500).json({ error: String(err) });
+  }
+});
+
+router.get('/settings/db', async (_req, res) => {
+  try {
+    const settings = await getDbSettings();
+    const data = GetDbSettingsResponse.parse(settings);
+    res.json(data);
+  } catch (err: unknown) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+router.put('/settings/db', async (req, res) => {
+  try {
+    const body = UpdateDbSettingsBody.parse(req.body);
+    const result = await setRailwayDbUrl(body.url);
+    const data = UpdateDbSettingsResponse.parse(result);
+    res.status(result.ok ? 200 : 400).json(data);
+  } catch (err: unknown) {
+    res.status(400).json({ error: String(err) });
   }
 });
 

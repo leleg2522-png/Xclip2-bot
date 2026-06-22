@@ -11,8 +11,11 @@ import {
   useRunInviteJob,
   useDeleteInviteJob,
   useGetPicsartSlots,
+  useGetDbSettings,
+  useUpdateDbSettings,
   getListInviteJobsQueryKey,
   getGetPicsartSlotsQueryKey,
+  getGetDbSettingsQueryKey,
 } from "@workspace/api-client-react";
 
 const queryClient = new QueryClient({
@@ -144,6 +147,104 @@ function isAuthError(status: number) {
   return status === 401 || status === 503;
 }
 
+function DbSettingsCard({ onClose }: { onClose: () => void }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const { data: settings } = useGetDbSettings();
+  const updateMutation = useUpdateDbSettings();
+  const [url, setUrl] = useState("");
+
+  const sourceLabel =
+    settings?.source === "panel" ? "Diset dari panel"
+    : settings?.source === "env" ? "Dari environment (default)"
+    : "Belum diset";
+
+  async function handleSave() {
+    try {
+      const res = await updateMutation.mutateAsync({ data: { url } });
+      if (res.ok) {
+        toast({ title: "DB Railway tersimpan", description: "Koneksi berhasil dites & disimpan." });
+        setUrl("");
+        qc.invalidateQueries({ queryKey: getGetDbSettingsQueryKey() });
+      } else {
+        toast({ title: "Koneksi gagal", description: res.error ?? "Tidak bisa connect", variant: "destructive" });
+      }
+    } catch (e: unknown) {
+      toast({ title: "Gagal simpan", description: String(e), variant: "destructive" });
+    }
+  }
+
+  async function handleClear() {
+    try {
+      await updateMutation.mutateAsync({ data: { url: "" } });
+      toast({ title: "Override dihapus", description: "Kembali ke default environment." });
+      setUrl("");
+      qc.invalidateQueries({ queryKey: getGetDbSettingsQueryKey() });
+    } catch (e: unknown) {
+      toast({ title: "Gagal", description: String(e), variant: "destructive" });
+    }
+  }
+
+  return (
+    <div className="bg-[#13131f] border border-violet-500/30 rounded-xl p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold text-sm text-white">Database Railway (Pool Token)</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Token akun Picsart yang berhasil otomatis masuk ke tabel <code className="text-violet-300">picsart_credentials</code> di DB ini.
+          </p>
+        </div>
+        <button onClick={onClose} className="text-slate-500 hover:text-white text-sm px-2">✕</button>
+      </div>
+
+      <div className="flex items-center gap-2 text-xs">
+        <span className={`w-2 h-2 rounded-full ${settings?.configured ? "bg-emerald-400" : "bg-amber-400"}`} />
+        <span className="text-slate-400">{sourceLabel}</span>
+        {settings?.urlMasked && (
+          <code className="ml-1 text-slate-300 bg-black/30 border border-white/10 rounded px-2 py-0.5 truncate max-w-md">
+            {settings.urlMasked}
+          </code>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <label className="block text-xs font-medium text-slate-400">
+          Connection string Railway
+        </label>
+        <input
+          type="password"
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          placeholder="postgresql://postgres:password@host.proxy.rlwy.net:5432/railway"
+          className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2.5 text-sm font-mono text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-violet-500"
+        />
+        <p className="text-xs text-slate-600">
+          Disimpan terenkripsi di server & nggak pernah ditampilkan ulang. Akan dites dulu sebelum disimpan.
+        </p>
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          onClick={handleSave}
+          disabled={updateMutation.isPending || !url.trim()}
+          className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-40 transition text-sm font-medium"
+        >
+          {updateMutation.isPending ? "Mengetes koneksi..." : "Tes & Simpan"}
+        </button>
+        {settings?.source === "panel" && (
+          <button
+            onClick={handleClear}
+            disabled={updateMutation.isPending}
+            className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition text-sm text-slate-400"
+          >
+            Hapus override
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Panel({ onLogout }: { onLogout: () => void }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -162,6 +263,7 @@ function Panel({ onLogout }: { onLogout: () => void }) {
 
   const [bulkText, setBulkText] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showDbSettings, setShowDbSettings] = useState(false);
 
   const authFailed =
     jobsError instanceof Error &&
@@ -278,6 +380,13 @@ function Panel({ onLogout }: { onLogout: () => void }) {
               {runAllMutation.isPending ? "Starting..." : `▶ Run All (${pending})`}
             </button>
             <button
+              onClick={() => setShowDbSettings(s => !s)}
+              className="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-slate-400 transition"
+              title="Pengaturan DB Railway"
+            >
+              ⚙ DB
+            </button>
+            <button
               onClick={handleLogout}
               className="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-slate-500 transition"
             >
@@ -301,6 +410,8 @@ function Panel({ onLogout }: { onLogout: () => void }) {
             </div>
           ))}
         </div>
+
+        {showDbSettings && <DbSettingsCard onClose={() => setShowDbSettings(false)} />}
 
         {showAddForm && (
           <div className="bg-[#13131f] border border-white/10 rounded-xl p-5 space-y-3">

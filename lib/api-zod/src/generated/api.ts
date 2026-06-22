@@ -104,3 +104,31 @@ export const GetPicsartSlotsResponse = zod.object({
   total: zod.number(),
   members: zod.number().optional(),
 });
+
+/**
+ * @summary Get the configured Railway target DB status
+ */
+export const GetDbSettingsResponse = zod.object({
+  configured: zod.boolean(),
+  urlMasked: zod.string().nullish(),
+  source: zod.enum(["panel", "env", "none"]),
+});
+
+/**
+ * @summary Set (or clear) the Railway target DB connection string
+ */
+export const UpdateDbSettingsBody = zod.object({
+  url: zod
+    .string()
+    .describe(
+      "Railway Postgres connection string. Empty string clears the panel override.",
+    ),
+});
+
+export const UpdateDbSettingsResponse = zod.object({
+  ok: zod.boolean(),
+  error: zod.string().nullish(),
+  configured: zod.boolean(),
+  urlMasked: zod.string().nullish(),
+  source: zod.enum(["panel", "env", "none"]),
+});

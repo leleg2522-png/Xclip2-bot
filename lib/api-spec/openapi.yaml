@@ -120,6 +120,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/PicsartSlots"
 
+  /settings/db:
+    get:
+      operationId: getDbSettings
+      tags: [invite]
+      summary: Get the configured Railway target DB status
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DbSettings"
+    put:
+      operationId: updateDbSettings
+      tags: [invite]
+      summary: Set (or clear) the Railway target DB connection string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DbSettingsInput"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DbSettingsResult"
+        "400":
+          description: Invalid or unreachable connection string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DbSettingsResult"
+
 components:
   schemas:
     HealthStatus:
@@ -188,3 +224,39 @@ components:
           type: integer
         members:
           type: integer
+
+    DbSettings:
+      type: object
+      required: [configured, source]
+      properties:
+        configured:
+          type: boolean
+        urlMasked:
+          type: ["string", "null"]
+        source:
+          type: string
+          enum: [panel, env, none]
+
+    DbSettingsInput:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          description: Railway Postgres connection string. Empty string clears the panel override.
+
+    DbSettingsResult:
+      type: object
+      required: [ok, configured, source]
+      properties:
+        ok:
+          type: boolean
+        error:
+          type: ["string", "null"]
+        configured:
+          type: boolean
+        urlMasked:
+          type: ["string", "null"]
+        source:
+          type: string
+          enum: [panel, env, none]

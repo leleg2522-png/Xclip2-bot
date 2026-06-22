@@ -59,3 +59,43 @@ export interface PicsartSlots {
   total: number;
   members?: number;
 }
+
+export type DbSettingsSource =
+  (typeof DbSettingsSource)[keyof typeof DbSettingsSource];
+
+export const DbSettingsSource = {
+  panel: "panel",
+  env: "env",
+  none: "none",
+} as const;
+
+export interface DbSettings {
+  configured: boolean;
+  /** @nullable */
+  urlMasked?: string | null;
+  source: DbSettingsSource;
+}
+
+export interface DbSettingsInput {
+  /** Railway Postgres connection string. Empty string clears the panel override. */
+  url: string;
+}
+
+export type DbSettingsResultSource =
+  (typeof DbSettingsResultSource)[keyof typeof DbSettingsResultSource];
+
+export const DbSettingsResultSource = {
+  panel: "panel",
+  env: "env",
+  none: "none",
+} as const;
+
+export interface DbSettingsResult {
+  ok: boolean;
+  /** @nullable */
+  error?: string | null;
+  configured: boolean;
+  /** @nullable */
+  urlMasked?: string | null;
+  source: DbSettingsResultSource;
+}

@@ -17,6 +17,9 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  DbSettings,
+  DbSettingsInput,
+  DbSettingsResult,
   HealthStatus,
   InviteJob,
   InviteJobInput,
@@ -593,3 +596,164 @@ export function useGetPicsartSlots<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Get the configured Railway target DB status
+ */
+export const getGetDbSettingsUrl = () => {
+  return `/api/settings/db`;
+};
+
+export const getDbSettings = async (
+  options?: RequestInit,
+): Promise<DbSettings> => {
+  return customFetch<DbSettings>(getGetDbSettingsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetDbSettingsQueryKey = () => {
+  return [`/api/settings/db`] as const;
+};
+
+export const getGetDbSettingsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDbSettings>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getDbSettings>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetDbSettingsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getDbSettings>>> = ({
+    signal,
+  }) => getDbSettings({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDbSettings>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDbSettingsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getDbSettings>>
+>;
+export type GetDbSettingsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get the configured Railway target DB status
+ */
+
+export function useGetDbSettings<
+  TData = Awaited<ReturnType<typeof getDbSettings>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getDbSettings>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDbSettingsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Set (or clear) the Railway target DB connection string
+ */
+export const getUpdateDbSettingsUrl = () => {
+  return `/api/settings/db`;
+};
+
+export const updateDbSettings = async (
+  dbSettingsInput: DbSettingsInput,
+  options?: RequestInit,
+): Promise<DbSettingsResult> => {
+  return customFetch<DbSettingsResult>(getUpdateDbSettingsUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(dbSettingsInput),
+  });
+};
+
+export const getUpdateDbSettingsMutationOptions = <
+  TError = ErrorType<DbSettingsResult>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateDbSettings>>,
+    TError,
+    { data: BodyType<DbSettingsInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateDbSettings>>,
+  TError,
+  { data: BodyType<DbSettingsInput> },
+  TContext
+> => {
+  const mutationKey = ["updateDbSettings"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateDbSettings>>,
+    { data: BodyType<DbSettingsInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return updateDbSettings(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateDbSettingsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateDbSettings>>
+>;
+export type UpdateDbSettingsMutationBody = BodyType<DbSettingsInput>;
+export type UpdateDbSettingsMutationError = ErrorType<DbSettingsResult>;
+
+/**
+ * @summary Set (or clear) the Railway target DB connection string
+ */
+export const useUpdateDbSettings = <
+  TError = ErrorType<DbSettingsResult>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateDbSettings>>,
+    TError,
+    { data: BodyType<DbSettingsInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateDbSettings>>,
+  TError,
+  { data: BodyType<DbSettingsInput> },
+  TContext
+> => {
+  return useMutation(getUpdateDbSettingsMutationOptions(options));
+};
