@@ -8,3 +8,54 @@
 export interface HealthStatus {
   status: string;
 }
+
+export type InviteJobStatus =
+  (typeof InviteJobStatus)[keyof typeof InviteJobStatus];
+
+export const InviteJobStatus = {
+  pending: "pending",
+  inviting: "inviting",
+  invited: "invited",
+  accepting: "accepting",
+  accepted: "accepted",
+  extracting: "extracting",
+  in_pool: "in_pool",
+  failed: "failed",
+} as const;
+
+export interface InviteJob {
+  id: number;
+  email: string;
+  status: InviteJobStatus;
+  /** @nullable */
+  errorMessage?: string | null;
+  /** @nullable */
+  credentialId?: number | null;
+  /** @nullable */
+  invitedAt?: string | null;
+  /** @nullable */
+  acceptedAt?: string | null;
+  /** @nullable */
+  pooledAt?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type InviteJobInputEntriesItem = {
+  email: string;
+  gmailPassword: string;
+};
+
+export interface InviteJobInput {
+  entries: InviteJobInputEntriesItem[];
+}
+
+export interface RunAllResult {
+  queued: number;
+}
+
+export interface PicsartSlots {
+  available: number;
+  total: number;
+  members?: number;
+}

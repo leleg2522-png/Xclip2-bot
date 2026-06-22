@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/invite-panel/"
+title = "Picsart Invite Panel"
+version = "1.0.0"
+id = "artifacts/invite-panel"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/invite-panel/" ]
+localPort = 19854
+
+[services.development]
+run = "pnpm --filter @workspace/invite-panel run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/invite-panel", "run", "build" ]
+publicDir = "artifacts/invite-panel/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19854"
+BASE_PATH = "/invite-panel/"

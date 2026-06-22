@@ -14,3 +14,93 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * @summary List all invite jobs
+ */
+export const ListInviteJobsResponseItem = zod.object({
+  id: zod.number(),
+  email: zod.string(),
+  status: zod.enum([
+    "pending",
+    "inviting",
+    "invited",
+    "accepting",
+    "accepted",
+    "extracting",
+    "in_pool",
+    "failed",
+  ]),
+  errorMessage: zod.string().nullish(),
+  credentialId: zod.number().nullish(),
+  invitedAt: zod.string().nullish(),
+  acceptedAt: zod.string().nullish(),
+  pooledAt: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string().optional(),
+});
+export const ListInviteJobsResponse = zod.array(ListInviteJobsResponseItem);
+
+/**
+ * @summary Add one or more emails to invite
+ */
+export const CreateInviteJobsBody = zod.object({
+  entries: zod.array(
+    zod.object({
+      email: zod.string(),
+      gmailPassword: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * @summary Run all pending invite jobs
+ */
+export const RunAllInviteJobsResponse = zod.object({
+  queued: zod.number(),
+});
+
+/**
+ * @summary Delete an invite job
+ */
+export const DeleteInviteJobParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary Run a specific invite job
+ */
+export const RunInviteJobParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const RunInviteJobResponse = zod.object({
+  id: zod.number(),
+  email: zod.string(),
+  status: zod.enum([
+    "pending",
+    "inviting",
+    "invited",
+    "accepting",
+    "accepted",
+    "extracting",
+    "in_pool",
+    "failed",
+  ]),
+  errorMessage: zod.string().nullish(),
+  credentialId: zod.number().nullish(),
+  invitedAt: zod.string().nullish(),
+  acceptedAt: zod.string().nullish(),
+  pooledAt: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string().optional(),
+});
+
+/**
+ * @summary Get remaining Picsart team slots
+ */
+export const GetPicsartSlotsResponse = zod.object({
+  available: zod.number(),
+  total: zod.number(),
+  members: zod.number().optional(),
+});

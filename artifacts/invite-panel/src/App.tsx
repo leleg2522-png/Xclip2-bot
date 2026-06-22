@@ -1,0 +1,327 @@
+import { useState, useEffect } from "react";
+import { Switch, Route, Router as WouterRouter } from "wouter";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import { Toaster } from "@/components/ui/toaster";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { useToast } from "@/hooks/use-toast";
+import {
+  useListInviteJobs,
+  useCreateInviteJobs,
+  useRunAllInviteJobs,
+  useRunInviteJob,
+  useDeleteInviteJob,
+  useGetPicsartSlots,
+  getListInviteJobsQueryKey,
+  getGetPicsartSlotsQueryKey,
+} from "@workspace/api-client-react";
+
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { refetchInterval: 3000 } },
+});
+
+type JobStatus = "pending" | "inviting" | "invited" | "accepting" | "accepted" | "extracting" | "in_pool" | "failed";
+
+const STATUS_LABELS: Record<JobStatus, string> = {
+  pending: "Pending",
+  inviting: "Inviting...",
+  invited: "Invited",
+  accepting: "Accepting...",
+  accepted: "Accepted",
+  extracting: "Extracting Token...",
+  in_pool: "In Pool ✓",
+  failed: "Failed",
+};
+
+const STATUS_COLORS: Record<JobStatus, string> = {
+  pending: "bg-slate-700 text-slate-300",
+  inviting: "bg-blue-900 text-blue-300 animate-pulse",
+  invited: "bg-indigo-900 text-indigo-300",
+  accepting: "bg-violet-900 text-violet-300 animate-pulse",
+  accepted: "bg-purple-900 text-purple-300",
+  extracting: "bg-fuchsia-900 text-fuchsia-300 animate-pulse",
+  in_pool: "bg-emerald-900 text-emerald-300",
+  failed: "bg-red-900 text-red-400",
+};
+
+function StepDot({ done, active }: { done: boolean; active: boolean }) {
+  if (done) return <span className="inline-block w-3 h-3 rounded-full bg-emerald-400" />;
+  if (active) return <span className="inline-block w-3 h-3 rounded-full bg-violet-400 animate-pulse" />;
+  return <span className="inline-block w-3 h-3 rounded-full bg-slate-700" />;
+}
+
+function stepsDone(status: JobStatus) {
+  const order: JobStatus[] = ["pending", "inviting", "invited", "accepting", "accepted", "extracting", "in_pool"];
+  const idx = order.indexOf(status);
+  return {
+    invited: idx >= order.indexOf("invited"),
+    accepted: idx >= order.indexOf("accepted"),
+    in_pool: idx >= order.indexOf("in_pool"),
+    inviting: status === "inviting",
+    accepting: status === "accepting",
+    extracting: status === "extracting",
+  };
+}
+
+function Panel() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const { data: jobs = [], isLoading: jobsLoading } = useListInviteJobs();
+  const { data: slots } = useGetPicsartSlots();
+  const createMutation = useCreateInviteJobs();
+  const runAllMutation = useRunAllInviteJobs();
+  const runOneMutation = useRunInviteJob();
+  const deleteMutation = useDeleteInviteJob();
+
+  const [bulkText, setBulkText] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
+
+  function invalidate() {
+    qc.invalidateQueries({ queryKey: getListInviteJobsQueryKey() });
+    qc.invalidateQueries({ queryKey: getGetPicsartSlotsQueryKey() });
+  }
+
+  async function handleAdd() {
+    const lines = bulkText.trim().split("\n").filter(Boolean);
+    const entries: { email: string; gmailPassword: string }[] = [];
+    for (const line of lines) {
+      const parts = line.split(/[,|;:\t]/).map(s => s.trim());
+      if (parts.length >= 2 && parts[0].includes("@")) {
+        entries.push({ email: parts[0], gmailPassword: parts[1] });
+      }
+    }
+    if (!entries.length) {
+      toast({ title: "Format salah", description: "Tiap baris: email,password", variant: "destructive" });
+      return;
+    }
+    try {
+      await createMutation.mutateAsync({ data: { entries } });
+      toast({ title: `${entries.length} email ditambahkan` });
+      setBulkText("");
+      setShowAddForm(false);
+      invalidate();
+    } catch (e: unknown) {
+      toast({ title: "Gagal tambah", description: String(e), variant: "destructive" });
+    }
+  }
+
+  async function handleRunAll() {
+    try {
+      const res = await runAllMutation.mutateAsync();
+      toast({ title: `${res.queued} job dimulai` });
+      invalidate();
+    } catch (e: unknown) {
+      toast({ title: "Gagal run all", description: String(e), variant: "destructive" });
+    }
+  }
+
+  async function handleRunOne(id: number) {
+    try {
+      await runOneMutation.mutateAsync({ id });
+      toast({ title: `Job #${id} dimulai` });
+      invalidate();
+    } catch (e: unknown) {
+      toast({ title: "Gagal run", description: String(e), variant: "destructive" });
+    }
+  }
+
+  async function handleDelete(id: number) {
+    try {
+      await deleteMutation.mutateAsync({ id });
+      toast({ title: `Job #${id} dihapus` });
+      invalidate();
+    } catch (e: unknown) {
+      toast({ title: "Gagal hapus", description: String(e), variant: "destructive" });
+    }
+  }
+
+  const pending = jobs.filter(j => j.status === "pending" || j.status === "failed").length;
+  const inPool = jobs.filter(j => j.status === "in_pool").length;
+  const running = jobs.filter(j => ["inviting","accepting","extracting"].includes(j.status)).length;
+
+  return (
+    <div className="min-h-screen bg-[#0d0d14] text-white font-sans">
+      <div className="border-b border-white/5 bg-[#13131f]">
+        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-pink-600 flex items-center justify-center text-sm font-bold">P</div>
+            <div>
+              <h1 className="font-bold text-lg leading-none">Invite Automation</h1>
+              <p className="text-xs text-slate-500 mt-0.5">Picsart HEAD Team Manager</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {slots && (
+              <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm">
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                <span className="text-slate-300"><span className="text-white font-semibold">{slots.available}</span> slot tersisa</span>
+              </div>
+            )}
+            <button
+              onClick={() => setShowAddForm(s => !s)}
+              className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 transition text-sm font-medium"
+            >
+              + Tambah Email
+            </button>
+            <button
+              onClick={handleRunAll}
+              disabled={pending === 0 || runAllMutation.isPending}
+              className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 transition text-sm font-medium"
+            >
+              {runAllMutation.isPending ? "Starting..." : `▶ Run All (${pending})`}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-5xl mx-auto px-6 py-6 space-y-5">
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-3">
+          {[
+            { label: "Total", value: jobs.length, color: "text-white" },
+            { label: "Running", value: running, color: "text-violet-400" },
+            { label: "In Pool", value: inPool, color: "text-emerald-400" },
+            { label: "Pending/Failed", value: pending, color: "text-amber-400" },
+          ].map(stat => (
+            <div key={stat.label} className="bg-white/5 border border-white/10 rounded-xl p-4">
+              <div className={`text-2xl font-bold ${stat.color}`}>{stat.value}</div>
+              <div className="text-xs text-slate-500 mt-1">{stat.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Add Form */}
+        {showAddForm && (
+          <div className="bg-[#13131f] border border-white/10 rounded-xl p-5 space-y-3">
+            <h2 className="font-semibold text-sm text-slate-300">Tambah Email (satu per baris: email,password)</h2>
+            <textarea
+              value={bulkText}
+              onChange={e => setBulkText(e.target.value)}
+              placeholder={"user1@gmail.com,password123\nuser2@gmail.com,mypass456"}
+              className="w-full h-36 bg-black/30 border border-white/10 rounded-lg p-3 text-sm font-mono text-slate-200 placeholder:text-slate-600 resize-none focus:outline-none focus:border-violet-500"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={handleAdd}
+                disabled={createMutation.isPending}
+                className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-40 transition text-sm font-medium"
+              >
+                {createMutation.isPending ? "Menambahkan..." : "Tambahkan"}
+              </button>
+              <button
+                onClick={() => { setShowAddForm(false); setBulkText(""); }}
+                className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition text-sm"
+              >
+                Batal
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Jobs Table */}
+        <div className="bg-[#13131f] border border-white/10 rounded-xl overflow-hidden">
+          <div className="grid grid-cols-[1fr_140px_auto_auto] gap-0 text-xs font-medium text-slate-500 uppercase tracking-wider px-5 py-3 border-b border-white/5">
+            <div>Email</div>
+            <div>Status</div>
+            <div className="text-center">Progress</div>
+            <div className="text-right">Aksi</div>
+          </div>
+
+          {jobsLoading && (
+            <div className="px-5 py-8 text-center text-slate-600 text-sm">Loading...</div>
+          )}
+
+          {!jobsLoading && jobs.length === 0 && (
+            <div className="px-5 py-12 text-center text-slate-600 text-sm">
+              Belum ada email. Klik "+ Tambah Email" untuk mulai.
+            </div>
+          )}
+
+          {jobs.map((job, i) => {
+            const steps = stepsDone(job.status as JobStatus);
+            const isRunning = ["inviting","accepting","extracting"].includes(job.status);
+            return (
+              <div
+                key={job.id}
+                className={`grid grid-cols-[1fr_140px_auto_auto] gap-4 items-center px-5 py-3.5 ${i < jobs.length - 1 ? "border-b border-white/5" : ""}`}
+              >
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-white truncate">{job.email}</div>
+                  {job.errorMessage && (
+                    <div className="text-xs text-red-400 mt-0.5 truncate">{job.errorMessage}</div>
+                  )}
+                  {job.pooledAt && (
+                    <div className="text-xs text-emerald-500 mt-0.5">✓ Masuk pool — cred #{job.credentialId}</div>
+                  )}
+                </div>
+
+                <div>
+                  <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[job.status as JobStatus] ?? "bg-slate-700 text-slate-300"}`}>
+                    {STATUS_LABELS[job.status as JobStatus] ?? job.status}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 justify-center">
+                  <StepDot done={steps.invited} active={steps.inviting} />
+                  <div className="w-5 h-px bg-white/10" />
+                  <StepDot done={steps.accepted} active={steps.accepting} />
+                  <div className="w-5 h-px bg-white/10" />
+                  <StepDot done={steps.in_pool} active={steps.extracting} />
+                </div>
+
+                <div className="flex items-center gap-2 justify-end">
+                  {(job.status === "pending" || job.status === "failed") && (
+                    <button
+                      onClick={() => handleRunOne(job.id)}
+                      disabled={runOneMutation.isPending}
+                      className="px-3 py-1.5 rounded-lg bg-violet-700 hover:bg-violet-600 text-xs transition"
+                    >
+                      ▶ Run
+                    </button>
+                  )}
+                  {isRunning && (
+                    <span className="px-3 py-1.5 rounded-lg bg-white/5 text-xs text-slate-500">Running...</span>
+                  )}
+                  <button
+                    onClick={() => handleDelete(job.id)}
+                    disabled={deleteMutation.isPending}
+                    className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-red-900/50 hover:text-red-400 text-xs transition text-slate-500"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <p className="text-xs text-slate-700 text-center">
+          Auto-refresh setiap 3 detik. Progress dot: invite → accept → in pool.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Router() {
+  return (
+    <Switch>
+      <Route path="/" component={Panel} />
+    </Switch>
+  );
+}
+
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+          <Router />
+        </WouterRouter>
+        <Toaster />
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+}
+
+export default App;

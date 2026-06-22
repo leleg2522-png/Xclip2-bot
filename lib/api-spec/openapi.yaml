@@ -1,6 +1,5 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
   description: API specification
@@ -10,6 +9,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: invite
+    description: Picsart team invite automation
 paths:
   /healthz:
     get:
@@ -24,6 +25,101 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /invite-jobs:
+    get:
+      operationId: listInviteJobs
+      tags: [invite]
+      summary: List all invite jobs
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InviteJob"
+    post:
+      operationId: createInviteJobs
+      tags: [invite]
+      summary: Add one or more emails to invite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteJobInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InviteJob"
+
+  /invite-jobs/run-all:
+    post:
+      operationId: runAllInviteJobs
+      tags: [invite]
+      summary: Run all pending invite jobs
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunAllResult"
+
+  /invite-jobs/{id}:
+    delete:
+      operationId: deleteInviteJob
+      tags: [invite]
+      summary: Delete an invite job
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /invite-jobs/{id}/run:
+    post:
+      operationId: runInviteJob
+      tags: [invite]
+      summary: Run a specific invite job
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteJob"
+
+  /picsart-slots:
+    get:
+      operationId: getPicsartSlots
+      tags: [invite]
+      summary: Get remaining Picsart team slots
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PicsartSlots"
+
 components:
   schemas:
     HealthStatus:
@@ -33,3 +129,62 @@ components:
           type: string
       required:
         - status
+
+    InviteJob:
+      type: object
+      required: [id, email, status, createdAt]
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        status:
+          type: string
+          enum: [pending, inviting, invited, accepting, accepted, extracting, in_pool, failed]
+        errorMessage:
+          type: ["string", "null"]
+        credentialId:
+          type: ["integer", "null"]
+        invitedAt:
+          type: ["string", "null"]
+        acceptedAt:
+          type: ["string", "null"]
+        pooledAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    InviteJobInput:
+      type: object
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items:
+            type: object
+            required: [email, gmailPassword]
+            properties:
+              email:
+                type: string
+              gmailPassword:
+                type: string
+
+    RunAllResult:
+      type: object
+      required: [queued]
+      properties:
+        queued:
+          type: integer
+
+    PicsartSlots:
+      type: object
+      required: [available, total]
+      properties:
+        available:
+          type: integer
+        total:
+          type: integer
+        members:
+          type: integer

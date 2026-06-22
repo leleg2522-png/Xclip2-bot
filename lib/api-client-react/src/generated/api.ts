@@ -5,18 +5,27 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  HealthStatus,
+  InviteJob,
+  InviteJobInput,
+  PicsartSlots,
+  RunAllResult,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -92,6 +101,491 @@ export function useHealthCheck<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getHealthCheckQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List all invite jobs
+ */
+export const getListInviteJobsUrl = () => {
+  return `/api/invite-jobs`;
+};
+
+export const listInviteJobs = async (
+  options?: RequestInit,
+): Promise<InviteJob[]> => {
+  return customFetch<InviteJob[]>(getListInviteJobsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListInviteJobsQueryKey = () => {
+  return [`/api/invite-jobs`] as const;
+};
+
+export const getListInviteJobsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listInviteJobs>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listInviteJobs>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListInviteJobsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listInviteJobs>>> = ({
+    signal,
+  }) => listInviteJobs({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listInviteJobs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListInviteJobsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listInviteJobs>>
+>;
+export type ListInviteJobsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all invite jobs
+ */
+
+export function useListInviteJobs<
+  TData = Awaited<ReturnType<typeof listInviteJobs>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listInviteJobs>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListInviteJobsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Add one or more emails to invite
+ */
+export const getCreateInviteJobsUrl = () => {
+  return `/api/invite-jobs`;
+};
+
+export const createInviteJobs = async (
+  inviteJobInput: InviteJobInput,
+  options?: RequestInit,
+): Promise<InviteJob[]> => {
+  return customFetch<InviteJob[]>(getCreateInviteJobsUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(inviteJobInput),
+  });
+};
+
+export const getCreateInviteJobsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createInviteJobs>>,
+    TError,
+    { data: BodyType<InviteJobInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createInviteJobs>>,
+  TError,
+  { data: BodyType<InviteJobInput> },
+  TContext
+> => {
+  const mutationKey = ["createInviteJobs"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createInviteJobs>>,
+    { data: BodyType<InviteJobInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createInviteJobs(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateInviteJobsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createInviteJobs>>
+>;
+export type CreateInviteJobsMutationBody = BodyType<InviteJobInput>;
+export type CreateInviteJobsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Add one or more emails to invite
+ */
+export const useCreateInviteJobs = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createInviteJobs>>,
+    TError,
+    { data: BodyType<InviteJobInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createInviteJobs>>,
+  TError,
+  { data: BodyType<InviteJobInput> },
+  TContext
+> => {
+  return useMutation(getCreateInviteJobsMutationOptions(options));
+};
+
+/**
+ * @summary Run all pending invite jobs
+ */
+export const getRunAllInviteJobsUrl = () => {
+  return `/api/invite-jobs/run-all`;
+};
+
+export const runAllInviteJobs = async (
+  options?: RequestInit,
+): Promise<RunAllResult> => {
+  return customFetch<RunAllResult>(getRunAllInviteJobsUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRunAllInviteJobsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runAllInviteJobs>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof runAllInviteJobs>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["runAllInviteJobs"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof runAllInviteJobs>>,
+    void
+  > = () => {
+    return runAllInviteJobs(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RunAllInviteJobsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof runAllInviteJobs>>
+>;
+
+export type RunAllInviteJobsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Run all pending invite jobs
+ */
+export const useRunAllInviteJobs = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runAllInviteJobs>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof runAllInviteJobs>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getRunAllInviteJobsMutationOptions(options));
+};
+
+/**
+ * @summary Delete an invite job
+ */
+export const getDeleteInviteJobUrl = (id: number) => {
+  return `/api/invite-jobs/${id}`;
+};
+
+export const deleteInviteJob = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteInviteJobUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteInviteJobMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteInviteJob>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteInviteJob>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteInviteJob"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteInviteJob>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteInviteJob(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteInviteJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteInviteJob>>
+>;
+
+export type DeleteInviteJobMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete an invite job
+ */
+export const useDeleteInviteJob = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteInviteJob>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteInviteJob>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteInviteJobMutationOptions(options));
+};
+
+/**
+ * @summary Run a specific invite job
+ */
+export const getRunInviteJobUrl = (id: number) => {
+  return `/api/invite-jobs/${id}/run`;
+};
+
+export const runInviteJob = async (
+  id: number,
+  options?: RequestInit,
+): Promise<InviteJob> => {
+  return customFetch<InviteJob>(getRunInviteJobUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRunInviteJobMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runInviteJob>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof runInviteJob>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["runInviteJob"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof runInviteJob>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return runInviteJob(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RunInviteJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof runInviteJob>>
+>;
+
+export type RunInviteJobMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Run a specific invite job
+ */
+export const useRunInviteJob = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runInviteJob>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof runInviteJob>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getRunInviteJobMutationOptions(options));
+};
+
+/**
+ * @summary Get remaining Picsart team slots
+ */
+export const getGetPicsartSlotsUrl = () => {
+  return `/api/picsart-slots`;
+};
+
+export const getPicsartSlots = async (
+  options?: RequestInit,
+): Promise<PicsartSlots> => {
+  return customFetch<PicsartSlots>(getGetPicsartSlotsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPicsartSlotsQueryKey = () => {
+  return [`/api/picsart-slots`] as const;
+};
+
+export const getGetPicsartSlotsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPicsartSlots>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPicsartSlots>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetPicsartSlotsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getPicsartSlots>>> = ({
+    signal,
+  }) => getPicsartSlots({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPicsartSlots>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPicsartSlotsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPicsartSlots>>
+>;
+export type GetPicsartSlotsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get remaining Picsart team slots
+ */
+
+export function useGetPicsartSlots<
+  TData = Awaited<ReturnType<typeof getPicsartSlots>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPicsartSlots>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPicsartSlotsQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
