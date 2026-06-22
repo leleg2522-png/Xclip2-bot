@@ -1,20 +1,21 @@
 import type { Request, Response, NextFunction } from 'express';
 
+const COOKIE_NAME = 'invite_session';
+
 export function adminAuth(req: Request, res: Response, next: NextFunction): void {
   const secret = process.env.INVITE_PANEL_SECRET;
 
   if (!secret) {
     res.status(503).json({
-      error: 'INVITE_PANEL_SECRET env var is not configured. Set it to a strong random token.',
+      error: 'INVITE_PANEL_SECRET env var is not configured on the server.',
     });
     return;
   }
 
-  const auth = req.headers['authorization'] ?? '';
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  const sessionValue = req.cookies?.[COOKIE_NAME] as string | undefined;
 
-  if (!token || token !== secret) {
-    res.status(401).json({ error: 'Unauthorized. Valid Bearer token required.' });
+  if (!sessionValue || sessionValue !== secret) {
+    res.status(401).json({ error: 'Not authenticated. Please log in.' });
     return;
   }
 

@@ -1,10 +1,9 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { setAuthTokenGetter } from "@workspace/api-client-react";
 import {
   useListInviteJobs,
   useCreateInviteJobs,
@@ -16,13 +15,19 @@ import {
   getGetPicsartSlotsQueryKey,
 } from "@workspace/api-client-react";
 
-setAuthTokenGetter(() => (import.meta.env.VITE_INVITE_PANEL_SECRET as string) || null);
-
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { refetchInterval: 3000 } },
+  defaultOptions: { queries: { refetchInterval: 3000, retry: false } },
 });
 
-type JobStatus = "pending" | "inviting" | "invited" | "accepting" | "accepted" | "extracting" | "in_pool" | "failed";
+type JobStatus =
+  | "pending"
+  | "inviting"
+  | "invited"
+  | "accepting"
+  | "accepted"
+  | "extracting"
+  | "in_pool"
+  | "failed";
 
 const STATUS_LABELS: Record<JobStatus, string> = {
   pending: "Pending",
@@ -53,7 +58,10 @@ function StepDot({ done, active }: { done: boolean; active: boolean }) {
 }
 
 function stepsDone(status: JobStatus) {
-  const order: JobStatus[] = ["pending", "inviting", "invited", "accepting", "accepted", "extracting", "in_pool"];
+  const order: JobStatus[] = [
+    "pending", "inviting", "invited", "accepting",
+    "accepted", "extracting", "in_pool",
+  ];
   const idx = order.indexOf(status);
   return {
     invited: idx >= order.indexOf("invited"),
@@ -65,11 +73,87 @@ function stepsDone(status: JobStatus) {
   };
 }
 
-function Panel() {
+function LoginScreen({ onLogin }: { onLogin: () => void }) {
+  const [secret, setSecret] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/invite-auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ secret }),
+      });
+      if (res.ok) {
+        onLogin();
+      } else {
+        const data = (await res.json()) as { error?: string };
+        setError(data.error ?? `Error ${res.status}`);
+      }
+    } catch (e: unknown) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-[#0d0d14] flex items-center justify-center">
+      <div className="w-full max-w-sm">
+        <div className="flex items-center gap-3 justify-center mb-8">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-pink-600 flex items-center justify-center text-lg font-bold">P</div>
+          <div>
+            <h1 className="font-bold text-xl text-white leading-none">Invite Automation</h1>
+            <p className="text-xs text-slate-500 mt-0.5">Picsart HEAD Team Manager</p>
+          </div>
+        </div>
+        <form onSubmit={handleSubmit} className="bg-[#13131f] border border-white/10 rounded-2xl p-6 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1.5">Admin Secret</label>
+            <input
+              type="password"
+              value={secret}
+              onChange={e => setSecret(e.target.value)}
+              placeholder="Enter INVITE_PANEL_SECRET"
+              autoFocus
+              className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-violet-500"
+            />
+          </div>
+          {error && (
+            <div className="text-xs text-red-400 bg-red-900/20 border border-red-900/40 rounded-lg px-3 py-2">{error}</div>
+          )}
+          <button
+            type="submit"
+            disabled={loading || !secret}
+            className="w-full py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-40 transition text-sm font-medium"
+          >
+            {loading ? "Masuk..." : "Masuk"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function isAuthError(status: number) {
+  return status === 401 || status === 503;
+}
+
+function Panel({ onLogout }: { onLogout: () => void }) {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const { data: jobs = [], isLoading: jobsLoading } = useListInviteJobs();
+  const {
+    data: jobs = [],
+    isLoading: jobsLoading,
+    error: jobsError,
+  } = useListInviteJobs();
+
   const { data: slots } = useGetPicsartSlots();
   const createMutation = useCreateInviteJobs();
   const runAllMutation = useRunAllInviteJobs();
@@ -79,9 +163,19 @@ function Panel() {
   const [bulkText, setBulkText] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
 
+  const authFailed =
+    jobsError instanceof Error &&
+    "status" in jobsError &&
+    isAuthError((jobsError as { status: number }).status);
+
   function invalidate() {
     qc.invalidateQueries({ queryKey: getListInviteJobsQueryKey() });
     qc.invalidateQueries({ queryKey: getGetPicsartSlotsQueryKey() });
+  }
+
+  async function handleLogout() {
+    await fetch("/api/invite-auth/logout", { method: "POST", credentials: "include" });
+    onLogout();
   }
 
   async function handleAdd() {
@@ -138,9 +232,17 @@ function Panel() {
     }
   }
 
+  if (authFailed) {
+    return (
+      <div className="min-h-screen bg-[#0d0d14] flex items-center justify-center text-slate-500 text-sm">
+        Sesi habis. <button onClick={onLogout} className="ml-1 underline text-violet-400">Login ulang</button>
+      </div>
+    );
+  }
+
   const pending = jobs.filter(j => j.status === "pending" || j.status === "failed").length;
   const inPool = jobs.filter(j => j.status === "in_pool").length;
-  const running = jobs.filter(j => ["inviting","accepting","extracting"].includes(j.status)).length;
+  const running = jobs.filter(j => ["inviting", "accepting", "extracting"].includes(j.status)).length;
 
   return (
     <div className="min-h-screen bg-[#0d0d14] text-white font-sans">
@@ -157,7 +259,9 @@ function Panel() {
             {slots && (
               <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm">
                 <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                <span className="text-slate-300"><span className="text-white font-semibold">{slots.available}</span> slot tersisa</span>
+                <span className="text-slate-300">
+                  <span className="text-white font-semibold">{slots.available}</span> slot tersisa
+                </span>
               </div>
             )}
             <button
@@ -173,12 +277,17 @@ function Panel() {
             >
               {runAllMutation.isPending ? "Starting..." : `▶ Run All (${pending})`}
             </button>
+            <button
+              onClick={handleLogout}
+              className="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-slate-500 transition"
+            >
+              Keluar
+            </button>
           </div>
         </div>
       </div>
 
       <div className="max-w-5xl mx-auto px-6 py-6 space-y-5">
-        {/* Stats */}
         <div className="grid grid-cols-4 gap-3">
           {[
             { label: "Total", value: jobs.length, color: "text-white" },
@@ -193,10 +302,11 @@ function Panel() {
           ))}
         </div>
 
-        {/* Add Form */}
         {showAddForm && (
           <div className="bg-[#13131f] border border-white/10 rounded-xl p-5 space-y-3">
-            <h2 className="font-semibold text-sm text-slate-300">Tambah Email (satu per baris: email,password)</h2>
+            <h2 className="font-semibold text-sm text-slate-300">
+              Tambah Email (satu per baris: email,password)
+            </h2>
             <textarea
               value={bulkText}
               onChange={e => setBulkText(e.target.value)}
@@ -221,7 +331,6 @@ function Panel() {
           </div>
         )}
 
-        {/* Jobs Table */}
         <div className="bg-[#13131f] border border-white/10 rounded-xl overflow-hidden">
           <div className="grid grid-cols-[1fr_140px_auto_auto] gap-0 text-xs font-medium text-slate-500 uppercase tracking-wider px-5 py-3 border-b border-white/5">
             <div>Email</div>
@@ -242,11 +351,13 @@ function Panel() {
 
           {jobs.map((job, i) => {
             const steps = stepsDone(job.status as JobStatus);
-            const isRunning = ["inviting","accepting","extracting"].includes(job.status);
+            const isRunning = ["inviting", "accepting", "extracting"].includes(job.status);
             return (
               <div
                 key={job.id}
-                className={`grid grid-cols-[1fr_140px_auto_auto] gap-4 items-center px-5 py-3.5 ${i < jobs.length - 1 ? "border-b border-white/5" : ""}`}
+                className={`grid grid-cols-[1fr_140px_auto_auto] gap-4 items-center px-5 py-3.5 ${
+                  i < jobs.length - 1 ? "border-b border-white/5" : ""
+                }`}
               >
                 <div className="min-w-0">
                   <div className="text-sm font-medium text-white truncate">{job.email}</div>
@@ -254,12 +365,18 @@ function Panel() {
                     <div className="text-xs text-red-400 mt-0.5 truncate">{job.errorMessage}</div>
                   )}
                   {job.pooledAt && (
-                    <div className="text-xs text-emerald-500 mt-0.5">✓ Masuk pool — cred #{job.credentialId}</div>
+                    <div className="text-xs text-emerald-500 mt-0.5">
+                      ✓ Masuk pool — cred #{job.credentialId}
+                    </div>
                   )}
                 </div>
 
                 <div>
-                  <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[job.status as JobStatus] ?? "bg-slate-700 text-slate-300"}`}>
+                  <span
+                    className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${
+                      STATUS_COLORS[job.status as JobStatus] ?? "bg-slate-700 text-slate-300"
+                    }`}
+                  >
                     {STATUS_LABELS[job.status as JobStatus] ?? job.status}
                   </span>
                 </div>
@@ -283,7 +400,9 @@ function Panel() {
                     </button>
                   )}
                   {isRunning && (
-                    <span className="px-3 py-1.5 rounded-lg bg-white/5 text-xs text-slate-500">Running...</span>
+                    <span className="px-3 py-1.5 rounded-lg bg-white/5 text-xs text-slate-500">
+                      Running...
+                    </span>
                   )}
                   <button
                     onClick={() => handleDelete(job.id)}
@@ -306,10 +425,26 @@ function Panel() {
   );
 }
 
-function Router() {
+function AppInner() {
+  const [authenticated, setAuthenticated] = useState(false);
+
+  const handleLogin = useCallback(() => {
+    setAuthenticated(true);
+    queryClient.invalidateQueries();
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    setAuthenticated(false);
+    queryClient.clear();
+  }, []);
+
+  if (!authenticated) {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
+
   return (
     <Switch>
-      <Route path="/" component={Panel} />
+      <Route path="/" component={() => <Panel onLogout={handleLogout} />} />
     </Switch>
   );
 }
@@ -319,7 +454,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
+          <AppInner />
         </WouterRouter>
         <Toaster />
       </TooltipProvider>
