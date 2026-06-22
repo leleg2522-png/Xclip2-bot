@@ -133,26 +133,42 @@ export async function runJob(jobId: number): Promise<InviteJobRow> {
 
   (async () => {
     try {
-      if (job.status === 'pending' || job.status === 'failed') {
+      // Re-fetch so we have the latest timestamps, not the snapshot from before the lock.
+      const freshR = await db.query(`SELECT * FROM invite_jobs WHERE id = $1`, [jobId]);
+      const fresh = freshR.rows[0] as InviteJobRow;
+
+      // Determine remaining steps from persisted progress, not from status string.
+      // This makes retries resume at the last incomplete step.
+      const needsInvite  = !fresh.invited_at;
+      const needsAccept  = !fresh.accepted_at;
+      const needsExtract = !fresh.pooled_at;
+
+      const plainPassword = isEncrypted(fresh.gmail_password)
+        ? decrypt(fresh.gmail_password)
+        : fresh.gmail_password;
+
+      if (needsInvite) {
         await setStatus(jobId, 'inviting');
-        await inviteEmailToPicsart(ownerEmail, ownerPassword, job.email);
+        try {
+          await inviteEmailToPicsart(ownerEmail, ownerPassword, fresh.email);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          // Already a member → invite already went through; treat as success.
+          if (!msg.includes('INVITE_ALREADY_MEMBER')) throw err;
+        }
         await setStatus(jobId, 'invited', { invitedAt: true });
       }
 
-      const plainPassword = isEncrypted(job.gmail_password)
-        ? decrypt(job.gmail_password)
-        : job.gmail_password;
-
-      if (job.status !== 'accepted' && job.status !== 'extracting' && job.status !== 'in_pool') {
+      if (needsAccept) {
         await setStatus(jobId, 'accepting');
-        await acceptPicsartInviteFromGmail(job.email, plainPassword);
+        await acceptPicsartInviteFromGmail(fresh.email, plainPassword);
         await setStatus(jobId, 'accepted', { acceptedAt: true });
       }
 
-      if (job.status !== 'in_pool') {
+      if (needsExtract) {
         await setStatus(jobId, 'extracting');
-        const rt = await extractPicsartRefreshToken(job.email, plainPassword);
-        const credId = await insertRefreshToken(job.email, rt);
+        const rt = await extractPicsartRefreshToken(fresh.email, plainPassword);
+        const credId = await insertRefreshToken(fresh.email, rt);
         await setStatus(jobId, 'in_pool', { pooledAt: true, credentialId: credId });
       }
     } catch (err: unknown) {
