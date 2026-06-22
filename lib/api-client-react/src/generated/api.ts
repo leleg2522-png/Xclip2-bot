@@ -24,6 +24,8 @@ import type {
   InviteJob,
   InviteJobInput,
   PicsartSlots,
+  ProxySettings,
+  ProxySettingsInput,
   RunAllResult,
 } from "./api.schemas";
 
@@ -756,4 +758,165 @@ export const useUpdateDbSettings = <
   TContext
 > => {
   return useMutation(getUpdateDbSettingsMutationOptions(options));
+};
+
+/**
+ * @summary Get the configured residential proxy country
+ */
+export const getGetProxySettingsUrl = () => {
+  return `/api/settings/proxy`;
+};
+
+export const getProxySettings = async (
+  options?: RequestInit,
+): Promise<ProxySettings> => {
+  return customFetch<ProxySettings>(getGetProxySettingsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetProxySettingsQueryKey = () => {
+  return [`/api/settings/proxy`] as const;
+};
+
+export const getGetProxySettingsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getProxySettings>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getProxySettings>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetProxySettingsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getProxySettings>>
+  > = ({ signal }) => getProxySettings({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getProxySettings>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetProxySettingsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getProxySettings>>
+>;
+export type GetProxySettingsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get the configured residential proxy country
+ */
+
+export function useGetProxySettings<
+  TData = Awaited<ReturnType<typeof getProxySettings>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getProxySettings>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetProxySettingsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Set the residential proxy country used for browser tasks
+ */
+export const getUpdateProxySettingsUrl = () => {
+  return `/api/settings/proxy`;
+};
+
+export const updateProxySettings = async (
+  proxySettingsInput: ProxySettingsInput,
+  options?: RequestInit,
+): Promise<ProxySettings> => {
+  return customFetch<ProxySettings>(getUpdateProxySettingsUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(proxySettingsInput),
+  });
+};
+
+export const getUpdateProxySettingsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateProxySettings>>,
+    TError,
+    { data: BodyType<ProxySettingsInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateProxySettings>>,
+  TError,
+  { data: BodyType<ProxySettingsInput> },
+  TContext
+> => {
+  const mutationKey = ["updateProxySettings"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateProxySettings>>,
+    { data: BodyType<ProxySettingsInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return updateProxySettings(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateProxySettingsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateProxySettings>>
+>;
+export type UpdateProxySettingsMutationBody = BodyType<ProxySettingsInput>;
+export type UpdateProxySettingsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Set the residential proxy country used for browser tasks
+ */
+export const useUpdateProxySettings = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateProxySettings>>,
+    TError,
+    { data: BodyType<ProxySettingsInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateProxySettings>>,
+  TError,
+  { data: BodyType<ProxySettingsInput> },
+  TContext
+> => {
+  return useMutation(getUpdateProxySettingsMutationOptions(options));
 };

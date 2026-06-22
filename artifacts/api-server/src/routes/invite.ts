@@ -11,6 +11,9 @@ import {
   GetDbSettingsResponse,
   UpdateDbSettingsBody,
   UpdateDbSettingsResponse,
+  GetProxySettingsResponse,
+  UpdateProxySettingsBody,
+  UpdateProxySettingsResponse,
 } from '@workspace/api-zod';
 import {
   listJobs,
@@ -21,6 +24,9 @@ import {
   ensureInviteSchema,
   getDbSettings,
   setRailwayDbUrl,
+  getProxySettings,
+  setProxyCountry,
+  applyProxyCountry,
 } from '../lib/invite-runner.js';
 import { getPicsartTeamSlots } from '../lib/browser-use.js';
 
@@ -120,8 +126,30 @@ router.put('/settings/db', async (req, res) => {
   }
 });
 
+router.get('/settings/proxy', async (_req, res) => {
+  try {
+    const settings = await getProxySettings();
+    const data = GetProxySettingsResponse.parse(settings);
+    res.json(data);
+  } catch (err: unknown) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+router.put('/settings/proxy', async (req, res) => {
+  try {
+    const body = UpdateProxySettingsBody.parse(req.body);
+    const result = await setProxyCountry(body.country);
+    const data = UpdateProxySettingsResponse.parse(result);
+    res.json(data);
+  } catch (err: unknown) {
+    res.status(400).json({ error: String(err) });
+  }
+});
+
 router.get('/picsart-slots', async (_req, res) => {
   try {
+    await applyProxyCountry();
     const ownerEmail = process.env.PICSART_OWNER_EMAIL;
     const ownerPassword = process.env.PICSART_OWNER_PASSWORD;
     if (!ownerEmail || !ownerPassword) {

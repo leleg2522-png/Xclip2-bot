@@ -2,9 +2,14 @@ import axios from 'axios';
 
 const BROWSER_USE_API_KEY = process.env.BROWSER_USE_API_KEY;
 const BROWSER_USE_BASE = 'https://api.browser-use.com/api/v2';
-// Residential proxy country. Defaults to Indonesia ("id") so the login location
-// matches the Indonesian accounts and avoids "unusual activity" blocks.
-const PROXY_COUNTRY = (process.env.BROWSER_USE_PROXY_COUNTRY || 'id').trim().toLowerCase();
+// Residential proxy country. Defaults to Indonesia ("id"); can be changed at
+// runtime from the panel via setActiveProxyCountry(). Routing through a clean
+// residential IP avoids Picsart/Google "unusual activity" login blocks.
+let activeProxyCountry = (process.env.BROWSER_USE_PROXY_COUNTRY || 'id').trim().toLowerCase();
+
+export function setActiveProxyCountry(cc: string): void {
+  activeProxyCountry = (cc || '').trim().toLowerCase();
+}
 
 const http = axios.create({ timeout: 30_000 });
 
@@ -20,7 +25,7 @@ async function createTask(description: string, sensitiveData?: Record<string, st
 
   const body: Record<string, unknown> = { task: description };
   if (sensitiveData) body.secrets = sensitiveData;
-  if (PROXY_COUNTRY) body.sessionSettings = { proxyCountryCode: PROXY_COUNTRY };
+  if (activeProxyCountry) body.sessionSettings = { proxyCountryCode: activeProxyCountry };
 
   const r = await http.post(`${BROWSER_USE_BASE}/tasks`, body, {
     headers: {

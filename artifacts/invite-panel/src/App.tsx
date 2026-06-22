@@ -13,9 +13,12 @@ import {
   useGetPicsartSlots,
   useGetDbSettings,
   useUpdateDbSettings,
+  useGetProxySettings,
+  useUpdateProxySettings,
   getListInviteJobsQueryKey,
   getGetPicsartSlotsQueryKey,
   getGetDbSettingsQueryKey,
+  getGetProxySettingsQueryKey,
 } from "@workspace/api-client-react";
 
 const queryClient = new QueryClient({
@@ -245,6 +248,76 @@ function DbSettingsCard({ onClose }: { onClose: () => void }) {
   );
 }
 
+const PROXY_COUNTRIES: { code: string; label: string }[] = [
+  { code: "id", label: "🇮🇩 Indonesia" },
+  { code: "sg", label: "🇸🇬 Singapura" },
+  { code: "us", label: "🇺🇸 Amerika Serikat" },
+  { code: "gb", label: "🇬🇧 Inggris (UK)" },
+  { code: "au", label: "🇦🇺 Australia" },
+  { code: "de", label: "🇩🇪 Jerman" },
+  { code: "fr", label: "🇫🇷 Prancis" },
+  { code: "jp", label: "🇯🇵 Jepang" },
+  { code: "ca", label: "🇨🇦 Kanada" },
+  { code: "in", label: "🇮🇳 India" },
+];
+
+function ProxySettingsCard({ onClose }: { onClose: () => void }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const { data: settings } = useGetProxySettings();
+  const updateMutation = useUpdateProxySettings();
+  const current = settings?.country ?? "id";
+
+  async function handleSelect(country: string) {
+    if (country === current) return;
+    try {
+      await updateMutation.mutateAsync({ data: { country } });
+      const label = PROXY_COUNTRIES.find(c => c.code === country)?.label ?? country.toUpperCase();
+      toast({ title: "Negara proxy diganti", description: `Sekarang pakai ${label}. Jalankan ulang job-nya.` });
+      qc.invalidateQueries({ queryKey: getGetProxySettingsQueryKey() });
+    } catch (e: unknown) {
+      toast({ title: "Gagal ganti proxy", description: String(e), variant: "destructive" });
+    }
+  }
+
+  return (
+    <div className="bg-[#13131f] border border-violet-500/30 rounded-xl p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold text-sm text-white">Negara Proxy (IP)</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Pilih negara IP buat login — seperti milih negara di VPN. Kalau kena blokir "unusual activity", coba ganti negara lalu jalankan ulang.
+          </p>
+        </div>
+        <button onClick={onClose} className="text-slate-500 hover:text-white text-sm px-2">✕</button>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        {PROXY_COUNTRIES.map(c => {
+          const active = c.code === current;
+          return (
+            <button
+              key={c.code}
+              onClick={() => handleSelect(c.code)}
+              disabled={updateMutation.isPending}
+              className={`px-3 py-2.5 rounded-lg text-sm font-medium transition text-left border disabled:opacity-40 ${
+                active
+                  ? "bg-violet-600 border-violet-400 text-white"
+                  : "bg-black/30 border-white/10 text-slate-300 hover:border-violet-500/50"
+              }`}
+            >
+              {c.label}
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-xs text-slate-600">
+        Proxy residential ganti IP tiap dijalankan. Kalau satu negara masih keblokir, ganti negara lain & coba lagi.
+      </p>
+    </div>
+  );
+}
+
 function Panel({ onLogout }: { onLogout: () => void }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -264,6 +337,7 @@ function Panel({ onLogout }: { onLogout: () => void }) {
   const [bulkText, setBulkText] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
   const [showDbSettings, setShowDbSettings] = useState(false);
+  const [showProxySettings, setShowProxySettings] = useState(false);
 
   const authFailed =
     jobsError instanceof Error &&
@@ -380,6 +454,13 @@ function Panel({ onLogout }: { onLogout: () => void }) {
               {runAllMutation.isPending ? "Starting..." : `▶ Run All (${pending})`}
             </button>
             <button
+              onClick={() => setShowProxySettings(s => !s)}
+              className="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-slate-400 transition"
+              title="Negara proxy (IP)"
+            >
+              🌐 Proxy
+            </button>
+            <button
               onClick={() => setShowDbSettings(s => !s)}
               className="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-slate-400 transition"
               title="Pengaturan DB Railway"
@@ -410,6 +491,8 @@ function Panel({ onLogout }: { onLogout: () => void }) {
             </div>
           ))}
         </div>
+
+        {showProxySettings && <ProxySettingsCard onClose={() => setShowProxySettings(false)} />}
 
         {showDbSettings && <DbSettingsCard onClose={() => setShowDbSettings(false)} />}
 

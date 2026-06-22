@@ -99,3 +99,16 @@ export interface DbSettingsResult {
   urlMasked?: string | null;
   source: DbSettingsResultSource;
 }
+
+export interface ProxySettings {
+  /** Two-letter residential proxy country code (e.g. id, us, gb, sg). */
+  country: string;
+}
+
+export interface ProxySettingsInput {
+  /**
+   * Two-letter residential proxy country code to route browser tasks through.
+   * @pattern ^[A-Za-z]{2}$
+   */
+  country: string;
+}

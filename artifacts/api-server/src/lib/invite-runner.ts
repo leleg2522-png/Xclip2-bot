@@ -1,5 +1,5 @@
 import pg from 'pg';
-import { inviteEmailToPicsart, acceptPicsartInviteFromGmail, extractPicsartRefreshToken } from './browser-use.js';
+import { inviteEmailToPicsart, acceptPicsartInviteFromGmail, extractPicsartRefreshToken, setActiveProxyCountry } from './browser-use.js';
 import { encrypt, decrypt, isEncrypted } from './crypto.js';
 
 const { Pool } = pg;
@@ -142,6 +142,35 @@ async function setSetting(key: string, value: string): Promise<void> {
      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
     [key, value]
   );
+}
+
+const DEFAULT_PROXY_COUNTRY = (process.env.BROWSER_USE_PROXY_COUNTRY || 'id').trim().toLowerCase();
+
+export interface ProxySettings {
+  country: string;
+}
+
+export async function getProxyCountry(): Promise<string> {
+  const stored = (await getSetting('proxy_country'))?.trim().toLowerCase();
+  return stored || DEFAULT_PROXY_COUNTRY;
+}
+
+/** Load the configured proxy country from the DB into the browser-use module. */
+export async function applyProxyCountry(): Promise<string> {
+  const cc = await getProxyCountry();
+  setActiveProxyCountry(cc);
+  return cc;
+}
+
+export async function getProxySettings(): Promise<ProxySettings> {
+  return { country: await getProxyCountry() };
+}
+
+export async function setProxyCountry(rawCountry: string): Promise<ProxySettings> {
+  const cc = (rawCountry || '').trim().toLowerCase();
+  await setSetting('proxy_country', cc);
+  setActiveProxyCountry(cc || DEFAULT_PROXY_COUNTRY);
+  return { country: cc || DEFAULT_PROXY_COUNTRY };
 }
 
 function maskDbUrl(url: string): string {
@@ -301,6 +330,9 @@ export async function runJob(jobId: number): Promise<InviteJobRow> {
 
   (async () => {
     try {
+      // Apply the configured residential proxy country before any browser task.
+      await applyProxyCountry();
+
       // Re-fetch so we have the latest timestamps, not the snapshot from before the lock.
       const freshR = await db.query(`SELECT * FROM invite_jobs WHERE id = $1`, [jobId]);
       const fresh = freshR.rows[0] as InviteJobRow;

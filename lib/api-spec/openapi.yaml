@@ -156,6 +156,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/DbSettingsResult"
 
+  /settings/proxy:
+    get:
+      operationId: getProxySettings
+      tags: [invite]
+      summary: Get the configured residential proxy country
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxySettings"
+    put:
+      operationId: updateProxySettings
+      tags: [invite]
+      summary: Set the residential proxy country used for browser tasks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProxySettingsInput"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxySettings"
+
 components:
   schemas:
     HealthStatus:
@@ -260,3 +290,20 @@ components:
         source:
           type: string
           enum: [panel, env, none]
+
+    ProxySettings:
+      type: object
+      required: [country]
+      properties:
+        country:
+          type: string
+          description: Two-letter residential proxy country code (e.g. id, us, gb, sg).
+
+    ProxySettingsInput:
+      type: object
+      required: [country]
+      properties:
+        country:
+          type: string
+          pattern: "^[A-Za-z]{2}$"
+          description: Two-letter residential proxy country code to route browser tasks through.

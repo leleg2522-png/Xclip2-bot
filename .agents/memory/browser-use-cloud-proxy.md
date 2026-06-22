@@ -21,8 +21,15 @@ anomalous → Google/Picsart issues an "unusual activity" challenge the agent
 cannot pass. Matching the proxy country to the account's real region makes the
 login look normal.
 
-**How to apply:** Set `proxyCountryCode` to the account's country. In this repo
-it is wired via env `BROWSER_USE_PROXY_COUNTRY` (default `id`) in
-`artifacts/api-server/src/lib/browser-use.ts`. If a country code is rejected,
-the create call fails fast with a 422 (does NOT consume agent-task quota), so an
-invalid code is distinguishable from a real run by how quickly it errors.
+**How to apply:** Set `proxyCountryCode` to the desired country. The country is
+**user-selectable from the invite panel** (a `🌐 Proxy` card) and persisted in
+`app_settings` (key `proxy_country`); it overrides env `BROWSER_USE_PROXY_COUNTRY`
+(default `id`). It is applied at job start and before the slots check. If a country
+code is rejected, the create call fails fast with a 422 (does NOT consume
+agent-task quota), so an invalid code is distinguishable from a real run by how
+quickly it errors.
+
+**Operational note:** For THIS user the block turned out to be plain IP-based, not
+a region-mismatch — the user confirmed any VPN country unblocked the login. So the
+fix is "rotate to a clean IP / different country and re-run", which is why country
+selection was surfaced to the panel rather than hard-coded to the account region.

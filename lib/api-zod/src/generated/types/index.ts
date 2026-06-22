@@ -17,4 +17,6 @@ export * from "./inviteJobInput";
 export * from "./inviteJobInputEntriesItem";
 export * from "./inviteJobStatus";
 export * from "./picsartSlots";
+export * from "./proxySettings";
+export * from "./proxySettingsInput";
 export * from "./runAllResult";

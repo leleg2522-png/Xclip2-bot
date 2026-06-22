@@ -132,3 +132,36 @@ export const UpdateDbSettingsResponse = zod.object({
   urlMasked: zod.string().nullish(),
   source: zod.enum(["panel", "env", "none"]),
 });
+
+/**
+ * @summary Get the configured residential proxy country
+ */
+export const GetProxySettingsResponse = zod.object({
+  country: zod
+    .string()
+    .describe(
+      "Two-letter residential proxy country code (e.g. id, us, gb, sg).",
+    ),
+});
+
+/**
+ * @summary Set the residential proxy country used for browser tasks
+ */
+export const updateProxySettingsBodyCountryRegExp = new RegExp("^[A-Za-z]{2}$");
+
+export const UpdateProxySettingsBody = zod.object({
+  country: zod
+    .string()
+    .regex(updateProxySettingsBodyCountryRegExp)
+    .describe(
+      "Two-letter residential proxy country code to route browser tasks through.",
+    ),
+});
+
+export const UpdateProxySettingsResponse = zod.object({
+  country: zod
+    .string()
+    .describe(
+      "Two-letter residential proxy country code (e.g. id, us, gb, sg).",
+    ),
+});
