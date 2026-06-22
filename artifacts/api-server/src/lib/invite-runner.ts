@@ -1,5 +1,6 @@
 import pg from 'pg';
 import { inviteEmailToPicsart, acceptPicsartInviteFromGmail, extractPicsartRefreshToken } from './browser-use.js';
+import { encrypt, decrypt, isEncrypted } from './crypto.js';
 
 const { Pool } = pg;
 
@@ -138,15 +139,19 @@ export async function runJob(jobId: number): Promise<InviteJobRow> {
         await setStatus(jobId, 'invited', { invitedAt: true });
       }
 
+      const plainPassword = isEncrypted(job.gmail_password)
+        ? decrypt(job.gmail_password)
+        : job.gmail_password;
+
       if (job.status !== 'accepted' && job.status !== 'extracting' && job.status !== 'in_pool') {
         await setStatus(jobId, 'accepting');
-        await acceptPicsartInviteFromGmail(job.email, job.gmail_password);
+        await acceptPicsartInviteFromGmail(job.email, plainPassword);
         await setStatus(jobId, 'accepted', { acceptedAt: true });
       }
 
       if (job.status !== 'in_pool') {
         await setStatus(jobId, 'extracting');
-        const rt = await extractPicsartRefreshToken(job.email, job.gmail_password);
+        const rt = await extractPicsartRefreshToken(job.email, plainPassword);
         const credId = await insertRefreshToken(job.email, rt);
         await setStatus(jobId, 'in_pool', { pooledAt: true, credentialId: credId });
       }
@@ -189,6 +194,7 @@ export async function createJobs(entries: Array<{ email: string; gmailPassword: 
   const db = getPool();
   const result: InviteJobRow[] = [];
   for (const { email, gmailPassword } of entries) {
+    const encryptedPassword = encrypt(gmailPassword);
     const r = await db.query(
       `INSERT INTO invite_jobs (email, gmail_password, status)
        VALUES ($1, $2, 'pending')
@@ -198,7 +204,7 @@ export async function createJobs(entries: Array<{ email: string; gmailPassword: 
              updated_at = NOW()
        RETURNING id, email, status, error_message, credential_id,
                  invited_at, accepted_at, pooled_at, created_at, updated_at`,
-      [email, gmailPassword]
+      [email, encryptedPassword]
     );
     result.push(r.rows[0] as InviteJobRow);
   }

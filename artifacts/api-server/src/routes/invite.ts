@@ -1,4 +1,5 @@
 import { Router, type IRouter } from 'express';
+import { adminAuth } from '../middleware/admin-auth.js';
 import {
   ListInviteJobsResponse,
   CreateInviteJobsBody,
@@ -19,6 +20,8 @@ import {
 import { getPicsartTeamSlots } from '../lib/browser-use.js';
 
 const router: IRouter = Router();
+
+router.use(adminAuth);
 
 ensureInviteSchema().catch((err: unknown) => {
   console.error('[invite] schema init failed:', err);

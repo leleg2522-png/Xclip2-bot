@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
+import { setAuthTokenGetter } from "@workspace/api-client-react";
 import {
   useListInviteJobs,
   useCreateInviteJobs,
@@ -14,6 +15,8 @@ import {
   getListInviteJobsQueryKey,
   getGetPicsartSlotsQueryKey,
 } from "@workspace/api-client-react";
+
+setAuthTokenGetter(() => (import.meta.env.VITE_INVITE_PANEL_SECRET as string) || null);
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchInterval: 3000 } },
