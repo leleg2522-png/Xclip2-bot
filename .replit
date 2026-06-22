@@ -43,6 +43,7 @@ externalPort = 3001
 
 [userenv.shared]
 RAILWAY_DATABASE_URL = "postgresql://postgres:rBrxtKAUzKigajhEdsniEpcHmMifoKXt@interchange.proxy.rlwy.net:58650/railway"
+CREDENTIAL_ENCRYPTION_KEY = "wtLjmyZck2ve0oESKeKypOhdw+lFkGuiAh0XbNd3L4Y="
 
 [nix]
 channel = "stable-25_05"
