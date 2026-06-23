@@ -234,3 +234,9 @@ id = "pRi3j3RgmcqJmV25iqKFL"
 uri = "file://picsart-local-runner.zip"
 type = "unspecified"
 title = "Picsart Local Runner — Proof Login (download & jalanin di PC)"
+
+[[outputs]]
+id = "338MMTh9ipu4RoB9722W-"
+uri = "file://proof-login-baru.zip"
+type = "unspecified"
+title = "proof-login.js versi baru (extract, lalu timpa file lama)"
