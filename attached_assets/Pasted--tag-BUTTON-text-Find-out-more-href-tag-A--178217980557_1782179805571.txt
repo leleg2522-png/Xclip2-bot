@@ -1,0 +1,287 @@
+[
+  {
+    "tag": "BUTTON",
+    "text": "Find out more",
+    "href": ""
+  },
+  {
+    "tag": "A",
+    "text": "",
+    "href": "/"
+  },
+  {
+    "tag": "DIV",
+    "text": "AI Image",
+    "href": ""
+  },
+  {
+    "tag": "DIV",
+    "text": "AI Video",
+    "href": ""
+  },
+  {
+    "tag": "DIV",
+    "text": "Library",
+    "href": ""
+  },
+  {
+    "tag": "DIV",
+    "text": "Solutions",
+    "href": ""
+  },
+  {
+    "tag": "DIV",
+    "text": "Community",
+    "href": ""
+  },
+  {
+    "tag": "A",
+    "text": "MCP & CLI",
+    "href": "/gen-ai-cli/"
+  },
+  {
+    "tag": "A",
+    "text": "Pricing",
+    "href": "/pricing/"
+  },
+  {
+    "tag": "BUTTON",
+    "text": "Start creating",
+    "href": ""
+  },
+  {
+    "tag": "BUTTON",
+    "text": "Log in",
+    "href": ""
+  },
+  {
+    "tag": "A",
+    "text": "Start creating",
+    "href": "/"
+  },
+  {
+    "tag": "A",
+    "text": "Picsart Flow Build creative workflows that do the heavy lifting for you",
+    "href": "/flow/"
+  },
+  {
+    "tag": "A",
+    "text": "Picsart Aura Chat your vision into visuals — just describe what you see",
+    "href": "/aura/"
+  },
+  {
+    "tag": "A",
+    "text": "AI Video Editor Turn any idea into a scroll-stopping video in minutes",
+    "href": "/ai-video-editor/"
+  },
+  {
+    "tag": "A",
+    "text": "AI Photo Editor Give your photos a glow-up with one-tap AI magic",
+    "href": "/ai-photo-editor/"
+  },
+  {
+    "tag": "A",
+    "text": "Picsart Persona Create AI-powered portraits that look just like you",
+    "href": "/persona/"
+  },
+  {
+    "tag": "A",
+    "text": "Picsart Storyline Turn your stories into stunning visual narratives",
+    "href": "/storyline/"
+  },
+  {
+    "tag": "A",
+    "text": "",
+    "href": "https://picsart.com/"
+  },
+  {
+    "tag": "A",
+    "text": "",
+    "href": "https://apps.apple.com/us/app/picsart-photo-studio/id587366035"
+  },
+  {
+    "tag": "A",
+    "text": "",
+    "href": "https://play.google.com/store/apps/details?id=com.picsart.studio"
+  },
+  {
+    "tag": "A",
+    "text": "",
+    "href": "https://apps.microsoft.com/store/detail/9WZDNCRFJ10M?launch=true&mode=mini"
+  },
+  {
+    "tag": "A",
+    "text": "",
+    "href": "https://www.facebook.com/picsart"
+  },
+  {
+    "tag": "A",
+    "text": "",
+    "href": "https://twitter.com/picsart"
+  },
+  {
+    "tag": "A",
+    "text": "",
+    "href": "https://www.instagram.com/picsart"
+  },
+  {
+    "tag": "A",
+    "text": "",
+    "href": "https://www.linkedin.com/company/picsart/mycompany/"
+  },
+  {
+    "tag": "A",
+    "text": "",
+    "href": "https://www.youtube.com/picsart"
+  },
+  {
+    "tag": "A",
+    "text": "",
+    "href": "https://www.pinterest.com/picsart"
+  },
+  {
+    "tag": "A",
+    "text": "",
+    "href": "https://pastatic.picsart.com/cms-pastatic/35d70240-6029-4b47-a874-c1e72b8247cb.pdf"
+  },
+  {
+    "tag": "A",
+    "text": "Image Tools",
+    "href": "https://picsart.com/image-tools/"
+  },
+  {
+    "tag": "A",
+    "text": "Video Tools",
+    "href": "https://picsart.com/video-tools/"
+  },
+  {
+    "tag": "A",
+    "text": "Design Tools",
+    "href": "https://picsart.com/design-tools/"
+  },
+  {
+    "tag": "A",
+    "text": "AI Tools",
+    "href": "https://picsart.com/ai-tools/"
+  },
+  {
+    "tag": "A",
+    "text": "Templates",
+    "href": "https://picsart.com/templates"
+  },
+  {
+    "tag": "A",
+    "text": "Colors",
+    "href": "https://picsart.com/colors"
+  },
+  {
+    "tag": "A",
+    "text": "Fonts",
+    "href": "https://picsart.com/fonts"
+  },
+  {
+    "tag": "A",
+    "text": "For Enterprise",
+    "href": "https://picsart.com/solutions/enterprise/"
+  },
+  {
+    "tag": "A",
+    "text": "For Developers",
+    "href": "https://picsart.io/?utm_source=picsart.com&utm_medium=referral&utm_campaign=navigation"
+  },
+  {
+    "tag": "A",
+    "text": "For Google Drive",
+    "href": "https://workspace.google.com/marketplace/app/picsart/228592224036"
+  },
+  {
+    "tag": "A",
+    "text": "For specific Industries",
+    "href": "https://picsart.com/industries"
+  },
+  {
+    "tag": "A",
+    "text": "Quicktools",
+    "href": "https://tools.picsart.com/"
+  },
+  {
+    "tag": "A",
+    "text": "AI Avatar",
+    "href": "https://picsart.com/ai-avatar"
+  },
+  {
+    "tag": "A",
+    "text": "Pricing",
+    "href": "https://picsart.com/pricing/"
+  },
+  {
+    "tag": "A",
+    "text": "Support",
+    "href": "https://support.picsart.com/"
+  },
+  {
+    "tag": "A",
+    "text": "Careers",
+    "href": "https://picsart.com/jobs"
+  },
+  {
+    "tag": "A",
+    "text": "About us",
+    "href": "https://picsart.com/about-us"
+  },
+  {
+    "tag": "A",
+    "text": "Affiliate Program",
+    "href": "https://picsart.com/affiliates"
+  },
+  {
+    "tag": "A",
+    "text": "Blog",
+    "href": "https://picsart.com/blog"
+  },
+  {
+    "tag": "A",
+    "text": "Press Center",
+    "href": "https://picsart.com/press-kit"
+  },
+  {
+    "tag": "A",
+    "text": "Terms of Use",
+    "href": "https://picsart.com/terms-of-use/"
+  },
+  {
+    "tag": "A",
+    "text": "Privacy Policy",
+    "href": "https://picsart.com/privacy-policy/"
+  },
+  {
+    "tag": "A",
+    "text": "Do Not Sell",
+    "href": "https://privacy.picsart.com/optout/"
+  },
+  {
+    "tag": "A",
+    "text": "Interest-Based Advertising",
+    "href": "https://picsart.com/privacy-policy#interest-based"
+  },
+  {
+    "tag": "A",
+    "text": "Community Guidelines",
+    "href": "https://picsart.com/community-guidelines/"
+  },
+  {
+    "tag": "A",
+    "text": "DMCA",
+    "href": "https://picsart.com/copyright-dispute-policy/"
+  },
+  {
+    "tag": "A",
+    "text": "Security Policy",
+    "href": "https://picsart.com/security-policy/"
+  },
+  {
+    "tag": "A",
+    "text": "Accessibility",
+    "href": "https://picsart.com/accessibility-statement/"
+  }
+]
