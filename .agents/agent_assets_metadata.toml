@@ -228,3 +228,9 @@ id = "CNqJ6YEYFMNqLYpOZrS-U"
 uri = "file://test_results/gpt_person_only.png"
 type = "image"
 title = "GPT Image 2 — Hanya foto karakter + deskripsi baju di prompt"
+
+[[outputs]]
+id = "pRi3j3RgmcqJmV25iqKFL"
+uri = "file://picsart-local-runner.zip"
+type = "unspecified"
+title = "Picsart Local Runner — Proof Login (download & jalanin di PC)"
