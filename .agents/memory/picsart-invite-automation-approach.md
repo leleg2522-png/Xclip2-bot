@@ -57,3 +57,23 @@ succeeded through Surfshark (2026-06-23).
 - For local-runner, the reliable proven sub-flow so far is semi-manual: script auto-logs into
   Google, then PAUSES (readline ENTER) for the user to do the Picsart "Continue with Google"
   clicks, then auto-extracts the token. Automate the clicks only after this is proven.
+
+# PROVEN END-TO-END (2026-06-23)
+
+- Semi-manual local-runner SUCCEEDED: Google auto-login (Surfshark) + manual Picsart "Continue
+  with Google" + auto cookie read → REFRESH_TOKEN captured into token-found.txt. Both the
+  "unusual activity" block and the Picsart-login failure are defeated. Tahap 2 done.
+- **The REFRESH_TOKEN cookie value is PERCENT-ENCODED** as read from Playwright `context.cookies()`:
+  it looks like `rt%3A...` (where `%3A` = `:`). Before inserting into the bot pool or validating
+  `startsWith("rt:")`, run `decodeURIComponent(value)` → `rt:...`.
+  **Why:** the bot's existing extract expects a raw `rt:` value; storing the encoded form would
+  break token use downstream.
+
+# Avoid the manual file-replace trap (recurring failure)
+
+- The user repeatedly re-ran the OLD script because replacing a single .js file on Windows kept
+  failing. Fix: `run.bat` now SELF-UPDATES — it curls the latest `proof-login.js` from the
+  api-server download endpoint (dev-domain `/api/download/proof-login.js`) on every run, then
+  runs it. So future script changes only require updating the server copy in
+  `artifacts/api-server/downloads/` — the user just re-clicks run.bat, no manual replace.
+  Caveat: the dev-domain endpoint only serves while the Repl/api-server workflow is running.
