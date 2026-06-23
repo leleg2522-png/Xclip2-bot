@@ -248,30 +248,44 @@ async function extractTokenWithRetry(context, tries = 5, gapMs = 2000) {
 }
 
 async function picsartFlow(context, page, cfg) {
-  log("STEP B", `Buka Picsart: ${cfg.picsartLoginUrl}`);
+  // ---- STEP B1: BUKA GMAIL DULU buat terima undangan tim Pro ----
+  log("STEP B1", "Buka Gmail dulu buat TERIMA UNDANGAN...");
+  await page.goto("https://mail.google.com/mail/u/0/", { waitUntil: "domcontentloaded", timeout: 60000 });
+  await page.waitForTimeout(4000);
+  await shot(page, "gmail-inbox");
+
+  console.log("\n   ----------------------------------------------------------");
+  console.log("   >>> LANGKAH 1: TERIMA UNDANGAN DI GMAIL <<<");
+  console.log("   ----------------------------------------------------------");
+  console.log("   1. Di jendela Gmail yg kebuka, cari email dari PICSART");
+  console.log('      (subjeknya soal undangan tim / "join team / invitation").');
+  console.log("   2. Buka email-nya, klik tombol \"Accept\" / \"Join team\".");
+  console.log("   3. Tunggu sampai muncul konfirmasi kamu udah gabung tim Pro.");
+  console.log("   ----------------------------------------------------------");
+  console.log("   (Kalau emailnya belum ada, pastikan HEAD udah ngirim undangan dulu.)");
+  console.log("");
+
+  await waitForEnter("   >> KALAU UNDANGAN UDAH DITERIMA di Gmail, tekan ENTER... ");
+
+  // ---- STEP B2: LANJUT KE PICSART buat login (kalau belum) ----
+  log("STEP B2", `Buka Picsart: ${cfg.picsartLoginUrl}`);
   await page.goto(cfg.picsartLoginUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
   await page.waitForTimeout(4000);
   await shot(page, "picsart-home");
 
   console.log("\n   ----------------------------------------------------------");
-  console.log("   >>> SEKARANG GILIRAN KAMU: LOGIN + TERIMA UNDANGAN <<<");
+  console.log("   >>> LANGKAH 2: LOGIN KE PICSART <<<");
   console.log("   ----------------------------------------------------------");
-  console.log('   1. Di jendela browser yg kebuka, klik "Log in".');
-  console.log('   2. Klik "Continue with Google".');
-  console.log(`   3. Pilih akun: ${cfg.googleEmail}`);
-  console.log('   4. Kalau ada layar "Picsart ingin mengakses..." klik Continue/Allow.');
-  console.log("   5. Tunggu sampai kebuka halaman Picsart (sudah masuk).");
-  console.log("");
-  console.log("   ===> PENTING: TERIMA UNDANGAN TIM PRO DULU <===");
-  console.log("   6. Buka Gmail akun ini, cari email undangan dari Picsart,");
-  console.log('      klik tombol "Accept" / "Join team".');
-  console.log('      (Atau kalau di Picsart muncul notif "Join team", klik itu.)');
-  console.log("   7. Pastikan akun udah jadi anggota tim Pro (bukan Free lagi).");
+  console.log('   1. Kalau belum masuk, klik "Log in" -> "Continue with Google".');
+  console.log(`   2. Pilih akun: ${cfg.googleEmail}`);
+  console.log('   3. Kalau ada layar "Picsart ingin mengakses..." klik Continue/Allow.');
+  console.log("   4. Tunggu sampai kebuka halaman Picsart (sudah masuk).");
+  console.log("   5. Pastikan akun udah Pro (bukan Free lagi).");
   console.log("   ----------------------------------------------------------");
   console.log("   Login Google kamu udah aktif, jadi tinggal pilih akun aja.");
   console.log("");
 
-  await waitForEnter("   >> KALAU SUDAH MASUK PICSART + TERIMA UNDANGAN, tekan ENTER... ");
+  await waitForEnter("   >> KALAU SUDAH MASUK PICSART, tekan ENTER... ");
 
   await page.bringToFront().catch(() => {});
   await page.waitForTimeout(1500);
