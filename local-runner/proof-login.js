@@ -166,6 +166,103 @@ async function clickGoogleButton(page) {
   return false;
 }
 
+/** Di layar "Pilih akun" Google: klik akun yg cocok, lalu klik Continue/Allow kalau ada. */
+async function selectGoogleAccount(scope, cfg) {
+  await scope.waitForTimeout(2500);
+  await clickFirst(scope, [
+    (p) => p.getByText(cfg.googleEmail, { exact: false }),
+    (p) => p.locator(`[data-identifier="${cfg.googleEmail}" i]`),
+    (p) => p.locator('div[role="link"]'),
+    (p) => p.locator('li'),
+  ], 6000);
+  // Layar izin "Picsart ingin mengakses..." -> Continue/Allow/Izinkan
+  await scope.waitForTimeout(2500);
+  await clickFirst(scope, [
+    (p) => p.getByRole("button", { name: /continue|allow|izinkan|lanjut(kan)?|setuju|agree/i }),
+    (p) => p.getByText(/^(continue|allow|izinkan|lanjutkan|setuju)$/i),
+  ], 5000);
+}
+
+/** AUTO: buka Gmail, buka email undangan Picsart, klik Accept/Join. true kalau ke-klik. */
+async function autoAcceptInviteGmail(context, page, cfg) {
+  await page.goto("https://mail.google.com/mail/u/0/#search/picsart", {
+    waitUntil: "domcontentloaded",
+    timeout: 60000,
+  });
+  await page.waitForTimeout(6000);
+  await shot(page, "gmail-search");
+
+  // Buka email pertama yg nyangkut "picsart".
+  const opened = await clickFirst(page, [
+    (p) => p.locator('tr.zA').filter({ hasText: /picsart/i }).first(),
+    (p) => p.locator('tr.zA').first(),
+    (p) => p.getByText(/picsart/i).first(),
+  ], 8000);
+  if (!opened) return false;
+  await page.waitForTimeout(4000);
+  await shot(page, "gmail-email-open");
+
+  // Tombol Accept/Join bisa di body email ATAU di iframe email.
+  const scopes = [page, ...page.frames()];
+  let clicked = false;
+  let popup = null;
+  for (const sc of scopes) {
+    const res = await Promise.all([
+      context.waitForEvent("page", { timeout: 6000 }).catch(() => null),
+      clickFirst(sc, [
+        (p) => p.getByRole("link", { name: /accept|join team|join|terima|gabung/i }),
+        (p) => p.getByRole("button", { name: /accept|join team|join|terima|gabung/i }),
+        (p) => p.getByText(/accept invitation|join team|accept|join|terima undangan/i),
+      ], 4000),
+    ]);
+    popup = res[0];
+    clicked = res[1];
+    if (clicked) break;
+  }
+  if (!clicked) return false;
+
+  // Kalau klik Accept buka tab baru ke Picsart, mungkin minta pilih akun Google.
+  if (popup) {
+    await popup.waitForTimeout(4000).catch(() => {});
+    await selectGoogleAccount(popup, cfg).catch(() => {});
+    await popup.waitForTimeout(3000).catch(() => {});
+  } else {
+    await page.waitForTimeout(3000);
+  }
+  return true;
+}
+
+/** AUTO: buka Picsart, login lewat Continue with Google. true kalau cookie token muncul. */
+async function autoLoginPicsart(context, page, cfg) {
+  await page.goto(cfg.picsartLoginUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+  await page.waitForTimeout(4000);
+  await shot(page, "picsart-home");
+
+  // Kalau udah otomatis login (dari accept tadi), cookie token mungkin udah ada.
+  let cookies = await context.cookies();
+  if (cookies.some((c) => c.name === "REFRESH_TOKEN")) return true;
+
+  // Klik "Log in" kalau ada (kadang langsung muncul form).
+  await clickFirst(page, [
+    (p) => p.getByRole("button", { name: /^log ?in$|^sign ?in$|masuk/i }),
+    (p) => p.getByRole("link", { name: /^log ?in$|^sign ?in$|masuk/i }),
+    (p) => p.getByText(/^log ?in$/i),
+  ], 4000);
+  await page.waitForTimeout(2500);
+
+  // Klik "Continue with Google" — bisa buka popup ATAU redirect di tab yg sama.
+  const [popup] = await Promise.all([
+    context.waitForEvent("page", { timeout: 7000 }).catch(() => null),
+    clickGoogleButton(page),
+  ]);
+  const target = popup || page;
+  await selectGoogleAccount(target, cfg).catch(() => {});
+
+  await page.waitForTimeout(6000);
+  cookies = await context.cookies();
+  return cookies.some((c) => c.name === "REFRESH_TOKEN");
+}
+
 async function extractToken(context) {
   const cookies = await context.cookies();
   const rt = cookies.find((c) => c.name === "REFRESH_TOKEN");
