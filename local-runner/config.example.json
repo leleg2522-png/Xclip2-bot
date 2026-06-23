@@ -1,5 +1,7 @@
 {
   "picsartLoginUrl": "https://picsart.com/login",
   "googleEmail": "ganti-dengan-email-akun@workspacekamu.com",
-  "googlePassword": "password-seragam-akun-undangan"
+  "googlePassword": "password-seragam-akun-undangan",
+  "apiBaseUrl": "https://2582ab98-7591-47d0-9afb-78f266758bf4-00-24gl24vxcm7oq.sisko.replit.dev",
+  "uploadSecret": "isi-dengan-INVITE_PANEL_SECRET-biar-token-otomatis-masuk-pool"
 }

@@ -1,8 +1,9 @@
 /*
- * Picsart Local Runner — PROOF v4 (login Picsart MANUAL).
+ * Picsart Local Runner — PROOF v5 (login MANUAL + terima undangan + auto kirim ke pool).
  *   STEP A -> login Google langsung (accounts.google.com)        [SUDAH TERBUKTI JALAN]
- *   STEP B -> buka Picsart, lalu BERHENTI: kamu login manual (Continue with Google), tekan ENTER
+ *   STEP B -> buka Picsart, BERHENTI: kamu login manual + TERIMA UNDANGAN tim Pro, tekan ENTER
  *   STEP C -> ambil cookie REFRESH_TOKEN (rt:...) dan simpan ke token-found.txt
+ *   STEP D -> kirim token Pro ke pool bot (kalau apiBaseUrl + uploadSecret diisi di config.json)
  *
  * PASTIKAN SURFSHARK NYALA. Jalanin lewat run.bat atau: node proof-login.js
  * Screenshot tiap langkah ada di folder ./screenshots
@@ -181,6 +182,38 @@ async function extractToken(context) {
   return null;
 }
 
+/** Kirim token ke pool bot lewat endpoint server (kalau config-nya ada). */
+async function uploadToPool(cfg, rawToken) {
+  if (!cfg.apiBaseUrl || !cfg.uploadSecret) {
+    console.log("   [POOL] Lewati upload (apiBaseUrl / uploadSecret belum diisi di config.json).");
+    console.log("   [POOL] Token tetap tersimpan di token-found.txt (bisa dimasukin manual).");
+    return;
+  }
+  // Decode token percent-encoded (rt%3A... -> rt:...) sebelum dikirim.
+  let token = String(rawToken || "").trim();
+  if (/%[0-9a-f]{2}/i.test(token)) {
+    try { token = decodeURIComponent(token); } catch (_) {}
+  }
+  const url = cfg.apiBaseUrl.replace(/\/+$/, "") + "/api/local-token";
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-upload-secret": cfg.uploadSecret },
+      body: JSON.stringify({ email: cfg.googleEmail, token }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok && data.ok) {
+      console.log(`   [POOL] ✅ Token MASUK ke pool bot (id=${data.credentialId}).`);
+    } else {
+      console.log(`   [POOL] ⛔ Gagal kirim ke pool: ${data.error || ("HTTP " + resp.status)}`);
+      console.log("   [POOL] Token tetap aman di token-found.txt.");
+    }
+  } catch (e) {
+    console.log(`   [POOL] ⛔ Gagal hubungi server: ${e.message}`);
+    console.log("   [POOL] Token tetap aman di token-found.txt.");
+  }
+}
+
 /** Tunggu user tekan ENTER di console. */
 function waitForEnter(promptMsg) {
   return new Promise((resolve) => {
@@ -211,18 +244,24 @@ async function picsartFlow(context, page, cfg) {
   await shot(page, "picsart-home");
 
   console.log("\n   ----------------------------------------------------------");
-  console.log("   >>> SEKARANG GILIRAN KAMU: LOGIN MANUAL KE PICSART <<<");
+  console.log("   >>> SEKARANG GILIRAN KAMU: LOGIN + TERIMA UNDANGAN <<<");
   console.log("   ----------------------------------------------------------");
   console.log('   1. Di jendela browser yg kebuka, klik "Log in".');
   console.log('   2. Klik "Continue with Google".');
   console.log(`   3. Pilih akun: ${cfg.googleEmail}`);
   console.log('   4. Kalau ada layar "Picsart ingin mengakses..." klik Continue/Allow.');
   console.log("   5. Tunggu sampai kebuka halaman Picsart (sudah masuk).");
+  console.log("");
+  console.log("   ===> PENTING: TERIMA UNDANGAN TIM PRO DULU <===");
+  console.log("   6. Buka Gmail akun ini, cari email undangan dari Picsart,");
+  console.log('      klik tombol "Accept" / "Join team".');
+  console.log('      (Atau kalau di Picsart muncul notif "Join team", klik itu.)');
+  console.log("   7. Pastikan akun udah jadi anggota tim Pro (bukan Free lagi).");
   console.log("   ----------------------------------------------------------");
   console.log("   Login Google kamu udah aktif, jadi tinggal pilih akun aja.");
   console.log("");
 
-  await waitForEnter("   >> KALAU SUDAH MASUK PICSART, balik ke sini & tekan ENTER... ");
+  await waitForEnter("   >> KALAU SUDAH MASUK PICSART + TERIMA UNDANGAN, tekan ENTER... ");
 
   await page.bringToFront().catch(() => {});
   await page.waitForTimeout(1500);
@@ -257,6 +296,10 @@ async function main() {
     console.log(`\n   Hasil login Google: ${gres.ok === true ? "✅" : gres.ok === false ? "⛔" : "❓"} ${gres.reason}`);
     if (gres.ok === true) {
       token = await picsartFlow(context, page, cfg);
+      if (token) {
+        console.log("\n[STEP D] Kirim token ke pool bot...");
+        await uploadToPool(cfg, token);
+      }
     }
   } catch (err) {
     console.error("\n[GAGAL] " + err.message);

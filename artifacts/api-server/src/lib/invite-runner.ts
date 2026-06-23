@@ -276,7 +276,7 @@ async function setStatus(id: number, status: InviteStatus, extra?: {
   await db.query(`UPDATE invite_jobs SET ${parts.join(', ')} WHERE id = $1`, params);
 }
 
-async function insertRefreshToken(email: string, rt: string): Promise<number> {
+export async function insertRefreshToken(email: string, rt: string): Promise<number> {
   const db = await getTargetPool();
 
   let token = rt.trim();
