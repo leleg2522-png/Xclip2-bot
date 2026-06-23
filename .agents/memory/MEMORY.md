@@ -2,4 +2,5 @@
 - [Picsart AI Playground internal API](picsart-ai-playground-api.md) — undocumented upload→submit→poll flow; auth is fragile browser session cookie (expires); HAR sanitizes cookies, use Copy-as-cURL
 - [Browser Use Cloud v2 proxy](browser-use-cloud-proxy.md) — "unusual activity" login block = proxy-region mismatch; set sessionSettings.proxyCountryCode to account's country (default proxy is US)
 - [Telegram bot self-hosted result links](telegram-bot-media-links.md) — big results bypass Telegram's ~50MB cap via /dl/:token on own Railway domain; storage is ephemeral tmpdir so links die on redeploy
+- [Picsart invite automation approach](picsart-invite-automation-approach.md) — cloud Browser Use proxies get "unusual activity" blocked; winning path is local-run on user's Windows PC via Surfshark + stealth Chrome
 - [Invite-panel two-DB architecture](invite-panel-db-architecture.md) — panel state in local Replit PG; configurable Railway target DB string stored encrypted in app_settings (UI-set), masked in responses, never in .replit
