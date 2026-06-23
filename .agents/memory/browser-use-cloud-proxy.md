@@ -29,6 +29,14 @@ code is rejected, the create call fails fast with a 422 (does NOT consume
 agent-task quota), so an invalid code is distinguishable from a real run by how
 quickly it errors.
 
+**Country code gotcha:** Browser Use's `proxyCountryCode` enum uses **`uk`** for
+the United Kingdom, NOT the ISO-3166 `gb`. Sending `gb` → 422
+`enum` validation error before any task runs. Other codes match ISO (id, sg, us,
+au, de, fr, jp, ca, in all valid). To dump the full valid enum cheaply, POST a
+create-task with an invalid code like `zz` — the 422 body lists every accepted
+code and does NOT burn quota. (A *valid* probe code DOES create a real task and
+burns one — don't probe with valid codes.)
+
 **Operational note:** For THIS user the block turned out to be plain IP-based, not
 a region-mismatch — the user confirmed any VPN country unblocked the login. So the
 fix is "rotate to a clean IP / different country and re-run", which is why country

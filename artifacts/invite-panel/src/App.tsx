@@ -252,7 +252,7 @@ const PROXY_COUNTRIES: { code: string; label: string }[] = [
   { code: "id", label: "🇮🇩 Indonesia" },
   { code: "sg", label: "🇸🇬 Singapura" },
   { code: "us", label: "🇺🇸 Amerika Serikat" },
-  { code: "gb", label: "🇬🇧 Inggris (UK)" },
+  { code: "uk", label: "🇬🇧 Inggris (UK)" },
   { code: "au", label: "🇦🇺 Australia" },
   { code: "de", label: "🇩🇪 Jerman" },
   { code: "fr", label: "🇫🇷 Prancis" },
