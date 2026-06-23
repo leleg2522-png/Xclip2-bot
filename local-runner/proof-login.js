@@ -164,13 +164,44 @@ async function extractToken(context) {
     console.log(`   [TOKEN] REFRESH_TOKEN ketemu: ${masked}  (disimpan ke token-found.txt)`);
     return rt.value;
   }
-  // Debug: tulis nama-nama cookie yang ada.
+  // Debug: tulis nama + domain + awalan value tiap cookie biar token bisa diidentifikasi.
   fs.writeFileSync(
     path.join(SHOTS_DIR, "_debug-cookies.txt"),
-    JSON.stringify(cookies.map((c) => ({ name: c.name, domain: c.domain })), null, 2)
+    JSON.stringify(
+      cookies.map((c) => ({
+        name: c.name,
+        domain: c.domain,
+        valuePreview: (c.value || "").slice(0, 14),
+      })),
+      null,
+      2
+    )
   );
-  console.log("   [TOKEN] REFRESH_TOKEN BELUM ketemu (lihat _debug-cookies.txt). Berarti belum login penuh.");
+  console.log("   [TOKEN] REFRESH_TOKEN BELUM ketemu (lihat _debug-cookies.txt).");
   return null;
+}
+
+/** Tunggu user tekan ENTER di console. */
+function waitForEnter(promptMsg) {
+  return new Promise((resolve) => {
+    const readline = require("readline");
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(promptMsg, () => {
+      rl.close();
+      resolve();
+    });
+  });
+}
+
+/** Coba ambil token berulang (polling) selama beberapa detik. */
+async function extractTokenWithRetry(context, tries = 5, gapMs = 2000) {
+  for (let i = 0; i < tries; i++) {
+    const cookies = await context.cookies();
+    const rt = cookies.find((c) => c.name === "REFRESH_TOKEN");
+    if (rt && rt.value) return await extractToken(context);
+    if (i < tries - 1) await new Promise((r) => setTimeout(r, gapMs));
+  }
+  return await extractToken(context);
 }
 
 async function picsartFlow(context, page, cfg) {
@@ -179,61 +210,26 @@ async function picsartFlow(context, page, cfg) {
   await page.waitForTimeout(4000);
   await shot(page, "picsart-home");
 
-  log("STEP B", 'Klik tombol "Log in" buat buka modal login...');
-  const loginOpened = await clickFirst(page, [
-    (p) => p.getByRole("button", { name: /^\s*log in\s*$/i }),
-    (p) => p.getByText(/^\s*log in\s*$/i),
-    (p) => p.getByRole("link", { name: /^\s*log in\s*$/i }),
-  ]);
-  if (!loginOpened) {
-    await dumpClickables(page, "_debug-home.txt");
-    await shot(page, "picsart-login-button-not-found");
-    console.log('   [STEP B] Tombol "Log in" tidak ketemu (lihat _debug-home.txt).');
-    return;
-  }
-  await page.waitForTimeout(4000);
-  await shot(page, "picsart-login-modal");
+  console.log("\n   ----------------------------------------------------------");
+  console.log("   >>> SEKARANG GILIRAN KAMU: LOGIN MANUAL KE PICSART <<<");
+  console.log("   ----------------------------------------------------------");
+  console.log('   1. Di jendela browser yg kebuka, klik "Log in".');
+  console.log('   2. Klik "Continue with Google".');
+  console.log(`   3. Pilih akun: ${cfg.googleEmail}`);
+  console.log('   4. Kalau ada layar "Picsart ingin mengakses..." klik Continue/Allow.');
+  console.log("   5. Tunggu sampai kebuka halaman Picsart (sudah masuk).");
+  console.log("   ----------------------------------------------------------");
+  console.log("   Login Google kamu udah aktif, jadi tinggal pilih akun aja.");
+  console.log("");
 
-  log("STEP B", 'Cari & klik "Continue with Google" di modal...');
-  const popupPromise = context.waitForEvent("page", { timeout: 9000 }).catch(() => null);
-  const gClicked = await clickGoogleButton(page);
-  if (!gClicked) {
-    await dumpClickables(page, "_debug-modal.txt");
-    await shot(page, "picsart-google-not-found");
-    console.log('   [STEP B] Tombol "Continue with Google" belum ketemu (lihat _debug-modal.txt).');
-    return;
-  }
-
-  // OAuth Google bisa POPUP atau redirect tab yang sama. Karena udah login Google,
-  // tinggal pilih akun / lanjut otomatis.
-  let gpage = await popupPromise;
-  if (gpage) {
-    log("STEP B", "Popup OAuth kebuka, milih akun...");
-    await gpage.waitForLoadState("domcontentloaded").catch(() => {});
-    await gpage.waitForTimeout(2500);
-    await shot(gpage, "oauth-account-chooser");
-    await clickFirst(gpage, [
-      (p) => p.getByText(cfg.googleEmail, { exact: false }),
-      (p) => p.getByRole("button", { name: /continue|allow|izinkan|lanjut/i }),
-    ], 6000);
-    await gpage.waitForTimeout(5000);
-  } else {
-    log("STEP B", "OAuth di tab yang sama, milih akun...");
-    await page.waitForTimeout(2500);
-    await shot(page, "oauth-account-chooser");
-    await clickFirst(page, [
-      (p) => p.getByText(cfg.googleEmail, { exact: false }),
-      (p) => p.getByRole("button", { name: /continue|allow|izinkan|lanjut/i }),
-    ], 6000);
-    await page.waitForTimeout(5000);
-  }
+  await waitForEnter("   >> KALAU SUDAH MASUK PICSART, balik ke sini & tekan ENTER... ");
 
   await page.bringToFront().catch(() => {});
-  await page.waitForTimeout(6000);
+  await page.waitForTimeout(1500);
   await shot(page, "picsart-after-login");
 
   log("STEP C", "Ambil cookie REFRESH_TOKEN...");
-  return await extractToken(context);
+  return await extractTokenWithRetry(context);
 }
 
 async function main() {
