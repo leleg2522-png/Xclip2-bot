@@ -20,6 +20,13 @@ const SHOTS_DIR = path.join(__dirname, "screenshots");
 const GOOGLE_LOGIN_URL =
   "https://accounts.google.com/v3/signin/identifier?flowName=GlifWebSignIn&flowEntry=ServiceLogin&continue=https://myaccount.google.com/";
 
+// Default tujuan upload token ke pool bot. Sudah ketanam di sini biar FULL-AUTO:
+// user nggak perlu ngisi config.json. Bisa di-override lewat config.json kalau mau.
+// Catatan: ini BUKAN password panel — cuma kunci khusus upload token.
+const DEFAULT_API_BASE =
+  "https://2582ab98-7591-47d0-9afb-78f266758bf4-00-24gl24vxcm7oq.sisko.replit.dev";
+const DEFAULT_UPLOAD_KEY = "pcs-pool-uplink-3f9Kq7Zm2Wp8Lx";
+
 function loadConfig() {
   const configPath = path.join(__dirname, "config.json");
   if (!fs.existsSync(configPath)) {
@@ -32,6 +39,9 @@ function loadConfig() {
     process.exit(1);
   }
   cfg.picsartLoginUrl = cfg.picsartLoginUrl || "https://picsart.com/";
+  // FULL-AUTO: pakai default kalau config.json nggak ngisi (nggak perlu diisi).
+  cfg.apiBaseUrl = cfg.apiBaseUrl || DEFAULT_API_BASE;
+  cfg.uploadSecret = cfg.uploadSecret || DEFAULT_UPLOAD_KEY;
   return cfg;
 }
 

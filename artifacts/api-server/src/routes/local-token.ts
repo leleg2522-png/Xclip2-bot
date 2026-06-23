@@ -4,16 +4,20 @@ import { insertRefreshToken } from "../lib/invite-runner.js";
 const router: IRouter = Router();
 
 router.post("/local-token", async (req, res) => {
-  // Prefer a dedicated upload secret so the local runner does not need the panel
-  // login secret. Falls back to INVITE_PANEL_SECRET so existing configs keep working.
-  const secret = process.env.LOCAL_TOKEN_UPLOAD_SECRET || process.env.INVITE_PANEL_SECRET;
-  if (!secret) {
-    res.status(503).json({ error: "No upload secret is configured on the server." });
-    return;
-  }
+  // Accepted upload secrets, in order of preference:
+  //  1. LOCAL_TOKEN_UPLOAD_SECRET  (dedicated, set via env if you want a private key)
+  //  2. INVITE_PANEL_SECRET        (panel login secret — backwards compatible)
+  //  3. BAKED_UPLOAD_KEY           (constant baked into the public local-runner so it
+  //     works FULL-AUTO with zero config; upload-only scope, never grants panel access)
+  const BAKED_UPLOAD_KEY = "pcs-pool-uplink-3f9Kq7Zm2Wp8Lx";
+  const accepted = [
+    process.env.LOCAL_TOKEN_UPLOAD_SECRET,
+    process.env.INVITE_PANEL_SECRET,
+    BAKED_UPLOAD_KEY,
+  ].filter((s): s is string => Boolean(s));
 
   const provided = (req.header("x-upload-secret") || "").trim();
-  if (provided !== secret) {
+  if (!provided || !accepted.includes(provided)) {
     res.status(401).json({ error: "Invalid upload secret." });
     return;
   }
