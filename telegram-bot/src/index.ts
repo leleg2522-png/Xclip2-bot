@@ -325,9 +325,27 @@ function isLeonardoKeyExhaustedError(raw: string): boolean {
     || lower.includes('forbidden') || lower.includes('403') || lower.includes('token limit');
 }
 
-// ─── Kling Daily Limit ────────────────────────────────────────────────────────
+// ─── Generate Cooldown ────────────────────────────────────────────────────────
 
-const KLING_DAILY_LIMIT = 5;
+const GEN_COOLDOWN_MS = 3 * 60 * 1000; // cooldown 3 menit setelah generate berhasil
+const lastGenSuccessAt = new Map<number, number>();
+
+function getCooldownRemainingMs(userId: number): number {
+  const last = lastGenSuccessAt.get(userId);
+  if (last === undefined) return 0;
+  return Math.max(0, GEN_COOLDOWN_MS - (Date.now() - last));
+}
+
+function formatCooldown(ms: number): string {
+  const totalSec = Math.ceil(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return m > 0 ? `${m} menit ${s} detik` : `${s} detik`;
+}
+
+function markGenSuccess(userId: number): void {
+  lastGenSuccessAt.set(userId, Date.now());
+}
 
 async function getKlingUsageToday(dbUserId: number): Promise<number> {
   const res = await db.query(
@@ -958,12 +976,11 @@ bot.command('status', async (ctx) => {
     getKlingUsageToday(session.dbUserId),
   ]);
   const keys = session.assignedKeys ?? [];
-  const klingRemaining = Math.max(0, KLING_DAILY_LIMIT - klingUsed);
   return ctx.reply(
     `👤 *Akun:* ${session.dbUsername}\n` +
     `📦 *Langganan:* ${active ? '✅ Aktif' : '❌ Tidak aktif / expired'}\n` +
     `🔑 *API Key:* ${keys.length} key ditetapkan\n` +
-    `🕹️ *Kling hari ini:* ${klingUsed}/${KLING_DAILY_LIMIT} (sisa: ${klingRemaining})`,
+    `🕹️ *Generate hari ini:* ${klingUsed}`,
     { parse_mode: 'Markdown' }
   );
 });
@@ -1889,10 +1906,10 @@ bot.on('video', async (ctx) => {
     if (vid.file_size && vid.file_size > MAX_VIDEO_BYTES) {
       return ctx.reply(`❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
     }
-    const used = await getKlingUsageToday(session.dbUserId!);
-    if (used >= KLING_DAILY_LIMIT) {
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
       setSession(userId, { mode: 'idle' });
-      return ctx.reply(`❌ Limit harian Kling Motion Control sudah habis!\n\n📊 Terpakai: *${used}/${KLING_DAILY_LIMIT}* generate hari ini.\n🕛 Reset otomatis besok.`, { parse_mode: 'Markdown' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
     }
     const klingModel = session.klingModel ?? 'v3';
     setSession(userId, { mode: 'idle' });
@@ -1976,10 +1993,10 @@ bot.on('text', async (ctx) => {
     if (!prompt) {
       return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
     }
-    const used = await getKlingUsageToday(session.dbUserId!);
-    if (used >= KLING_DAILY_LIMIT) {
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
       setSession(userId, { mode: 'idle' });
-      return ctx.reply(`❌ Limit harian video sudah habis!\n\n📊 Terpakai: *${used}/${KLING_DAILY_LIMIT}* generate hari ini.\n🕛 Reset otomatis besok.`, { parse_mode: 'Markdown' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
     }
     const opts = {
       inputMode: session.seedanceInputMode ?? 't2v',
@@ -2003,10 +2020,10 @@ bot.on('text', async (ctx) => {
     if (!prompt) {
       return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
     }
-    const used = await getKlingUsageToday(session.dbUserId!);
-    if (used >= KLING_DAILY_LIMIT) {
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
       setSession(userId, { mode: 'idle' });
-      return ctx.reply(`❌ Limit harian video sudah habis!\n\n📊 Terpakai: *${used}/${KLING_DAILY_LIMIT}* generate hari ini.\n🕛 Reset otomatis besok.`, { parse_mode: 'Markdown' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
     }
     if (!session.grokImageUrl) {
       setSession(userId, { mode: 'idle' });
@@ -2031,10 +2048,10 @@ bot.on('text', async (ctx) => {
     if (!prompt) {
       return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
     }
-    const used = await getKlingUsageToday(session.dbUserId!);
-    if (used >= KLING_DAILY_LIMIT) {
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
       setSession(userId, { mode: 'idle' });
-      return ctx.reply(`❌ Limit harian video sudah habis!\n\n📊 Terpakai: *${used}/${KLING_DAILY_LIMIT}* generate hari ini.\n🕛 Reset otomatis besok.`, { parse_mode: 'Markdown' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
     }
     if (!session.kvtImageUrl) {
       setSession(userId, { mode: 'idle' });
@@ -2060,10 +2077,10 @@ bot.on('text', async (ctx) => {
     if (!prompt) {
       return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
     }
-    const used = await getKlingUsageToday(session.dbUserId!);
-    if (used >= KLING_DAILY_LIMIT) {
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
       setSession(userId, { mode: 'idle' });
-      return ctx.reply(`❌ Limit harian video sudah habis!\n\n📊 Terpakai: *${used}/${KLING_DAILY_LIMIT}* generate hari ini.\n🕛 Reset otomatis besok.`, { parse_mode: 'Markdown' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
     }
     if (!session.kv3StartImageUrl) {
       setSession(userId, { mode: 'idle' });
@@ -2133,10 +2150,10 @@ bot.on('document', async (ctx) => {
     if (doc.file_size && doc.file_size > MAX_VIDEO_BYTES) {
       return ctx.reply(`❌ Video terlalu besar (${(doc.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
     }
-    const used = await getKlingUsageToday(session.dbUserId!);
-    if (used >= KLING_DAILY_LIMIT) {
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
       setSession(userId, { mode: 'idle' });
-      return ctx.reply(`❌ Limit harian Kling Motion Control sudah habis!\n\n📊 Terpakai: *${used}/${KLING_DAILY_LIMIT}* generate hari ini.\n🕛 Reset otomatis besok.`, { parse_mode: 'Markdown' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
     }
     const klingModel = session.klingModel ?? 'v3';
     setSession(userId, { mode: 'idle' });
@@ -2247,12 +2264,12 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
     });
 
     const newCount = await incrementKlingUsage(dbUserId);
-    const remaining = Math.max(0, KLING_DAILY_LIMIT - newCount);
+    markGenSuccess(userId);
     const doneLabel = result.usedModel === 'v3' ? 'Kling v3.0' : 'Kling v2.6';
     const fallbackNote = result.usedModel !== klingModel ? ' (v2.6 belum tersedia — otomatis pakai v3.0)' : '';
-    await sendResult(chatId, result.url, `🕹️ ${doneLabel} Motion Control${fallbackNote}\n📊 Generate hari ini: ${newCount}/${KLING_DAILY_LIMIT} (sisa: ${remaining})\n\n/menu untuk buat lagi`, true);
+    await sendResult(chatId, result.url, `🕹️ ${doneLabel} Motion Control${fallbackNote}\n⏳ Cooldown 3 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`, true);
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] ${label} done via Picsart as ${result.usedModel} (usage: ${newCount}/${KLING_DAILY_LIMIT}, credits used: ${result.credits ?? '?'})`);
+    console.log(`[${userId}] ${label} done via Picsart as ${result.usedModel} (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
 
   } catch (err: any) {
     const msg = err?.message ?? String(err);
@@ -2338,15 +2355,15 @@ async function runSeedance(
     });
 
     const newCount = await incrementKlingUsage(dbUserId);
-    const remaining = Math.max(0, KLING_DAILY_LIMIT - newCount);
+    markGenSuccess(userId);
     await sendResult(
       chatId,
       result.url,
-      `🎬 Seedance 2.0 Fast (${opts.duration}s · ${opts.ratio} · ${opts.resolution}${opts.audio ? ' · audio' : ''})\n📊 Generate hari ini: ${newCount}/${KLING_DAILY_LIMIT} (sisa: ${remaining})\n\n/menu untuk buat lagi`,
+      `🎬 Seedance 2.0 Fast (${opts.duration}s · ${opts.ratio} · ${opts.resolution}${opts.audio ? ' · audio' : ''})\n⏳ Cooldown 3 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
       true
     );
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] Seedance done (usage: ${newCount}/${KLING_DAILY_LIMIT}, credits used: ${result.credits ?? '?'})`);
+    console.log(`[${userId}] Seedance done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
 
   } catch (err: any) {
     const msg = err?.message ?? String(err);
@@ -2417,15 +2434,15 @@ async function runGrok(
     });
 
     const newCount = await incrementKlingUsage(dbUserId);
-    const remaining = Math.max(0, KLING_DAILY_LIMIT - newCount);
+    markGenSuccess(userId);
     await sendResult(
       chatId,
       result.url,
-      `🤖 Grok Imagine (${opts.duration}s · ${opts.ratio})\n📊 Generate hari ini: ${newCount}/${KLING_DAILY_LIMIT} (sisa: ${remaining})\n\n/menu untuk buat lagi`,
+      `🤖 Grok Imagine (${opts.duration}s · ${opts.ratio})\n⏳ Cooldown 3 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
       true
     );
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] Grok done (usage: ${newCount}/${KLING_DAILY_LIMIT}, credits used: ${result.credits ?? '?'})`);
+    console.log(`[${userId}] Grok done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
 
   } catch (err: any) {
     const msg = err?.message ?? String(err);
@@ -2506,16 +2523,16 @@ async function runKlingI2V(
     });
 
     const newCount = await incrementKlingUsage(dbUserId);
-    const remaining = Math.max(0, KLING_DAILY_LIMIT - newCount);
+    markGenSuccess(userId);
     const modeLabel = isSE ? 'Awal & Akhir' : 'Image to Video';
     await sendResult(
       chatId,
       result.url,
-      `🎞️ Kling V3 · ${modeLabel} (${opts.duration}s · ${opts.ratio})\n📊 Generate hari ini: ${newCount}/${KLING_DAILY_LIMIT} (sisa: ${remaining})\n\n/menu untuk buat lagi`,
+      `🎞️ Kling V3 · ${modeLabel} (${opts.duration}s · ${opts.ratio})\n⏳ Cooldown 3 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
       true
     );
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] Kling V3 done (usage: ${newCount}/${KLING_DAILY_LIMIT}, credits used: ${result.credits ?? '?'})`);
+    console.log(`[${userId}] Kling V3 done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
 
   } catch (err: any) {
     const msg = err?.message ?? String(err);
@@ -2587,15 +2604,15 @@ async function runKlingI2VTurbo(
     });
 
     const newCount = await incrementKlingUsage(dbUserId);
-    const remaining = Math.max(0, KLING_DAILY_LIMIT - newCount);
+    markGenSuccess(userId);
     await sendResult(
       chatId,
       result.url,
-      `⚡ Kling V3 Turbo (${opts.duration}s · ${opts.ratio} · ${opts.resolution})\n📊 Generate hari ini: ${newCount}/${KLING_DAILY_LIMIT} (sisa: ${remaining})\n\n/menu untuk buat lagi`,
+      `⚡ Kling V3 Turbo (${opts.duration}s · ${opts.ratio} · ${opts.resolution})\n⏳ Cooldown 3 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
       true
     );
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] Kling V3 Turbo done (usage: ${newCount}/${KLING_DAILY_LIMIT}, credits used: ${result.credits ?? '?'})`);
+    console.log(`[${userId}] Kling V3 Turbo done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
 
   } catch (err: any) {
     const msg = err?.message ?? String(err);
