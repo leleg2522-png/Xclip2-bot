@@ -347,6 +347,13 @@ function markGenSuccess(userId: number): void {
   lastGenSuccessAt.set(userId, Date.now());
 }
 
+// Escape characters that break Telegram's legacy Markdown parser. Labels are
+// free text (often emails like "a_b@x.com") and an unescaped `_`/`*`/`[`/`` ` ``
+// makes Telegram reject the whole message with a 400 "can't parse entities".
+function mdEscape(s: string): string {
+  return s.replace(/([_*\[\]`])/g, '\\$1');
+}
+
 async function getKlingUsageToday(dbUserId: number): Promise<number> {
   const res = await db.query(
     `SELECT count FROM kling_daily_usage WHERE user_id = $1 AND usage_date = CURRENT_DATE`,
@@ -1302,7 +1309,7 @@ bot.command('picsartcredits', async (ctx) => {
     const pool = await picsart.getPool();
     if (pool.length === 0) return ctx.reply('❌ Belum ada akun. Tambah dengan /addpicsartkey rt:...');
     const lines = await Promise.all(pool.map(async (acc) => {
-      const name = acc.label ? acc.label : `#${acc.id}`;
+      const name = mdEscape(acc.label ? acc.label : `#${acc.id}`);
       if (acc.status !== 'available' && acc.status !== 'exhausted') {
         return `• ${name}: ${acc.status}`;
       }
@@ -1323,19 +1330,23 @@ bot.command('picsartpool', async (ctx) => {
   const session = getSession(ctx.from.id);
   if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
   if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
-  const pool = await picsart.getPool();
-  if (pool.length === 0) return ctx.reply('📭 Pool akun kosong. Tambah dengan /addpicsartkey rt:...');
-  const icon: Record<string, string> = { available: '✅', exhausted: '🪫', dead: '💀', replaced: '🔁' };
-  const lines = pool.map((acc) => {
-    const name = acc.label ? acc.label : `#${acc.id}`;
-    const badge = icon[acc.status] ?? '•';
-    return `${badge} ${name} — ${acc.status} · 👤 ${acc.users} user`;
-  });
-  const totalUsers = pool.reduce((s, a) => s + a.users, 0);
-  return ctx.reply(
-    `🗂️ *Pool Akun Picsart* (${pool.length} akun · ${totalUsers} user)\n\n${lines.join('\n')}`,
-    { parse_mode: 'Markdown' }
-  );
+  try {
+    const pool = await picsart.getPool();
+    if (pool.length === 0) return ctx.reply('📭 Pool akun kosong. Tambah dengan /addpicsartkey rt:...');
+    const icon: Record<string, string> = { available: '✅', exhausted: '🪫', dead: '💀', replaced: '🔁' };
+    const lines = pool.map((acc) => {
+      const name = mdEscape(acc.label ? acc.label : `#${acc.id}`);
+      const badge = icon[acc.status] ?? '•';
+      return `${badge} ${name} — ${acc.status} · 👤 ${acc.users} user`;
+    });
+    const totalUsers = pool.reduce((s, a) => s + a.users, 0);
+    return ctx.reply(
+      `🗂️ *Pool Akun Picsart* (${pool.length} akun · ${totalUsers} user)\n\n${lines.join('\n')}`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (e: any) {
+    return ctx.reply(`❌ Gagal ambil pool: ${String(e.message).slice(0, 150)}`);
+  }
 });
 
 bot.command('restorefreepikkey', async (ctx) => {
