@@ -2695,5 +2695,25 @@ app.listen(PORT, () => {
   console.log('✅ Bot berjalan...');
 })();
 
+// Global guard: a thrown error inside any command must NOT crash the whole bot
+// (a crash restarts the process and wipes all in-memory logins → "login mulu").
+bot.catch((err, ctx) => {
+  console.error(`⚠️ Bot error on update ${ctx?.updateType}:`, err);
+  try {
+    ctx?.reply('⚠️ Terjadi error sebentar, coba lagi ya.');
+  } catch {
+    /* ignore reply failures */
+  }
+});
+
+// Last-resort guards so an unhandled async error keeps the bot alive instead of
+// killing the process (which would log everyone out on restart).
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️ Unhandled promise rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('⚠️ Uncaught exception:', err);
+});
+
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));

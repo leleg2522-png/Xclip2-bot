@@ -4,3 +4,4 @@
 - [Telegram bot self-hosted result links](telegram-bot-media-links.md) — big results bypass Telegram's ~50MB cap via /dl/:token on own Railway domain; storage is ephemeral tmpdir so links die on redeploy
 - [Picsart invite automation approach](picsart-invite-automation-approach.md) — cloud Browser Use proxies get "unusual activity" blocked; winning path is local-run on user's Windows PC via Surfshark + stealth Chrome
 - [Invite-panel two-DB architecture](invite-panel-db-architecture.md) — panel state in local Replit PG; configurable Railway target DB string stored encrypted in app_settings (UI-set), masked in responses, never in .replit
+- [Telegram bot session resets](telegram-bot-session-resets.md) — in-memory logins wiped on every process crash/redeploy; keep bot.catch + process guards; never put unescaped free-text in parse_mode:Markdown
