@@ -24,3 +24,6 @@ interpolating free-text account labels (emails containing `_`) → Telegram 400
   escaping the legacy control chars `_ * [ ] ``` `` ``` (helper: `mdEscape`).
 - If forced logouts must survive legitimate redeploys too, the real fix is to
   persist sessions in the DB keyed by Telegram user id (not yet implemented).
+- Any list reply (pool, credits) must be chunked: Telegram caps a single message
+  at 4096 chars and the pool is 150+ accounts. Use `replyLong()` (packs lines
+  under a safe limit, sends multiple messages) instead of one `ctx.reply`.

@@ -354,6 +354,23 @@ function mdEscape(s: string): string {
   return s.replace(/([_*\[\]`])/g, '\\$1');
 }
 
+// Telegram rejects any single message over 4096 chars. Long lists (e.g. a pool
+// of 150+ accounts) must be split into several messages. Sends `header` first,
+// then packs `lines` into chunks that stay under the limit.
+async function replyLong(ctx: any, header: string, lines: string[]): Promise<void> {
+  const MAX = 3500; // safe margin under Telegram's 4096 limit
+  let buf = header;
+  for (const line of lines) {
+    if (buf.length + line.length + 1 > MAX) {
+      await ctx.reply(buf, { parse_mode: 'Markdown' });
+      buf = line;
+    } else {
+      buf = buf ? `${buf}\n${line}` : line;
+    }
+  }
+  if (buf) await ctx.reply(buf, { parse_mode: 'Markdown' });
+}
+
 async function getKlingUsageToday(dbUserId: number): Promise<number> {
   const res = await db.query(
     `SELECT count FROM kling_daily_usage WHERE user_id = $1 AND usage_date = CURRENT_DATE`,
@@ -1320,7 +1337,7 @@ bot.command('picsartcredits', async (ctx) => {
         return `• ${name}: ⚠️ gagal cek (${acc.status})`;
       }
     }));
-    return ctx.reply(`💳 *Kredit per akun*\n\n${lines.join('\n')}`, { parse_mode: 'Markdown' });
+    return replyLong(ctx, `💳 *Kredit per akun*\n`, lines);
   } catch (e: any) {
     return ctx.reply(`❌ Gagal cek kredit: ${String(e.message).slice(0, 150)}`);
   }
@@ -1340,10 +1357,7 @@ bot.command('picsartpool', async (ctx) => {
       return `${badge} ${name} — ${acc.status} · 👤 ${acc.users} user`;
     });
     const totalUsers = pool.reduce((s, a) => s + a.users, 0);
-    return ctx.reply(
-      `🗂️ *Pool Akun Picsart* (${pool.length} akun · ${totalUsers} user)\n\n${lines.join('\n')}`,
-      { parse_mode: 'Markdown' }
-    );
+    return replyLong(ctx, `🗂️ *Pool Akun Picsart* (${pool.length} akun · ${totalUsers} user)\n`, lines);
   } catch (e: any) {
     return ctx.reply(`❌ Gagal ambil pool: ${String(e.message).slice(0, 150)}`);
   }
