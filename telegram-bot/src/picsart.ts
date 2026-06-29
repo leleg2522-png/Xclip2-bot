@@ -948,10 +948,11 @@ export const IMAGE_ENGINES = {
 } as const;
 export type ImageEngineKey = keyof typeof IMAGE_ENGINES;
 
-// GPT Image 2 pixel sizes per aspect ratio (highest captured from the web app).
+// GPT Image 2 pixel sizes per aspect ratio. Allowed by the live API:
+// 1024x1024, 1536x1024, 1024x1536, auto (1824 from the HAR is rejected in prod).
 const GPT_IMAGE_SIZE: Record<string, string> = {
-  '9:16': '1024x1824',
-  '16:9': '1824x1024',
+  '9:16': '1024x1536',
+  '16:9': '1536x1024',
   '1:1': '1024x1024',
 };
 
