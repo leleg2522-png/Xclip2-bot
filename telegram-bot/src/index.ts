@@ -2213,11 +2213,6 @@ bot.on('text', async (ctx) => {
     if (!prompt) {
       return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi gambar yang kamu mau.');
     }
-    const cooldownMs = getCooldownRemainingMs(userId);
-    if (cooldownMs > 0) {
-      setSession(userId, { mode: 'idle' });
-      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
-    }
     const opts = {
       engine: session.imgEngine ?? 'gpt',
       ratio: session.imgRatio ?? '9:16',
@@ -2648,12 +2643,11 @@ async function runImageGen(
     });
 
     const newCount = await incrementKlingUsage(dbUserId);
-    markGenSuccess(userId);
     // Deliver as a document to preserve full resolution (sendPhoto re-compresses).
     await sendResult(
       chatId,
       result.url,
-      `🎨 ${label} (${opts.ratio})\n⏳ Cooldown 3 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
+      `🎨 ${label} (${opts.ratio})\n\n/menu untuk buat lagi`,
       false,
       true
     );
