@@ -930,3 +930,238 @@ export async function generateKlingI2V(input: {
     });
   });
 }
+
+// ─── Image generation (GPT Image 2 + Nano Banana Pro/2) ───────────────────────
+// AI Playground image engines. Three engines, always highest resolution:
+//   • gpt        -> GPT Image 2        (openai workflows, quality "high")
+//   • banana_pro -> Nano Banana Pro    (gemini-3-pro-image-preview, 4K)
+//   • banana2    -> Nano Banana 2      (gemini-3.1-flash-image-preview, 4K)
+// GPT text->image:  POST /workflows/openai-images-generate/submit
+// GPT multi-image:  POST /workflows/openai-image-editing/submit  (adds images:[urls])
+// Gemini (both):    POST /workflows/gemini/v2/images/submit       (imageUrls:[...] optional)
+// All submit -> {response:{id}}, poll GET .../{id}/result (ACCEPTED -> COMPLETED).
+
+export const IMAGE_ENGINES = {
+  gpt: { model: 'gpt-image-2', label: 'GPT Image 2', service: 'openai' },
+  banana_pro: { model: 'gemini-3-pro-image-preview', label: 'Nano Banana Pro', service: 'google' },
+  banana2: { model: 'gemini-3.1-flash-image-preview', label: 'Nano Banana 2', service: 'google' },
+} as const;
+export type ImageEngineKey = keyof typeof IMAGE_ENGINES;
+
+// GPT Image 2 pixel sizes per aspect ratio (highest captured from the web app).
+const GPT_IMAGE_SIZE: Record<string, string> = {
+  '9:16': '1024x1824',
+  '16:9': '1824x1024',
+  '1:1': '1024x1024',
+};
+
+// GPT Image 2: text->image (openai-images-generate) or multi-image edit
+// (openai-image-editing when reference images are present). Returns the id plus
+// the workflow path segment to poll on (they differ between the two flows).
+async function submitGptImage(credId: number, input: {
+  prompt: string;
+  ratio: string;
+  imageUrls: string[];
+}): Promise<{ id: string; resultPath: string }> {
+  const access = await getAccessToken(credId);
+  const size = GPT_IMAGE_SIZE[input.ratio] ?? '1024x1024';
+  const isEdit = input.imageUrls.length > 0;
+  const service = isEdit ? 'openai-image-editing' : 'openai-images-generate';
+  const params: Record<string, unknown> = {
+    prompt: input.prompt ?? '',
+    model: 'gpt-image-2',
+    n: 1,
+    size,
+    quality: 'high',
+    output_format: 'png',
+    options: {
+      drive: {
+        name: 'image.png',
+        attributes: {
+          tool: 'ai-playground',
+          model: 'gpt-image-2',
+          prompt: input.prompt ?? '',
+          subType: isEdit ? 'i2i' : 't2i',
+          service: 'openai',
+        },
+        folder: { path: 'AI Playground' },
+      },
+    },
+  };
+  if (isEdit) params.images = input.imageUrls;
+  const r = await http.post(`${API_BASE}/workflows/${service}/submit`, { params }, {
+    headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
+    validateStatus: () => true,
+  });
+  const id = r.data?.response?.id;
+  if (!ok2xx(r.status) || !id) {
+    throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+  }
+  return { id, resultPath: service };
+}
+
+// Gemini image engines (Nano Banana Pro / 2). Single endpoint serves both
+// text->image and multi-image (reference) generation via optional imageUrls.
+async function submitGeminiImage(credId: number, input: {
+  model: string;
+  prompt: string;
+  ratio: string;
+  imageUrls: string[];
+}): Promise<string> {
+  const access = await getAccessToken(credId);
+  // Pro "thinks" with a budget; the flash model uses a minimal thinking level.
+  const thinkingConfig = input.model === 'gemini-3-pro-image-preview'
+    ? { thinkingBudget: 128 }
+    : { thinkingLevel: 'MINIMAL' };
+  const params: Record<string, unknown> = {
+    prompt: input.prompt ?? '',
+    model: input.model,
+    count: 1,
+    aspectRatio: input.ratio,
+    imageSize: '4K',
+    thinkingConfig,
+    options: {
+      drive: {
+        name: 'image.png',
+        attributes: {
+          tool: 'ai-playground',
+          model: input.model,
+          prompt: input.prompt ?? '',
+          subType: input.imageUrls.length > 0 ? 'i2i' : 't2i',
+          service: 'google',
+        },
+        folder: { path: 'AI Playground' },
+      },
+    },
+  };
+  if (input.imageUrls.length > 0) params.imageUrls = input.imageUrls;
+  const r = await http.post(`${API_BASE}/workflows/gemini/v2/images/submit`, { params }, {
+    headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
+    validateStatus: () => true,
+  });
+  const id = r.data?.response?.id;
+  if (!ok2xx(r.status) || !id) {
+    throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+  }
+  return id;
+}
+
+// Recursively find the first http(s) string anywhere inside the result payload.
+// The COMPLETED shape was not captured in the HAR, so we mirror the known
+// `result.url` spots first and deep-search as a defensive fallback.
+function findFirstUrl(v: unknown): string | undefined {
+  if (typeof v === 'string') return v.startsWith('http') ? v : undefined;
+  if (Array.isArray(v)) {
+    for (const item of v) {
+      const found = findFirstUrl(item);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  if (v && typeof v === 'object') {
+    for (const val of Object.values(v as Record<string, unknown>)) {
+      const found = findFirstUrl(val);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
+function extractImageUrl(result: any): string | undefined {
+  return (
+    result?.url ??
+    result?.images?.[0]?.url ??
+    (typeof result?.images?.[0] === 'string' ? result.images[0] : undefined) ??
+    result?.[0]?.url ??
+    (typeof result?.[0] === 'string' ? result[0] : undefined) ??
+    result?.data?.[0]?.url ??
+    (typeof result?.data?.[0] === 'string' ? result.data[0] : undefined) ??
+    findFirstUrl(result)
+  );
+}
+
+async function pollImageResult(
+  credId: number,
+  resultPath: string,
+  id: string,
+  opts?: { maxAttempts?: number; intervalMs?: number; onTick?: (elapsedMs: number) => void }
+): Promise<{ url: string; credits?: number }> {
+  const maxAttempts = opts?.maxAttempts ?? 180; // ~15 min at 5s
+  const intervalMs = opts?.intervalMs ?? 5000;
+  const start = Date.now();
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((res) => setTimeout(res, intervalMs));
+    opts?.onTick?.(Date.now() - start);
+    const access = await getAccessToken(credId);
+    const r = await http.get(`${API_BASE}/workflows/${resultPath}/${id}/result`, {
+      headers: commonHeaders({ authorization: `Bearer ${access}` }),
+      validateStatus: () => true,
+    });
+    if (!ok2xx(r.status)) continue;
+    const resp = r.data?.response;
+    const status = String(resp?.status ?? '').toUpperCase();
+    if (status === 'COMPLETED') {
+      const url = extractImageUrl(resp?.result);
+      if (!url) throw new Error(`PICSART_NO_RESULT_URL: ${JSON.stringify(resp).slice(0, 300)}`);
+      return { url, credits: resp.usage?.credits };
+    }
+    if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
+      throw new Error(`PICSART_GEN_FAILED: ${JSON.stringify(resp).slice(0, 200)}`);
+    }
+  }
+  throw new Error('PICSART_TIMEOUT');
+}
+
+// High-level orchestrator: upload optional reference images -> submit to the
+// right engine/endpoint -> poll -> result image URL. Sticky account + failover
+// via runWithAccount, like the video engines.
+export async function generateImage(input: {
+  userId: number;
+  engine: ImageEngineKey;
+  prompt: string;
+  ratio: string;
+  imageBuffers?: Array<{ buf: Buffer; name?: string; mime?: string }>;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number; engine: ImageEngineKey }> {
+  return runWithAccount(input.userId, async (credId) => {
+    const imageUrls: string[] = [];
+    if (input.imageBuffers && input.imageBuffers.length > 0) {
+      input.onStatus?.('upload');
+      for (let i = 0; i < input.imageBuffers.length; i++) {
+        const im = input.imageBuffers[i];
+        imageUrls.push(await uploadFile(
+          credId,
+          im.buf,
+          im.name || `reference-${i + 1}.jpg`,
+          im.mime || 'image/jpeg'
+        ));
+      }
+    }
+    input.onStatus?.('submit');
+    let id: string;
+    let resultPath: string;
+    if (input.engine === 'gpt') {
+      const res = await submitGptImage(credId, {
+        prompt: input.prompt,
+        ratio: input.ratio,
+        imageUrls,
+      });
+      id = res.id;
+      resultPath = res.resultPath;
+    } else {
+      id = await submitGeminiImage(credId, {
+        model: IMAGE_ENGINES[input.engine].model,
+        prompt: input.prompt,
+        ratio: input.ratio,
+        imageUrls,
+      });
+      resultPath = 'gemini/v2/images';
+    }
+    input.onStatus?.('poll');
+    const res = await pollImageResult(credId, resultPath, id, {
+      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+    });
+    return { ...res, engine: input.engine };
+  });
+}

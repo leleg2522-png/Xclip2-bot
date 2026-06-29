@@ -419,7 +419,8 @@ type Mode =
   | 'kv3_wait_end'
   | 'kv3_wait_prompt'
   | 'kvt_wait_image'
-  | 'kvt_wait_prompt';
+  | 'kvt_wait_prompt'
+  | 'img_collect';
 
 interface Session {
   mode: Mode;
@@ -453,6 +454,10 @@ interface Session {
   kvtRatio?: string;
   kvtResolution?: string;
   kvtImageUrl?: string;
+  // Image generation wizard state (GPT Image 2 / Nano Banana Pro / Nano Banana 2)
+  imgEngine?: 'gpt' | 'banana_pro' | 'banana2';
+  imgRatio?: string;
+  imgRefs?: string[];
 }
 
 const sessions = new Map<number, Session>();
@@ -687,7 +692,7 @@ setInterval(async () => {
 
 // ─── Result sender ────────────────────────────────────────────────────────────
 
-async function sendResult(chatId: number, outputUrl: string, caption: string, isVideo: boolean) {
+async function sendResult(chatId: number, outputUrl: string, caption: string, isVideo: boolean, forceDocument = false) {
   const TELEGRAM_MAX_BYTES = 48 * 1024 * 1024; // 48MB safe limit
 
   // Auto-detect type from URL extension if not forced
@@ -722,21 +727,26 @@ async function sendResult(chatId: number, outputUrl: string, caption: string, is
   // Small enough for Telegram → send inline so it plays right in the chat. We
   // upload our own bytes (never a URL), so the upstream provider stays hidden.
   if (buf.length <= TELEGRAM_MAX_BYTES) {
-    try {
-      if (looksLikeVideo) {
-        await bot.telegram.sendVideo(chatId, { source: buf, filename: 'output.mp4' }, opts);
-      } else {
-        await bot.telegram.sendPhoto(chatId, { source: buf, filename: 'output.jpg' }, opts);
+    // For images we deliver as a document by default so the full-resolution PNG
+    // is preserved (sendPhoto re-compresses and downscales).
+    const sendAsDocument = forceDocument && !looksLikeVideo;
+    if (!sendAsDocument) {
+      try {
+        if (looksLikeVideo) {
+          await bot.telegram.sendVideo(chatId, { source: buf, filename: 'output.mp4' }, opts);
+        } else {
+          await bot.telegram.sendPhoto(chatId, { source: buf, filename: 'output.jpg' }, opts);
+        }
+        console.log(`Result sent via buffer (${sizeMB} MB)`);
+        return;
+      } catch (e: any) {
+        console.log(`Buffer strategy failed: ${e.message}`);
       }
-      console.log(`Result sent via buffer (${sizeMB} MB)`);
-      return;
-    } catch (e: any) {
-      console.log(`Buffer strategy failed: ${e.message}`);
     }
 
     try {
       await bot.telegram.sendDocument(chatId,
-        { source: buf, filename: looksLikeVideo ? 'output.mp4' : 'output.jpg' },
+        { source: buf, filename: looksLikeVideo ? 'output.mp4' : 'output.png' },
         opts
       );
       console.log(`Result sent as document (${sizeMB} MB)`);
@@ -794,8 +804,31 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🤖 Grok Imagine', 'mode_grok')],
     [Markup.button.callback('🎞️ Kling V3 (Image to Video)', 'mode_kv3')],
     [Markup.button.callback('⚡ Kling V3 Turbo (Image to Video)', 'mode_kvt')],
+    [Markup.button.callback('🎨 GPT Image 2 (Gambar)', 'mode_gpt')],
+    [Markup.button.callback('🍌 Nano Banana Pro (Gambar)', 'mode_bananapro')],
+    [Markup.button.callback('🍌 Nano Banana 2 (Gambar)', 'mode_banana2')],
   ]);
 }
+
+// ─── Image generation wizard keyboard ─────────────────────────────────────────
+
+function imageRatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('📱 9:16', 'img_ratio_916'),
+      Markup.button.callback('🖥️ 16:9', 'img_ratio_169'),
+    ],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+const IMG_ENGINE_LABEL: Record<string, string> = {
+  gpt: 'GPT Image 2',
+  banana_pro: 'Nano Banana Pro',
+  banana2: 'Nano Banana 2',
+};
+
+const MAX_IMG_REFS = 6;
 
 function klingModelKeyboard() {
   return Markup.inlineKeyboard([
@@ -1827,6 +1860,34 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  // ── Image generation wizard (GPT Image 2 / Nano Banana Pro / Nano Banana 2) ──
+  if (data === 'mode_gpt' || data === 'mode_bananapro' || data === 'mode_banana2') {
+    const engine = data === 'mode_gpt' ? 'gpt' : data === 'mode_bananapro' ? 'banana_pro' : 'banana2';
+    setSession(userId, {
+      mode: 'idle',
+      imgEngine: engine,
+      imgRatio: undefined,
+      imgRefs: [],
+    });
+    return ctx.editMessageText(
+      `🎨 *${IMG_ENGINE_LABEL[engine]}*\n\nBuat gambar resolusi tertinggi.\n\n*Langkah 1:* Pilih rasio gambar:`,
+      { parse_mode: 'Markdown', ...imageRatioKeyboard() }
+    );
+  }
+
+  if (data.startsWith('img_ratio_')) {
+    const ratio = SD_RATIO_MAP[data.replace('img_ratio_', '')] ?? '9:16';
+    const session = getSession(userId);
+    const engine = session.imgEngine ?? 'gpt';
+    setSession(userId, { imgRatio: ratio, imgRefs: [], mode: 'img_collect' });
+    return ctx.editMessageText(
+      `🎨 *${IMG_ENGINE_LABEL[engine]}*\n\nRasio: *${ratio}*\n\n` +
+      '*Langkah 2:* Kirim *foto acuan* (boleh beberapa, opsional), lalu kirim *prompt teks* untuk membuat gambar.\n\n' +
+      'Atau langsung kirim *prompt teks* tanpa foto untuk membuat gambar dari teks saja.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (data === 'back_main') {
     setSession(userId, { mode: 'idle' });
     return ctx.editMessageText('Pilih mode generasi:', mainMenuKeyboard());
@@ -1902,6 +1963,23 @@ async function handleImageInput(ctx: any, fileUrl: string) {
     return ctx.reply(
       '✅ Foto akhir diterima!\n\n' +
       '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'img_collect') {
+    const refs = session.imgRefs ?? [];
+    if (refs.length >= MAX_IMG_REFS) {
+      return ctx.reply(
+        `⚠️ Maksimal ${MAX_IMG_REFS} foto acuan. Kirim *prompt teks* untuk membuat gambar.`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+    refs.push(fileUrl);
+    setSession(userId, { imgRefs: refs });
+    return ctx.reply(
+      `✅ Foto acuan ke-${refs.length} diterima!\n\n` +
+      'Kirim foto lagi, atau kirim *prompt teks* untuk membuat gambar.',
       { parse_mode: 'Markdown' }
     );
   }
@@ -2125,6 +2203,30 @@ bot.on('text', async (ctx) => {
     const statusMsg = await ctx.reply('⏳ Memproses Kling V3...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
     runKlingI2V(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
       .catch(e => console.error(`[${userId}] Kling V3 gen error:`, e.message));
+    return;
+  }
+
+  // ── Image generation prompt (GPT Image 2 / Nano Banana Pro / Nano Banana 2) ──
+  if (session.mode === 'img_collect') {
+    if (!await requireLoginAndSub(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi gambar yang kamu mau.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    const opts = {
+      engine: session.imgEngine ?? 'gpt',
+      ratio: session.imgRatio ?? '9:16',
+      refs: session.imgRefs ?? [],
+    };
+    setSession(userId, { mode: 'idle', imgRefs: [] });
+    const statusMsg = await ctx.reply(`⏳ Memproses ${IMG_ENGINE_LABEL[opts.engine]}...\nHasil dikirim otomatis (~1-3 menit).`, { parse_mode: 'Markdown' });
+    runImageGen(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
+      .catch(e => console.error(`[${userId}] Image gen error:`, e.message));
     return;
   }
 
@@ -2472,6 +2574,95 @@ async function runGrok(
   } catch (err: any) {
     const msg = err?.message ?? String(err);
     console.error(`[${userId}] Grok error: ${msg}`);
+    let friendly: string;
+    if (msg.includes('PICSART_TIMEOUT')) {
+      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
+    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
+      friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
+    } else {
+      friendly = '❌ Gagal memproses. Coba lagi nanti.';
+    }
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  }
+}
+
+// ─── Background: Image generation (GPT Image 2 / Nano Banana Pro / Nano Banana 2) ──
+
+async function runImageGen(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  opts: {
+    engine: 'gpt' | 'banana_pro' | 'banana2';
+    ratio: string;
+    refs: string[];
+  }
+) {
+  const label = IMG_ENGINE_LABEL[opts.engine];
+  console.log(`[${userId}] Image (${opts.engine}) started — ratio: ${opts.ratio}, refs: ${opts.refs.length}`);
+
+  try {
+    // Download any reference images for multi-image generation.
+    let imageBuffers: Array<{ buf: Buffer; name: string; mime: string }> | undefined;
+    if (opts.refs.length > 0) {
+      const downloaded = await Promise.all(opts.refs.map((u) => downloadBuffer(u)));
+      imageBuffers = downloaded.map((d, i) => ({
+        buf: d.buf,
+        name: `reference-${i + 1}.${d.ext}`,
+        mime: d.mime,
+      }));
+      console.log(`[${userId}] Image refs downloaded: ${imageBuffers.map((b) => `${b.mime} ${(b.buf.length / 1024).toFixed(1)}KB`).join(', ')}`);
+    }
+
+    let lastEdit = 0;
+    const result = await picsart.generateImage({
+      userId: dbUserId,
+      engine: opts.engine,
+      prompt,
+      ratio: opts.ratio,
+      imageBuffers,
+      onStatus: (stage) => {
+        const text = stage === 'upload'
+          ? `⏳ ${label}: mengunggah foto acuan ke server... (1/3)`
+          : stage === 'submit'
+            ? `⏳ ${label}: mengirim perintah ke server... (2/3)`
+            : `⏳ ${label}: gambar sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 1–3 menit. Jangan tutup chat ini.`;
+        lastEdit = Date.now();
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+      },
+      onPoll: (elapsedSec) => {
+        if (Date.now() - lastEdit < 30_000) return;
+        lastEdit = Date.now();
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = elapsedSec % 60;
+        const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
+        bot.telegram.editMessageText(
+          chatId, statusMsgId, undefined,
+          `⏳ ${label}: gambar sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${timer} (biasanya 1–3 menit).\nJangan tutup chat ini, gambar dikirim otomatis.`
+        ).catch(() => {});
+      },
+    });
+
+    const newCount = await incrementKlingUsage(dbUserId);
+    markGenSuccess(userId);
+    // Deliver as a document to preserve full resolution (sendPhoto re-compresses).
+    await sendResult(
+      chatId,
+      result.url,
+      `🎨 ${label} (${opts.ratio})\n⏳ Cooldown 3 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
+      false,
+      true
+    );
+    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    console.log(`[${userId}] Image done (${opts.engine}) (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    console.error(`[${userId}] Image error: ${msg}`);
     let friendly: string;
     if (msg.includes('PICSART_TIMEOUT')) {
       friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
