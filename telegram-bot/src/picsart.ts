@@ -20,7 +20,7 @@
 
 import axios from 'axios';
 import FormData from 'form-data';
-import type { Pool } from 'pg';
+import type { Pool, QueryResult, QueryResultRow } from 'pg';
 
 const API_BASE = 'https://api.picsart.com';
 const UPLOAD_BASE = 'https://upload.picsart.com';
@@ -76,11 +76,13 @@ const TRANSIENT_DB_ERR =
   /Connection terminated|stream has been aborted|connection is closed|ECONNRESET|ETIMEDOUT|EPIPE|terminating connection|server closed the connection|Client has encountered a connection error/i;
 
 // Drop-in replacement for `db.query` with retry on transient connection loss.
-async function q(text: string, params?: any[]): Promise<any> {
+// Typed as QueryResult so every call site keeps the same `.rows` typing it had
+// with the raw `db.query`.
+async function q<R extends QueryResultRow = any>(text: string, params?: any[]): Promise<QueryResult<R>> {
   let lastErr: any;
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      return params === undefined ? await db.query(text) : await db.query(text, params);
+      return params === undefined ? await db.query<R>(text) : await db.query<R>(text, params);
     } catch (e: any) {
       lastErr = e;
       if (!TRANSIENT_DB_ERR.test(String(e?.message ?? ''))) throw e; // real error → surface immediately
