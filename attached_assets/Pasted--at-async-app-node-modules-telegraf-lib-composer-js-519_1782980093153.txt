@@ -1,0 +1,124 @@
+    at async /app/node_modules/telegraf/lib/composer.js:519:21 {
+  response: {
+    ok: false,
+    error_code: 400,
+    description: 'Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message'
+  },
+  on: {
+    method: 'editMessageText',
+    payload: {
+      chat_id: 7065188377,
+      message_id: 45537,
+      inline_message_id: undefined,
+      parse_mode: 'Markdown',
+      reply_markup: [Object],
+      text: '🕹️ *Kling Motion Control*\n\nPilih versi model:'
+    }
+  }
+}
+⚠️ Bot error on update callback_query: FetchError: request to https://api.telegram.org/bot8608714862:[REDACTED]/answerCallbackQuery failed, reason: 
+    at ClientRequest.<anonymous> (/app/node_modules/node-fetch/lib/index.js:1501:11)
+    at ClientRequest.emit (node:events:519:28)
+    at emitErrorEvent (node:_http_client:108:11)
+    at TLSSocket.socketErrorListener (node:_http_client:575:5)
+    at TLSSocket.emit (node:events:519:28)
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at processTicksAndRejections (node:internal/process/task_queues:89:21)
+    at ClientRequest.<anonymous> (/app/node_modules/node-fetch/lib/index.js:1501:11)
+    at runNextTicks (node:internal/process/task_queues:68:3)
+    at listOnTimeout (node:internal/timers:547:9) {
+  type: 'system',
+  errno: 'ETIMEDOUT',
+  code: 'ETIMEDOUT'
+}
+⚠️ Bot error on update callback_query: FetchError: request to https://api.telegram.org/bot8608714862:[REDACTED]/answerCallbackQuery failed, reason: 
+    at ClientRequest.<anonymous> (/app/node_modules/node-fetch/lib/index.js:1501:11)
+    at ClientRequest.emit (node:events:519:28)
+    at emitErrorEvent (node:_http_client:108:11)
+    at TLSSocket.socketErrorListener (node:_http_client:575:5)
+    at TLSSocket.emit (node:events:519:28)
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  type: 'system',
+  errno: 'ETIMEDOUT',
+  code: 'ETIMEDOUT'
+}
+⚠️ Unhandled promise rejection: FetchError: request to https://api.telegram.org/bot8608714862:[REDACTED]/sendMessage failed, reason: 
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  type: 'system',
+    at ClientRequest.emit (node:events:519:28)
+  errno: 'ETIMEDOUT',
+    at emitErrorEvent (node:_http_client:108:11)
+    at TLSSocket.socketErrorListener (node:_http_client:575:5)
+    at TLSSocket.emit (node:events:519:28)
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  type: 'system',
+  errno: 'ETIMEDOUT',
+  code: 'ETIMEDOUT'
+}
+⚠️ Bot error on update message: FetchError: request to https://api.telegram.org/bot8608714862:[REDACTED]/getFile failed, reason: 
+    at ClientRequest.<anonymous> (/app/node_modules/node-fetch/lib/index.js:1501:11)
+    at ClientRequest.emit (node:events:519:28)
+    at emitErrorEvent (node:_http_client:108:11)
+    at TLSSocket.socketErrorListener (node:_http_client:575:5)
+    at TLSSocket.emit (node:events:519:28)
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+  code: 'ETIMEDOUT'
+}
+⚠️ Bot error on update callback_query: TelegramError: 400: Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message
+    at async execute (/app/node_modules/telegraf/lib/composer.js:518:17)
+    at Telegram.callApi (/app/node_modules/telegraf/lib/core/network/client.js:315:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async /app/node_modules/telegraf/lib/composer.js:519:21 {
+    at async execute (/app/node_modules/telegraf/lib/composer.js:518:17)
+    at async /app/node_modules/telegraf/lib/composer.js:519:21
+  response: {
+    at async execute (/app/node_modules/telegraf/lib/composer.js:518:17)
+    ok: false,
+    at async /app/node_modules/telegraf/lib/composer.js:519:21
+    error_code: 400,
+    at async execute (/app/node_modules/telegraf/lib/composer.js:518:17)
+    description: 'Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message'
+    at async /app/node_modules/telegraf/lib/composer.js:519:21
+  },
+  on: {
+    method: 'editMessageText',
+    payload: {
+    at async /app/node_modules/telegraf/lib/composer.js:519:21 {
+      chat_id: 7065188377,
+    at async execute (/app/node_modules/telegraf/lib/composer.js:518:17)
+      message_id: 45537,
+    at async /app/node_modules/telegraf/lib/composer.js:519:21
+      inline_message_id: undefined,
+      parse_mode: 'Markdown',
+    at async execute (/app/node_modules/telegraf/lib/composer.js:518:17)
+      reply_markup: [Object],
+    at async /app/node_modules/telegraf/lib/composer.js:519:21
+    at async execute (/app/node_modules/telegraf/lib/composer.js:518:17)
+      text: '🕹️ *Kling Motion Control*\n\nPilih versi model:'
+    }
+  }
+}
+⚠️ Bot error on update callback_query: TelegramError: 400: Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message
+    at Telegram.callApi (/app/node_modules/telegraf/lib/core/network/client.js:315:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async execute (/app/node_modules/telegraf/lib/composer.js:518:17)
+    at async /app/node_modules/telegraf/lib/composer.js:519:21
+  response: {
+    ok: false,
+      message_id: 45537,
+    error_code: 400,
+      inline_message_id: undefined,
+}
+      parse_mode: 'Markdown',
+    description: 'Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message'
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async execute (/app/node_modules/telegraf/lib/composer.js:518:17)
+⚠️ Bot error on update callback_query: TelegramError: 400: Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message
+      reply_markup: [Object],
+  },
