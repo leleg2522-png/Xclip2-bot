@@ -463,6 +463,7 @@ type Mode =
   | 'sora_wait_image'
   | 'sora_wait_prompt'
   | 'gomni_wait_image'
+  | 'gomni_wait_video'
   | 'gomni_wait_prompt';
 
 interface Session {
@@ -491,11 +492,12 @@ interface Session {
   soraDuration?: number;
   soraRatio?: string;
   soraImageUrl?: string;
-  // Gemini Omni wizard state (text-to-video or image-to-video)
-  gomniInputMode?: 'i2v' | 't2v';
+  // Gemini Omni wizard state (text-to-video, image-to-video, or image+video ref)
+  gomniInputMode?: 'i2v' | 't2v' | 'v2v';
   gomniDuration?: number;
   gomniRatio?: string;
   gomniImageUrl?: string;
+  gomniVideoUrl?: string;
   // Kling V3 image-to-video wizard state
   kv3InputMode?: 'i2v' | 'se';
   kv3Duration?: number;
@@ -1005,6 +1007,7 @@ const SORA_SIZE_MAP: Record<string, string> = { '916': '720x1280', '169': '1280x
 function gomniInputKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('🖼️ Foto + Prompt', 'go_in_i2v')],
+    [Markup.button.callback('🎬 Foto + Video + Prompt', 'go_in_v2v')],
     [Markup.button.callback('✍️ Prompt Saja', 'go_in_t2v')],
     [Markup.button.callback('« Kembali', 'back_main')],
   ]);
@@ -1945,6 +1948,7 @@ bot.on('callback_query', async (ctx) => {
       gomniDuration: undefined,
       gomniRatio: undefined,
       gomniImageUrl: undefined,
+      gomniVideoUrl: undefined,
     });
     return ctx.editMessageText(
       '✨ *Gemini Omni (Google)*\n\nPilih cara membuat video:',
@@ -1952,8 +1956,9 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
-  if (data === 'go_in_i2v' || data === 'go_in_t2v') {
-    setSession(userId, { gomniInputMode: data === 'go_in_i2v' ? 'i2v' : 't2v' });
+  if (data === 'go_in_i2v' || data === 'go_in_t2v' || data === 'go_in_v2v') {
+    const inputMode = data === 'go_in_i2v' ? 'i2v' : data === 'go_in_v2v' ? 'v2v' : 't2v';
+    setSession(userId, { gomniInputMode: inputMode });
     return ctx.editMessageText(
       '✨ *Gemini Omni*\n\n*Langkah 1:* Pilih durasi video:',
       { parse_mode: 'Markdown', ...gomniDurationKeyboard() }
@@ -1972,7 +1977,7 @@ bot.on('callback_query', async (ctx) => {
   if (data.startsWith('go_ratio_')) {
     const ratio = SD_RATIO_MAP[data.replace('go_ratio_', '')] ?? '9:16';
     const session = getSession(userId);
-    if (session.gomniInputMode === 'i2v') {
+    if (session.gomniInputMode === 'i2v' || session.gomniInputMode === 'v2v') {
       setSession(userId, { gomniRatio: ratio, mode: 'gomni_wait_image' });
       return ctx.editMessageText(
         `✨ *Gemini Omni*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Kirim *foto acuan* untuk video kamu.`,
@@ -2158,6 +2163,14 @@ async function handleImageInput(ctx: any, fileUrl: string) {
   }
 
   if (session.mode === 'gomni_wait_image') {
+    if (session.gomniInputMode === 'v2v') {
+      setSession(userId, { gomniImageUrl: fileUrl, mode: 'gomni_wait_video' });
+      return ctx.reply(
+        '✅ Foto acuan diterima!\n\n' +
+        '*Langkah berikutnya:* Kirim *video referensi* (untuk acuan gerakan/gaya).',
+        { parse_mode: 'Markdown' }
+      );
+    }
     setSession(userId, { gomniImageUrl: fileUrl, mode: 'gomni_wait_prompt' });
     return ctx.reply(
       '✅ Foto acuan diterima!\n\n' +
@@ -2255,6 +2268,19 @@ bot.on('video', async (ctx) => {
     runKlingMotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, vid.file_id, session.characterUrl, klingModel)
       .catch(e => console.error(`[${userId}] Kling gen error:`, e.message));
     return;
+  }
+
+  if (session.mode === 'gomni_wait_video' && session.gomniImageUrl) {
+    if (vid.file_size && vid.file_size > MAX_VIDEO_BYTES) {
+      return ctx.reply(`❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
+    }
+    const fileLink = await ctx.telegram.getFileLink(vid.file_id);
+    setSession(userId, { gomniVideoUrl: fileLink.href, mode: 'gomni_wait_prompt' });
+    return ctx.reply(
+      '✅ Video referensi diterima!\n\n' +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
   }
 
   return ctx.reply('⚠️ Kirim foto karakter terlebih dahulu.', mainMenuKeyboard());
@@ -2416,9 +2442,14 @@ bot.on('text', async (ctx) => {
       setSession(userId, { mode: 'idle' });
       return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
     }
+    if (session.gomniInputMode === 'v2v' && (!session.gomniImageUrl || !session.gomniVideoUrl)) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply('⚠️ Mode ini butuh *foto* dan *video referensi*. Ulangi dari /menu.', { parse_mode: 'Markdown' });
+    }
     const opts = {
       inputMode: session.gomniInputMode ?? 't2v',
       imageUrl: session.gomniImageUrl,
+      videoUrl: session.gomniVideoUrl,
       duration: session.gomniDuration ?? 10,
       ratio: session.gomniRatio ?? '9:16',
     };
@@ -2535,6 +2566,9 @@ bot.on('text', async (ctx) => {
   if (session.mode === 'gomni_wait_image') {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
+  if (session.mode === 'gomni_wait_video') {
+    return ctx.reply('🎥 Mode ini butuh *video referensi*. Kirim video, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+  }
   if (session.mode === 'kling_wait_image') {
     return ctx.reply('📸 Kirim *foto karakter* dulu ya, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
@@ -2556,6 +2590,20 @@ bot.on('document', async (ctx) => {
     const fileLink = await ctx.telegram.getFileLink(doc.file_id);
     await handleImageInput(ctx, fileLink.href);
     return;
+  }
+
+  if (doc.mime_type?.startsWith('video/') && session.mode === 'gomni_wait_video' && session.gomniImageUrl) {
+    const MAX_VIDEO_BYTES = 19 * 1024 * 1024;
+    if (doc.file_size && doc.file_size > MAX_VIDEO_BYTES) {
+      return ctx.reply(`❌ Video terlalu besar (${(doc.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
+    }
+    const fileLink = await ctx.telegram.getFileLink(doc.file_id);
+    setSession(userId, { gomniVideoUrl: fileLink.href, mode: 'gomni_wait_prompt' });
+    return ctx.reply(
+      '✅ Video referensi diterima!\n\n' +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
   }
 
   if (doc.mime_type?.startsWith('video/') && session.mode === 'kling_wait_video' && session.characterUrl) {
@@ -2972,8 +3020,9 @@ async function runGeminiOmni(
   statusMsgId: number,
   prompt: string,
   opts: {
-    inputMode: 'i2v' | 't2v';
+    inputMode: 'i2v' | 't2v' | 'v2v';
     imageUrl?: string;
+    videoUrl?: string;
     duration: number;
     ratio: string;
   }
@@ -2984,12 +3033,23 @@ async function runGeminiOmni(
     let imageBuffer: Buffer | undefined;
     let imageName: string | undefined;
     let imageMime: string | undefined;
-    if (opts.inputMode === 'i2v' && opts.imageUrl) {
+    if ((opts.inputMode === 'i2v' || opts.inputMode === 'v2v') && opts.imageUrl) {
       const img = await downloadBuffer(opts.imageUrl);
       imageBuffer = img.buf;
       imageName = `reference.${img.ext}`;
       imageMime = img.mime;
       console.log(`[${userId}] Gemini Omni ref image — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
+    }
+
+    let videoBuffer: Buffer | undefined;
+    let videoName: string | undefined;
+    let videoMime: string | undefined;
+    if (opts.inputMode === 'v2v' && opts.videoUrl) {
+      const vid = await downloadBuffer(opts.videoUrl);
+      videoBuffer = vid.buf;
+      videoName = `reference.${vid.ext}`;
+      videoMime = vid.mime;
+      console.log(`[${userId}] Gemini Omni ref video — ${vid.mime} ${(vid.buf.length / 1024 / 1024).toFixed(1)}MB`);
     }
 
     let lastEdit = 0;
@@ -2999,11 +3059,14 @@ async function runGeminiOmni(
       imageBuffer,
       imageName,
       imageMime,
+      videoBuffer,
+      videoName,
+      videoMime,
       durationSeconds: opts.duration,
       aspectRatio: opts.ratio,
       onStatus: (stage) => {
         const text = stage === 'upload'
-          ? '⏳ Gemini Omni: mengunggah foto ke server... (1/3)'
+          ? '⏳ Gemini Omni: mengunggah foto/video ke server... (1/3)'
           : stage === 'submit'
             ? '⏳ Gemini Omni: mengirim perintah ke server... (2/3)'
             : '⏳ Gemini Omni: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 3–8 menit. Jangan tutup chat ini.';

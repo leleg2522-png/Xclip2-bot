@@ -906,6 +906,7 @@ export async function submitGeminiOmni(credId: number, input: {
   prompt: string;
   imageUrl?: string;
   imageMime?: string;
+  videoUrl?: string;
   durationSeconds: number;
   aspectRatio: string;
 }): Promise<string> {
@@ -918,6 +919,9 @@ export async function submitGeminiOmni(credId: number, input: {
   };
   if (input.imageUrl) {
     params.image = { url: input.imageUrl, mimeType: input.imageMime || 'image/jpeg' };
+  }
+  if (input.videoUrl) {
+    params.video = { url: input.videoUrl };
   }
   const r = await http.post(`${API_BASE}/workflows/gemini-omni/video/submit`, { params }, {
     headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
@@ -968,6 +972,9 @@ export async function generateGeminiOmni(input: {
   imageBuffer?: Buffer;
   imageName?: string;
   imageMime?: string;
+  videoBuffer?: Buffer;
+  videoName?: string;
+  videoMime?: string;
   durationSeconds: number;
   aspectRatio: string;
   onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
@@ -986,11 +993,22 @@ export async function generateGeminiOmni(input: {
       );
       imageMime = input.imageMime || 'image/jpeg';
     }
+    let videoUrl: string | undefined;
+    if (input.videoBuffer) {
+      input.onStatus?.('upload');
+      videoUrl = await uploadFile(
+        credId,
+        input.videoBuffer,
+        input.videoName || 'reference.mp4',
+        input.videoMime || 'video/mp4'
+      );
+    }
     input.onStatus?.('submit');
     const id = await submitGeminiOmni(credId, {
       prompt: input.prompt,
       imageUrl,
       imageMime,
+      videoUrl,
       durationSeconds: input.durationSeconds,
       aspectRatio: input.aspectRatio,
     });

@@ -62,3 +62,7 @@ Host: `https://api.picsart.com`, uploads on `https://upload.picsart.com`, result
 - GPT allowed sizes (from the LIVE API 400 error, authoritative): `1024x1024`, `1536x1024`, `1024x1536`, `auto`. Use 9:16=`1024x1536`, 16:9=`1536x1024`, 1:1=`1024x1024`. **Why:** the HAR showed `1024x1824` but prod rejects it (`size has wrong value 1024x1824`); a captured HAR value can be stale — trust the live API's own error message over both the HAR and generic OpenAI/DALL-E presets.
 - Nano Banana Pro/2 both use POST `/workflows/gemini/v2/images/submit` (poll `/workflows/gemini/v2/images/{id}/result`). Body `{params:{prompt, model, count:1, aspectRatio:"9:16"|"16:9"|"1:1", imageSize:"4K"(highest), thinkingConfig, imageUrls?:[...refs], options.drive{...}}}`. Pro = model `gemini-3-pro-image-preview` + `thinkingConfig:{thinkingBudget:128}`; Banana2 = `gemini-3.1-flash-image-preview` + `thinkingConfig:{thinkingLevel:"MINIMAL"}`.
 - COMPLETED result shape for image workflows was NOT captured (HAR only had ACCEPTED). Bot uses a defensive extractor: result.url → result.images[0](.url) → result[0] → result.data[0] → recursive first-http-string fallback.
+
+## Video-model input matrix (from HAR)
+- **Gemini Omni** (`/workflows/gemini-omni/video/submit`) accepts a reference **video**: `video:{url}` — URL only, NO mimeType. But video ONLY ever appears alongside an `image:{url,mimeType}`, never alone. Treat v2v as photo+video+prompt.
+- **Sora 2** (`/openai/v1/videos/submit`) accepts only an image via `input_reference_url` — NO video input. Sora = prompt/photo only.
