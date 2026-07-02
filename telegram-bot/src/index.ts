@@ -459,7 +459,11 @@ type Mode =
   | 'kv3_wait_prompt'
   | 'kvt_wait_image'
   | 'kvt_wait_prompt'
-  | 'img_collect';
+  | 'img_collect'
+  | 'sora_wait_image'
+  | 'sora_wait_prompt'
+  | 'gomni_wait_image'
+  | 'gomni_wait_prompt';
 
 interface Session {
   mode: Mode;
@@ -482,6 +486,16 @@ interface Session {
   grokDuration?: number;
   grokRatio?: string;
   grokImageUrl?: string;
+  // Sora 2 wizard state (text-to-video or image-to-video)
+  soraInputMode?: 'i2v' | 't2v';
+  soraDuration?: number;
+  soraRatio?: string;
+  soraImageUrl?: string;
+  // Gemini Omni wizard state (text-to-video or image-to-video)
+  gomniInputMode?: 'i2v' | 't2v';
+  gomniDuration?: number;
+  gomniRatio?: string;
+  gomniImageUrl?: string;
   // Kling V3 image-to-video wizard state
   kv3InputMode?: 'i2v' | 'se';
   kv3Duration?: number;
@@ -841,6 +855,8 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🕹️ Kling Motion Control', 'mode_kling')],
     [Markup.button.callback('🎬 Seedance 2.0 Fast', 'mode_seedance')],
     [Markup.button.callback('🤖 Grok Imagine', 'mode_grok')],
+    [Markup.button.callback('🎥 Sora 2 (OpenAI)', 'mode_sora')],
+    [Markup.button.callback('✨ Gemini Omni (Google)', 'mode_gomni')],
     [Markup.button.callback('🎞️ Kling V3 (Image to Video)', 'mode_kv3')],
     [Markup.button.callback('⚡ Kling V3 Turbo (Image to Video)', 'mode_kvt')],
     [Markup.button.callback('🎨 GPT Image 2 (Gambar)', 'mode_gpt')],
@@ -948,6 +964,68 @@ function grokRatioKeyboard() {
       Markup.button.callback('⬛ 1:1', 'gk_ratio_11'),
     ],
     [Markup.button.callback('« Kembali', 'mode_grok')],
+  ]);
+}
+
+// ─── Sora 2 wizard keyboards (text-to-video or image-to-video) ────────────────
+
+function soraInputKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🖼️ Foto + Prompt', 'so_in_i2v')],
+    [Markup.button.callback('✍️ Prompt Saja', 'so_in_t2v')],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function soraDurationKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('4 detik', 'so_dur_4'),
+      Markup.button.callback('8 detik', 'so_dur_8'),
+      Markup.button.callback('12 detik', 'so_dur_12'),
+    ],
+    [Markup.button.callback('« Kembali', 'mode_sora')],
+  ]);
+}
+
+function soraRatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('📱 9:16', 'so_ratio_916'),
+      Markup.button.callback('🖥️ 16:9', 'so_ratio_169'),
+    ],
+  ]);
+}
+
+// Sora "size" strings (base sora-2 = 720p). Keyed by ratio code.
+const SORA_SIZE_MAP: Record<string, string> = { '916': '720x1280', '169': '1280x720' };
+
+// ─── Gemini Omni wizard keyboards (text-to-video or image-to-video) ───────────
+
+function gomniInputKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🖼️ Foto + Prompt', 'go_in_i2v')],
+    [Markup.button.callback('✍️ Prompt Saja', 'go_in_t2v')],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function gomniDurationKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('8 detik', 'go_dur_8'),
+      Markup.button.callback('10 detik', 'go_dur_10'),
+    ],
+    [Markup.button.callback('« Kembali', 'mode_gomni')],
+  ]);
+}
+
+function gomniRatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('📱 9:16', 'go_ratio_916'),
+      Markup.button.callback('🖥️ 16:9', 'go_ratio_169'),
+    ],
   ]);
 }
 
@@ -1810,6 +1888,104 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  // ── Sora 2 wizard (text-to-video or image-to-video) ──
+  if (data === 'mode_sora') {
+    setSession(userId, {
+      mode: 'idle',
+      soraInputMode: undefined,
+      soraDuration: undefined,
+      soraRatio: undefined,
+      soraImageUrl: undefined,
+    });
+    return ctx.editMessageText(
+      '🎥 *Sora 2 (OpenAI)*\n\nPilih cara membuat video:',
+      { parse_mode: 'Markdown', ...soraInputKeyboard() }
+    );
+  }
+
+  if (data === 'so_in_i2v' || data === 'so_in_t2v') {
+    setSession(userId, { soraInputMode: data === 'so_in_i2v' ? 'i2v' : 't2v' });
+    return ctx.editMessageText(
+      '🎥 *Sora 2*\n\n*Langkah 1:* Pilih durasi video:',
+      { parse_mode: 'Markdown', ...soraDurationKeyboard() }
+    );
+  }
+
+  if (data.startsWith('so_dur_')) {
+    const dur = parseInt(data.replace('so_dur_', ''), 10);
+    setSession(userId, { soraDuration: dur });
+    return ctx.editMessageText(
+      `🎥 *Sora 2*\n\nDurasi: *${dur} detik*\n\n*Langkah 2:* Pilih rasio layar:`,
+      { parse_mode: 'Markdown', ...soraRatioKeyboard() }
+    );
+  }
+
+  if (data.startsWith('so_ratio_')) {
+    const ratio = SD_RATIO_MAP[data.replace('so_ratio_', '')] ?? '9:16';
+    const session = getSession(userId);
+    if (session.soraInputMode === 'i2v') {
+      setSession(userId, { soraRatio: ratio, mode: 'sora_wait_image' });
+      return ctx.editMessageText(
+        `🎥 *Sora 2*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Kirim *foto acuan* untuk video kamu.`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+    setSession(userId, { soraRatio: ratio, mode: 'sora_wait_prompt' });
+    return ctx.editMessageText(
+      `🎥 *Sora 2*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  // ── Gemini Omni wizard (text-to-video or image-to-video) ──
+  if (data === 'mode_gomni') {
+    setSession(userId, {
+      mode: 'idle',
+      gomniInputMode: undefined,
+      gomniDuration: undefined,
+      gomniRatio: undefined,
+      gomniImageUrl: undefined,
+    });
+    return ctx.editMessageText(
+      '✨ *Gemini Omni (Google)*\n\nPilih cara membuat video:',
+      { parse_mode: 'Markdown', ...gomniInputKeyboard() }
+    );
+  }
+
+  if (data === 'go_in_i2v' || data === 'go_in_t2v') {
+    setSession(userId, { gomniInputMode: data === 'go_in_i2v' ? 'i2v' : 't2v' });
+    return ctx.editMessageText(
+      '✨ *Gemini Omni*\n\n*Langkah 1:* Pilih durasi video:',
+      { parse_mode: 'Markdown', ...gomniDurationKeyboard() }
+    );
+  }
+
+  if (data.startsWith('go_dur_')) {
+    const dur = parseInt(data.replace('go_dur_', ''), 10);
+    setSession(userId, { gomniDuration: dur });
+    return ctx.editMessageText(
+      `✨ *Gemini Omni*\n\nDurasi: *${dur} detik*\n\n*Langkah 2:* Pilih rasio layar:`,
+      { parse_mode: 'Markdown', ...gomniRatioKeyboard() }
+    );
+  }
+
+  if (data.startsWith('go_ratio_')) {
+    const ratio = SD_RATIO_MAP[data.replace('go_ratio_', '')] ?? '9:16';
+    const session = getSession(userId);
+    if (session.gomniInputMode === 'i2v') {
+      setSession(userId, { gomniRatio: ratio, mode: 'gomni_wait_image' });
+      return ctx.editMessageText(
+        `✨ *Gemini Omni*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Kirim *foto acuan* untuk video kamu.`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+    setSession(userId, { gomniRatio: ratio, mode: 'gomni_wait_prompt' });
+    return ctx.editMessageText(
+      `✨ *Gemini Omni*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   // ── Kling V3 Turbo image-to-video wizard ──
   if (data === 'mode_kvt') {
     setSession(userId, {
@@ -1965,6 +2141,24 @@ async function handleImageInput(ctx: any, fileUrl: string) {
 
   if (session.mode === 'grok_wait_image') {
     setSession(userId, { grokImageUrl: fileUrl, mode: 'grok_wait_prompt' });
+    return ctx.reply(
+      '✅ Foto acuan diterima!\n\n' +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'sora_wait_image') {
+    setSession(userId, { soraImageUrl: fileUrl, mode: 'sora_wait_prompt' });
+    return ctx.reply(
+      '✅ Foto acuan diterima!\n\n' +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'gomni_wait_image') {
+    setSession(userId, { gomniImageUrl: fileUrl, mode: 'gomni_wait_prompt' });
     return ctx.reply(
       '✅ Foto acuan diterima!\n\n' +
       '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
@@ -2185,6 +2379,56 @@ bot.on('text', async (ctx) => {
     return;
   }
 
+  // ── Sora 2 prompt ──
+  if (session.mode === 'sora_wait_prompt') {
+    if (!await requireLoginAndSub(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    const opts = {
+      inputMode: session.soraInputMode ?? 't2v',
+      imageUrl: session.soraImageUrl,
+      duration: session.soraDuration ?? 8,
+      ratio: session.soraRatio ?? '9:16',
+    };
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Memproses Sora 2...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
+    runSora(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
+      .catch(e => console.error(`[${userId}] Sora gen error:`, e.message));
+    return;
+  }
+
+  // ── Gemini Omni prompt ──
+  if (session.mode === 'gomni_wait_prompt') {
+    if (!await requireLoginAndSub(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    const opts = {
+      inputMode: session.gomniInputMode ?? 't2v',
+      imageUrl: session.gomniImageUrl,
+      duration: session.gomniDuration ?? 10,
+      ratio: session.gomniRatio ?? '9:16',
+    };
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Memproses Gemini Omni...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
+    runGeminiOmni(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
+      .catch(e => console.error(`[${userId}] Gemini Omni gen error:`, e.message));
+    return;
+  }
+
   // ── Kling V3 Turbo image-to-video prompt ──
   if (session.mode === 'kvt_wait_prompt') {
     if (!await requireLoginAndSub(ctx)) return;
@@ -2283,6 +2527,12 @@ bot.on('text', async (ctx) => {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
   if (session.mode === 'grok_wait_image') {
+    return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+  }
+  if (session.mode === 'sora_wait_image') {
+    return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+  }
+  if (session.mode === 'gomni_wait_image') {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
   if (session.mode === 'kling_wait_image') {
@@ -2610,6 +2860,183 @@ async function runGrok(
   } catch (err: any) {
     const msg = err?.message ?? String(err);
     console.error(`[${userId}] Grok error: ${msg}`);
+    let friendly: string;
+    if (msg.includes('PICSART_TIMEOUT')) {
+      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
+    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
+      friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
+    } else {
+      friendly = '❌ Gagal memproses. Coba lagi nanti.';
+    }
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  }
+}
+
+// ─── Background: Sora 2 (text-to-video or image-to-video) ─────────────────────
+
+async function runSora(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  opts: {
+    inputMode: 'i2v' | 't2v';
+    imageUrl?: string;
+    duration: number;
+    ratio: string;
+  }
+) {
+  console.log(`[${userId}] Sora started — mode: ${opts.inputMode}, dur: ${opts.duration}s, ratio: ${opts.ratio}`);
+  const size = SORA_SIZE_MAP[opts.ratio === '16:9' ? '169' : '916'] ?? '720x1280';
+
+  try {
+    let imageBuffer: Buffer | undefined;
+    let imageName: string | undefined;
+    let imageMime: string | undefined;
+    if (opts.inputMode === 'i2v' && opts.imageUrl) {
+      const img = await downloadBuffer(opts.imageUrl);
+      imageBuffer = img.buf;
+      imageName = `reference.${img.ext}`;
+      imageMime = img.mime;
+      console.log(`[${userId}] Sora ref image — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
+    }
+
+    let lastEdit = 0;
+    const result = await picsart.generateSora({
+      userId: dbUserId,
+      prompt,
+      imageBuffer,
+      imageName,
+      imageMime,
+      seconds: opts.duration,
+      size,
+      onStatus: (stage) => {
+        const text = stage === 'upload'
+          ? '⏳ Sora 2: mengunggah foto ke server... (1/3)'
+          : stage === 'submit'
+            ? '⏳ Sora 2: mengirim perintah ke server... (2/3)'
+            : '⏳ Sora 2: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 3–8 menit. Jangan tutup chat ini.';
+        lastEdit = Date.now();
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+      },
+      onPoll: (elapsedSec) => {
+        if (Date.now() - lastEdit < 30_000) return;
+        lastEdit = Date.now();
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = elapsedSec % 60;
+        const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
+        bot.telegram.editMessageText(
+          chatId, statusMsgId, undefined,
+          `⏳ Sora 2: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${timer} (biasanya 3–8 menit).\nJangan tutup chat ini, video dikirim otomatis.`
+        ).catch(() => {});
+      },
+    });
+
+    const newCount = await incrementKlingUsage(dbUserId);
+    markGenSuccess(userId);
+    await sendResult(
+      chatId,
+      result.url,
+      `🎥 Sora 2 (${opts.duration}s · ${opts.ratio})\n⏳ Cooldown 3 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
+      true
+    );
+    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    console.log(`[${userId}] Sora done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    console.error(`[${userId}] Sora error: ${msg}`);
+    let friendly: string;
+    if (msg.includes('PICSART_TIMEOUT')) {
+      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
+    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
+      friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
+    } else {
+      friendly = '❌ Gagal memproses. Coba lagi nanti.';
+    }
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  }
+}
+
+// ─── Background: Gemini Omni (text-to-video or image-to-video) ────────────────
+
+async function runGeminiOmni(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  opts: {
+    inputMode: 'i2v' | 't2v';
+    imageUrl?: string;
+    duration: number;
+    ratio: string;
+  }
+) {
+  console.log(`[${userId}] Gemini Omni started — mode: ${opts.inputMode}, dur: ${opts.duration}s, ratio: ${opts.ratio}`);
+
+  try {
+    let imageBuffer: Buffer | undefined;
+    let imageName: string | undefined;
+    let imageMime: string | undefined;
+    if (opts.inputMode === 'i2v' && opts.imageUrl) {
+      const img = await downloadBuffer(opts.imageUrl);
+      imageBuffer = img.buf;
+      imageName = `reference.${img.ext}`;
+      imageMime = img.mime;
+      console.log(`[${userId}] Gemini Omni ref image — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
+    }
+
+    let lastEdit = 0;
+    const result = await picsart.generateGeminiOmni({
+      userId: dbUserId,
+      prompt,
+      imageBuffer,
+      imageName,
+      imageMime,
+      durationSeconds: opts.duration,
+      aspectRatio: opts.ratio,
+      onStatus: (stage) => {
+        const text = stage === 'upload'
+          ? '⏳ Gemini Omni: mengunggah foto ke server... (1/3)'
+          : stage === 'submit'
+            ? '⏳ Gemini Omni: mengirim perintah ke server... (2/3)'
+            : '⏳ Gemini Omni: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 3–8 menit. Jangan tutup chat ini.';
+        lastEdit = Date.now();
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+      },
+      onPoll: (elapsedSec) => {
+        if (Date.now() - lastEdit < 30_000) return;
+        lastEdit = Date.now();
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = elapsedSec % 60;
+        const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
+        bot.telegram.editMessageText(
+          chatId, statusMsgId, undefined,
+          `⏳ Gemini Omni: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${timer} (biasanya 3–8 menit).\nJangan tutup chat ini, video dikirim otomatis.`
+        ).catch(() => {});
+      },
+    });
+
+    const newCount = await incrementKlingUsage(dbUserId);
+    markGenSuccess(userId);
+    await sendResult(
+      chatId,
+      result.url,
+      `✨ Gemini Omni (${opts.duration}s · ${opts.ratio})\n⏳ Cooldown 3 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
+      true
+    );
+    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    console.log(`[${userId}] Gemini Omni done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    console.error(`[${userId}] Gemini Omni error: ${msg}`);
     let friendly: string;
     if (msg.includes('PICSART_TIMEOUT')) {
       friendly = '❌ Proses terlalu lama. Coba lagi nanti.';

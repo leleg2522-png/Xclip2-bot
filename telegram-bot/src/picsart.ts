@@ -796,6 +796,211 @@ export async function generateGrok(input: {
   });
 }
 
+// ─── Sora 2 (OpenAI video: text-to-video or image-to-video) ───────────────────
+// POST /workflows/openai/v1/videos/submit          -> {response:{id}}
+// poll GET /workflows/openai/v1/videos/{id}/result -> COMPLETED, result.videoUrl
+export const SORA_MODEL = 'sora-2';
+
+export async function submitSora(credId: number, input: {
+  prompt: string;
+  imageUrl?: string;
+  seconds: number;
+  size: string;
+}): Promise<string> {
+  const access = await getAccessToken(credId);
+  const params: Record<string, unknown> = {
+    model: SORA_MODEL,
+    prompt: input.prompt ?? '',
+    seconds: input.seconds,
+    size: input.size,
+  };
+  if (input.imageUrl) {
+    params.input_reference_url = input.imageUrl;
+    params.adjust_input_image_ratio = true;
+  }
+  const r = await http.post(`${API_BASE}/workflows/openai/v1/videos/submit`, { params }, {
+    headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
+    validateStatus: () => true,
+  });
+  const id = r.data?.response?.id;
+  if (!ok2xx(r.status) || !id) {
+    throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+  }
+  return id;
+}
+
+export async function pollSoraResult(
+  credId: number,
+  id: string,
+  opts?: { maxAttempts?: number; intervalMs?: number; onTick?: (elapsedMs: number) => void }
+): Promise<{ url: string; credits?: number }> {
+  const maxAttempts = opts?.maxAttempts ?? 180; // ~15 min at 5s
+  const intervalMs = opts?.intervalMs ?? 5000;
+  const start = Date.now();
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((res) => setTimeout(res, intervalMs));
+    opts?.onTick?.(Date.now() - start);
+    const access = await getAccessToken(credId);
+    const r = await http.get(`${API_BASE}/workflows/openai/v1/videos/${id}/result`, {
+      headers: commonHeaders({ authorization: `Bearer ${access}` }),
+      validateStatus: () => true,
+    });
+    if (!ok2xx(r.status)) continue;
+    const resp = r.data?.response;
+    const status = String(resp?.status ?? '').toUpperCase();
+    if (status === 'COMPLETED') {
+      const url = resp?.result?.videoUrl;
+      if (!url) throw new Error('PICSART_NO_RESULT_URL');
+      return { url, credits: resp.usage?.credits };
+    }
+    if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
+      throw new Error(`PICSART_GEN_FAILED: ${JSON.stringify(resp).slice(0, 200)}`);
+    }
+  }
+  throw new Error('PICSART_TIMEOUT');
+}
+
+// High-level orchestrator: optional image upload -> submit -> poll -> result URL.
+export async function generateSora(input: {
+  userId: number;
+  prompt: string;
+  imageBuffer?: Buffer;
+  imageName?: string;
+  imageMime?: string;
+  seconds: number;
+  size: string;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  return runWithAccount(input.userId, async (credId) => {
+    let imageUrl: string | undefined;
+    if (input.imageBuffer) {
+      input.onStatus?.('upload');
+      imageUrl = await uploadFile(
+        credId,
+        input.imageBuffer,
+        input.imageName || 'reference.jpg',
+        input.imageMime || 'image/jpeg'
+      );
+    }
+    input.onStatus?.('submit');
+    const id = await submitSora(credId, {
+      prompt: input.prompt,
+      imageUrl,
+      seconds: input.seconds,
+      size: input.size,
+    });
+    input.onStatus?.('poll');
+    return pollSoraResult(credId, id, {
+      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+    });
+  });
+}
+
+// ─── Gemini Omni (Google video: text-to-video or image-to-video) ──────────────
+// POST /workflows/gemini-omni/video/submit          -> {response:{id}}
+// poll GET /workflows/gemini-omni/video/{id}/result -> COMPLETED, result[0].url
+export const GEMINI_OMNI_MODEL = 'gemini-omni-flash-preview';
+
+export async function submitGeminiOmni(credId: number, input: {
+  prompt: string;
+  imageUrl?: string;
+  imageMime?: string;
+  durationSeconds: number;
+  aspectRatio: string;
+}): Promise<string> {
+  const access = await getAccessToken(credId);
+  const params: Record<string, unknown> = {
+    prompt: input.prompt ?? '',
+    model: GEMINI_OMNI_MODEL,
+    aspectRatio: input.aspectRatio,
+    durationSeconds: input.durationSeconds,
+  };
+  if (input.imageUrl) {
+    params.image = { url: input.imageUrl, mimeType: input.imageMime || 'image/jpeg' };
+  }
+  const r = await http.post(`${API_BASE}/workflows/gemini-omni/video/submit`, { params }, {
+    headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
+    validateStatus: () => true,
+  });
+  const id = r.data?.response?.id;
+  if (!ok2xx(r.status) || !id) {
+    throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+  }
+  return id;
+}
+
+export async function pollGeminiOmniResult(
+  credId: number,
+  id: string,
+  opts?: { maxAttempts?: number; intervalMs?: number; onTick?: (elapsedMs: number) => void }
+): Promise<{ url: string; credits?: number }> {
+  const maxAttempts = opts?.maxAttempts ?? 180; // ~15 min at 5s
+  const intervalMs = opts?.intervalMs ?? 5000;
+  const start = Date.now();
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((res) => setTimeout(res, intervalMs));
+    opts?.onTick?.(Date.now() - start);
+    const access = await getAccessToken(credId);
+    const r = await http.get(`${API_BASE}/workflows/gemini-omni/video/${id}/result`, {
+      headers: commonHeaders({ authorization: `Bearer ${access}` }),
+      validateStatus: () => true,
+    });
+    if (!ok2xx(r.status)) continue;
+    const resp = r.data?.response;
+    const status = String(resp?.status ?? '').toUpperCase();
+    if (status === 'COMPLETED') {
+      const url = Array.isArray(resp?.result) ? resp.result[0]?.url : resp?.result?.url;
+      if (!url) throw new Error('PICSART_NO_RESULT_URL');
+      return { url, credits: resp.usage?.credits };
+    }
+    if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
+      throw new Error(`PICSART_GEN_FAILED: ${JSON.stringify(resp).slice(0, 200)}`);
+    }
+  }
+  throw new Error('PICSART_TIMEOUT');
+}
+
+// High-level orchestrator: optional image upload -> submit -> poll -> result URL.
+export async function generateGeminiOmni(input: {
+  userId: number;
+  prompt: string;
+  imageBuffer?: Buffer;
+  imageName?: string;
+  imageMime?: string;
+  durationSeconds: number;
+  aspectRatio: string;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  return runWithAccount(input.userId, async (credId) => {
+    let imageUrl: string | undefined;
+    let imageMime: string | undefined;
+    if (input.imageBuffer) {
+      input.onStatus?.('upload');
+      imageUrl = await uploadFile(
+        credId,
+        input.imageBuffer,
+        input.imageName || 'reference.jpg',
+        input.imageMime || 'image/jpeg'
+      );
+      imageMime = input.imageMime || 'image/jpeg';
+    }
+    input.onStatus?.('submit');
+    const id = await submitGeminiOmni(credId, {
+      prompt: input.prompt,
+      imageUrl,
+      imageMime,
+      durationSeconds: input.durationSeconds,
+      aspectRatio: input.aspectRatio,
+    });
+    input.onStatus?.('poll');
+    return pollGeminiOmniResult(credId, id, {
+      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+    });
+  });
+}
+
 // ─── Kling V3 Turbo image-to-video ────────────────────────────────────────────
 // Single image only. Params: prompt, aspect_ratio, duration (string), model_name,
 // resolution (720p|1080p), image URL. No mode/multi_shot/shot_type fields.
