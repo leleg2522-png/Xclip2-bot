@@ -52,3 +52,15 @@ not query errors), surfacing as a generation failure.
   Accounts are removed only on `PICSART_SUBMIT_FAILED`+credit-pattern
   (`discardAccount` DELETE) or oauth refresh HTTP 400/401/403 (mark `dead`).
   A dropped connection must never reach either gate.
+
+# Signal handlers that call bot.stop() can crash on shutdown
+
+`Telegraf.stop()` throws `Error: Bot is not running!` **synchronously** if
+`bot.launch()` never fully completed (e.g. startup delayed by a network/DB
+outage) or if it was already stopped. Called bare inside
+`process.once('SIGTERM'|'SIGINT', () => bot.stop(sig))`, that throw becomes an
+uncaughtException during shutdown — noisy, and the exact "crash on restart"
+pattern that wipes in-memory logins.
+
+**How to apply:** always wrap `bot.stop(sig)` in try/catch inside the signal
+handler; a shutdown attempt must never throw.

@@ -2975,5 +2975,16 @@ process.on('uncaughtException', (err) => {
   console.error('⚠️ Uncaught exception:', err);
 });
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+// Telegraf's bot.stop() throws "Bot is not running!" if launch never fully
+// completed (e.g. startup was delayed by a network/DB outage) or if it was
+// already stopped. Thrown from inside a signal handler that becomes an
+// uncaughtException, so guard it — a shutdown attempt must never crash noisily.
+function stopBot(signal: string) {
+  try {
+    bot.stop(signal);
+  } catch (e: any) {
+    console.warn(`Bot stop (${signal}) skipped: ${e?.message ?? e}`);
+  }
+}
+process.once('SIGINT', () => stopBot('SIGINT'));
+process.once('SIGTERM', () => stopBot('SIGTERM'));
