@@ -393,6 +393,25 @@ async function incrementKlingUsage(dbUserId: number): Promise<number> {
 
 const bot = new Telegraf(BOT_TOKEN);
 
+// Recognizes only genuine transient transport failures (DNS/socket/timeout).
+// Kept deliberately narrow — matching by explicit error code, not free-text —
+// so real upstream failures (Renderful/Freepik/DB "Network Error" strings) are
+// NOT swallowed and still surface with a full stack trace.
+const TRANSIENT_NET_CODES = new Set([
+  'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ECONNABORTED',
+  'EAI_AGAIN', 'ENOTFOUND', 'EPIPE', 'EHOSTUNREACH', 'ENETUNREACH',
+]);
+function isTransientNetworkError(err: unknown): boolean {
+  const e = err as any;
+  if (!e) return false;
+  if (typeof e.code === 'string' && TRANSIENT_NET_CODES.has(e.code)) return true;
+  // node-fetch surfaces low-level socket failures as FetchError{type:'system'}
+  // carrying the underlying errno in `code`; only treat those as transient.
+  if (e.type === 'system' && typeof e.errno === 'string' && TRANSIENT_NET_CODES.has(e.errno)) return true;
+  if (/socket hang up/i.test(e.message || '')) return true;
+  return false;
+}
+
 // ─── Picsart backend ──────────────────────────────────────────────────────────
 picsart.initPicsart(db, (msg: string) => {
   console.error('[picsart]', msg);
@@ -1635,7 +1654,9 @@ bot.help((ctx) => {
 bot.on('callback_query', async (ctx) => {
   const data = (ctx.callbackQuery as any).data as string;
   const userId = ctx.from.id;
-  await ctx.answerCbQuery();
+  // answerCbQuery can time out on a flaky network (ETIMEDOUT). It's only a UI
+  // loading-spinner ack, so a failure here must never abort the handler.
+  await ctx.answerCbQuery().catch(() => {});
 
   if (data !== 'back_main') {
     if (!await requireLoginAndSub(ctx)) return;
@@ -2897,6 +2918,22 @@ app.listen(PORT, () => {
 // Global guard: a thrown error inside any command must NOT crash the whole bot
 // (a crash restarts the process and wipes all in-memory logins → "login mulu").
 bot.catch((err, ctx) => {
+  const anyErr = err as any;
+  const desc: string = anyErr?.response?.description || anyErr?.message || '';
+
+  // Expected & harmless: user tapped the same button, so the edit produces an
+  // identical message. Telegram rejects it with 400 "message is not modified".
+  // Nothing is broken — swallow it silently so it doesn't spam the logs.
+  if (desc.includes('message is not modified')) return;
+
+  // Transient network blip talking to api.telegram.org (ETIMEDOUT / socket
+  // hang up). The update is lost but the bot stays up; log a one-liner instead
+  // of a full stack trace and don't try to reply (that would time out too).
+  if (isTransientNetworkError(err)) {
+    console.warn(`⚠️ Network timeout on ${ctx?.updateType} (code=${anyErr?.code ?? 'n/a'}, bot masih jalan)`);
+    return;
+  }
+
   console.error(`⚠️ Bot error on update ${ctx?.updateType}:`, err);
   try {
     ctx?.reply('⚠️ Terjadi error sebentar, coba lagi ya.');
@@ -2908,6 +2945,10 @@ bot.catch((err, ctx) => {
 // Last-resort guards so an unhandled async error keeps the bot alive instead of
 // killing the process (which would log everyone out on restart).
 process.on('unhandledRejection', (reason) => {
+  if (isTransientNetworkError(reason)) {
+    console.warn(`⚠️ Network timeout ke Telegram (code=${(reason as any)?.code ?? 'n/a'}, bot masih jalan)`);
+    return;
+  }
   console.error('⚠️ Unhandled promise rejection:', reason);
 });
 process.on('uncaughtException', (err) => {
