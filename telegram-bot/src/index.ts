@@ -66,7 +66,23 @@ const telegramHttp = axios.create({ timeout: 60_000 });
 
 // ─── Database ─────────────────────────────────────────────────────────────────
 
-const db = new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } });
+const db = new Pool({
+  connectionString: DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+  // Railway/managed Postgres silently drops idle TCP connections. keepAlive
+  // keeps the socket warm so a long generation (poll loop hits the DB every 5s
+  // for up to ~15 min) doesn't get "Connection terminated unexpectedly".
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10_000,
+});
+// CRITICAL: a pooled client can error while idle (server closed the socket).
+// The pg Pool emits 'error' for that; with NO listener Node treats it as an
+// unhandled 'error' event and CRASHES the process — which wipes every
+// in-memory login ("login mulu"). This listener downgrades it to a warning;
+// the pool discards the bad client and hands out a fresh one on the next query.
+db.on('error', (err: any) => {
+  console.warn('⚠️ PG pool idle-client error (bot masih jalan):', err?.message ?? err);
+});
 console.log('✅ Database pool initialized');
 
 async function findUserByUsernameOrEmail(input: string) {

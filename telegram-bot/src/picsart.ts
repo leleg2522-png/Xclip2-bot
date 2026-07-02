@@ -66,6 +66,32 @@ export const KLING_I2V_TURBO_MODEL = 'kling-v3-turbo';
 let db: Pool;
 let notifyOwner: (msg: string) => void = () => {};
 
+// Transient Postgres connection drops (managed DBs recycle idle sockets, and a
+// generation's poll loop hits the DB every 5s for up to ~15 min). These are NOT
+// query/logic errors — retrying the exact same statement is safe because every
+// query in this file is idempotent (SELECT / token UPDATE / ON CONFLICT upsert /
+// DELETE-by-id). We deliberately DO NOT touch account-deletion logic here: a
+// dropped connection must never look like a credit/auth failure.
+const TRANSIENT_DB_ERR =
+  /Connection terminated|stream has been aborted|connection is closed|ECONNRESET|ETIMEDOUT|EPIPE|terminating connection|server closed the connection|Client has encountered a connection error/i;
+
+// Drop-in replacement for `db.query` with retry on transient connection loss.
+async function q(text: string, params?: any[]): Promise<any> {
+  let lastErr: any;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      return params === undefined ? await db.query(text) : await db.query(text, params);
+    } catch (e: any) {
+      lastErr = e;
+      if (!TRANSIENT_DB_ERR.test(String(e?.message ?? ''))) throw e; // real error → surface immediately
+      const backoff = 300 * (attempt + 1);
+      console.warn(`[picsart] DB connection blip (attempt ${attempt + 1}/4), retry in ${backoff}ms: ${e?.message ?? e}`);
+      await new Promise((r) => setTimeout(r, backoff));
+    }
+  }
+  throw lastErr;
+}
+
 // Absolute safety ceiling on failover attempts, so a logic error can never spin
 // forever. The real bound is the pool size (see runWithAccount): failover keeps
 // moving to the next available account until every account has been tried.
@@ -77,7 +103,7 @@ export function initPicsart(pool: Pool, notify?: (msg: string) => void) {
 }
 
 export async function ensurePicsartSchema(): Promise<void> {
-  await db.query(`
+  await q(`
     CREATE TABLE IF NOT EXISTS picsart_credentials (
       id SERIAL PRIMARY KEY,
       refresh_token TEXT NOT NULL,
@@ -92,7 +118,7 @@ export async function ensurePicsartSchema(): Promise<void> {
   `);
   // Sticky mapping: each user gets ONE dedicated account so concurrent users
   // never share an account (no collisions, no results leaking across users).
-  await db.query(`
+  await q(`
     CREATE TABLE IF NOT EXISTS picsart_user_accounts (
       user_id BIGINT PRIMARY KEY,
       credential_id INTEGER NOT NULL REFERENCES picsart_credentials(id) ON DELETE CASCADE,
@@ -124,7 +150,7 @@ interface CredRow {
 }
 
 async function loadCredential(credId: number): Promise<CredRow | null> {
-  const r = await db.query(
+  const r = await q(
     `SELECT id, refresh_token, access_token, access_expires_at, status, label
        FROM picsart_credentials WHERE id = $1`,
     [credId]
@@ -139,7 +165,7 @@ async function loadCredential(credId: number): Promise<CredRow | null> {
 //  • `exclude` lets the failover loop skip accounts that just failed.
 // Returns the credential id, or null when no usable account exists.
 async function acquireAccount(userId: number, exclude: number[] = []): Promise<number | null> {
-  const existing = await db.query(
+  const existing = await q(
     `SELECT a.credential_id AS id
        FROM picsart_user_accounts a
        JOIN picsart_credentials c ON c.id = a.credential_id
@@ -149,7 +175,7 @@ async function acquireAccount(userId: number, exclude: number[] = []): Promise<n
   );
   if (existing.rows[0]) return existing.rows[0].id as number;
 
-  const pick = await db.query(
+  const pick = await q(
     `SELECT c.id
        FROM picsart_credentials c
        LEFT JOIN picsart_user_accounts a ON a.credential_id = c.id
@@ -162,7 +188,7 @@ async function acquireAccount(userId: number, exclude: number[] = []): Promise<n
   const credId = pick.rows[0]?.id as number | undefined;
   if (credId == null) return null;
 
-  await db.query(
+  await q(
     `INSERT INTO picsart_user_accounts (user_id, credential_id, assigned_at)
        VALUES ($1, $2, NOW())
      ON CONFLICT (user_id)
@@ -178,7 +204,7 @@ async function acquireAccount(userId: number, exclude: number[] = []): Promise<n
 // another account on their next request.
 async function discardAccount(credId: number): Promise<void> {
   const cred = await loadCredential(credId);
-  await db.query(`DELETE FROM picsart_credentials WHERE id = $1`, [credId]);
+  await q(`DELETE FROM picsart_credentials WHERE id = $1`, [credId]);
   const who = cred?.label ? `"${cred.label}" (#${credId})` : `#${credId}`;
   notifyOwner(
     `🗑️ Akun Picsart ${who} kehabisan kredit dan sudah dibuang dari pool.\n` +
@@ -200,7 +226,7 @@ async function runWithAccount<T>(userId: number, fn: (credId: number) => Promise
   // Try every account in the pool before giving up (acquireAccount returns null
   // once all available accounts are excluded). MAX_ACCOUNT_ATTEMPTS is only a
   // hard safety ceiling against an unexpected infinite loop.
-  const poolCount = await db.query(`SELECT COUNT(*)::int AS n FROM picsart_credentials`);
+  const poolCount = await q(`SELECT COUNT(*)::int AS n FROM picsart_credentials`);
   const ceiling = Math.min(MAX_ACCOUNT_ATTEMPTS, Math.max(1, poolCount.rows[0]?.n ?? 1));
   for (let attempt = 0; attempt < ceiling; attempt++) {
     const credId = await acquireAccount(userId, tried);
@@ -239,6 +265,12 @@ export async function addRefreshToken(rt: string, label?: string): Promise<numbe
     try { token = decodeURIComponent(token); } catch { /* keep raw */ }
   }
   if (!token.startsWith('rt:')) return null;
+  // NOTE: this INSERT is the one non-idempotent write in this file (no unique
+  // guard on refresh_token). It deliberately bypasses the q() retry wrapper: if
+  // a connection drops *after* the row commits but *before* we get the result,
+  // an automatic retry would create a DUPLICATE account row. This is an
+  // admin-only command, so on a rare transient failure the owner simply re-runs
+  // /addpicsartkey rather than risking a silent duplicate.
   const r = await db.query(
     `INSERT INTO picsart_credentials (refresh_token, label, status) VALUES ($1, $2, 'available') RETURNING id`,
     [token, label ?? null]
@@ -251,10 +283,10 @@ export async function getStatus(): Promise<{
   available: number;
   totalUsers: number;
 }> {
-  const r = await db.query(`SELECT status, COUNT(*)::int AS cnt FROM picsart_credentials GROUP BY status`);
+  const r = await q(`SELECT status, COUNT(*)::int AS cnt FROM picsart_credentials GROUP BY status`);
   const counts: Record<string, number> = {};
   for (const row of r.rows) counts[row.status] = row.cnt;
-  const u = await db.query(`SELECT COUNT(*)::int AS cnt FROM picsart_user_accounts`);
+  const u = await q(`SELECT COUNT(*)::int AS cnt FROM picsart_user_accounts`);
   return { counts, available: counts['available'] ?? 0, totalUsers: u.rows[0]?.cnt ?? 0 };
 }
 
@@ -267,7 +299,7 @@ export async function getPool(): Promise<Array<{
   accessValidUntil: string | null;
   createdAt: string;
 }>> {
-  const r = await db.query(
+  const r = await q(
     `SELECT c.id, c.label, c.status, c.access_expires_at, c.created_at,
             COUNT(a.user_id)::int AS users
        FROM picsart_credentials c
@@ -327,7 +359,7 @@ async function doRefresh(credId: number, force = false): Promise<string> {
   if (!ok2xx(resp.status) || !access) {
     const detail = `status ${resp.status}: ${JSON.stringify(resp.data).slice(0, 200)}`;
     if (resp.status === 400 || resp.status === 401 || resp.status === 403) {
-      await db.query(
+      await q(
         `UPDATE picsart_credentials SET status = 'dead', dead_at = NOW(), updated_at = NOW() WHERE id = $1`,
         [cred.id]
       );
@@ -344,7 +376,7 @@ async function doRefresh(credId: number, force = false): Promise<string> {
   const accessExpiresAt = new Date(Date.now() + expiresIn * 1000);
   const rotated = extractRotatedRefreshToken(resp.headers?.['set-cookie']);
 
-  await db.query(
+  await q(
     `UPDATE picsart_credentials
         SET access_token = $1, access_expires_at = $2,
             refresh_token = COALESCE($3, refresh_token), updated_at = NOW()
@@ -371,7 +403,7 @@ export function startPicsartKeepalive(intervalMs = 3 * 24 * 60 * 60 * 1000): Nod
   const tick = async () => {
     let rows: Array<{ id: number; status: string }> = [];
     try {
-      const r = await db.query(
+      const r = await q(
         `SELECT id, status FROM picsart_credentials WHERE status = 'available'`
       );
       rows = r.rows;
