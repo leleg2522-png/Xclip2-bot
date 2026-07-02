@@ -74,6 +74,10 @@ const db = new Pool({
   // for up to ~15 min) doesn't get "Connection terminated unexpectedly".
   keepAlive: true,
   keepAliveInitialDelayMillis: 10_000,
+  // During an upstream network disruption a connect can hang for a long time.
+  // Cap it so a bad attempt fails fast (as ETIMEDOUT) and the q() retry wrapper
+  // can try again quickly, instead of one poll cycle stalling for minutes.
+  connectionTimeoutMillis: 10_000,
 });
 // CRITICAL: a pooled client can error while idle (server closed the socket).
 // The pg Pool emits 'error' for that; with NO listener Node treats it as an

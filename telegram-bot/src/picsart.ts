@@ -78,16 +78,25 @@ const TRANSIENT_DB_ERR =
 // Drop-in replacement for `db.query` with retry on transient connection loss.
 // Typed as QueryResult so every call site keeps the same `.rows` typing it had
 // with the raw `db.query`.
+// How many times a transient connection drop is retried before giving up. A
+// generation runs 5–8 min, so spending ~15s riding out a network blip (e.g. an
+// upstream fiber/provider hiccup causing connect ETIMEDOUT) is far better UX
+// than failing the whole generation. This does NOT ride out multi-minute
+// outages — nothing reasonably can — but it survives the common seconds-long
+// blips. It never risks accounts: a transient error is retried, never treated
+// as a credit/auth failure.
+const DB_MAX_RETRIES = 8;
 async function q<R extends QueryResultRow = any>(text: string, params?: any[]): Promise<QueryResult<R>> {
   let lastErr: any;
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < DB_MAX_RETRIES; attempt++) {
     try {
       return params === undefined ? await db.query<R>(text) : await db.query<R>(text, params);
     } catch (e: any) {
       lastErr = e;
       if (!TRANSIENT_DB_ERR.test(String(e?.message ?? ''))) throw e; // real error → surface immediately
-      const backoff = 300 * (attempt + 1);
-      console.warn(`[picsart] DB connection blip (attempt ${attempt + 1}/4), retry in ${backoff}ms: ${e?.message ?? e}`);
+      if (attempt === DB_MAX_RETRIES - 1) break; // last attempt failed → don't sleep, just throw
+      const backoff = Math.min(500 * (attempt + 1), 3000); // 0.5s → 1s → … capped at 3s
+      console.warn(`[picsart] DB connection blip (attempt ${attempt + 1}/${DB_MAX_RETRIES}), retry in ${backoff}ms: ${e?.message ?? e}`);
       await new Promise((r) => setTimeout(r, backoff));
     }
   }
