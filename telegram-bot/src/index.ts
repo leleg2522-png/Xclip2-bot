@@ -547,7 +547,7 @@ function isLeonardoKeyExhaustedError(raw: string): boolean {
 
 // ─── Generate Cooldown ────────────────────────────────────────────────────────
 
-const GEN_COOLDOWN_MS = 5 * 60 * 1000; // cooldown 5 menit setelah generate berhasil
+const GEN_COOLDOWN_MS = 0; // cooldown dinonaktifkan
 const lastGenSuccessAt = new Map<number, number>();
 
 function getCooldownRemainingMs(userId: number): number {
@@ -3340,7 +3340,7 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
       },
     });
 
-    const delivered = await sendResult(chatId, result.url, `🕹️ Kling v3.0 Motion Control\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`, true);
+    const delivered = await sendResult(chatId, result.url, `🕹️ Kling v3.0 Motion Control\n\n/menu untuk buat lagi`, true);
     if (delivered) {
       refund = false;
       const newCount = await incrementKlingUsage(dbUserId);
@@ -3449,7 +3449,7 @@ async function runSeedance(
     const delivered = await sendResult(
       chatId,
       result.url,
-      `🎬 Seedance 2.0 Fast (${opts.duration}s · ${opts.ratio} · ${opts.resolution}${opts.audio ? ' · audio' : ''})\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
+      `🎬 Seedance 2.0 Fast (${opts.duration}s · ${opts.ratio} · ${opts.resolution}${opts.audio ? ' · audio' : ''})\n\n/menu untuk buat lagi`,
       true
     );
     if (delivered) {
@@ -3545,7 +3545,7 @@ async function runGrok(
     const delivered = await sendResult(
       chatId,
       result.url,
-      `🤖 Grok Imagine (${opts.duration}s · ${opts.ratio})\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
+      `🤖 Grok Imagine (${opts.duration}s · ${opts.ratio})\n\n/menu untuk buat lagi`,
       true
     );
     if (delivered) {
@@ -3651,7 +3651,7 @@ async function runSora(
     const delivered = await sendResult(
       chatId,
       result.url,
-      `🎥 Sora 2 (${opts.duration}s · ${opts.ratio})\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
+      `🎥 Sora 2 (${opts.duration}s · ${opts.ratio})\n\n/menu untuk buat lagi`,
       true
     );
     if (delivered) {
@@ -3771,7 +3771,7 @@ async function runGeminiOmni(
     const delivered = await sendResult(
       chatId,
       result.url,
-      `✨ Gemini Omni (${opts.duration}s · ${opts.ratio})\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
+      `✨ Gemini Omni (${opts.duration}s · ${opts.ratio})\n\n/menu untuk buat lagi`,
       true
     );
     if (delivered) {
@@ -3987,7 +3987,7 @@ async function runKlingI2V(
     const delivered = await sendResult(
       chatId,
       result.url,
-      `🎞️ Kling V3 · ${modeLabel} (${opts.duration}s · ${opts.ratio})\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
+      `🎞️ Kling V3 · ${modeLabel} (${opts.duration}s · ${opts.ratio})\n\n/menu untuk buat lagi`,
       true
     );
     if (delivered) {
@@ -4085,7 +4085,7 @@ async function runKlingI2VTurbo(
     const delivered = await sendResult(
       chatId,
       result.url,
-      `⚡ Kling V3 Turbo (${opts.duration}s · ${opts.ratio} · ${opts.resolution})\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
+      `⚡ Kling V3 Turbo (${opts.duration}s · ${opts.ratio} · ${opts.resolution})\n\n/menu untuk buat lagi`,
       true
     );
     if (delivered) {
