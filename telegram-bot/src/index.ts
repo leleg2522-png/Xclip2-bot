@@ -1158,6 +1158,10 @@ async function pollForResult(taskId: string, userId: number, apiKey: string, pol
 
 function mainMenuKeyboard() {
   return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('💳 Isi Saldo', 'menu_topup'),
+      Markup.button.callback('💰 Cek Saldo', 'menu_saldo'),
+    ],
     [Markup.button.callback('🕹️ Kling Motion Control', 'mode_kling')],
     [Markup.button.callback('🎬 Seedance 2.0 Fast', 'mode_seedance')],
     [Markup.button.callback('🤖 Grok Imagine', 'mode_grok')],
@@ -1168,6 +1172,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🎨 GPT Image 2 (Gambar)', 'mode_gpt')],
     [Markup.button.callback('🍌 Nano Banana Pro (Gambar)', 'mode_bananapro')],
     [Markup.button.callback('🍌 Nano Banana 2 (Gambar)', 'mode_banana2')],
+    [Markup.button.callback('🔗 Tautkan akun lama', 'menu_login')],
   ]);
 }
 
@@ -2322,6 +2327,40 @@ bot.on('callback_query', async (ctx) => {
 
   if (data !== 'back_main') {
     if (!await requireLogin(ctx)) return;
+  }
+
+  if (data === 'menu_topup') {
+    if (!klikqris.klikqrisConfigured()) {
+      return ctx.reply('⚠️ Top-up sedang tidak tersedia. Hubungi admin.');
+    }
+    setSession(userId, { mode: 'idle' });
+    return ctx.reply(
+      '💳 *Isi Saldo (QRIS)*\n\nPilih nominal top-up:',
+      { parse_mode: 'Markdown', ...topupNominalKeyboard() }
+    );
+  }
+
+  if (data === 'menu_saldo') {
+    const s = getSession(userId);
+    const saldo = await getSaldo(s.dbUserId!);
+    return ctx.reply(
+      `💰 *Saldo kamu:* ${formatRupiah(saldo)}\n\n` +
+      (saldo <= 0 ? 'Saldo kosong. Tekan 💳 Isi Saldo untuk top-up.\n' : 'Tekan 💳 Isi Saldo untuk top-up.\n') +
+      'Ketik /harga untuk lihat tarif tiap model.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data === 'menu_login') {
+    setSession(userId, { mode: 'login_wait_username' });
+    return ctx.reply(
+      '🔗 *Tautkan akun lama XclipAI*\n\n' +
+      'Buat kamu yang dulu pakai email & password (langganan bulanan). Setelah ditautkan, ' +
+      'saldo kamu pindah ke Telegram ini dan kamu *tak perlu login lagi*.\n\n' +
+      'Kalau kamu user baru, abaikan ini — langsung tekan 💳 Isi Saldo aja.\n\n' +
+      'Masukkan *username atau email* kamu:',
+      { parse_mode: 'Markdown' }
+    );
   }
 
   if (data === 'topup_custom') {
