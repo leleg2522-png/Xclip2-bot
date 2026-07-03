@@ -347,7 +347,7 @@ function isLeonardoKeyExhaustedError(raw: string): boolean {
 
 // ─── Generate Cooldown ────────────────────────────────────────────────────────
 
-const GEN_COOLDOWN_MS = 3 * 60 * 1000; // cooldown 3 menit setelah generate berhasil
+const GEN_COOLDOWN_MS = 5 * 60 * 1000; // cooldown 5 menit setelah generate berhasil
 const lastGenSuccessAt = new Map<number, number>();
 
 function getCooldownRemainingMs(userId: number): number {
@@ -2728,7 +2728,7 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
     markGenSuccess(userId);
     const doneLabel = result.usedModel === 'v3' ? 'Kling v3.0' : 'Kling v2.6';
     const fallbackNote = result.usedModel !== klingModel ? ' (v2.6 belum tersedia — otomatis pakai v3.0)' : '';
-    await sendResult(chatId, result.url, `🕹️ ${doneLabel} Motion Control${fallbackNote}\n⏳ Cooldown 3 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`, true);
+    await sendResult(chatId, result.url, `🕹️ ${doneLabel} Motion Control${fallbackNote}\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`, true);
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
     console.log(`[${userId}] ${label} done via Picsart as ${result.usedModel} (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
 
@@ -2820,7 +2820,7 @@ async function runSeedance(
     await sendResult(
       chatId,
       result.url,
-      `🎬 Seedance 2.0 Fast (${opts.duration}s · ${opts.ratio} · ${opts.resolution}${opts.audio ? ' · audio' : ''})\n⏳ Cooldown 3 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
+      `🎬 Seedance 2.0 Fast (${opts.duration}s · ${opts.ratio} · ${opts.resolution}${opts.audio ? ' · audio' : ''})\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
       true
     );
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
@@ -2899,7 +2899,7 @@ async function runGrok(
     await sendResult(
       chatId,
       result.url,
-      `🤖 Grok Imagine (${opts.duration}s · ${opts.ratio})\n⏳ Cooldown 3 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
+      `🤖 Grok Imagine (${opts.duration}s · ${opts.ratio})\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
       true
     );
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
@@ -2988,7 +2988,7 @@ async function runSora(
     await sendResult(
       chatId,
       result.url,
-      `🎥 Sora 2 (${opts.duration}s · ${opts.ratio})\n⏳ Cooldown 3 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
+      `🎥 Sora 2 (${opts.duration}s · ${opts.ratio})\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
       true
     );
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
@@ -3091,7 +3091,7 @@ async function runGeminiOmni(
     await sendResult(
       chatId,
       result.url,
-      `✨ Gemini Omni (${opts.duration}s · ${opts.ratio})\n⏳ Cooldown 3 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
+      `✨ Gemini Omni (${opts.duration}s · ${opts.ratio})\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
       true
     );
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
@@ -3269,7 +3269,7 @@ async function runKlingI2V(
     await sendResult(
       chatId,
       result.url,
-      `🎞️ Kling V3 · ${modeLabel} (${opts.duration}s · ${opts.ratio})\n⏳ Cooldown 3 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
+      `🎞️ Kling V3 · ${modeLabel} (${opts.duration}s · ${opts.ratio})\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
       true
     );
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
@@ -3349,7 +3349,7 @@ async function runKlingI2VTurbo(
     await sendResult(
       chatId,
       result.url,
-      `⚡ Kling V3 Turbo (${opts.duration}s · ${opts.ratio} · ${opts.resolution})\n⏳ Cooldown 3 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
+      `⚡ Kling V3 Turbo (${opts.duration}s · ${opts.ratio} · ${opts.resolution})\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
       true
     );
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
