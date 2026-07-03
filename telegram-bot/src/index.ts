@@ -11,6 +11,7 @@ import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import * as picsart from './picsart';
+import * as klikqris from './klikqris';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -105,6 +106,205 @@ async function checkActiveSubscription(userId: number): Promise<boolean> {
     [userId]
   );
   return res.rows.length > 0;
+}
+
+// ─── Saldo (pay-per-generate) ─────────────────────────────────────────────────
+
+// Harga per generate dalam Rupiah (integer). Sumber kebenaran tunggal — semua
+// handler generate baca dari sini, jangan hardcode angka di tempat lain.
+const MODEL_PRICES = {
+  sora: 1000,
+  gemini_omni: 1000,
+  kling_mc: 2000,      // Kling V3 Motion Control
+  kling_i2v: 1500,     // Kling V3 I2V
+  kling_turbo: 1500,   // Kling V3 Turbo
+  seedance: 1000,
+  grok: 1000,
+  nano_banana2: 200,
+  banana_pro: 200,
+  gpt_image: 200,
+} as const;
+type ModelKey = keyof typeof MODEL_PRICES;
+
+function formatRupiah(n: number): string {
+  return 'Rp' + Math.round(n).toLocaleString('id-ID');
+}
+
+async function getSaldo(dbUserId: number): Promise<number> {
+  const res = await db.query('SELECT saldo FROM users WHERE id = $1', [dbUserId]);
+  return Number(res.rows[0]?.saldo ?? 0);
+}
+
+// Potong saldo secara ATOMIK. Return true kalau berhasil (saldo cukup), false
+// kalau kurang. `WHERE saldo >= $2` mencegah balapan: dua generate barengan tak
+// bisa dua-duanya lolos kalau saldonya cuma cukup buat satu. Saldo tak akan minus.
+async function deductSaldo(dbUserId: number, amount: number): Promise<boolean> {
+  const res = await db.query(
+    'UPDATE users SET saldo = saldo - $2 WHERE id = $1 AND saldo >= $2 RETURNING saldo',
+    [dbUserId, amount]
+  );
+  return (res.rowCount ?? 0) > 0;
+}
+
+// Tambah/kembalikan saldo (top-up sukses ATAU refund saat generate gagal).
+async function addSaldo(dbUserId: number, amount: number): Promise<number> {
+  const res = await db.query(
+    'UPDATE users SET saldo = saldo + $2 WHERE id = $1 RETURNING saldo',
+    [dbUserId, amount]
+  );
+  return Number(res.rows[0]?.saldo ?? 0);
+}
+
+// Idempotent — aman dipanggil tiap startup. Menambah kolom saldo & telegram_id,
+// tabel topup_orders, lalu (SEKALI seumur hidup, dijaga bot_migrations) kredit
+// Rp100.000 ke user yang langganannya MASIH aktif saat cutover. User yang
+// langganannya sudah habis / belum pernah langganan mulai dari Rp0.
+async function ensureBalanceSchema(): Promise<void> {
+  await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS saldo BIGINT NOT NULL DEFAULT 0`);
+  await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_id BIGINT`);
+  await db.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS users_telegram_id_uq ON users (telegram_id) WHERE telegram_id IS NOT NULL`
+  );
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS topup_orders (
+      order_id      TEXT PRIMARY KEY,
+      db_user_id    INTEGER NOT NULL,
+      telegram_id   BIGINT NOT NULL,
+      amount        BIGINT NOT NULL,
+      total_amount  BIGINT NOT NULL,
+      status        TEXT NOT NULL DEFAULT 'PENDING',
+      qris_string   TEXT,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at    TIMESTAMPTZ,
+      paid_at       TIMESTAMPTZ
+    )
+  `);
+  await db.query(
+    `CREATE TABLE IF NOT EXISTS bot_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`
+  );
+
+  // One-time cutover credit — di-guard pakai bot_migrations biar TAK PERNAH
+  // dobel walau bot restart berkali-kali.
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const done = await client.query(`SELECT 1 FROM bot_migrations WHERE name = 'cutover_credit_active_100k'`);
+    if ((done.rowCount ?? 0) === 0) {
+      const upd = await client.query(`
+        UPDATE users SET saldo = 100000
+        WHERE id IN (
+          SELECT user_id FROM subscriptions WHERE status = 'active' AND expired_at > NOW()
+        )
+      `);
+      await client.query(`INSERT INTO bot_migrations (name) VALUES ('cutover_credit_active_100k')`);
+      await client.query('COMMIT');
+      console.log(`✅ Cutover: kredit Rp100.000 ke ${upd.rowCount ?? 0} user langganan aktif`);
+    } else {
+      await client.query('COMMIT');
+    }
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+// ─── Top-up (KlikQRIS) ────────────────────────────────────────────────────────
+
+async function createTopupOrder(
+  orderId: string,
+  dbUserId: number,
+  telegramId: number,
+  amount: number,
+  totalAmount: number,
+  qrisString: string | undefined,
+  expiresAt: Date | null
+): Promise<void> {
+  await db.query(
+    `INSERT INTO topup_orders (order_id, db_user_id, telegram_id, amount, total_amount, status, qris_string, expires_at)
+     VALUES ($1, $2, $3, $4, $5, 'PENDING', $6, $7)`,
+    [orderId, dbUserId, telegramId, amount, totalAmount, qrisString ?? null, expiresAt]
+  );
+}
+
+interface PendingTopup {
+  order_id: string;
+  db_user_id: number;
+  telegram_id: string;
+  amount: string;
+  total_amount: string;
+  created_at: Date;
+  expires_at: Date | null;
+}
+
+async function getPendingTopupOrders(): Promise<PendingTopup[]> {
+  const res = await db.query(
+    `SELECT order_id, db_user_id, telegram_id, amount, total_amount, created_at, expires_at
+     FROM topup_orders WHERE status = 'PENDING' ORDER BY created_at ASC LIMIT 200`
+  );
+  return res.rows;
+}
+
+// Tandai PAID + kredit saldo secara ATOMIK. Return data hanya kalau panggilan
+// INI yang membalik status → PAID — mencegah dobel-kredit walau poller &
+// /cekbayar jalan bersamaan.
+async function markTopupPaidAndCredit(
+  orderId: string
+): Promise<{ amount: number; dbUserId: number; telegramId: number; newSaldo: number } | null> {
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    // status <> 'PAID' (bukan cuma 'PENDING') supaya order yang sempat kita tandai
+    // EXPIRED lokal tetap BISA dikreditkan kalau ternyata gateway bilang sudah
+    // dibayar (pembayaran telat). Tetap anti-dobel: hanya sekali bisa jadi PAID.
+    const upd = await client.query(
+      `UPDATE topup_orders SET status = 'PAID', paid_at = NOW()
+       WHERE order_id = $1 AND status <> 'PAID'
+       RETURNING db_user_id, telegram_id, amount`,
+      [orderId]
+    );
+    if ((upd.rowCount ?? 0) === 0) {
+      await client.query('COMMIT');
+      return null;
+    }
+    const row = upd.rows[0];
+    const bal = await client.query(
+      `UPDATE users SET saldo = saldo + $2 WHERE id = $1 RETURNING saldo`,
+      [row.db_user_id, row.amount]
+    );
+    await client.query('COMMIT');
+    return {
+      amount: Number(row.amount),
+      dbUserId: Number(row.db_user_id),
+      telegramId: Number(row.telegram_id),
+      newSaldo: Number(bal.rows[0]?.saldo ?? 0),
+    };
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+async function markTopupExpired(orderId: string): Promise<void> {
+  await db.query(
+    `UPDATE topup_orders SET status = 'EXPIRED' WHERE order_id = $1 AND status = 'PENDING'`,
+    [orderId]
+  );
+}
+
+async function getRecentTopups(
+  dbUserId: number,
+  limit = 10
+): Promise<Array<{ order_id: string; amount: string; total_amount: string; status: string; created_at: Date; paid_at: Date | null }>> {
+  const res = await db.query(
+    `SELECT order_id, amount, total_amount, status, created_at, paid_at
+     FROM topup_orders WHERE db_user_id = $1 ORDER BY created_at DESC LIMIT $2`,
+    [dbUserId, limit]
+  );
+  return res.rows;
 }
 
 // ─── Renderful Key Pool ───────────────────────────────────────────────────────
@@ -464,7 +664,8 @@ type Mode =
   | 'sora_wait_prompt'
   | 'gomni_wait_image'
   | 'gomni_wait_video'
-  | 'gomni_wait_prompt';
+  | 'gomni_wait_prompt'
+  | 'topup_wait_custom';
 
 interface Session {
   mode: Mode;
@@ -475,7 +676,6 @@ interface Session {
   keyIndex?: number;
   loginTempUsername?: string;
   characterUrl?: string;
-  klingModel?: 'v3' | 'v26';
   // Seedance 2.0 Fast wizard state
   seedanceInputMode?: 'i2v' | 't2v';
   seedanceDuration?: number;
@@ -516,6 +716,34 @@ interface Session {
 }
 
 const sessions = new Map<number, Session>();
+
+// dbUserId yang sedang menjalankan 1 generate (anti balapan & double-charge).
+const generating = new Set<number>();
+
+type ChargeResult = { ok: true } | { ok: false; reason: 'busy' | 'insufficient' | 'error' };
+
+// Kunci in-flight (SINKRON, sebelum await pertama → aman balapan) + potong saldo
+// atomik. WAJIB dipanggil paling awal di tiap run*. Kalau gagal, kunci dilepas.
+async function beginCharge(dbUserId: number, price: number): Promise<ChargeResult> {
+  if (generating.has(dbUserId)) return { ok: false, reason: 'busy' };
+  generating.add(dbUserId);
+  try {
+    const ok = await deductSaldo(dbUserId, price);
+    if (!ok) { generating.delete(dbUserId); return { ok: false, reason: 'insufficient' }; }
+    return { ok: true };
+  } catch (e) {
+    generating.delete(dbUserId);
+    return { ok: false, reason: 'error' };
+  }
+}
+
+function chargeFailMsg(reason: 'busy' | 'insufficient' | 'error', price: number): string {
+  return reason === 'busy'
+    ? '⏳ Masih ada proses generate yang berjalan. Tunggu yang ini selesai dulu ya.'
+    : reason === 'insufficient'
+      ? `❌ Saldo kamu tidak cukup (butuh ${formatRupiah(price)}).\n\nKetik /topup untuk isi saldo, atau /saldo untuk cek.`
+      : '⚠️ Gagal memproses saldo. Coba lagi sebentar ya.';
+}
 
 function getSession(userId: number): Session {
   if (!sessions.has(userId)) sessions.set(userId, { mode: 'idle' });
@@ -571,29 +799,101 @@ async function handleDeadKey(userId: number, deadKey: string): Promise<void> {
   console.log(`[${userId}] Key replaced: ${newKey ? newKey.slice(0, 10) + '...' : 'no key available'}`);
 }
 
-async function requireLoginAndSub(ctx: any): Promise<boolean> {
+async function findUserByTelegramId(tgId: number) {
+  const res = await db.query('SELECT * FROM users WHERE telegram_id = $1 LIMIT 1', [tgId]);
+  return res.rows[0] || null;
+}
+
+// Auto-register: user Telegram yang belum pernah ada → bikin akun baru saldo Rp0.
+// Dipakai saat /start atau generate pertama. Aman terhadap balapan /start ganda.
+async function getOrCreateTelegramUser(ctx: any) {
+  const tgId = ctx.from.id;
+  const existing = await findUserByTelegramId(tgId);
+  if (existing) return existing;
+  const uname = 'tg_' + tgId;
+  const email = 'tg_' + tgId + '@telegram.local';
+  try {
+    const res = await db.query(
+      `INSERT INTO users (username, email, password_hash, is_admin, saldo, telegram_id)
+       VALUES ($1, $2, '', false, 0, $3) RETURNING *`,
+      [uname, email, tgId]
+    );
+    return res.rows[0];
+  } catch (e) {
+    // Balapan: baris sudah dibuat pemanggil lain. Ambil saja.
+    const again = await findUserByTelegramId(tgId);
+    if (again) return again;
+    throw e;
+  }
+}
+
+function hydrateSession(userId: number, user: any): void {
+  setSession(userId, {
+    dbUserId: user.id,
+    dbUsername: user.username,
+    dbIsAdmin: user.is_admin === true,
+  });
+}
+
+// Tautkan Telegram ID ke akun lama (hasil /login). Pindahkan saldo dari akun
+// auto-register (kalau ada) ke akun lama, lalu set telegram_id di akun lama.
+// Semua ATOMIK biar tak ada saldo hilang/dobel.
+async function linkTelegramToAccount(
+  tgId: number,
+  targetUserId: number
+): Promise<{ ok: boolean; reason?: string; saldo?: number }> {
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const tgt = await client.query(
+      'SELECT id, telegram_id, saldo FROM users WHERE id = $1 FOR UPDATE',
+      [targetUserId]
+    );
+    if ((tgt.rowCount ?? 0) === 0) { await client.query('ROLLBACK'); return { ok: false, reason: 'notfound' }; }
+    const target = tgt.rows[0];
+    if (target.telegram_id !== null && String(target.telegram_id) !== String(tgId)) {
+      await client.query('ROLLBACK');
+      return { ok: false, reason: 'linked_other' };
+    }
+    // Akun auto-register yang lagi kepakai Telegram ID ini (selain target) → tarik saldonya.
+    const cur = await client.query(
+      'SELECT id, saldo FROM users WHERE telegram_id = $1 AND id <> $2 FOR UPDATE',
+      [tgId, targetUserId]
+    );
+    let moved = 0;
+    for (const row of cur.rows) {
+      moved += Number(row.saldo ?? 0);
+      await client.query('UPDATE users SET telegram_id = NULL, saldo = 0 WHERE id = $1', [row.id]);
+    }
+    await client.query('UPDATE users SET telegram_id = $1, saldo = saldo + $2 WHERE id = $3', [tgId, moved, targetUserId]);
+    const fin = await client.query('SELECT saldo FROM users WHERE id = $1', [targetUserId]);
+    await client.query('COMMIT');
+    return { ok: true, saldo: Number(fin.rows[0].saldo) };
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+// Pastikan user teridentifikasi (auto-register kalau perlu). Sistem sekarang
+// pay-per-generate: TAK ada cek langganan di sini — saldo dicek & dipotong
+// per-model di dalam tiap fungsi generate (run*).
+async function requireLogin(ctx: any): Promise<boolean> {
   const userId = ctx.from.id;
   const session = getSession(userId);
-
-  if (!session.dbUserId) {
-    await ctx.reply(
-      '🔒 Kamu belum login.\n\nKetik /login untuk masuk dengan akun XclipAI kamu.',
-    );
+  if (session.dbUserId) return true;
+  try {
+    const user = await getOrCreateTelegramUser(ctx);
+    if (!user) { await ctx.reply('⚠️ Gagal memuat akun kamu. Coba /start lagi.'); return false; }
+    hydrateSession(userId, user);
+    return true;
+  } catch (e: any) {
+    console.error(`[${userId}] requireLogin error:`, e?.message ?? e);
+    await ctx.reply('⚠️ Gagal memuat akun. Coba lagi nanti.');
     return false;
   }
-
-  const active = await checkActiveSubscription(session.dbUserId);
-  if (!active) {
-    await ctx.reply(
-      `❌ Langganan kamu tidak aktif atau sudah expired.\n\n` +
-      `Silakan perpanjang langganan di dashboard XclipAI untuk bisa generate.\n\n` +
-      `Login sebagai: *${session.dbUsername}*`,
-      { parse_mode: 'Markdown' }
-    );
-    return false;
-  }
-
-  return true;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -747,7 +1047,9 @@ setInterval(async () => {
 
 // ─── Result sender ────────────────────────────────────────────────────────────
 
-async function sendResult(chatId: number, outputUrl: string, caption: string, isVideo: boolean, forceDocument = false) {
+// Mengembalikan true HANYA jika hasil benar-benar sampai ke user (inline / link).
+// Dipakai run* untuk memutuskan refund kalau pengiriman gagal.
+async function sendResult(chatId: number, outputUrl: string, caption: string, isVideo: boolean, forceDocument = false): Promise<boolean> {
   const TELEGRAM_MAX_BYTES = 48 * 1024 * 1024; // 48MB safe limit
 
   // Auto-detect type from URL extension if not forced
@@ -774,7 +1076,7 @@ async function sendResult(chatId: number, outputUrl: string, caption: string, is
     await bot.telegram.sendMessage(chatId,
       `✅ Hasil selesai, tapi gagal mengambil file. Coba lagi sebentar ya.\n\n${caption}`
     );
-    return;
+    return false;
   }
 
   const sizeMB = (buf.length / 1024 / 1024).toFixed(1);
@@ -793,7 +1095,7 @@ async function sendResult(chatId: number, outputUrl: string, caption: string, is
           await bot.telegram.sendPhoto(chatId, { source: buf, filename: 'output.jpg' }, opts);
         }
         console.log(`Result sent via buffer (${sizeMB} MB)`);
-        return;
+        return true;
       } catch (e: any) {
         console.log(`Buffer strategy failed: ${e.message}`);
       }
@@ -805,7 +1107,7 @@ async function sendResult(chatId: number, outputUrl: string, caption: string, is
         opts
       );
       console.log(`Result sent as document (${sizeMB} MB)`);
-      return;
+      return true;
     } catch (e: any) {
       console.log(`Document strategy failed: ${e.message}`);
     }
@@ -820,11 +1122,13 @@ async function sendResult(chatId: number, outputUrl: string, caption: string, is
       `✅ Hasil selesai!\n\n📥 Download (${sizeMB} MB — segera simpan, link berlaku sementara):\n${link}\n\n${caption}`
     );
     console.log(`Result delivered via self-hosted link (${sizeMB} MB)`);
+    return true;
   } catch (e: any) {
     console.log(`Self-hosted link failed: ${e.message}`);
     await bot.telegram.sendMessage(chatId,
       `✅ Hasil selesai, tapi gagal mengirim file. Coba lagi sebentar ya.\n\n${caption}`
     );
+    return false;
   }
 }
 
@@ -890,7 +1194,6 @@ const MAX_IMG_REFS = 6;
 function klingModelKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('🆕 Kling v3.0 Motion Control', 'kling_v3')],
-    [Markup.button.callback('🕹️ Kling v2.6 Motion Control', 'kling_v26')],
     [Markup.button.callback('« Kembali', 'back_main')],
   ]);
 }
@@ -1097,72 +1400,330 @@ function kv3RatioKeyboard() {
   ]);
 }
 
+// ─── Top-up helpers ───────────────────────────────────────────────────────────
+
+const TOPUP_MIN = 5000;
+const TOPUP_MAX = 2_000_000;
+
+function hargaText(): string {
+  return (
+    '💵 *Tarif per generate:*\n\n' +
+    '🎬 *Video*\n' +
+    `• Sora 2 — ${formatRupiah(MODEL_PRICES.sora)}\n` +
+    `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
+    `• Seedance — ${formatRupiah(MODEL_PRICES.seedance)}\n` +
+    `• Grok Imagine — ${formatRupiah(MODEL_PRICES.grok)}\n` +
+    `• Kling V3 Motion Control — ${formatRupiah(MODEL_PRICES.kling_mc)}\n` +
+    `• Kling V3 Image-to-Video — ${formatRupiah(MODEL_PRICES.kling_i2v)}\n` +
+    `• Kling V3 Turbo — ${formatRupiah(MODEL_PRICES.kling_turbo)}\n\n` +
+    '🎨 *Gambar*\n' +
+    `• Nano Banana 2 — ${formatRupiah(MODEL_PRICES.nano_banana2)}\n` +
+    `• Nano Banana Pro — ${formatRupiah(MODEL_PRICES.banana_pro)}\n` +
+    `• GPT Image — ${formatRupiah(MODEL_PRICES.gpt_image)}\n\n` +
+    'Saldo hanya dipotong kalau hasilnya *berhasil terkirim*. Gagal = saldo balik.\n\n' +
+    'Ketik /topup untuk isi saldo · /saldo untuk cek.'
+  );
+}
+
+function topupNominalKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('Rp20.000', 'topup_20000'),
+      Markup.button.callback('Rp50.000', 'topup_50000'),
+    ],
+    [
+      Markup.button.callback('Rp100.000', 'topup_100000'),
+      Markup.button.callback('Rp200.000', 'topup_200000'),
+    ],
+    [Markup.button.callback('✏️ Nominal lain', 'topup_custom')],
+  ]);
+}
+
+// Buat order QRIS, simpan ke DB, lalu kirim gambar QRIS ke user. Dipakai baik
+// dari tombol nominal maupun dari input nominal custom.
+async function startTopupFlow(
+  ctx: any,
+  dbUserId: number,
+  telegramId: number,
+  amount: number
+): Promise<void> {
+  if (!Number.isFinite(amount) || amount < TOPUP_MIN || amount > TOPUP_MAX) {
+    await ctx.reply(`⚠️ Nominal harus antara ${formatRupiah(TOPUP_MIN)} dan ${formatRupiah(TOPUP_MAX)}.`);
+    return;
+  }
+
+  const orderId = `XCLIP-${telegramId}-${Date.now()}`;
+  let order: klikqris.QrisOrder;
+  try {
+    order = await klikqris.createQris(orderId, amount, `Top-up saldo XclipAI ${formatRupiah(amount)}`);
+  } catch (e: any) {
+    console.error(`[${telegramId}] KlikQRIS create error:`, e?.response?.data ?? e?.message ?? e);
+    await ctx.reply('❌ Gagal membuat QRIS. Coba lagi sebentar lagi.');
+    return;
+  }
+
+  const expiresAt = order.expiredAt ? new Date(order.expiredAt.replace(' ', 'T')) : null;
+  const validExpires = expiresAt && !isNaN(expiresAt.getTime()) ? expiresAt : null;
+  try {
+    await createTopupOrder(orderId, dbUserId, telegramId, order.amount, order.totalAmount, order.qrisUrl ?? order.directUrl, validExpires);
+  } catch (e: any) {
+    console.error(`[${telegramId}] Simpan topup order gagal:`, e?.message ?? e);
+    await ctx.reply('❌ Gagal menyimpan order. Coba lagi.');
+    return;
+  }
+
+  const menit = order.expiredMinutes ?? 5;
+  const caption =
+    `💳 *Top-up ${formatRupiah(order.amount)}*\n\n` +
+    `Bayar tepat *${formatRupiah(order.totalAmount)}* (sudah termasuk kode unik).\n` +
+    `Scan QRIS di atas pakai aplikasi bank / e-wallet apa pun.\n\n` +
+    `⏳ Berlaku *${menit} menit*.\n` +
+    `Saldo otomatis masuk setelah dibayar. Cek manual: /cekbayar`;
+
+  try {
+    if (order.qrisImageBase64) {
+      const buf = Buffer.from(order.qrisImageBase64, 'base64');
+      await ctx.replyWithPhoto({ source: buf }, { caption, parse_mode: 'Markdown' });
+    } else if (order.qrisUrl) {
+      await ctx.replyWithPhoto(order.qrisUrl, { caption, parse_mode: 'Markdown' });
+    } else {
+      await ctx.reply(caption + (order.directUrl ? `\n\nLink bayar: ${order.directUrl}` : ''), { parse_mode: 'Markdown' });
+    }
+  } catch (e: any) {
+    console.error(`[${telegramId}] Kirim QRIS gagal:`, e?.message ?? e);
+    await ctx.reply(caption + (order.directUrl ? `\n\nLink bayar: ${order.directUrl}` : ''), { parse_mode: 'Markdown' }).catch(() => {});
+  }
+}
+
+// Cek status 1 order ke KlikQRIS. Kalau PAID → kredit saldo (atomik, anti dobel)
+// dan (opsional) kabari user. Kalau expired → tandai. Dipakai poller & /cekbayar.
+async function reconcileTopupOrder(
+  orderId: string,
+  opts: { notify?: boolean } = {}
+): Promise<'paid' | 'expired' | 'pending'> {
+  let status: klikqris.QrisStatus;
+  try {
+    status = await klikqris.checkQrisStatus(orderId);
+  } catch (e: any) {
+    console.warn(`[topup] cek status gagal ${orderId}:`, e?.response?.status ?? e?.message ?? e);
+    return 'pending';
+  }
+
+  if (klikqris.isPaidStatus(status.status)) {
+    const credited = await markTopupPaidAndCredit(orderId);
+    if (credited && opts.notify) {
+      await bot.telegram.sendMessage(
+        credited.telegramId,
+        `✅ Pembayaran diterima!\n\n💰 Saldo +${formatRupiah(credited.amount)}\nSaldo sekarang: *${formatRupiah(credited.newSaldo)}*\n\nKetik /menu untuk mulai generate.`,
+        { parse_mode: 'Markdown' }
+      ).catch(() => {});
+    }
+    return 'paid';
+  }
+
+  if (klikqris.isExpiredStatus(status.status)) {
+    await markTopupExpired(orderId).catch(() => {});
+    return 'expired';
+  }
+
+  return 'pending';
+}
+
+// Poller: setiap ±15 detik cek semua order PENDING. Kredit yang sudah dibayar,
+// tandai expired yang sudah lewat waktu (+grace) walau gateway masih PENDING.
+let topupPollerRunning = false;
+async function pollPendingTopups(): Promise<void> {
+  if (topupPollerRunning) return;
+  topupPollerRunning = true;
+  try {
+    const orders = await getPendingTopupOrders();
+    for (const o of orders) {
+      const result = await reconcileTopupOrder(o.order_id, { notify: true }).catch(() => 'pending' as const);
+      if (result === 'pending') {
+        // Berhenti polling kalau sudah jauh lewat masa berlaku QRIS. QRIS yang
+        // sudah kedaluwarsa di gateway tak bisa dibayar lagi, jadi aman ditandai
+        // EXPIRED. Grace 10 menit menutupi keterlambatan settlement gateway.
+        // Fallback created_at+30m untuk kasus response tanpa expired_at (biar tak
+        // PENDING selamanya). Kalau ternyata telat dibayar, /cekbayar tetap bisa
+        // memulihkan karena markTopupPaidAndCredit menerima status <> 'PAID'.
+        const graceMs = 10 * 60 * 1000;
+        const base = o.expires_at
+          ? new Date(o.expires_at).getTime()
+          : new Date(o.created_at).getTime() + 30 * 60 * 1000;
+        if (Number.isFinite(base) && Date.now() > base + graceMs) {
+          await markTopupExpired(o.order_id).catch(() => {});
+        }
+      }
+    }
+  } catch (e: any) {
+    console.error('[topup poller] error:', e?.message ?? e);
+  } finally {
+    topupPollerRunning = false;
+  }
+}
+
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
-bot.start((ctx) => {
-  const session = getSession(ctx.from.id);
+bot.start(async (ctx) => {
   setSession(ctx.from.id, { mode: 'idle' });
-  if (session.dbUserId) {
-    return ctx.reply(
-      `👋 Selamat datang kembali, *${session.dbUsername}*!\n\nPilih mode generasi:`,
-      { parse_mode: 'Markdown', ...mainMenuKeyboard() }
-    );
-  }
+  if (!await requireLogin(ctx)) return;
+  const dbUserId = getSession(ctx.from.id).dbUserId!;
+  const saldo = await getSaldo(dbUserId).catch(() => 0);
   return ctx.reply(
-    '👋 Selamat datang di *XclipAI Bot*!\n\n' +
-    '🔒 Kamu perlu login terlebih dahulu.\n\n' +
-    'Ketik /login untuk masuk dengan akun XclipAI kamu.',
-    { parse_mode: 'Markdown' }
+    `👋 Selamat datang di *XclipAI Bot*!\n\n` +
+    `💰 Saldo kamu: *${formatRupiah(saldo)}*\n\n` +
+    (saldo <= 0
+      ? `Saldomu masih kosong. Ketik /topup untuk isi saldo.\n` +
+        `Kalau kamu user lama (dulu langganan bulanan), ketik /login buat mindahin saldonya ke Telegram ini.\n\n`
+      : ``) +
+    `Ketik /harga untuk lihat tarif tiap model.\n\nPilih mode generasi:`,
+    { parse_mode: 'Markdown', ...mainMenuKeyboard() }
   );
 });
 
 bot.command('menu', async (ctx) => {
-  if (!await requireLoginAndSub(ctx)) return;
+  if (!await requireLogin(ctx)) return;
   setSession(ctx.from.id, { mode: 'idle' });
   return ctx.reply('Pilih mode generasi:', mainMenuKeyboard());
 });
 
 bot.command('login', (ctx) => {
-  const session = getSession(ctx.from.id);
-  if (session.dbUserId) {
-    return ctx.reply(
-      `✅ Kamu sudah login sebagai *${session.dbUsername}*.\n\nKetik /logout untuk keluar.`,
-      { parse_mode: 'Markdown' }
-    );
-  }
   setSession(ctx.from.id, { mode: 'login_wait_username' });
-  return ctx.reply('🔐 *Login XclipAI*\n\nMasukkan *username atau email* kamu:', { parse_mode: 'Markdown' });
-});
-
-bot.command('logout', (ctx) => {
-  const session = getSession(ctx.from.id);
-  const name = session.dbUsername;
-  // Keys are NOT returned to pool — they stay assigned to user in DB
-  setSession(ctx.from.id, { mode: 'idle', dbUserId: undefined, dbUsername: undefined, dbIsAdmin: undefined, assignedKeys: undefined, keyIndex: undefined, loginTempUsername: undefined });
-  return ctx.reply(`✅ Berhasil logout${name ? ` dari akun *${name}*` : ''}.\n\nKetik /login untuk masuk kembali.`, { parse_mode: 'Markdown' });
-});
-
-bot.command('status', async (ctx) => {
-  const session = getSession(ctx.from.id);
-  if (!session.dbUserId) {
-    return ctx.reply('🔒 Belum login. Ketik /login untuk masuk.');
-  }
-  const [active, klingUsed] = await Promise.all([
-    checkActiveSubscription(session.dbUserId),
-    getKlingUsageToday(session.dbUserId),
-  ]);
-  const keys = session.assignedKeys ?? [];
   return ctx.reply(
-    `👤 *Akun:* ${session.dbUsername}\n` +
-    `📦 *Langganan:* ${active ? '✅ Aktif' : '❌ Tidak aktif / expired'}\n` +
-    `🔑 *API Key:* ${keys.length} key ditetapkan\n` +
-    `🕹️ *Generate hari ini:* ${klingUsed}`,
+    '🔗 *Tautkan akun lama XclipAI*\n\n' +
+    'Buat kamu yang dulu pakai email & password (langganan bulanan). Setelah ditautkan, ' +
+    'saldo kamu pindah ke Telegram ini dan kamu *tak perlu login lagi*.\n\n' +
+    'Masukkan *username atau email* kamu:',
     { parse_mode: 'Markdown' }
   );
 });
 
+bot.command('logout', (ctx) => {
+  setSession(ctx.from.id, { mode: 'idle', dbUserId: undefined, dbUsername: undefined, dbIsAdmin: undefined, assignedKeys: undefined, keyIndex: undefined, loginTempUsername: undefined });
+  return ctx.reply('✅ Sesi dibersihkan.\n\nAkun kamu tetap terkait dengan Telegram ini — cukup /start untuk lanjut.');
+});
+
+bot.command('status', async (ctx) => {
+  if (!await requireLogin(ctx)) return;
+  const session = getSession(ctx.from.id);
+  const [saldo, klingUsed] = await Promise.all([
+    getSaldo(session.dbUserId!),
+    getKlingUsageToday(session.dbUserId!),
+  ]);
+  return ctx.reply(
+    `👤 *Akun:* ${session.dbUsername}\n` +
+    `💰 *Saldo:* ${formatRupiah(saldo)}\n` +
+    `🕹️ *Generate hari ini:* ${klingUsed}\n\n` +
+    `Ketik /topup untuk isi saldo · /harga untuk tarif.`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+bot.command('saldo', async (ctx) => {
+  if (!await requireLogin(ctx)) return;
+  const session = getSession(ctx.from.id);
+  const saldo = await getSaldo(session.dbUserId!);
+  return ctx.reply(
+    `💰 *Saldo kamu:* ${formatRupiah(saldo)}\n\n` +
+    (saldo <= 0 ? `Saldo kosong. Ketik /topup untuk isi.\n` : `Ketik /topup untuk isi saldo.\n`) +
+    `Ketik /harga untuk lihat tarif tiap model.`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+bot.command('harga', async (ctx) => {
+  if (!await requireLogin(ctx)) return;
+  return ctx.reply(hargaText(), { parse_mode: 'Markdown' });
+});
+
+bot.command('riwayat', async (ctx) => {
+  if (!await requireLogin(ctx)) return;
+  const session = getSession(ctx.from.id);
+  const rows = await getRecentTopups(session.dbUserId!, 10);
+  if (rows.length === 0) {
+    return ctx.reply('📭 Belum ada riwayat top-up.\n\nKetik /topup untuk isi saldo.');
+  }
+  const lines = rows.map((r) => {
+    const icon = r.status === 'PAID' ? '✅' : r.status === 'PENDING' ? '⏳' : '❌';
+    const when = new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return `${icon} ${formatRupiah(Number(r.amount))} · ${r.status} · ${when}`;
+  });
+  return ctx.reply(`🧾 *Riwayat top-up terakhir:*\n\n${lines.join('\n')}`, { parse_mode: 'Markdown' });
+});
+
+bot.command('topup', async (ctx) => {
+  if (!await requireLogin(ctx)) return;
+  if (!klikqris.klikqrisConfigured()) {
+    return ctx.reply('⚠️ Top-up sedang tidak tersedia. Hubungi admin.');
+  }
+  setSession(ctx.from.id, { mode: 'idle' });
+  return ctx.reply(
+    '💳 *Isi Saldo (QRIS)*\n\nPilih nominal top-up:',
+    { parse_mode: 'Markdown', ...topupNominalKeyboard() }
+  );
+});
+
+bot.command('cekbayar', async (ctx) => {
+  if (!await requireLogin(ctx)) return;
+  const session = getSession(ctx.from.id);
+  // Ambil order terbaru yang BELUM PAID (termasuk yang sudah EXPIRED lokal) dalam
+  // 1 jam terakhir — supaya pembayaran yang telat masuk masih bisa dipulihkan.
+  const pending = await db.query(
+    `SELECT order_id FROM topup_orders
+     WHERE db_user_id = $1 AND status <> 'PAID' AND created_at > NOW() - INTERVAL '1 hour'
+     ORDER BY created_at DESC LIMIT 1`,
+    [session.dbUserId!]
+  );
+  if (pending.rowCount === 0) {
+    return ctx.reply('ℹ️ Tidak ada top-up yang menunggu pembayaran.\n\nKetik /topup untuk isi saldo.');
+  }
+  const orderId = pending.rows[0].order_id as string;
+  await ctx.reply('🔄 Mengecek status pembayaran...');
+  await reconcileTopupOrder(orderId).catch((e) => console.error('cekbayar reconcile error:', e?.message ?? e));
+  const saldo = await getSaldo(session.dbUserId!);
+  const still = await db.query(`SELECT status FROM topup_orders WHERE order_id = $1`, [orderId]);
+  const st = still.rows[0]?.status;
+  if (st === 'PAID') {
+    return ctx.reply(`✅ Pembayaran diterima!\n\n💰 Saldo kamu sekarang: *${formatRupiah(saldo)}*`, { parse_mode: 'Markdown' });
+  }
+  if (st === 'EXPIRED') {
+    return ctx.reply('❌ QRIS sudah kadaluarsa. Ketik /topup untuk buat baru.');
+  }
+  return ctx.reply('⏳ Belum terbayar. Selesaikan pembayaran QRIS-nya, lalu cek lagi dengan /cekbayar.');
+});
+
 // ─── Admin commands ───────────────────────────────────────────────────────────
+
+bot.command('broadcast', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const text = ctx.message.text.replace(/^\/broadcast\s*/i, '').trim();
+  if (!text) {
+    return ctx.reply('📢 Format:\n/broadcast <pesan>\n\nPesan dikirim ke semua user yang punya Telegram ID terdaftar.');
+  }
+
+  const res = await db.query(`SELECT DISTINCT telegram_id FROM users WHERE telegram_id IS NOT NULL`);
+  const ids = res.rows.map((r: any) => Number(r.telegram_id)).filter((n: number) => Number.isFinite(n));
+  await ctx.reply(`📤 Mengirim ke ${ids.length} user...`);
+
+  let sent = 0;
+  let failed = 0;
+  // Kirim tanpa parse_mode — teks admin bebas, kalau di-Markdown bisa error format.
+  for (const id of ids) {
+    try {
+      await bot.telegram.sendMessage(id, `📢 Pengumuman\n\n${text}`);
+      sent++;
+    } catch {
+      failed++;
+    }
+    await new Promise((r) => setTimeout(r, 40)); // ~25 pesan/detik, hormati rate limit
+  }
+
+  return ctx.reply(`✅ Broadcast selesai.\n• Terkirim: ${sent}\n• Gagal: ${failed}`);
+});
 
 bot.command('addkey', async (ctx) => {
   const session = getSession(ctx.from.id);
@@ -1760,7 +2321,21 @@ bot.on('callback_query', async (ctx) => {
   await ctx.answerCbQuery().catch(() => {});
 
   if (data !== 'back_main') {
-    if (!await requireLoginAndSub(ctx)) return;
+    if (!await requireLogin(ctx)) return;
+  }
+
+  if (data === 'topup_custom') {
+    setSession(userId, { mode: 'topup_wait_custom' });
+    return ctx.reply(`✏️ Ketik nominal top-up (angka saja), minimal ${formatRupiah(TOPUP_MIN)}.\n\nContoh: 30000`);
+  }
+
+  if (data.startsWith('topup_')) {
+    const amount = parseInt(data.slice('topup_'.length), 10);
+    if (!Number.isFinite(amount)) return;
+    const session = getSession(userId);
+    await ctx.editMessageText(`⏳ Membuat QRIS untuk ${formatRupiah(amount)}...`).catch(() => {});
+    await startTopupFlow(ctx, session.dbUserId!, userId, amount);
+    return;
   }
 
   if (data === 'mode_kling') {
@@ -1771,13 +2346,11 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
-  if (data === 'kling_v3' || data === 'kling_v26') {
-    if (!await requireLoginAndSub(ctx)) return;
-    const model = data === 'kling_v3' ? 'v3' : 'v26';
-    const label = model === 'v3' ? 'Kling v3.0' : 'Kling v2.6';
-    setSession(userId, { mode: 'kling_wait_image', klingModel: model });
+  if (data === 'kling_v3') {
+    if (!await requireLogin(ctx)) return;
+    setSession(userId, { mode: 'kling_wait_image' });
     return ctx.editMessageText(
-      `🕹️ *${label} Motion Control*\n\n` +
+      `🕹️ *Kling v3.0 Motion Control*\n\n` +
       '*Langkah 1:* Kirim *foto karakter* yang ingin dianimasikan.\n\n' +
       '⚠️ *Syarat foto:*\n' +
       '• Tampilkan seluruh tubuh dari depan\n' +
@@ -2238,7 +2811,7 @@ async function handleImageInput(ctx: any, fileUrl: string) {
 // ─── Photo handler ────────────────────────────────────────────────────────────
 
 bot.on('photo', async (ctx) => {
-  if (!await requireLoginAndSub(ctx)) return;
+  if (!await requireLogin(ctx)) return;
   const photo = ctx.message.photo[ctx.message.photo.length - 1];
   const fileLink = await ctx.telegram.getFileLink(photo.file_id);
   await handleImageInput(ctx, fileLink.href);
@@ -2247,7 +2820,7 @@ bot.on('photo', async (ctx) => {
 // ─── Video handler ────────────────────────────────────────────────────────────
 
 bot.on('video', async (ctx) => {
-  if (!await requireLoginAndSub(ctx)) return;
+  if (!await requireLogin(ctx)) return;
   const userId = ctx.from.id;
   const session = getSession(userId);
   const vid = ctx.message.video;
@@ -2262,10 +2835,9 @@ bot.on('video', async (ctx) => {
       setSession(userId, { mode: 'idle' });
       return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
     }
-    const klingModel = session.klingModel ?? 'v3';
     setSession(userId, { mode: 'idle' });
     const statusMsg = await ctx.reply(`⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).`, { parse_mode: 'Markdown' });
-    runKlingMotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, vid.file_id, session.characterUrl, klingModel)
+    runKlingMotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, vid.file_id, session.characterUrl)
       .catch(e => console.error(`[${userId}] Kling gen error:`, e.message));
     return;
   }
@@ -2306,42 +2878,28 @@ bot.on('text', async (ctx) => {
 
     try {
       const user = await findUserByUsernameOrEmail(username);
-      if (!user) {
+      if (!user || !user.password_hash) {
         return ctx.reply('❌ Username/email tidak ditemukan. Coba lagi dengan /login');
       }
       const valid = await bcrypt.compare(password, user.password_hash);
       if (!valid) {
         return ctx.reply('❌ Password salah. Coba lagi dengan /login');
       }
-      const admin = user.is_admin === true;
-      setSession(userId, { dbUserId: user.id, dbUsername: user.username, dbIsAdmin: admin });
-      const active = await checkActiveSubscription(user.id);
-      if (!active) {
-        return ctx.reply(
-          `✅ Login berhasil sebagai *${user.username}*!\n\n` +
-          `⚠️ Tapi langganan kamu tidak aktif atau sudah expired.\n` +
-          `Perpanjang langganan di dashboard XclipAI untuk bisa generate.`,
-          { parse_mode: 'Markdown' }
-        );
+
+      // Tautkan Telegram ID ke akun lama + pindahkan saldo auto-register (kalau ada).
+      const link = await linkTelegramToAccount(ctx.from.id, user.id);
+      if (!link.ok) {
+        if (link.reason === 'linked_other') {
+          return ctx.reply('❌ Akun ini sudah ditautkan ke Telegram lain. Hubungi admin kalau menurutmu ini keliru.');
+        }
+        return ctx.reply('❌ Gagal menautkan akun. Coba lagi nanti.');
       }
 
-      // Load or assign Renderful API keys — keys are permanent (not returned on logout)
-      let keyInfo = '';
-      try {
-        const keys = await assignKeysToUser(user.id);
-        setSession(userId, { assignedKeys: keys, keyIndex: 0 });
-        keyInfo = keys.length >= 2
-          ? `\n🔑 *${keys.length} API key* aktif.`
-          : keys.length === 1
-            ? `\n🔑 *1 API key* aktif (pool hampir habis).`
-            : `\n⚠️ Belum ada API key — hubungi admin untuk isi pool.`;
-      } catch (e) {
-        console.error(`[${userId}] Key assign error:`, e);
-      }
-
+      hydrateSession(userId, { id: user.id, username: user.username, is_admin: user.is_admin === true });
       return ctx.reply(
-        `✅ Login berhasil! Selamat datang, *${user.username}*! 🎉\n\n` +
-        `📦 Langganan: *Aktif*${keyInfo}\n\nPilih mode generasi:`,
+        `✅ Berhasil masuk & ditautkan sebagai *${user.username}*! 🎉\n\n` +
+        `💰 Saldo kamu: *${formatRupiah(link.saldo ?? 0)}*\n\n` +
+        `Mulai sekarang kamu *tak perlu login lagi* — cukup pakai Telegram ini.\n\nPilih mode generasi:`,
         { parse_mode: 'Markdown', ...mainMenuKeyboard() }
       );
     } catch (e: any) {
@@ -2350,9 +2908,22 @@ bot.on('text', async (ctx) => {
     }
   }
 
+  // ── Top-up nominal custom ──
+  if (session.mode === 'topup_wait_custom') {
+    if (!await requireLogin(ctx)) return;
+    const raw = ctx.message.text.replace(/[^0-9]/g, '');
+    const amount = parseInt(raw, 10);
+    setSession(userId, { mode: 'idle' });
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return ctx.reply('⚠️ Nominal tidak valid. Ketik angka saja, misal 30000. Ulangi dengan /topup.');
+    }
+    await startTopupFlow(ctx, getSession(userId).dbUserId!, userId, amount);
+    return;
+  }
+
   // ── Seedance prompt ──
   if (session.mode === 'seedance_wait_prompt') {
-    if (!await requireLoginAndSub(ctx)) return;
+    if (!await requireLogin(ctx)) return;
     const prompt = ctx.message.text.trim();
     if (!prompt) {
       return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
@@ -2379,7 +2950,7 @@ bot.on('text', async (ctx) => {
 
   // ── Grok prompt ──
   if (session.mode === 'grok_wait_prompt') {
-    if (!await requireLoginAndSub(ctx)) return;
+    if (!await requireLogin(ctx)) return;
     const prompt = ctx.message.text.trim();
     if (!prompt) {
       return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
@@ -2407,7 +2978,7 @@ bot.on('text', async (ctx) => {
 
   // ── Sora 2 prompt ──
   if (session.mode === 'sora_wait_prompt') {
-    if (!await requireLoginAndSub(ctx)) return;
+    if (!await requireLogin(ctx)) return;
     const prompt = ctx.message.text.trim();
     if (!prompt) {
       return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
@@ -2432,7 +3003,7 @@ bot.on('text', async (ctx) => {
 
   // ── Gemini Omni prompt ──
   if (session.mode === 'gomni_wait_prompt') {
-    if (!await requireLoginAndSub(ctx)) return;
+    if (!await requireLogin(ctx)) return;
     const prompt = ctx.message.text.trim();
     if (!prompt) {
       return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
@@ -2462,7 +3033,7 @@ bot.on('text', async (ctx) => {
 
   // ── Kling V3 Turbo image-to-video prompt ──
   if (session.mode === 'kvt_wait_prompt') {
-    if (!await requireLoginAndSub(ctx)) return;
+    if (!await requireLogin(ctx)) return;
     const prompt = ctx.message.text.trim();
     if (!prompt) {
       return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
@@ -2491,7 +3062,7 @@ bot.on('text', async (ctx) => {
 
   // ── Kling V3 image-to-video prompt ──
   if (session.mode === 'kv3_wait_prompt') {
-    if (!await requireLoginAndSub(ctx)) return;
+    if (!await requireLogin(ctx)) return;
     const prompt = ctx.message.text.trim();
     if (!prompt) {
       return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
@@ -2524,7 +3095,7 @@ bot.on('text', async (ctx) => {
 
   // ── Image generation prompt (GPT Image 2 / Nano Banana Pro / Nano Banana 2) ──
   if (session.mode === 'img_collect') {
-    if (!await requireLoginAndSub(ctx)) return;
+    if (!await requireLogin(ctx)) return;
     const prompt = ctx.message.text.trim();
     if (!prompt) {
       return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi gambar yang kamu mau.');
@@ -2581,7 +3152,7 @@ bot.on('text', async (ctx) => {
 // ─── Document handler ─────────────────────────────────────────────────────────
 
 bot.on('document', async (ctx) => {
-  if (!await requireLoginAndSub(ctx)) return;
+  if (!await requireLogin(ctx)) return;
   const userId = ctx.from.id;
   const session = getSession(userId);
   const doc = ctx.message.document;
@@ -2616,10 +3187,9 @@ bot.on('document', async (ctx) => {
       setSession(userId, { mode: 'idle' });
       return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
     }
-    const klingModel = session.klingModel ?? 'v3';
     setSession(userId, { mode: 'idle' });
     const statusMsg = await ctx.reply(`⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).`);
-    runKlingMotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, doc.file_id, session.characterUrl, klingModel)
+    runKlingMotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, doc.file_id, session.characterUrl)
       .catch(console.error);
     return;
   }
@@ -2683,17 +3253,24 @@ function isFreepikKeyExhaustedError(raw: string): boolean {
   return /quota|rate.?limit|limit.?exceeded|insufficient|unauthorized|401|403|429|free.?trial|upgrade.?to.?a.?paid|reached.?the.?limit|trial.?usage|billing/i.test(raw);
 }
 
-async function runKlingMotionControl(chatId: number, userId: number, dbUserId: number, statusMsgId: number, videoFileIdOrUrl: string, imageUrl: string, klingModel: 'v3' | 'v26' = 'v3') {
-  const label = klingModel === 'v3' ? 'Kling v3.0' : 'Kling v2.6';
-
-  // Support both Telegram file ID and direct URL
-  const isDirectUrl = videoFileIdOrUrl.startsWith('http://') || videoFileIdOrUrl.startsWith('https://');
-  const videoUrl = isDirectUrl
-    ? videoFileIdOrUrl
-    : (await bot.telegram.getFileLink(videoFileIdOrUrl)).href;
-  console.log(`[${userId}] ${label} Motion Control (Picsart) started — img: ${imageUrl}, vid: ${videoUrl}`);
+async function runKlingMotionControl(chatId: number, userId: number, dbUserId: number, statusMsgId: number, videoFileIdOrUrl: string, imageUrl: string) {
+  const label = 'Kling v3.0';
+  const PRICE = MODEL_PRICES.kling_mc;
+  const charge = await beginCharge(dbUserId, PRICE);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
 
   try {
+    // Support both Telegram file ID and direct URL
+    const isDirectUrl = videoFileIdOrUrl.startsWith('http://') || videoFileIdOrUrl.startsWith('https://');
+    const videoUrl = isDirectUrl
+      ? videoFileIdOrUrl
+      : (await bot.telegram.getFileLink(videoFileIdOrUrl)).href;
+    console.log(`[${userId}] ${label} Motion Control (Picsart) started — img: ${imageUrl}, vid: ${videoUrl}`);
+
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `⏳ ${label} sedang diproses...\nBiasanya 5–8 menit.`
     ).catch(() => {});
@@ -2713,7 +3290,7 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
       imageBuffer: img.buf, imageName: `character.${img.ext}`, imageMime: img.mime,
       videoBuffer: vid.buf, videoName: `driver.${vidType.ext}`, videoMime: vidType.mime,
       prompt: '',
-      model: klingModel,
+      model: 'v3',
       onStatus: (stage) => {
         const text = stage === 'upload'
           ? `⏳ ${label}: mengunggah media ke server...`
@@ -2724,13 +3301,14 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
       },
     });
 
-    const newCount = await incrementKlingUsage(dbUserId);
-    markGenSuccess(userId);
-    const doneLabel = result.usedModel === 'v3' ? 'Kling v3.0' : 'Kling v2.6';
-    const fallbackNote = result.usedModel !== klingModel ? ' (v2.6 belum tersedia — otomatis pakai v3.0)' : '';
-    await sendResult(chatId, result.url, `🕹️ ${doneLabel} Motion Control${fallbackNote}\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`, true);
-    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] ${label} done via Picsart as ${result.usedModel} (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    const delivered = await sendResult(chatId, result.url, `🕹️ Kling v3.0 Motion Control\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`, true);
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] ${label} done via Picsart (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    }
 
   } catch (err: any) {
     const msg = err?.message ?? String(err);
@@ -2746,6 +3324,12 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `${friendly}\n\n/menu untuk coba lagi`
     ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    generating.delete(dbUserId);
   }
 }
 
@@ -2767,6 +3351,14 @@ async function runSeedance(
   }
 ) {
   console.log(`[${userId}] Seedance started — mode: ${opts.inputMode}, dur: ${opts.duration}s, ratio: ${opts.ratio}, res: ${opts.resolution}, audio: ${opts.audio}`);
+
+  const PRICE = MODEL_PRICES.seedance;
+  const charge = await beginCharge(dbUserId, PRICE);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
 
   try {
     let imageBuffer: Buffer | undefined;
@@ -2815,16 +3407,19 @@ async function runSeedance(
       },
     });
 
-    const newCount = await incrementKlingUsage(dbUserId);
-    markGenSuccess(userId);
-    await sendResult(
+    const delivered = await sendResult(
       chatId,
       result.url,
       `🎬 Seedance 2.0 Fast (${opts.duration}s · ${opts.ratio} · ${opts.resolution}${opts.audio ? ' · audio' : ''})\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
       true
     );
-    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] Seedance done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] Seedance done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    }
 
   } catch (err: any) {
     const msg = err?.message ?? String(err);
@@ -2840,6 +3435,12 @@ async function runSeedance(
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `${friendly}\n\n/menu untuk coba lagi`
     ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    generating.delete(dbUserId);
   }
 }
 
@@ -2858,6 +3459,14 @@ async function runGrok(
   }
 ) {
   console.log(`[${userId}] Grok started — dur: ${opts.duration}s, ratio: ${opts.ratio}`);
+
+  const PRICE = MODEL_PRICES.grok;
+  const charge = await beginCharge(dbUserId, PRICE);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
 
   try {
     const img = await downloadBuffer(opts.imageUrl);
@@ -2894,16 +3503,19 @@ async function runGrok(
       },
     });
 
-    const newCount = await incrementKlingUsage(dbUserId);
-    markGenSuccess(userId);
-    await sendResult(
+    const delivered = await sendResult(
       chatId,
       result.url,
       `🤖 Grok Imagine (${opts.duration}s · ${opts.ratio})\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
       true
     );
-    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] Grok done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] Grok done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    }
 
   } catch (err: any) {
     const msg = err?.message ?? String(err);
@@ -2919,6 +3531,12 @@ async function runGrok(
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `${friendly}\n\n/menu untuk coba lagi`
     ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    generating.delete(dbUserId);
   }
 }
 
@@ -2939,6 +3557,14 @@ async function runSora(
 ) {
   console.log(`[${userId}] Sora started — mode: ${opts.inputMode}, dur: ${opts.duration}s, ratio: ${opts.ratio}`);
   const size = SORA_SIZE_MAP[opts.ratio === '16:9' ? '169' : '916'] ?? '720x1280';
+
+  const PRICE = MODEL_PRICES.sora;
+  const charge = await beginCharge(dbUserId, PRICE);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
 
   try {
     let imageBuffer: Buffer | undefined;
@@ -2983,16 +3609,19 @@ async function runSora(
       },
     });
 
-    const newCount = await incrementKlingUsage(dbUserId);
-    markGenSuccess(userId);
-    await sendResult(
+    const delivered = await sendResult(
       chatId,
       result.url,
       `🎥 Sora 2 (${opts.duration}s · ${opts.ratio})\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
       true
     );
-    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] Sora done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] Sora done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    }
 
   } catch (err: any) {
     const msg = err?.message ?? String(err);
@@ -3008,6 +3637,12 @@ async function runSora(
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `${friendly}\n\n/menu untuk coba lagi`
     ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    generating.delete(dbUserId);
   }
 }
 
@@ -3028,6 +3663,14 @@ async function runGeminiOmni(
   }
 ) {
   console.log(`[${userId}] Gemini Omni started — mode: ${opts.inputMode}, dur: ${opts.duration}s, ratio: ${opts.ratio}`);
+
+  const PRICE = MODEL_PRICES.gemini_omni;
+  const charge = await beginCharge(dbUserId, PRICE);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
 
   try {
     let imageBuffer: Buffer | undefined;
@@ -3086,16 +3729,19 @@ async function runGeminiOmni(
       },
     });
 
-    const newCount = await incrementKlingUsage(dbUserId);
-    markGenSuccess(userId);
-    await sendResult(
+    const delivered = await sendResult(
       chatId,
       result.url,
       `✨ Gemini Omni (${opts.duration}s · ${opts.ratio})\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
       true
     );
-    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] Gemini Omni done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] Gemini Omni done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    }
 
   } catch (err: any) {
     const msg = err?.message ?? String(err);
@@ -3111,6 +3757,12 @@ async function runGeminiOmni(
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `${friendly}\n\n/menu untuk coba lagi`
     ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    generating.delete(dbUserId);
   }
 }
 
@@ -3130,6 +3782,18 @@ async function runImageGen(
 ) {
   const label = IMG_ENGINE_LABEL[opts.engine];
   console.log(`[${userId}] Image (${opts.engine}) started — ratio: ${opts.ratio}, refs: ${opts.refs.length}`);
+
+  const PRICE = opts.engine === 'gpt'
+    ? MODEL_PRICES.gpt_image
+    : opts.engine === 'banana_pro'
+      ? MODEL_PRICES.banana_pro
+      : MODEL_PRICES.nano_banana2;
+  const charge = await beginCharge(dbUserId, PRICE);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
 
   try {
     // Download any reference images for multi-image generation.
@@ -3173,17 +3837,20 @@ async function runImageGen(
       },
     });
 
-    const newCount = await incrementKlingUsage(dbUserId);
     // Deliver as a document to preserve full resolution (sendPhoto re-compresses).
-    await sendResult(
+    const delivered = await sendResult(
       chatId,
       result.url,
       `🎨 ${label} (${opts.ratio})\n\n/menu untuk buat lagi`,
       false,
       true
     );
-    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] Image done (${opts.engine}) (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] Image done (${opts.engine}) (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    }
 
   } catch (err: any) {
     const msg = err?.message ?? String(err);
@@ -3199,6 +3866,12 @@ async function runImageGen(
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `${friendly}\n\n/menu untuk coba lagi`
     ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    generating.delete(dbUserId);
   }
 }
 
@@ -3219,6 +3892,14 @@ async function runKlingI2V(
 ) {
   const isSE = !!opts.endImageUrl;
   console.log(`[${userId}] Kling V3 started — ${isSE ? 'start/end' : 'i2v'}, dur: ${opts.duration}s, ratio: ${opts.ratio}`);
+
+  const PRICE = MODEL_PRICES.kling_i2v;
+  const charge = await beginCharge(dbUserId, PRICE);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
 
   try {
     const startImg = await downloadBuffer(opts.startImageUrl);
@@ -3263,17 +3944,20 @@ async function runKlingI2V(
       },
     });
 
-    const newCount = await incrementKlingUsage(dbUserId);
-    markGenSuccess(userId);
     const modeLabel = isSE ? 'Awal & Akhir' : 'Image to Video';
-    await sendResult(
+    const delivered = await sendResult(
       chatId,
       result.url,
       `🎞️ Kling V3 · ${modeLabel} (${opts.duration}s · ${opts.ratio})\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
       true
     );
-    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] Kling V3 done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] Kling V3 done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    }
 
   } catch (err: any) {
     const msg = err?.message ?? String(err);
@@ -3289,6 +3973,12 @@ async function runKlingI2V(
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `${friendly}\n\n/menu untuk coba lagi`
     ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    generating.delete(dbUserId);
   }
 }
 
@@ -3308,6 +3998,15 @@ async function runKlingI2VTurbo(
   }
 ) {
   console.log(`[${userId}] Kling V3 Turbo started — dur: ${opts.duration}s, ratio: ${opts.ratio}, res: ${opts.resolution}`);
+
+  const PRICE = MODEL_PRICES.kling_turbo;
+  const charge = await beginCharge(dbUserId, PRICE);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+
   try {
     const img = await downloadBuffer(opts.imageUrl);
     console.log(`[${userId}] Kling V3 Turbo image — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
@@ -3344,16 +4043,19 @@ async function runKlingI2VTurbo(
       },
     });
 
-    const newCount = await incrementKlingUsage(dbUserId);
-    markGenSuccess(userId);
-    await sendResult(
+    const delivered = await sendResult(
       chatId,
       result.url,
       `⚡ Kling V3 Turbo (${opts.duration}s · ${opts.ratio} · ${opts.resolution})\n⏳ Cooldown 5 menit sebelum bisa generate lagi\n\n/menu untuk buat lagi`,
       true
     );
-    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    console.log(`[${userId}] Kling V3 Turbo done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] Kling V3 Turbo done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    }
 
   } catch (err: any) {
     const msg = err?.message ?? String(err);
@@ -3369,6 +4071,12 @@ async function runKlingI2VTurbo(
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `${friendly}\n\n/menu untuk coba lagi`
     ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    generating.delete(dbUserId);
   }
 }
 
@@ -3415,6 +4123,8 @@ app.listen(PORT, () => {
   try {
     await picsart.ensurePicsartSchema();
     console.log('✅ Picsart schema siap');
+    await ensureBalanceSchema();
+    console.log('✅ Saldo schema siap');
     // Keep the refresh token alive forever on a dedicated account (seed once).
     picsart.startPicsartKeepalive();
     console.log('✅ Picsart keepalive aktif (refresh tiap 3 hari)');
@@ -3423,6 +4133,15 @@ app.listen(PORT, () => {
   }
   bot.launch({ allowedUpdates: ['message', 'callback_query'] });
   console.log('✅ Bot berjalan...');
+
+  // Poller top-up QRIS (mode polling, tanpa webhook). Cek order PENDING tiap 15s.
+  if (klikqris.klikqrisConfigured()) {
+    void pollPendingTopups(); // sekali langsung saat startup — pulihkan order tertunda
+    setInterval(() => { void pollPendingTopups(); }, 15_000);
+    console.log('✅ Poller top-up KlikQRIS aktif (cek tiap 15 detik)');
+  } else {
+    console.warn('⚠️ KLIKQRIS_API_KEY / KLIKQRIS_MERCHANT_ID belum diset — fitur /topup nonaktif');
+  }
 })();
 
 // Global guard: a thrown error inside any command must NOT crash the whole bot

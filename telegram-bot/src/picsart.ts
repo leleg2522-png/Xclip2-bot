@@ -38,10 +38,9 @@ const http = axios.create({ timeout: 120_000 });
 // Picsart returns any 2xx (e.g. 200 OK or 201 Created) on success.
 const ok2xx = (s: number) => s >= 200 && s < 300;
 
-// Kling model_name mapping. v3 is live-verified; v26 string is a best-guess pending capture.
+// Kling model_name mapping. v3 is live-verified.
 export const KLING_MODELS = {
   v3: { modelName: 'kling-v3', modelLabel: 'kling-motion-control-v3' },
-  v26: { modelName: 'kling-v2.6', modelLabel: 'kling-motion-control-v2.6' },
 } as const;
 export type KlingModelKey = keyof typeof KLING_MODELS;
 
@@ -569,30 +568,13 @@ export async function generateKlingMotionControl(input: {
     const videoUrl = await uploadFile(credId, input.videoBuffer, input.videoName, input.videoMime);
     input.onStatus?.('submit');
 
-    let usedModel: KlingModelKey = input.model;
-    let id: string;
-    try {
-      id = await submitKlingMotionControl(credId, {
-        prompt: input.prompt, imageUrl, videoUrl, model: input.model, outputName: input.videoName,
-      });
-    } catch (e: any) {
-      // The v2.6 model_name is a best-guess (not yet HAR-verified). If Picsart rejects the
-      // submit, transparently fall back to the verified v3 so the user still gets a result.
-      // A credit error is re-thrown so runWithAccount can move to another account.
-      const msg = String(e?.message ?? '');
-      if (input.model !== 'v3' && msg.includes('PICSART_SUBMIT_FAILED') && !isCreditError(msg)) {
-        usedModel = 'v3';
-        id = await submitKlingMotionControl(credId, {
-          prompt: input.prompt, imageUrl, videoUrl, model: 'v3', outputName: input.videoName,
-        });
-      } else {
-        throw e;
-      }
-    }
+    const id = await submitKlingMotionControl(credId, {
+      prompt: input.prompt, imageUrl, videoUrl, model: input.model, outputName: input.videoName,
+    });
 
     input.onStatus?.('poll');
     const res = await pollKlingResult(credId, id);
-    return { ...res, usedModel };
+    return { ...res, usedModel: input.model };
   });
 }
 
