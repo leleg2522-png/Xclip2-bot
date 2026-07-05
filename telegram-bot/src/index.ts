@@ -119,6 +119,10 @@ const MODEL_PRICES = {
   kling_i2v: 1500,     // Kling V3 I2V
   kling_turbo: 1500,   // Kling V3 Turbo
   seedance: 1000,
+  seedance2: 1500,     // Seedance 2.0 (regular/premium)
+  wan: 1000,           // Wan 2.7 (i2v/t2v)
+  happyhorse: 1500,    // Happy Horse 1.1 (reference-to-video)
+  runway: 1000,        // Runway Gen-4.5 (image-to-video)
   grok: 1000,
   nano_banana2: 200,
   banana_pro: 200,
@@ -651,6 +655,14 @@ type Mode =
   | 'kling_wait_video'
   | 'seedance_wait_image'
   | 'seedance_wait_prompt'
+  | 's2_wait_image'
+  | 's2_wait_prompt'
+  | 'wan_wait_image'
+  | 'wan_wait_prompt'
+  | 'hh_wait_image'
+  | 'hh_wait_prompt'
+  | 'rw_wait_image'
+  | 'rw_wait_prompt'
   | 'grok_wait_image'
   | 'grok_wait_prompt'
   | 'kv3_wait_image'
@@ -683,6 +695,28 @@ interface Session {
   seedanceResolution?: string;
   seedanceAudio?: boolean;
   seedanceImageUrl?: string;
+  // Seedance 2.0 (regular) wizard state
+  s2InputMode?: 'i2v' | 't2v';
+  s2Duration?: number;
+  s2Ratio?: string;
+  s2Resolution?: string;
+  s2Audio?: boolean;
+  s2ImageUrl?: string;
+  // Wan 2.7 wizard state (i2v/t2v)
+  wanInputMode?: 'i2v' | 't2v';
+  wanDuration?: number;
+  wanRatio?: string;
+  wanResolution?: string;
+  wanImageUrl?: string;
+  // Happy Horse 1.1 wizard state (reference-to-video)
+  hhDuration?: number;
+  hhRatio?: string;
+  hhResolution?: string;
+  hhImageUrl?: string;
+  // Runway Gen-4.5 wizard state (image-to-video only)
+  rwDuration?: number;
+  rwRatio?: string;
+  rwImageUrl?: string;
   // Grok Imagine wizard state (image-to-video only)
   grokDuration?: number;
   grokRatio?: string;
@@ -1164,6 +1198,10 @@ function mainMenuKeyboard() {
     ],
     [Markup.button.callback('🕹️ Kling Motion Control', 'mode_kling')],
     [Markup.button.callback('🎬 Seedance 2.0 Fast', 'mode_seedance')],
+    [Markup.button.callback('🎬 Seedance 2.0 (Premium)', 'mode_s2')],
+    [Markup.button.callback('🌊 Wan 2.7', 'mode_wan')],
+    [Markup.button.callback('🐴 Happy Horse 1.1', 'mode_hh')],
+    [Markup.button.callback('🚀 Runway Gen-4.5', 'mode_rw')],
     [Markup.button.callback('🤖 Grok Imagine', 'mode_grok')],
     [Markup.button.callback('🎥 Sora 2 (OpenAI)', 'mode_sora')],
     [Markup.button.callback('✨ Gemini Omni (Google)', 'mode_gomni')],
@@ -1253,6 +1291,157 @@ function seedanceAudioKeyboard() {
 }
 
 const SD_RATIO_MAP: Record<string, string> = { '916': '9:16', '169': '16:9', '11': '1:1' };
+
+// ─── Seedance 2.0 (Premium) wizard keyboards ──────────────────────────────────
+
+function s2InputKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🖼️ Foto + Prompt', 's2_in_i2v')],
+    [Markup.button.callback('✍️ Prompt Saja', 's2_in_t2v')],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function s2DurationKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('5 detik', 's2_dur_5'),
+      Markup.button.callback('10 detik', 's2_dur_10'),
+      Markup.button.callback('15 detik', 's2_dur_15'),
+    ],
+    [Markup.button.callback('« Kembali', 'mode_s2')],
+  ]);
+}
+
+function s2RatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('📱 9:16', 's2_ratio_916'),
+      Markup.button.callback('🖥️ 16:9', 's2_ratio_169'),
+      Markup.button.callback('⬛ 1:1', 's2_ratio_11'),
+    ],
+  ]);
+}
+
+function s2ResolutionKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('720p', 's2_res_720p'),
+      Markup.button.callback('1080p (HD)', 's2_res_1080p'),
+    ],
+  ]);
+}
+
+function s2AudioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('🔊 Audio Nyala', 's2_audio_on'),
+      Markup.button.callback('🔇 Audio Mati', 's2_audio_off'),
+    ],
+  ]);
+}
+
+// ─── Wan 2.7 wizard keyboards (i2v/t2v) ───────────────────────────────────────
+
+function wanInputKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🖼️ Foto + Prompt', 'wan_in_i2v')],
+    [Markup.button.callback('✍️ Prompt Saja', 'wan_in_t2v')],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function wanDurationKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('5 detik', 'wan_dur_5'),
+      Markup.button.callback('10 detik', 'wan_dur_10'),
+      Markup.button.callback('15 detik', 'wan_dur_15'),
+    ],
+    [Markup.button.callback('« Kembali', 'mode_wan')],
+  ]);
+}
+
+function wanRatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('📱 9:16', 'wan_ratio_916'),
+      Markup.button.callback('🖥️ 16:9', 'wan_ratio_169'),
+      Markup.button.callback('⬛ 1:1', 'wan_ratio_11'),
+    ],
+  ]);
+}
+
+function wanResolutionKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('720p', 'wan_res_720'),
+      Markup.button.callback('1080p (HD)', 'wan_res_1080'),
+    ],
+  ]);
+}
+
+// ─── Happy Horse 1.1 wizard keyboards (reference-to-video) ────────────────────
+
+function hhDurationKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('5 detik', 'hh_dur_5'),
+      Markup.button.callback('10 detik', 'hh_dur_10'),
+      Markup.button.callback('15 detik', 'hh_dur_15'),
+    ],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function hhRatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('📱 9:16', 'hh_ratio_916'),
+      Markup.button.callback('🖥️ 16:9', 'hh_ratio_169'),
+      Markup.button.callback('⬛ 1:1', 'hh_ratio_11'),
+    ],
+  ]);
+}
+
+function hhResolutionKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('720p', 'hh_res_720'),
+      Markup.button.callback('1080p (HD)', 'hh_res_1080'),
+    ],
+  ]);
+}
+
+// ─── Runway Gen-4.5 wizard keyboards (image-to-video) ─────────────────────────
+
+function rwDurationKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('5 detik', 'rw_dur_5'),
+      Markup.button.callback('10 detik', 'rw_dur_10'),
+    ],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function rwRatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('📱 9:16', 'rw_ratio_916'),
+      Markup.button.callback('🖥️ 16:9', 'rw_ratio_169'),
+      Markup.button.callback('⬛ 1:1', 'rw_ratio_11'),
+    ],
+    [Markup.button.callback('« Kembali', 'mode_rw')],
+  ]);
+}
+
+// Runway pakai rasio format piksel (dari HAR: 9:16 = "720:1280").
+const RW_RATIO_MAP: Record<string, { api: string; label: string }> = {
+  '916': { api: '720:1280', label: '9:16' },
+  '169': { api: '1280:720', label: '16:9' },
+  '11': { api: '960:960', label: '1:1' },
+};
 
 // ─── Grok Imagine wizard keyboards (image-to-video only) ──────────────────────
 
@@ -1416,7 +1605,11 @@ function hargaText(): string {
     '🎬 *Video*\n' +
     `• Sora 2 — ${formatRupiah(MODEL_PRICES.sora)}\n` +
     `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
-    `• Seedance — ${formatRupiah(MODEL_PRICES.seedance)}\n` +
+    `• Seedance 2.0 Fast — ${formatRupiah(MODEL_PRICES.seedance)}\n` +
+    `• Seedance 2.0 (Premium) — ${formatRupiah(MODEL_PRICES.seedance2)}\n` +
+    `• Wan 2.7 — ${formatRupiah(MODEL_PRICES.wan)}\n` +
+    `• Happy Horse 1.1 — ${formatRupiah(MODEL_PRICES.happyhorse)}\n` +
+    `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
     `• Grok Imagine — ${formatRupiah(MODEL_PRICES.grok)}\n` +
     `• Kling V3 Motion Control — ${formatRupiah(MODEL_PRICES.kling_mc)}\n` +
     `• Kling V3 Image-to-Video — ${formatRupiah(MODEL_PRICES.kling_i2v)}\n` +
@@ -2471,6 +2664,222 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  // ── Seedance 2.0 (Premium) wizard ──
+  if (data === 'mode_s2') {
+    setSession(userId, {
+      mode: 'idle',
+      s2InputMode: undefined,
+      s2Duration: undefined,
+      s2Ratio: undefined,
+      s2Resolution: undefined,
+      s2Audio: undefined,
+      s2ImageUrl: undefined,
+    });
+    return ctx.editMessageText(
+      '🎬 *Seedance 2.0 (Premium)*\n\nPilih cara membuat video:',
+      { parse_mode: 'Markdown', ...s2InputKeyboard() }
+    );
+  }
+
+  if (data === 's2_in_i2v' || data === 's2_in_t2v') {
+    setSession(userId, { s2InputMode: data === 's2_in_i2v' ? 'i2v' : 't2v' });
+    return ctx.editMessageText(
+      '🎬 *Seedance 2.0 (Premium)*\n\n*Langkah 1:* Pilih durasi video:',
+      { parse_mode: 'Markdown', ...s2DurationKeyboard() }
+    );
+  }
+
+  if (data.startsWith('s2_dur_')) {
+    const dur = parseInt(data.replace('s2_dur_', ''), 10);
+    setSession(userId, { s2Duration: dur });
+    return ctx.editMessageText(
+      `🎬 *Seedance 2.0 (Premium)*\n\nDurasi: *${dur} detik*\n\n*Langkah 2:* Pilih rasio layar:`,
+      { parse_mode: 'Markdown', ...s2RatioKeyboard() }
+    );
+  }
+
+  if (data.startsWith('s2_ratio_')) {
+    const ratio = SD_RATIO_MAP[data.replace('s2_ratio_', '')] ?? '9:16';
+    setSession(userId, { s2Ratio: ratio });
+    return ctx.editMessageText(
+      `🎬 *Seedance 2.0 (Premium)*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Pilih resolusi:`,
+      { parse_mode: 'Markdown', ...s2ResolutionKeyboard() }
+    );
+  }
+
+  if (data.startsWith('s2_res_')) {
+    const res = data.replace('s2_res_', '');
+    setSession(userId, { s2Resolution: res });
+    return ctx.editMessageText(
+      `🎬 *Seedance 2.0 (Premium)*\n\nResolusi: *${res}*\n\n*Langkah 4:* Audio video?`,
+      { parse_mode: 'Markdown', ...s2AudioKeyboard() }
+    );
+  }
+
+  if (data === 's2_audio_on' || data === 's2_audio_off') {
+    const audio = data === 's2_audio_on';
+    const session = getSession(userId);
+    if (session.s2InputMode === 'i2v') {
+      setSession(userId, { s2Audio: audio, mode: 's2_wait_image' });
+      return ctx.editMessageText(
+        `🎬 *Seedance 2.0 (Premium)*\n\nAudio: *${audio ? 'Nyala' : 'Mati'}*\n\n` +
+        '*Langkah 5:* Kirim *foto acuan* untuk video kamu.',
+        { parse_mode: 'Markdown' }
+      );
+    }
+    setSession(userId, { s2Audio: audio, mode: 's2_wait_prompt' });
+    return ctx.editMessageText(
+      `🎬 *Seedance 2.0 (Premium)*\n\nAudio: *${audio ? 'Nyala' : 'Mati'}*\n\n` +
+      '*Langkah 5:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  // ── Wan 2.7 wizard (i2v/t2v) ──
+  if (data === 'mode_wan') {
+    setSession(userId, {
+      mode: 'idle',
+      wanInputMode: undefined,
+      wanDuration: undefined,
+      wanRatio: undefined,
+      wanResolution: undefined,
+      wanImageUrl: undefined,
+    });
+    return ctx.editMessageText(
+      '🌊 *Wan 2.7*\n\nPilih cara membuat video:',
+      { parse_mode: 'Markdown', ...wanInputKeyboard() }
+    );
+  }
+
+  if (data === 'wan_in_i2v' || data === 'wan_in_t2v') {
+    setSession(userId, { wanInputMode: data === 'wan_in_i2v' ? 'i2v' : 't2v' });
+    return ctx.editMessageText(
+      '🌊 *Wan 2.7*\n\n*Langkah 1:* Pilih durasi video:',
+      { parse_mode: 'Markdown', ...wanDurationKeyboard() }
+    );
+  }
+
+  if (data.startsWith('wan_dur_')) {
+    const dur = parseInt(data.replace('wan_dur_', ''), 10);
+    const session = getSession(userId);
+    setSession(userId, { wanDuration: dur });
+    // Rasio hanya berlaku untuk t2v — untuk i2v rasio ikut foto acuan.
+    if (session.wanInputMode === 't2v') {
+      return ctx.editMessageText(
+        `🌊 *Wan 2.7*\n\nDurasi: *${dur} detik*\n\n*Langkah 2:* Pilih rasio layar:`,
+        { parse_mode: 'Markdown', ...wanRatioKeyboard() }
+      );
+    }
+    return ctx.editMessageText(
+      `🌊 *Wan 2.7*\n\nDurasi: *${dur} detik*\n\n*Langkah 2:* Pilih resolusi:`,
+      { parse_mode: 'Markdown', ...wanResolutionKeyboard() }
+    );
+  }
+
+  if (data.startsWith('wan_ratio_')) {
+    const ratio = SD_RATIO_MAP[data.replace('wan_ratio_', '')] ?? '9:16';
+    setSession(userId, { wanRatio: ratio });
+    return ctx.editMessageText(
+      `🌊 *Wan 2.7*\n\nRasio: *${ratio}*\n\n*Langkah berikutnya:* Pilih resolusi:`,
+      { parse_mode: 'Markdown', ...wanResolutionKeyboard() }
+    );
+  }
+
+  if (data.startsWith('wan_res_')) {
+    const res = data.replace('wan_res_', '') === '1080' ? '1080P' : '720P';
+    const session = getSession(userId);
+    if (session.wanInputMode === 'i2v') {
+      setSession(userId, { wanResolution: res, mode: 'wan_wait_image' });
+      return ctx.editMessageText(
+        `🌊 *Wan 2.7*\n\nResolusi: *${res.toLowerCase()}*\n\n` +
+        '*Langkah berikutnya:* Kirim *foto acuan* untuk video kamu.',
+        { parse_mode: 'Markdown' }
+      );
+    }
+    setSession(userId, { wanResolution: res, mode: 'wan_wait_prompt' });
+    return ctx.editMessageText(
+      `🌊 *Wan 2.7*\n\nResolusi: *${res.toLowerCase()}*\n\n` +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  // ── Happy Horse 1.1 wizard (reference-to-video) ──
+  if (data === 'mode_hh') {
+    setSession(userId, {
+      mode: 'idle',
+      hhDuration: undefined,
+      hhRatio: undefined,
+      hhResolution: undefined,
+      hhImageUrl: undefined,
+    });
+    return ctx.editMessageText(
+      '🐴 *Happy Horse 1.1*\n\nVideo dibuat dari *foto + prompt*.\n\n*Langkah 1:* Pilih durasi video:',
+      { parse_mode: 'Markdown', ...hhDurationKeyboard() }
+    );
+  }
+
+  if (data.startsWith('hh_dur_')) {
+    const dur = parseInt(data.replace('hh_dur_', ''), 10);
+    setSession(userId, { hhDuration: dur });
+    return ctx.editMessageText(
+      `🐴 *Happy Horse 1.1*\n\nDurasi: *${dur} detik*\n\n*Langkah 2:* Pilih rasio layar:`,
+      { parse_mode: 'Markdown', ...hhRatioKeyboard() }
+    );
+  }
+
+  if (data.startsWith('hh_ratio_')) {
+    const ratio = SD_RATIO_MAP[data.replace('hh_ratio_', '')] ?? '9:16';
+    setSession(userId, { hhRatio: ratio });
+    return ctx.editMessageText(
+      `🐴 *Happy Horse 1.1*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Pilih resolusi:`,
+      { parse_mode: 'Markdown', ...hhResolutionKeyboard() }
+    );
+  }
+
+  if (data.startsWith('hh_res_')) {
+    const res = data.replace('hh_res_', '') === '1080' ? '1080P' : '720P';
+    setSession(userId, { hhResolution: res, mode: 'hh_wait_image' });
+    return ctx.editMessageText(
+      `🐴 *Happy Horse 1.1*\n\nResolusi: *${res.toLowerCase()}*\n\n` +
+      '*Langkah 4:* Kirim *foto acuan* untuk video kamu.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  // ── Runway Gen-4.5 wizard (image-to-video only) ──
+  if (data === 'mode_rw') {
+    setSession(userId, {
+      mode: 'idle',
+      rwDuration: undefined,
+      rwRatio: undefined,
+      rwImageUrl: undefined,
+    });
+    return ctx.editMessageText(
+      '🚀 *Runway Gen-4.5*\n\nVideo dibuat dari *foto + prompt*.\n\n*Langkah 1:* Pilih durasi video:',
+      { parse_mode: 'Markdown', ...rwDurationKeyboard() }
+    );
+  }
+
+  if (data.startsWith('rw_dur_')) {
+    const dur = parseInt(data.replace('rw_dur_', ''), 10);
+    setSession(userId, { rwDuration: dur });
+    return ctx.editMessageText(
+      `🚀 *Runway Gen-4.5*\n\nDurasi: *${dur} detik*\n\n*Langkah 2:* Pilih rasio layar:`,
+      { parse_mode: 'Markdown', ...rwRatioKeyboard() }
+    );
+  }
+
+  if (data.startsWith('rw_ratio_')) {
+    const entry = RW_RATIO_MAP[data.replace('rw_ratio_', '')] ?? RW_RATIO_MAP['916'];
+    setSession(userId, { rwRatio: entry.api, mode: 'rw_wait_image' });
+    return ctx.editMessageText(
+      `🚀 *Runway Gen-4.5*\n\nRasio: *${entry.label}*\n\n` +
+      '*Langkah 3:* Kirim *foto acuan* untuk video kamu.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   // ── Grok Imagine wizard (image-to-video only) ──
   if (data === 'mode_grok') {
     setSession(userId, {
@@ -2756,6 +3165,42 @@ async function handleImageInput(ctx: any, fileUrl: string) {
     );
   }
 
+  if (session.mode === 's2_wait_image') {
+    setSession(userId, { s2ImageUrl: fileUrl, mode: 's2_wait_prompt' });
+    return ctx.reply(
+      '✅ Foto acuan diterima!\n\n' +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'wan_wait_image') {
+    setSession(userId, { wanImageUrl: fileUrl, mode: 'wan_wait_prompt' });
+    return ctx.reply(
+      '✅ Foto acuan diterima!\n\n' +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'hh_wait_image') {
+    setSession(userId, { hhImageUrl: fileUrl, mode: 'hh_wait_prompt' });
+    return ctx.reply(
+      '✅ Foto acuan diterima!\n\n' +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'rw_wait_image') {
+    setSession(userId, { rwImageUrl: fileUrl, mode: 'rw_wait_prompt' });
+    return ctx.reply(
+      '✅ Foto acuan diterima!\n\n' +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (session.mode === 'grok_wait_image') {
     setSession(userId, { grokImageUrl: fileUrl, mode: 'grok_wait_prompt' });
     return ctx.reply(
@@ -2984,6 +3429,120 @@ bot.on('text', async (ctx) => {
     const statusMsg = await ctx.reply('⏳ Memproses Seedance 2.0 Fast...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
     runSeedance(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
       .catch(e => console.error(`[${userId}] Seedance gen error:`, e.message));
+    return;
+  }
+
+  // ── Seedance 2.0 (Premium) prompt ──
+  if (session.mode === 's2_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    const opts = {
+      inputMode: session.s2InputMode ?? 't2v',
+      imageUrl: session.s2ImageUrl,
+      duration: session.s2Duration ?? 5,
+      ratio: session.s2Ratio ?? '9:16',
+      resolution: session.s2Resolution ?? '1080p',
+      audio: session.s2Audio ?? true,
+    };
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Memproses Seedance 2.0 (Premium)...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
+    runSeedance2(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
+      .catch(e => console.error(`[${userId}] Seedance2 gen error:`, e.message));
+    return;
+  }
+
+  // ── Wan 2.7 prompt ──
+  if (session.mode === 'wan_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    if (session.wanInputMode === 'i2v' && !session.wanImageUrl) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply('⚠️ Foto acuan tidak ditemukan. Mulai lagi dari /menu.');
+    }
+    const opts = {
+      inputMode: session.wanInputMode ?? 't2v',
+      imageUrl: session.wanImageUrl,
+      duration: session.wanDuration ?? 10,
+      ratio: session.wanRatio ?? '9:16',
+      resolution: session.wanResolution ?? '720P',
+    };
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Memproses Wan 2.7...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
+    runWan(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
+      .catch(e => console.error(`[${userId}] Wan gen error:`, e.message));
+    return;
+  }
+
+  // ── Happy Horse 1.1 prompt ──
+  if (session.mode === 'hh_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    if (!session.hhImageUrl) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply('⚠️ Foto acuan tidak ditemukan. Mulai lagi dari /menu.');
+    }
+    const opts = {
+      imageUrl: session.hhImageUrl,
+      duration: session.hhDuration ?? 10,
+      ratio: session.hhRatio ?? '9:16',
+      resolution: session.hhResolution ?? '1080P',
+    };
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Memproses Happy Horse 1.1...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
+    runHappyHorse(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
+      .catch(e => console.error(`[${userId}] HappyHorse gen error:`, e.message));
+    return;
+  }
+
+  // ── Runway Gen-4.5 prompt ──
+  if (session.mode === 'rw_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    if (!session.rwImageUrl) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply('⚠️ Foto acuan tidak ditemukan. Mulai lagi dari /menu.');
+    }
+    const opts = {
+      imageUrl: session.rwImageUrl,
+      duration: session.rwDuration ?? 10,
+      ratio: session.rwRatio ?? '720:1280',
+    };
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Memproses Runway Gen-4.5...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
+    runRunway(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
+      .catch(e => console.error(`[${userId}] Runway gen error:`, e.message));
     return;
   }
 
@@ -3463,6 +4022,418 @@ async function runSeedance(
   } catch (err: any) {
     const msg = err?.message ?? String(err);
     console.error(`[${userId}] Seedance error: ${msg}`);
+    let friendly: string;
+    if (msg.includes('PICSART_TIMEOUT')) {
+      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
+    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
+      friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
+    } else {
+      friendly = '❌ Gagal memproses. Coba lagi nanti.';
+    }
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    generating.delete(dbUserId);
+  }
+}
+
+// ─── Background: Seedance 2.0 Premium (regular model) ────────────────────────
+
+async function runSeedance2(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  opts: {
+    inputMode: 'i2v' | 't2v';
+    imageUrl?: string;
+    duration: number;
+    ratio: string;
+    resolution: string;
+    audio: boolean;
+  }
+) {
+  console.log(`[${userId}] Seedance2 started — mode: ${opts.inputMode}, dur: ${opts.duration}s, ratio: ${opts.ratio}, res: ${opts.resolution}, audio: ${opts.audio}`);
+
+  const PRICE = MODEL_PRICES.seedance2;
+  const charge = await beginCharge(dbUserId, PRICE);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+
+  try {
+    let imageBuffer: Buffer | undefined;
+    let imageName: string | undefined;
+    let imageMime: string | undefined;
+    if (opts.inputMode === 'i2v' && opts.imageUrl) {
+      const img = await downloadBuffer(opts.imageUrl);
+      imageBuffer = img.buf;
+      imageName = `reference.${img.ext}`;
+      imageMime = img.mime;
+      console.log(`[${userId}] Seedance2 ref image — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
+    }
+
+    let lastEdit = 0;
+    const result = await picsart.generateSeedance({
+      userId: dbUserId,
+      prompt,
+      imageBuffer,
+      imageName,
+      imageMime,
+      duration: opts.duration,
+      ratio: opts.ratio,
+      resolution: opts.resolution,
+      generateAudio: opts.audio,
+      model: picsart.SEEDANCE2_MODEL,
+      onStatus: (stage) => {
+        const text = stage === 'upload'
+          ? '⏳ Seedance 2.0 Premium: mengunggah foto ke server... (1/3)'
+          : stage === 'submit'
+            ? '⏳ Seedance 2.0 Premium: mengirim perintah ke server... (2/3)'
+            : '⏳ Seedance 2.0 Premium: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 3–8 menit. Jangan tutup chat ini.';
+        lastEdit = Date.now();
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+      },
+      onPoll: (elapsedSec) => {
+        if (Date.now() - lastEdit < 30_000) return;
+        lastEdit = Date.now();
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = elapsedSec % 60;
+        const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
+        bot.telegram.editMessageText(
+          chatId, statusMsgId, undefined,
+          `⏳ Seedance 2.0 Premium: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${timer} (biasanya 3–8 menit).\nJangan tutup chat ini, video dikirim otomatis.`
+        ).catch(() => {});
+      },
+    });
+
+    const delivered = await sendResult(
+      chatId,
+      result.url,
+      `🎬 Seedance 2.0 Premium (${opts.duration}s · ${opts.ratio} · ${opts.resolution}${opts.audio ? ' · audio' : ''})\n\n/menu untuk buat lagi`,
+      true
+    );
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] Seedance2 done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    }
+
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    console.error(`[${userId}] Seedance2 error: ${msg}`);
+    let friendly: string;
+    if (msg.includes('PICSART_TIMEOUT')) {
+      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
+    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
+      friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
+    } else {
+      friendly = '❌ Gagal memproses. Coba lagi nanti.';
+    }
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    generating.delete(dbUserId);
+  }
+}
+
+// ─── Background: Wan 2.7 (i2v/t2v) ────────────────────────────────────────────
+
+async function runWan(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  opts: {
+    inputMode: 'i2v' | 't2v';
+    imageUrl?: string;
+    duration: number;
+    ratio: string;
+    resolution: string;
+  }
+) {
+  console.log(`[${userId}] Wan started — mode: ${opts.inputMode}, dur: ${opts.duration}s, ratio: ${opts.ratio}, res: ${opts.resolution}`);
+
+  const PRICE = MODEL_PRICES.wan;
+  const charge = await beginCharge(dbUserId, PRICE);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+
+  try {
+    let imageBuffer: Buffer | undefined;
+    let imageName: string | undefined;
+    let imageMime: string | undefined;
+    if (opts.inputMode === 'i2v' && opts.imageUrl) {
+      const img = await downloadBuffer(opts.imageUrl);
+      imageBuffer = img.buf;
+      imageName = `reference.${img.ext}`;
+      imageMime = img.mime;
+      console.log(`[${userId}] Wan ref image — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
+    }
+
+    let lastEdit = 0;
+    const result = await picsart.generateWan({
+      userId: dbUserId,
+      prompt,
+      imageBuffer,
+      imageName,
+      imageMime,
+      duration: opts.duration,
+      ratio: opts.inputMode === 't2v' ? opts.ratio : undefined,
+      resolution: opts.resolution,
+      onStatus: (stage) => {
+        const text = stage === 'upload'
+          ? '⏳ Wan 2.7: mengunggah foto ke server... (1/3)'
+          : stage === 'submit'
+            ? '⏳ Wan 2.7: mengirim perintah ke server... (2/3)'
+            : '⏳ Wan 2.7: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 3–8 menit. Jangan tutup chat ini.';
+        lastEdit = Date.now();
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+      },
+      onPoll: (elapsedSec) => {
+        if (Date.now() - lastEdit < 30_000) return;
+        lastEdit = Date.now();
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = elapsedSec % 60;
+        const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
+        bot.telegram.editMessageText(
+          chatId, statusMsgId, undefined,
+          `⏳ Wan 2.7: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${timer} (biasanya 3–8 menit).\nJangan tutup chat ini, video dikirim otomatis.`
+        ).catch(() => {});
+      },
+    });
+
+    const delivered = await sendResult(
+      chatId,
+      result.url,
+      `🌊 Wan 2.7 (${opts.duration}s · ${opts.inputMode === 't2v' ? opts.ratio + ' · ' : ''}${opts.resolution.toLowerCase()})\n\n/menu untuk buat lagi`,
+      true
+    );
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] Wan done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    }
+
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    console.error(`[${userId}] Wan error: ${msg}`);
+    let friendly: string;
+    if (msg.includes('PICSART_TIMEOUT')) {
+      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
+    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
+      friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
+    } else {
+      friendly = '❌ Gagal memproses. Coba lagi nanti.';
+    }
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    generating.delete(dbUserId);
+  }
+}
+
+// ─── Background: Happy Horse 1.1 (reference-to-video) ────────────────────────
+
+async function runHappyHorse(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  opts: {
+    imageUrl: string;
+    duration: number;
+    ratio: string;
+    resolution: string;
+  }
+) {
+  console.log(`[${userId}] HappyHorse started — dur: ${opts.duration}s, ratio: ${opts.ratio}, res: ${opts.resolution}`);
+
+  const PRICE = MODEL_PRICES.happyhorse;
+  const charge = await beginCharge(dbUserId, PRICE);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+
+  try {
+    const img = await downloadBuffer(opts.imageUrl);
+    console.log(`[${userId}] HappyHorse ref image — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
+
+    let lastEdit = 0;
+    const result = await picsart.generateHappyHorse({
+      userId: dbUserId,
+      prompt,
+      imageBuffer: img.buf,
+      imageName: `reference.${img.ext}`,
+      imageMime: img.mime,
+      duration: opts.duration,
+      ratio: opts.ratio,
+      resolution: opts.resolution,
+      onStatus: (stage) => {
+        const text = stage === 'upload'
+          ? '⏳ Happy Horse 1.1: mengunggah foto ke server... (1/3)'
+          : stage === 'submit'
+            ? '⏳ Happy Horse 1.1: mengirim perintah ke server... (2/3)'
+            : '⏳ Happy Horse 1.1: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 3–8 menit. Jangan tutup chat ini.';
+        lastEdit = Date.now();
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+      },
+      onPoll: (elapsedSec) => {
+        if (Date.now() - lastEdit < 30_000) return;
+        lastEdit = Date.now();
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = elapsedSec % 60;
+        const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
+        bot.telegram.editMessageText(
+          chatId, statusMsgId, undefined,
+          `⏳ Happy Horse 1.1: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${timer} (biasanya 3–8 menit).\nJangan tutup chat ini, video dikirim otomatis.`
+        ).catch(() => {});
+      },
+    });
+
+    const delivered = await sendResult(
+      chatId,
+      result.url,
+      `🐴 Happy Horse 1.1 (${opts.duration}s · ${opts.ratio} · ${opts.resolution.toLowerCase()})\n\n/menu untuk buat lagi`,
+      true
+    );
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] HappyHorse done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    }
+
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    console.error(`[${userId}] HappyHorse error: ${msg}`);
+    let friendly: string;
+    if (msg.includes('PICSART_TIMEOUT')) {
+      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
+    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
+      friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
+    } else {
+      friendly = '❌ Gagal memproses. Coba lagi nanti.';
+    }
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    generating.delete(dbUserId);
+  }
+}
+
+// ─── Background: Runway Gen-4.5 (image-to-video) ──────────────────────────────
+
+async function runRunway(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  opts: {
+    imageUrl: string;
+    duration: number;
+    ratio: string;
+  }
+) {
+  console.log(`[${userId}] Runway started — dur: ${opts.duration}s, ratio: ${opts.ratio}`);
+
+  const PRICE = MODEL_PRICES.runway;
+  const charge = await beginCharge(dbUserId, PRICE);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+
+  try {
+    const img = await downloadBuffer(opts.imageUrl);
+    console.log(`[${userId}] Runway ref image — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
+
+    let lastEdit = 0;
+    const result = await picsart.generateRunway({
+      userId: dbUserId,
+      prompt,
+      imageBuffer: img.buf,
+      imageName: `reference.${img.ext}`,
+      imageMime: img.mime,
+      duration: opts.duration,
+      ratio: opts.ratio,
+      onStatus: (stage) => {
+        const text = stage === 'upload'
+          ? '⏳ Runway Gen-4.5: mengunggah foto ke server... (1/3)'
+          : stage === 'submit'
+            ? '⏳ Runway Gen-4.5: mengirim perintah ke server... (2/3)'
+            : '⏳ Runway Gen-4.5: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 3–8 menit. Jangan tutup chat ini.';
+        lastEdit = Date.now();
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+      },
+      onPoll: (elapsedSec) => {
+        if (Date.now() - lastEdit < 30_000) return;
+        lastEdit = Date.now();
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = elapsedSec % 60;
+        const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
+        bot.telegram.editMessageText(
+          chatId, statusMsgId, undefined,
+          `⏳ Runway Gen-4.5: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${timer} (biasanya 3–8 menit).\nJangan tutup chat ini, video dikirim otomatis.`
+        ).catch(() => {});
+      },
+    });
+
+    const ratioLabel = Object.values(RW_RATIO_MAP).find(v => v.api === opts.ratio)?.label ?? opts.ratio;
+    const delivered = await sendResult(
+      chatId,
+      result.url,
+      `🚀 Runway Gen-4.5 (${opts.duration}s · ${ratioLabel})\n\n/menu untuk buat lagi`,
+      true
+    );
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] Runway done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    }
+
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    console.error(`[${userId}] Runway error: ${msg}`);
     let friendly: string;
     if (msg.includes('PICSART_TIMEOUT')) {
       friendly = '❌ Proses terlalu lama. Coba lagi nanti.';

@@ -57,6 +57,20 @@ Host: `https://api.picsart.com`, uploads on `https://upload.picsart.com`, result
 
 - Submit endpoint `/workflows/seedance/submit` (NOT captured in HAR, inferred from Kling pattern) is CONFIRMED working in production (i2v, 9:16/15s/1080p/audio) — full flow upload->submit->poll->video_url verified live.
 
+## Seedance 2.0 regular vs fast (both implemented in bot)
+- Same `/workflows/seedance/submit` + `/{id}/result` endpoints for BOTH. Fast = model `seedance_2_0_fast` with image role `reference_image`; regular/premium = model `seedance_2_0` with image role **`first_frame`** (per HAR — the role differs per model string). Result stays at `response.result.video_url`.
+
+## Wan 2.7 (implemented in bot)
+- i2v: POST `/workflows/wan/v2/image-to-video/submit` `{params:{media:[{type:"first_frame",url}], resolution:"720P"|"1080P", duration(NUMBER), prompt_extend:true, prompt}}` — NO ratio (follows the image). t2v: POST `/workflows/wan/v2/text-to-video/submit` `{params:{prompt, resolution, ratio, duration, prompt_extend:true}}` (t2v submit shape inferred from its /options call — verify on first live run).
+- **Resolution casing gotcha:** wan + happyhorse want UPPERCASE `"720P"/"1080P"`; seedance wants lowercase `"720p"`.
+- Result: GET same family `/{id}/result` → `response.result.url`, credits `response.usage.credits`.
+
+## Happy Horse 1.1 (implemented in bot)
+- POST `/workflows/happyhorse/v1.1/reference-to-video/submit` `{params:{prompt, media:[{type:"reference_image",url}], resolution:"1080P", ratio, duration, watermark:false}}` — image REQUIRED. Result `/{id}/result` → `response.result.url`. HAR: 15s 1080P = 60 credits (~4 cr/s).
+
+## Runway Gen-4.5 (implemented in bot)
+- POST `/workflows/runway-gen4-5-image-to-video/submit` `{params:{promptText, promptImage:[{uri,position:"first"}], ratio, duration}}` — image REQUIRED; **ratio is PIXEL format**: 9:16→`"720:1280"`, 16:9→`"1280:720"`, 1:1→`"960:960"` (NOT "9:16"). Result `/{id}/result` → `response.result.url`. HAR: 10s = 10 credits (cheapest per-second model).
+
 ## Image generation (AI Playground) — GPT Image 2 + Nano Banana Pro/2
 - GPT Image 2 model string `gpt-image-2`. Text->image: POST `/workflows/openai-images-generate/submit`; multi-image edit (reference photos): POST `/workflows/openai-image-editing/submit` adding `images:[urls]`. Body `{params:{prompt, model, n:1, size, quality:"high", output_format:"png", options.drive{...}}}`. Poll on the SAME workflow path used for submit.
 - GPT allowed sizes (from the LIVE API 400 error, authoritative): `1024x1024`, `1536x1024`, `1024x1536`, `auto`. Use 9:16=`1024x1536`, 16:9=`1536x1024`, 1:1=`1024x1024`. **Why:** the HAR showed `1024x1824` but prod rejects it (`size has wrong value 1024x1824`); a captured HAR value can be stale — trust the live API's own error message over both the HAR and generic OpenAI/DALL-E presets.

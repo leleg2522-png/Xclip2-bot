@@ -48,6 +48,10 @@ export type KlingModelKey = keyof typeof KLING_MODELS;
 // `/workflows/seedance/options` pricing pre-check captured from the web app.
 export const SEEDANCE_MODEL = 'seedance_2_0_fast';
 
+// Seedance 2.0 (regular/premium) — same /workflows/seedance endpoint, beda model
+// string dan role gambar ('first_frame', bukan 'reference_image' — sesuai HAR).
+export const SEEDANCE2_MODEL = 'seedance_2_0';
+
 // Grok Imagine — image-to-video only (requires a reference image). Endpoint
 // `/workflows/x-ai/v1/videos/generations/*`. Pricing ~5 credits/sec.
 export const GROK_MODEL = 'grok-imagine-video-1.5-preview';
@@ -587,15 +591,19 @@ export async function submitSeedance(credId: number, input: {
   ratio: string;
   resolution: string;
   generateAudio: boolean;
+  model?: string; // default: SEEDANCE_MODEL (fast). SEEDANCE2_MODEL = regular.
 }): Promise<string> {
   const access = await getAccessToken(credId);
+  const model = input.model ?? SEEDANCE_MODEL;
+  // HAR: regular seedance_2_0 pakai role 'first_frame'; fast pakai 'reference_image'.
+  const imageRole = model === SEEDANCE2_MODEL ? 'first_frame' : 'reference_image';
   const content: Array<Record<string, unknown>> = [];
   if (input.imageUrl) {
-    content.push({ type: 'image_url', image_url: { url: input.imageUrl }, role: 'reference_image' });
+    content.push({ type: 'image_url', image_url: { url: input.imageUrl }, role: imageRole });
   }
   content.push({ type: 'text', text: input.prompt ?? '' });
   const params = {
-    model: SEEDANCE_MODEL,
+    model,
     content,
     ratio: input.ratio,
     duration: input.duration,
@@ -655,6 +663,7 @@ export async function generateSeedance(input: {
   ratio: string;
   resolution: string;
   generateAudio: boolean;
+  model?: string;
   onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
@@ -677,9 +686,258 @@ export async function generateSeedance(input: {
       ratio: input.ratio,
       resolution: input.resolution,
       generateAudio: input.generateAudio,
+      model: input.model,
     });
     input.onStatus?.('poll');
     return pollSeedanceResult(credId, id, {
+      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+    });
+  });
+}
+
+// ─── Generic workflow poll (result at response.result.url) ───────────────────
+// Dipakai model-model baru (Wan 2.7, Happy Horse, Runway Gen-4.5) yang semuanya
+// mengembalikan {response:{status, result:{url}, usage:{credits}}}.
+
+async function pollWorkflowUrl(
+  credId: number,
+  resultPath: (id: string) => string,
+  id: string,
+  opts?: { maxAttempts?: number; intervalMs?: number; onTick?: (elapsedMs: number) => void }
+): Promise<{ url: string; credits?: number }> {
+  const maxAttempts = opts?.maxAttempts ?? 180; // ~15 min at 5s
+  const intervalMs = opts?.intervalMs ?? 5000;
+  const start = Date.now();
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((res) => setTimeout(res, intervalMs));
+    opts?.onTick?.(Date.now() - start);
+    const access = await getAccessToken(credId);
+    const r = await http.get(`${API_BASE}${resultPath(id)}`, {
+      headers: commonHeaders({ authorization: `Bearer ${access}` }),
+      validateStatus: () => true,
+    });
+    if (!ok2xx(r.status)) continue;
+    const resp = r.data?.response;
+    const status = String(resp?.status ?? '').toUpperCase();
+    if (status === 'COMPLETED') {
+      const url = resp?.result?.url;
+      if (!url) throw new Error('PICSART_NO_RESULT_URL');
+      return { url, credits: resp.usage?.credits };
+    }
+    if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
+      throw new Error(`PICSART_GEN_FAILED: ${JSON.stringify(resp).slice(0, 200)}`);
+    }
+  }
+  throw new Error('PICSART_TIMEOUT');
+}
+
+// ─── Wan 2.7 (image-to-video / text-to-video) ─────────────────────────────────
+// i2v: POST /workflows/wan/v2/image-to-video/submit
+//   {params:{media:[{type:"first_frame",url}], resolution:"720P"|"1080P", duration, prompt_extend:true, prompt}}
+// t2v: POST /workflows/wan/v2/text-to-video/submit
+//   {params:{prompt, resolution, ratio, duration, prompt_extend:true}}
+// Result (keduanya): GET .../{id}/result → response.result.url
+
+export async function submitWan(credId: number, input: {
+  prompt: string;
+  imageUrl?: string;   // ada = i2v, kosong = t2v
+  duration: number;
+  ratio?: string;      // hanya untuk t2v
+  resolution: string;  // "720P" | "1080P" (huruf P besar)
+}): Promise<{ id: string; mode: 'i2v' | 't2v' }> {
+  const access = await getAccessToken(credId);
+  const mode: 'i2v' | 't2v' = input.imageUrl ? 'i2v' : 't2v';
+  const params: Record<string, unknown> = mode === 'i2v'
+    ? {
+        media: [{ type: 'first_frame', url: input.imageUrl }],
+        resolution: input.resolution,
+        duration: input.duration,
+        prompt_extend: true,
+        prompt: input.prompt ?? '',
+      }
+    : {
+        prompt: input.prompt ?? '',
+        resolution: input.resolution,
+        ratio: input.ratio ?? '9:16',
+        duration: input.duration,
+        prompt_extend: true,
+      };
+  const path = mode === 'i2v' ? '/workflows/wan/v2/image-to-video/submit' : '/workflows/wan/v2/text-to-video/submit';
+  const r = await http.post(`${API_BASE}${path}`, { params }, {
+    headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
+    validateStatus: () => true,
+  });
+  const id = r.data?.response?.id;
+  if (!ok2xx(r.status) || !id) {
+    throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+  }
+  return { id, mode };
+}
+
+export async function generateWan(input: {
+  userId: number;
+  prompt: string;
+  imageBuffer?: Buffer;
+  imageName?: string;
+  imageMime?: string;
+  duration: number;
+  ratio?: string;
+  resolution: string;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  return runWithAccount(input.userId, async (credId) => {
+    let imageUrl: string | undefined;
+    if (input.imageBuffer) {
+      input.onStatus?.('upload');
+      imageUrl = await uploadFile(
+        credId,
+        input.imageBuffer,
+        input.imageName || 'reference.jpg',
+        input.imageMime || 'image/jpeg'
+      );
+    }
+    input.onStatus?.('submit');
+    const { id, mode } = await submitWan(credId, {
+      prompt: input.prompt,
+      imageUrl,
+      duration: input.duration,
+      ratio: input.ratio,
+      resolution: input.resolution,
+    });
+    input.onStatus?.('poll');
+    const base = mode === 'i2v' ? '/workflows/wan/v2/image-to-video' : '/workflows/wan/v2/text-to-video';
+    return pollWorkflowUrl(credId, (jid) => `${base}/${jid}/result`, id, {
+      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+    });
+  });
+}
+
+// ─── Happy Horse 1.1 (reference-to-video) ─────────────────────────────────────
+// POST /workflows/happyhorse/v1.1/reference-to-video/submit
+//   {params:{prompt, media:[{type:"reference_image",url}], resolution:"1080P", ratio, duration, watermark:false}}
+// Result: GET /workflows/happyhorse/v1.1/reference-to-video/{id}/result → response.result.url
+
+export async function submitHappyHorse(credId: number, input: {
+  prompt: string;
+  imageUrl: string;
+  duration: number;
+  ratio: string;
+  resolution: string; // "720P" | "1080P"
+}): Promise<string> {
+  const access = await getAccessToken(credId);
+  const params = {
+    prompt: input.prompt ?? '',
+    media: [{ type: 'reference_image', url: input.imageUrl }],
+    resolution: input.resolution,
+    ratio: input.ratio,
+    duration: input.duration,
+    watermark: false,
+  };
+  const r = await http.post(`${API_BASE}/workflows/happyhorse/v1.1/reference-to-video/submit`, { params }, {
+    headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
+    validateStatus: () => true,
+  });
+  const id = r.data?.response?.id;
+  if (!ok2xx(r.status) || !id) {
+    throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+  }
+  return id;
+}
+
+export async function generateHappyHorse(input: {
+  userId: number;
+  prompt: string;
+  imageBuffer: Buffer;
+  imageName?: string;
+  imageMime?: string;
+  duration: number;
+  ratio: string;
+  resolution: string;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  return runWithAccount(input.userId, async (credId) => {
+    input.onStatus?.('upload');
+    const imageUrl = await uploadFile(
+      credId,
+      input.imageBuffer,
+      input.imageName || 'reference.jpg',
+      input.imageMime || 'image/jpeg'
+    );
+    input.onStatus?.('submit');
+    const id = await submitHappyHorse(credId, {
+      prompt: input.prompt,
+      imageUrl,
+      duration: input.duration,
+      ratio: input.ratio,
+      resolution: input.resolution,
+    });
+    input.onStatus?.('poll');
+    return pollWorkflowUrl(credId, (jid) => `/workflows/happyhorse/v1.1/reference-to-video/${jid}/result`, id, {
+      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+    });
+  });
+}
+
+// ─── Runway Gen-4.5 (image-to-video) ──────────────────────────────────────────
+// POST /workflows/runway-gen4-5-image-to-video/submit
+//   {params:{promptText, promptImage:[{uri,position:"first"}], ratio:"720:1280", duration}}
+// ratio dalam format piksel: 9:16→"720:1280", 16:9→"1280:720", 1:1→"960:960".
+// Result: GET /workflows/runway-gen4-5-image-to-video/{id}/result → response.result.url
+
+export async function submitRunway(credId: number, input: {
+  prompt: string;
+  imageUrl: string;
+  duration: number;
+  ratio: string; // format piksel, mis. "720:1280"
+}): Promise<string> {
+  const access = await getAccessToken(credId);
+  const params = {
+    promptText: input.prompt ?? '',
+    promptImage: [{ uri: input.imageUrl, position: 'first' }],
+    ratio: input.ratio,
+    duration: input.duration,
+  };
+  const r = await http.post(`${API_BASE}/workflows/runway-gen4-5-image-to-video/submit`, { params }, {
+    headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
+    validateStatus: () => true,
+  });
+  const id = r.data?.response?.id;
+  if (!ok2xx(r.status) || !id) {
+    throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+  }
+  return id;
+}
+
+export async function generateRunway(input: {
+  userId: number;
+  prompt: string;
+  imageBuffer: Buffer;
+  imageName?: string;
+  imageMime?: string;
+  duration: number;
+  ratio: string;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  return runWithAccount(input.userId, async (credId) => {
+    input.onStatus?.('upload');
+    const imageUrl = await uploadFile(
+      credId,
+      input.imageBuffer,
+      input.imageName || 'reference.jpg',
+      input.imageMime || 'image/jpeg'
+    );
+    input.onStatus?.('submit');
+    const id = await submitRunway(credId, {
+      prompt: input.prompt,
+      imageUrl,
+      duration: input.duration,
+      ratio: input.ratio,
+    });
+    input.onStatus?.('poll');
+    return pollWorkflowUrl(credId, (jid) => `/workflows/runway-gen4-5-image-to-video/${jid}/result`, id, {
       onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
     });
   });
