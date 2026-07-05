@@ -1272,15 +1272,6 @@ function seedanceRatioKeyboard() {
   ]);
 }
 
-function seedanceResolutionKeyboard() {
-  return Markup.inlineKeyboard([
-    [
-      Markup.button.callback('720p', 'sd_res_720p'),
-      Markup.button.callback('1080p (HD)', 'sd_res_1080p'),
-    ],
-  ]);
-}
-
 function seedanceAudioKeyboard() {
   return Markup.inlineKeyboard([
     [
@@ -1319,15 +1310,6 @@ function s2RatioKeyboard() {
       Markup.button.callback('📱 9:16', 's2_ratio_916'),
       Markup.button.callback('🖥️ 16:9', 's2_ratio_169'),
       Markup.button.callback('⬛ 1:1', 's2_ratio_11'),
-    ],
-  ]);
-}
-
-function s2ResolutionKeyboard() {
-  return Markup.inlineKeyboard([
-    [
-      Markup.button.callback('720p', 's2_res_720p'),
-      Markup.button.callback('1080p (HD)', 's2_res_1080p'),
     ],
   ]);
 }
@@ -2629,18 +2611,10 @@ bot.on('callback_query', async (ctx) => {
 
   if (data.startsWith('sd_ratio_')) {
     const ratio = SD_RATIO_MAP[data.replace('sd_ratio_', '')] ?? '9:16';
-    setSession(userId, { seedanceRatio: ratio });
+    // Resolusi dikunci 720p (opsi 1080p dihilangkan), langsung ke langkah audio.
+    setSession(userId, { seedanceRatio: ratio, seedanceResolution: '720p' });
     return ctx.editMessageText(
-      `🎬 *Seedance 2.0 Fast*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Pilih resolusi:`,
-      { parse_mode: 'Markdown', ...seedanceResolutionKeyboard() }
-    );
-  }
-
-  if (data.startsWith('sd_res_')) {
-    const res = data.replace('sd_res_', '');
-    setSession(userId, { seedanceResolution: res });
-    return ctx.editMessageText(
-      `🎬 *Seedance 2.0 Fast*\n\nResolusi: *${res}*\n\n*Langkah 4:* Audio video?`,
+      `🎬 *Seedance 2.0 Fast*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Audio video?`,
       { parse_mode: 'Markdown', ...seedanceAudioKeyboard() }
     );
   }
@@ -2652,14 +2626,14 @@ bot.on('callback_query', async (ctx) => {
       setSession(userId, { seedanceAudio: audio, mode: 'seedance_wait_image' });
       return ctx.editMessageText(
         `🎬 *Seedance 2.0 Fast*\n\nAudio: *${audio ? 'Nyala' : 'Mati'}*\n\n` +
-        '*Langkah 5:* Kirim *foto acuan* untuk video kamu.',
+        '*Langkah 4:* Kirim *foto acuan* untuk video kamu.',
         { parse_mode: 'Markdown' }
       );
     }
     setSession(userId, { seedanceAudio: audio, mode: 'seedance_wait_prompt' });
     return ctx.editMessageText(
       `🎬 *Seedance 2.0 Fast*\n\nAudio: *${audio ? 'Nyala' : 'Mati'}*\n\n` +
-      '*Langkah 5:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      '*Langkah 4:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
       { parse_mode: 'Markdown' }
     );
   }
@@ -2700,18 +2674,10 @@ bot.on('callback_query', async (ctx) => {
 
   if (data.startsWith('s2_ratio_')) {
     const ratio = SD_RATIO_MAP[data.replace('s2_ratio_', '')] ?? '9:16';
-    setSession(userId, { s2Ratio: ratio });
+    // Resolusi dikunci 720p (opsi 1080p dihilangkan), langsung ke langkah audio.
+    setSession(userId, { s2Ratio: ratio, s2Resolution: '720p' });
     return ctx.editMessageText(
-      `🎬 *Seedance 2.0 (Premium)*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Pilih resolusi:`,
-      { parse_mode: 'Markdown', ...s2ResolutionKeyboard() }
-    );
-  }
-
-  if (data.startsWith('s2_res_')) {
-    const res = data.replace('s2_res_', '');
-    setSession(userId, { s2Resolution: res });
-    return ctx.editMessageText(
-      `🎬 *Seedance 2.0 (Premium)*\n\nResolusi: *${res}*\n\n*Langkah 4:* Audio video?`,
+      `🎬 *Seedance 2.0 (Premium)*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Audio video?`,
       { parse_mode: 'Markdown', ...s2AudioKeyboard() }
     );
   }
@@ -2723,14 +2689,14 @@ bot.on('callback_query', async (ctx) => {
       setSession(userId, { s2Audio: audio, mode: 's2_wait_image' });
       return ctx.editMessageText(
         `🎬 *Seedance 2.0 (Premium)*\n\nAudio: *${audio ? 'Nyala' : 'Mati'}*\n\n` +
-        '*Langkah 5:* Kirim *foto acuan* untuk video kamu.',
+        '*Langkah 4:* Kirim *foto acuan* untuk video kamu.',
         { parse_mode: 'Markdown' }
       );
     }
     setSession(userId, { s2Audio: audio, mode: 's2_wait_prompt' });
     return ctx.editMessageText(
       `🎬 *Seedance 2.0 (Premium)*\n\nAudio: *${audio ? 'Nyala' : 'Mati'}*\n\n` +
-      '*Langkah 5:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      '*Langkah 4:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
       { parse_mode: 'Markdown' }
     );
   }
@@ -3422,7 +3388,7 @@ bot.on('text', async (ctx) => {
       imageUrl: session.seedanceImageUrl,
       duration: session.seedanceDuration ?? 5,
       ratio: session.seedanceRatio ?? '9:16',
-      resolution: session.seedanceResolution ?? '1080p',
+      resolution: session.seedanceResolution ?? '720p',
       audio: session.seedanceAudio ?? true,
     };
     setSession(userId, { mode: 'idle' });
@@ -3449,7 +3415,7 @@ bot.on('text', async (ctx) => {
       imageUrl: session.s2ImageUrl,
       duration: session.s2Duration ?? 5,
       ratio: session.s2Ratio ?? '9:16',
-      resolution: session.s2Resolution ?? '1080p',
+      resolution: session.s2Resolution ?? '720p',
       audio: session.s2Audio ?? true,
     };
     setSession(userId, { mode: 'idle' });
