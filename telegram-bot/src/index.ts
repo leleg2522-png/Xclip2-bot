@@ -115,7 +115,7 @@ async function checkActiveSubscription(userId: number): Promise<boolean> {
 const MODEL_PRICES = {
   sora: 1000,
   gemini_omni: 1000,
-  kling_mc: 2000,      // Kling V3 Motion Control
+  kling_mc: 2500,      // Kling V3 Motion Control
   kling_i2v: 1500,     // Kling V3 I2V
   kling_turbo: 1500,   // Kling V3 Turbo
   seedance: 1000,
