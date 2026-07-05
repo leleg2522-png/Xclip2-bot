@@ -119,10 +119,10 @@ const MODEL_PRICES = {
   kling_i2v: 1500,     // Kling V3 I2V
   kling_turbo: 1500,   // Kling V3 Turbo
   seedance: 1000,
-  seedance2: 1500,     // Seedance 2.0 (regular/premium)
+  seedance2: 2000,     // Seedance 2.0 (regular/premium)
   wan: 1000,           // Wan 2.7 (i2v/t2v)
   happyhorse: 1500,    // Happy Horse 1.1 (reference-to-video)
-  runway: 1000,        // Runway Gen-4.5 (image-to-video)
+  runway: 1500,        // Runway Gen-4.5 (image-to-video)
   grok: 1000,
   nano_banana2: 200,
   banana_pro: 200,
