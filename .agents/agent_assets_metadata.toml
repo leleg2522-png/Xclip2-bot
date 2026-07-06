@@ -240,3 +240,9 @@ id = "338MMTh9ipu4RoB9722W-"
 uri = "file://proof-login-baru.zip"
 type = "unspecified"
 title = "proof-login.js v4 (login manual + ambil token)"
+
+[[outputs]]
+id = "dy7Dz0eTbWPanV6a7D0s8"
+uri = "file://exports/kling26_motion_test.mp4"
+type = "video"
+title = "Hasil Tes Kling 2.6 Pro Motion Control (Flora AI)"
