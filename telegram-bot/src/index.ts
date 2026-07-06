@@ -1297,7 +1297,7 @@ const MAX_IMG_REFS = 6;
 function klingModelKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('🆕 Kling v3.0 Motion Control', 'kling_v3')],
-    [Markup.button.callback('💎 Kling 2.6 Pro Motion Control', 'kling_26')],
+    [Markup.button.callback('💎 Kling MC V3 PRO P2', 'kling_26')],
     [Markup.button.callback('« Kembali', 'back_main')],
   ]);
 }
@@ -1655,7 +1655,7 @@ function hargaText(): string {
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
     `• Grok Imagine — ${formatRupiah(MODEL_PRICES.grok)}\n` +
     `• Kling V3 Motion Control — ${formatRupiah(MODEL_PRICES.kling_mc)}\n` +
-    `• Kling 2.6 Pro Motion Control — ${formatRupiah(MODEL_PRICES.kling26_mc)}\n` +
+    `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling26_mc)}\n` +
     `• Kling V3 Image-to-Video — ${formatRupiah(MODEL_PRICES.kling_i2v)}\n` +
     `• Kling V3 Turbo — ${formatRupiah(MODEL_PRICES.kling_turbo)}\n\n` +
     '🎨 *Gambar*\n' +
@@ -2759,7 +2759,7 @@ bot.on('callback_query', async (ctx) => {
     if (!await requireLogin(ctx)) return;
     setSession(userId, { mode: 'kling26_wait_image', kling26CharacterUrl: undefined });
     return ctx.editMessageText(
-      `💎 *Kling 2.6 Pro Motion Control*\n\n` +
+      `💎 *Kling MC V3 PRO P2*\n\n` +
       '*Langkah 1:* Kirim *foto karakter* yang ingin dianimasikan.\n\n' +
       '⚠️ *Syarat foto:*\n' +
       '• Tampilkan seluruh tubuh dari depan\n' +
@@ -3510,7 +3510,7 @@ bot.on('video', async (ctx) => {
       return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
     }
     setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply(`⏳ Memproses Kling 2.6 Pro Motion Control...\nHasil dikirim otomatis (~8-12 menit).`, { parse_mode: 'Markdown' });
+    const statusMsg = await ctx.reply(`⏳ Memproses Kling MC V3 PRO P2...\nHasil dikirim otomatis (~8-12 menit).`, { parse_mode: 'Markdown' });
     runKling26MotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, vid.file_id, session.kling26CharacterUrl)
       .catch(e => console.error(`[${userId}] Kling 2.6 gen error:`, e.message));
     return;
@@ -3976,7 +3976,7 @@ bot.on('document', async (ctx) => {
       return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
     }
     setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply(`⏳ Memproses Kling 2.6 Pro Motion Control...\nHasil dikirim otomatis (~8-12 menit).`);
+    const statusMsg = await ctx.reply(`⏳ Memproses Kling MC V3 PRO P2...\nHasil dikirim otomatis (~8-12 menit).`);
     runKling26MotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, doc.file_id, session.kling26CharacterUrl)
       .catch(console.error);
     return;
@@ -4141,7 +4141,7 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
 // ─── Background: Kling 2.6 Pro Motion Control (Flora AI) ────────────────────
 
 async function runKling26MotionControl(chatId: number, userId: number, dbUserId: number, statusMsgId: number, videoFileIdOrUrl: string, imageUrl: string) {
-  const label = 'Kling 2.6 Pro';
+  const label = 'Kling MC V3 PRO P2';
   const PRICE = MODEL_PRICES.kling26_mc;
   const charge = await beginCharge(dbUserId, PRICE);
   if (!charge.ok) {
@@ -4211,7 +4211,7 @@ async function runKling26MotionControl(chatId: number, userId: number, dbUserId:
       throw lastErr ?? new Error('FLORA_NO_KEYS: semua key habis');
     }
 
-    const delivered = await sendResult(chatId, result.url, `💎 Kling 2.6 Pro Motion Control\n\n/menu untuk buat lagi`, true);
+    const delivered = await sendResult(chatId, result.url, `💎 Kling MC V3 PRO P2\n\n/menu untuk buat lagi`, true);
     if (delivered) {
       refund = false;
       markGenSuccess(userId);
