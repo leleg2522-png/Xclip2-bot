@@ -12,6 +12,7 @@ import path from 'path';
 import crypto from 'crypto';
 import * as picsart from './picsart';
 import * as klikqris from './klikqris';
+import * as flora from './flora';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -116,6 +117,7 @@ const MODEL_PRICES = {
   sora: 1000,
   gemini_omni: 1000,
   kling_mc: 2500,      // Kling V3 Motion Control
+  kling26_mc: 2500,    // Kling 2.6 Pro Motion Control (Flora AI)
   kling_i2v: 1500,     // Kling V3 I2V
   kling_turbo: 1500,   // Kling V3 Turbo
   seedance: 1000,
@@ -186,6 +188,15 @@ async function ensureBalanceSchema(): Promise<void> {
   await db.query(
     `CREATE TABLE IF NOT EXISTS bot_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`
   );
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS flora_key_pool (
+      id         SERIAL PRIMARY KEY,
+      api_key    TEXT NOT NULL UNIQUE,
+      status     TEXT NOT NULL DEFAULT 'available',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      dead_at    TIMESTAMPTZ
+    )
+  `);
 
   // One-time cutover credit — di-guard pakai bot_migrations biar TAK PERNAH
   // dobel walau bot restart berkali-kali.
@@ -549,6 +560,52 @@ function isLeonardoKeyExhaustedError(raw: string): boolean {
     || lower.includes('forbidden') || lower.includes('403') || lower.includes('token limit');
 }
 
+// ─── Flora AI Key Pool (Kling 2.6 Motion Control) ────────────────────────────
+
+let floraKeyRoundRobinIndex = 0;
+
+async function getNextFloraKey(skipKeys?: Set<string>): Promise<string | null> {
+  const res = await db.query(
+    `SELECT id, api_key FROM flora_key_pool WHERE status = 'available' ORDER BY id`
+  );
+  if (res.rows.length === 0) return null;
+  const available = skipKeys && skipKeys.size > 0
+    ? res.rows.filter((r: any) => !skipKeys.has(r.api_key))
+    : res.rows;
+  if (available.length === 0) return null;
+  const idx = floraKeyRoundRobinIndex % available.length;
+  floraKeyRoundRobinIndex = (floraKeyRoundRobinIndex + 1) % available.length;
+  return available[idx].api_key;
+}
+
+async function markFloraKeyDead(apiKey: string): Promise<void> {
+  await db.query(
+    `UPDATE flora_key_pool SET status = 'dead', dead_at = NOW() WHERE api_key = $1`,
+    [apiKey]
+  );
+}
+
+async function addFloraKeyToPool(apiKey: string): Promise<boolean> {
+  try {
+    const res = await db.query(
+      `INSERT INTO flora_key_pool (api_key, status) VALUES ($1, 'available') ON CONFLICT (api_key) DO NOTHING RETURNING id`,
+      [apiKey]
+    );
+    return res.rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function getFloraPoolStats(): Promise<{ available: number; dead: number }> {
+  const res = await db.query(
+    `SELECT status, COUNT(*) AS cnt FROM flora_key_pool GROUP BY status`
+  );
+  const stats: any = { available: 0, dead: 0 };
+  for (const row of res.rows) stats[row.status] = parseInt(row.cnt);
+  return stats;
+}
+
 // ─── Generate Cooldown ────────────────────────────────────────────────────────
 
 const GEN_COOLDOWN_MS = 0; // cooldown dinonaktifkan
@@ -677,6 +734,8 @@ type Mode =
   | 'gomni_wait_image'
   | 'gomni_wait_video'
   | 'gomni_wait_prompt'
+  | 'kling26_wait_image'
+  | 'kling26_wait_video'
   | 'topup_wait_custom';
 
 interface Session {
@@ -688,6 +747,7 @@ interface Session {
   keyIndex?: number;
   loginTempUsername?: string;
   characterUrl?: string;
+  kling26CharacterUrl?: string;
   // Seedance 2.0 Fast wizard state
   seedanceInputMode?: 'i2v' | 't2v';
   seedanceDuration?: number;
@@ -1237,6 +1297,7 @@ const MAX_IMG_REFS = 6;
 function klingModelKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('🆕 Kling v3.0 Motion Control', 'kling_v3')],
+    [Markup.button.callback('💎 Kling 2.6 Pro Motion Control', 'kling_26')],
     [Markup.button.callback('« Kembali', 'back_main')],
   ]);
 }
@@ -1594,6 +1655,7 @@ function hargaText(): string {
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
     `• Grok Imagine — ${formatRupiah(MODEL_PRICES.grok)}\n` +
     `• Kling V3 Motion Control — ${formatRupiah(MODEL_PRICES.kling_mc)}\n` +
+    `• Kling 2.6 Pro Motion Control — ${formatRupiah(MODEL_PRICES.kling26_mc)}\n` +
     `• Kling V3 Image-to-Video — ${formatRupiah(MODEL_PRICES.kling_i2v)}\n` +
     `• Kling V3 Turbo — ${formatRupiah(MODEL_PRICES.kling_turbo)}\n\n` +
     '🎨 *Gambar*\n' +
@@ -2471,6 +2533,124 @@ bot.command('clearleonardopool', async (ctx) => {
   return ctx.reply(`🗑️ Pool Leonardo AI dikosongkan — *${res.rows.length} key* dihapus.`, { parse_mode: 'Markdown' });
 });
 
+// ─── Admin: Flora AI Key Pool (Kling 2.6 Motion Control) ─────────────────────
+
+bot.command('addflorakey', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const raw = ctx.message.text.replace(/^\/addflorakey\s*/i, '').trim();
+  if (!raw) {
+    return ctx.reply(
+      '📝 Format (pisah dengan koma):\n' +
+      '/addflorakey sk_live_abc123\n\n' +
+      'Atau banyak sekaligus:\n' +
+      '/addflorakey key1,key2,key3'
+    );
+  }
+
+  const keys = raw.split(',').map(k => k.trim()).filter(k => k.length > 0);
+  let added = 0, skipped = 0;
+  for (const key of keys) {
+    const ok = await addFloraKeyToPool(key);
+    if (ok) added++; else skipped++;
+  }
+
+  const stats = await getFloraPoolStats();
+  let msg = `✅ Selesai menambahkan key Flora AI!\n\n`;
+  msg += `• Berhasil ditambah: ${added}\n`;
+  if (skipped > 0) msg += `• Sudah ada / gagal: ${skipped}\n`;
+  msg += `\n📊 Status pool Flora AI sekarang:\n`;
+  msg += `• Available: ${stats.available}\n`;
+  msg += `• Dead: ${stats.dead}`;
+  return ctx.reply(msg);
+});
+
+bot.command('florapoolstatus', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const stats = await getFloraPoolStats();
+  const total = stats.available + stats.dead;
+  return ctx.reply(
+    `📊 *Status Flora AI Key Pool*\n\n` +
+    `• ✅ Available: *${stats.available}*\n` +
+    `• ❌ Dead: *${stats.dead}*\n` +
+    `• 📦 Total: *${total}*`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+bot.command('validateflorakeys', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const res = await db.query(`SELECT api_key FROM flora_key_pool WHERE status = 'available' ORDER BY id`);
+  if (res.rows.length === 0) return ctx.reply('ℹ️ Tidak ada key available di pool Flora AI.');
+
+  const statusMsg = await ctx.reply(`⏳ Memvalidasi ${res.rows.length} key Flora AI...`);
+  let okCount = 0, deadCount = 0;
+  for (const row of res.rows) {
+    const valid = await flora.validateFloraKey(row.api_key);
+    if (valid) {
+      okCount++;
+    } else {
+      await markFloraKeyDead(row.api_key);
+      deadCount++;
+    }
+  }
+  return ctx.telegram.editMessageText(ctx.chat.id, statusMsg.message_id, undefined,
+    `✅ Validasi selesai!\n\n• Valid: ${okCount}\n• Dead (ditandai): ${deadCount}`
+  );
+});
+
+bot.command('removeflorakey', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const parts = ctx.message.text.trim().split(/\s+/);
+  if (parts.length < 2) return ctx.reply('📝 *Format:* `/removeflorakey <api_key>`', { parse_mode: 'Markdown' });
+
+  const apiKey = parts[1].trim();
+  const res = await db.query(
+    `UPDATE flora_key_pool SET status = 'dead', dead_at = NOW() WHERE api_key = $1 RETURNING id`,
+    [apiKey]
+  );
+  if (res.rows.length === 0) return ctx.reply('❌ Key tidak ditemukan di pool Flora AI.');
+  return ctx.reply('✅ Key Flora AI berhasil dinonaktifkan (dead).');
+});
+
+bot.command('restoreflorakey', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const parts = ctx.message.text.trim().split(/\s+/);
+  if (parts.length < 2) return ctx.reply('📝 *Format:* `/restoreflorakey <api_key>`', { parse_mode: 'Markdown' });
+
+  const apiKey = parts[1].trim();
+  const res = await db.query(
+    `UPDATE flora_key_pool SET status = 'available', dead_at = NULL WHERE api_key = $1 RETURNING id`,
+    [apiKey]
+  );
+  if (res.rows.length === 0) return ctx.reply('❌ Key tidak ditemukan di pool Flora AI.');
+  return ctx.reply('✅ Key Flora AI berhasil dipulihkan ke status *available*.', { parse_mode: 'Markdown' });
+});
+
+bot.command('clearflorapool', async (ctx) => {
+  const session = getSession(ctx.from.id);
+  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
+  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+
+  const res = await db.query(`DELETE FROM flora_key_pool RETURNING api_key`);
+  if (res.rows.length === 0) return ctx.reply('ℹ️ Pool Flora AI sudah kosong.');
+  return ctx.reply(`🗑️ Pool Flora AI dikosongkan — *${res.rows.length} key* dihapus.`, { parse_mode: 'Markdown' });
+});
+
 bot.command('cancel', (ctx) => {
   setSession(ctx.from.id, { mode: 'idle' });
   return ctx.reply('✅ Dibatalkan.', mainMenuKeyboard());
@@ -2565,6 +2745,21 @@ bot.on('callback_query', async (ctx) => {
     setSession(userId, { mode: 'kling_wait_image' });
     return ctx.editMessageText(
       `🕹️ *Kling v3.0 Motion Control*\n\n` +
+      '*Langkah 1:* Kirim *foto karakter* yang ingin dianimasikan.\n\n' +
+      '⚠️ *Syarat foto:*\n' +
+      '• Tampilkan seluruh tubuh dari depan\n' +
+      '• Bukan close-up wajah\n' +
+      '• Resolusi min. 300px, maks 10MB\n' +
+      '• Format: JPG, PNG',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data === 'kling_26') {
+    if (!await requireLogin(ctx)) return;
+    setSession(userId, { mode: 'kling26_wait_image', kling26CharacterUrl: undefined });
+    return ctx.editMessageText(
+      `💎 *Kling 2.6 Pro Motion Control*\n\n` +
       '*Langkah 1:* Kirim *foto karakter* yang ingin dianimasikan.\n\n' +
       '⚠️ *Syarat foto:*\n' +
       '• Tampilkan seluruh tubuh dari depan\n' +
@@ -3122,6 +3317,19 @@ async function handleImageInput(ctx: any, fileUrl: string) {
     );
   }
 
+  if (session.mode === 'kling26_wait_image') {
+    setSession(userId, { kling26CharacterUrl: fileUrl, mode: 'kling26_wait_video' });
+    return ctx.reply(
+      '✅ Foto karakter diterima!\n\n' +
+      '*Langkah 2:* Kirim *video referensi gerakan*.\n\n' +
+      '⚠️ *Syarat video:*\n' +
+      '• Orang terlihat jelas dalam video\n' +
+      '• Durasi 2–30 detik\n' +
+      '• Maks ukuran file: 19MB',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (session.mode === 'seedance_wait_image') {
     setSession(userId, { seedanceImageUrl: fileUrl, mode: 'seedance_wait_prompt' });
     return ctx.reply(
@@ -3289,6 +3497,22 @@ bot.on('video', async (ctx) => {
     const statusMsg = await ctx.reply(`⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).`, { parse_mode: 'Markdown' });
     runKlingMotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, vid.file_id, session.characterUrl)
       .catch(e => console.error(`[${userId}] Kling gen error:`, e.message));
+    return;
+  }
+
+  if (session.mode === 'kling26_wait_video' && session.kling26CharacterUrl) {
+    if (vid.file_size && vid.file_size > MAX_VIDEO_BYTES) {
+      return ctx.reply(`❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply(`⏳ Memproses Kling 2.6 Pro Motion Control...\nHasil dikirim otomatis (~8-12 menit).`, { parse_mode: 'Markdown' });
+    runKling26MotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, vid.file_id, session.kling26CharacterUrl)
+      .catch(e => console.error(`[${userId}] Kling 2.6 gen error:`, e.message));
     return;
   }
 
@@ -3704,10 +3928,10 @@ bot.on('text', async (ctx) => {
   if (session.mode === 'gomni_wait_video') {
     return ctx.reply('🎥 Mode ini butuh *video referensi*. Kirim video, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
-  if (session.mode === 'kling_wait_image') {
+  if (session.mode === 'kling_wait_image' || session.mode === 'kling26_wait_image') {
     return ctx.reply('📸 Kirim *foto karakter* dulu ya, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
-  if (session.mode === 'kling_wait_video') {
+  if (session.mode === 'kling_wait_video' || session.mode === 'kling26_wait_video') {
     return ctx.reply('🎥 Kirim *video referensi gerakan*, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
 
@@ -3739,6 +3963,23 @@ bot.on('document', async (ctx) => {
       '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
       { parse_mode: 'Markdown' }
     );
+  }
+
+  if (doc.mime_type?.startsWith('video/') && session.mode === 'kling26_wait_video' && session.kling26CharacterUrl) {
+    const MAX_VIDEO_BYTES = 19 * 1024 * 1024;
+    if (doc.file_size && doc.file_size > MAX_VIDEO_BYTES) {
+      return ctx.reply(`❌ Video terlalu besar (${(doc.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply(`⏳ Memproses Kling 2.6 Pro Motion Control...\nHasil dikirim otomatis (~8-12 menit).`);
+    runKling26MotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, doc.file_id, session.kling26CharacterUrl)
+      .catch(console.error);
+    return;
   }
 
   if (doc.mime_type?.startsWith('video/') && session.mode === 'kling_wait_video' && session.characterUrl) {
@@ -3882,6 +4123,114 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
       friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
     } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
       friendly = '❌ Media tidak bisa diproses. Coba file lain.';
+    } else {
+      friendly = '❌ Gagal memproses. Coba lagi nanti.';
+    }
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    generating.delete(dbUserId);
+  }
+}
+
+// ─── Background: Kling 2.6 Pro Motion Control (Flora AI) ────────────────────
+
+async function runKling26MotionControl(chatId: number, userId: number, dbUserId: number, statusMsgId: number, videoFileIdOrUrl: string, imageUrl: string) {
+  const label = 'Kling 2.6 Pro';
+  const PRICE = MODEL_PRICES.kling26_mc;
+  const charge = await beginCharge(dbUserId, PRICE);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+
+  try {
+    const isDirectUrl = videoFileIdOrUrl.startsWith('http://') || videoFileIdOrUrl.startsWith('https://');
+    const videoUrl = isDirectUrl
+      ? videoFileIdOrUrl
+      : (await bot.telegram.getFileLink(videoFileIdOrUrl)).href;
+    console.log(`[${userId}] ${label} Motion Control (Flora) started — img: ${imageUrl}, vid: ${videoUrl}`);
+
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `⏳ ${label} sedang diproses...\nBiasanya 8–12 menit.`
+    ).catch(() => {});
+
+    const [img, vid] = await Promise.all([
+      downloadBuffer(imageUrl),
+      downloadBuffer(videoUrl),
+    ]);
+    const vidType = detectVideoType(vid.buf, videoUrl);
+    console.log(`[${userId}] ${label} media — img: ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB, vid: ${vidType.mime} ${(vid.buf.length / 1024).toFixed(1)}KB`);
+
+    // Rotasi key: coba sampai 3 key berbeda. Key yang habis/invalid ditandai
+    // dead lalu lanjut ke key berikutnya. Error konten (video ditolak dsb)
+    // TIDAK mematikan key dan tidak di-retry.
+    const MAX_KEY_ATTEMPTS = 3;
+    const triedKeys = new Set<string>();
+    let result: { url: string } | null = null;
+    let lastErr: any = null;
+
+    for (let attempt = 0; attempt < MAX_KEY_ATTEMPTS && !result; attempt++) {
+      const apiKey = await getNextFloraKey(triedKeys);
+      if (!apiKey) break;
+      triedKeys.add(apiKey);
+      try {
+        result = await flora.generateKling26MotionControl({
+          apiKey,
+          imageBuffer: img.buf, imageName: `character.${img.ext}`, imageMime: img.mime,
+          videoBuffer: vid.buf, videoName: `driver.${vidType.ext}`, videoMime: vidType.mime,
+          onStatus: (stage) => {
+            const text = stage === 'upload'
+              ? `⏳ ${label}: mengunggah media ke server...`
+              : stage === 'submit'
+                ? `⏳ ${label}: mengirim job ke server...`
+                : `⏳ ${label} sedang diproses...\nBiasanya 8–12 menit.`;
+            bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+          },
+        });
+      } catch (err: any) {
+        lastErr = err;
+        const msg = err?.message ?? String(err);
+        if (flora.isFloraKeyExhaustedError(msg)) {
+          console.warn(`[${userId}] ${label} key habis/invalid (attempt ${attempt + 1}) — tandai dead & rotasi. ${msg.slice(0, 150)}`);
+          await markFloraKeyDead(apiKey).catch(() => {});
+          continue;
+        }
+        throw err; // error konten/timeout — jangan bakar key lain
+      }
+    }
+
+    if (!result) {
+      if (triedKeys.size === 0) throw new Error('FLORA_NO_KEYS: pool kosong');
+      throw lastErr ?? new Error('FLORA_NO_KEYS: semua key habis');
+    }
+
+    const delivered = await sendResult(chatId, result.url, `💎 Kling 2.6 Pro Motion Control\n\n/menu untuk buat lagi`, true);
+    if (delivered) {
+      refund = false;
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] ${label} done via Flora`);
+    }
+
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    console.error(`[${userId}] ${label} Flora error: ${msg}`);
+    let friendly: string;
+    if (msg.includes('FLORA_NO_KEYS')) {
+      friendly = '❌ Server model sedang penuh. Coba lagi nanti ya.';
+    } else if (msg.includes('FLORA_TIMEOUT')) {
+      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
+    } else if (msg.includes('FLORA_UPLOAD_FAILED')) {
+      friendly = '❌ Media tidak bisa diproses. Coba file lain.';
+    } else if (msg.includes('FLORA_RUN_FAILED')) {
+      friendly = '❌ Video/foto ditolak model. Pastikan orang terlihat jelas dan durasi video 2–30 detik.';
     } else {
       friendly = '❌ Gagal memproses. Coba lagi nanti.';
     }
