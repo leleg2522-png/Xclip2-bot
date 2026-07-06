@@ -564,14 +564,24 @@ function isLeonardoKeyExhaustedError(raw: string): boolean {
 
 let floraKeyRoundRobinIndex = 0;
 
-// Lock 1 akun = 1 job aktif. Key yang sedang dipakai job user lain di-skip
-// sampai job itu selesai (sukses/gagal). In-memory saja — kalau proses crash,
-// lock otomatis bersih saat restart (tidak ada lock nyangkut).
-const busyFloraKeys = new Set<string>();
+// Batas job aktif per akun. Tiap job punya run_id sendiri jadi hasil tidak
+// mungkin tertukar; batas ini cuma untuk mengontrol beban & credits per akun.
+// In-memory saja — kalau proses crash, penghitung otomatis bersih saat restart.
+// Catatan: batas ini per-proses; kalau suatu saat bot jalan multi-instance,
+// pindahkan penghitung ke DB/redis agar batas berlaku global.
+const FLORA_MAX_JOBS_PER_KEY = 3;
+const floraKeyActiveJobs = new Map<string, number>();
 
-// Pilih key + langsung lock dalam satu langkah sinkron (setelah await db.query),
-// jadi dua request bersamaan tidak mungkin dapat key yang sama.
-// Caller WAJIB melepas lock via busyFloraKeys.delete(key) di finally.
+function releaseFloraKey(apiKey: string): void {
+  const n = (floraKeyActiveJobs.get(apiKey) ?? 0) - 1;
+  if (n <= 0) floraKeyActiveJobs.delete(apiKey);
+  else floraKeyActiveJobs.set(apiKey, n);
+}
+
+// Pilih key + langsung naikkan penghitung dalam satu langkah sinkron (setelah
+// await db.query), jadi dua request bersamaan tidak bisa melewati batas slot.
+// Key dengan job aktif paling sedikit diprioritaskan biar beban merata.
+// Caller WAJIB melepas slot via releaseFloraKey(key) di finally.
 type FloraKeyAcquire = { key: string } | { key: null; reason: 'empty' | 'busy' };
 
 async function acquireNextFloraKey(skipKeys?: Set<string>): Promise<FloraKeyAcquire> {
@@ -580,12 +590,20 @@ async function acquireNextFloraKey(skipKeys?: Set<string>): Promise<FloraKeyAcqu
   );
   const notSkipped = res.rows.filter((r: any) => !(skipKeys && skipKeys.has(r.api_key)));
   if (notSkipped.length === 0) return { key: null, reason: 'empty' };
-  const available = notSkipped.filter((r: any) => !busyFloraKeys.has(r.api_key));
+  const available = notSkipped.filter((r: any) =>
+    (floraKeyActiveJobs.get(r.api_key) ?? 0) < FLORA_MAX_JOBS_PER_KEY
+  );
   if (available.length === 0) return { key: null, reason: 'busy' };
-  const idx = floraKeyRoundRobinIndex % available.length;
-  floraKeyRoundRobinIndex = (floraKeyRoundRobinIndex + 1) % available.length;
-  const key = available[idx].api_key;
-  busyFloraKeys.add(key); // atomik: masih di blok sinkron yang sama dengan filter di atas
+  // Sebar beban: pakai akun dengan job aktif paling sedikit dulu.
+  available.sort((a: any, b: any) =>
+    (floraKeyActiveJobs.get(a.api_key) ?? 0) - (floraKeyActiveJobs.get(b.api_key) ?? 0)
+  );
+  const minLoad = floraKeyActiveJobs.get(available[0].api_key) ?? 0;
+  const leastLoaded = available.filter((r: any) => (floraKeyActiveJobs.get(r.api_key) ?? 0) === minLoad);
+  const idx = floraKeyRoundRobinIndex % leastLoaded.length;
+  floraKeyRoundRobinIndex = (floraKeyRoundRobinIndex + 1) % leastLoaded.length;
+  const key = leastLoaded[idx].api_key;
+  floraKeyActiveJobs.set(key, (floraKeyActiveJobs.get(key) ?? 0) + 1); // atomik: blok sinkron yang sama
   return { key };
 }
 
@@ -2588,7 +2606,7 @@ bot.command('florapoolstatus', async (ctx) => {
   return ctx.reply(
     `📊 *Status Flora AI Key Pool*\n\n` +
     `• ✅ Available: *${stats.available}*\n` +
-    `• 🔒 Sedang dipakai (lock): *${busyFloraKeys.size}*\n` +
+    `• 🔒 Job aktif: *${[...floraKeyActiveJobs.values()].reduce((a, b) => a + b, 0)}* (maks ${FLORA_MAX_JOBS_PER_KEY}/akun)\n` +
     `• ❌ Dead: *${stats.dead}*\n` +
     `• 📦 Total: *${total}*`,
     { parse_mode: 'Markdown' }
@@ -4223,7 +4241,7 @@ async function runKling26MotionControl(chatId: number, userId: number, dbUserId:
         }
         throw err; // error konten/timeout — jangan bakar key lain
       } finally {
-        busyFloraKeys.delete(apiKey);
+        releaseFloraKey(apiKey);
       }
     }
 
