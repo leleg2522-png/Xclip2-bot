@@ -564,18 +564,29 @@ function isLeonardoKeyExhaustedError(raw: string): boolean {
 
 let floraKeyRoundRobinIndex = 0;
 
-async function getNextFloraKey(skipKeys?: Set<string>): Promise<string | null> {
+// Lock 1 akun = 1 job aktif. Key yang sedang dipakai job user lain di-skip
+// sampai job itu selesai (sukses/gagal). In-memory saja — kalau proses crash,
+// lock otomatis bersih saat restart (tidak ada lock nyangkut).
+const busyFloraKeys = new Set<string>();
+
+// Pilih key + langsung lock dalam satu langkah sinkron (setelah await db.query),
+// jadi dua request bersamaan tidak mungkin dapat key yang sama.
+// Caller WAJIB melepas lock via busyFloraKeys.delete(key) di finally.
+type FloraKeyAcquire = { key: string } | { key: null; reason: 'empty' | 'busy' };
+
+async function acquireNextFloraKey(skipKeys?: Set<string>): Promise<FloraKeyAcquire> {
   const res = await db.query(
     `SELECT id, api_key FROM flora_key_pool WHERE status = 'available' ORDER BY id`
   );
-  if (res.rows.length === 0) return null;
-  const available = skipKeys && skipKeys.size > 0
-    ? res.rows.filter((r: any) => !skipKeys.has(r.api_key))
-    : res.rows;
-  if (available.length === 0) return null;
+  const notSkipped = res.rows.filter((r: any) => !(skipKeys && skipKeys.has(r.api_key)));
+  if (notSkipped.length === 0) return { key: null, reason: 'empty' };
+  const available = notSkipped.filter((r: any) => !busyFloraKeys.has(r.api_key));
+  if (available.length === 0) return { key: null, reason: 'busy' };
   const idx = floraKeyRoundRobinIndex % available.length;
   floraKeyRoundRobinIndex = (floraKeyRoundRobinIndex + 1) % available.length;
-  return available[idx].api_key;
+  const key = available[idx].api_key;
+  busyFloraKeys.add(key); // atomik: masih di blok sinkron yang sama dengan filter di atas
+  return { key };
 }
 
 async function markFloraKeyDead(apiKey: string): Promise<void> {
@@ -2577,6 +2588,7 @@ bot.command('florapoolstatus', async (ctx) => {
   return ctx.reply(
     `📊 *Status Flora AI Key Pool*\n\n` +
     `• ✅ Available: *${stats.available}*\n` +
+    `• 🔒 Sedang dipakai (lock): *${busyFloraKeys.size}*\n` +
     `• ❌ Dead: *${stats.dead}*\n` +
     `• 📦 Total: *${total}*`,
     { parse_mode: 'Markdown' }
@@ -4176,10 +4188,17 @@ async function runKling26MotionControl(chatId: number, userId: number, dbUserId:
     let result: { url: string } | null = null;
     let lastErr: any = null;
 
+    let sawAllBusy = false;
     for (let attempt = 0; attempt < MAX_KEY_ATTEMPTS && !result; attempt++) {
-      const apiKey = await getNextFloraKey(triedKeys);
-      if (!apiKey) break;
+      const acq = await acquireNextFloraKey(triedKeys);
+      if (acq.key === null) {
+        if (acq.reason === 'busy') sawAllBusy = true;
+        break;
+      }
+      const apiKey = acq.key;
       triedKeys.add(apiKey);
+      // Key sudah ter-lock oleh acquireNextFloraKey sampai job user ini selesai
+      // (sukses/gagal) — user lain otomatis dapat akun lain selama lock aktif.
       try {
         result = await flora.generateKling26MotionControl({
           apiKey,
@@ -4203,10 +4222,13 @@ async function runKling26MotionControl(chatId: number, userId: number, dbUserId:
           continue;
         }
         throw err; // error konten/timeout — jangan bakar key lain
+      } finally {
+        busyFloraKeys.delete(apiKey);
       }
     }
 
     if (!result) {
+      if (sawAllBusy) throw new Error('FLORA_ALL_BUSY: semua akun sedang dipakai');
       if (triedKeys.size === 0) throw new Error('FLORA_NO_KEYS: pool kosong');
       throw lastErr ?? new Error('FLORA_NO_KEYS: semua key habis');
     }
@@ -4223,7 +4245,9 @@ async function runKling26MotionControl(chatId: number, userId: number, dbUserId:
     const msg = err?.message ?? String(err);
     console.error(`[${userId}] ${label} Flora error: ${msg}`);
     let friendly: string;
-    if (msg.includes('FLORA_NO_KEYS')) {
+    if (msg.includes('FLORA_ALL_BUSY')) {
+      friendly = '❌ Semua slot sedang dipakai user lain. Coba lagi beberapa menit ya.';
+    } else if (msg.includes('FLORA_NO_KEYS')) {
       friendly = '❌ Server model sedang penuh. Coba lagi nanti ya.';
     } else if (msg.includes('FLORA_TIMEOUT')) {
       friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
