@@ -114,18 +114,18 @@ async function checkActiveSubscription(userId: number): Promise<boolean> {
 // Harga per generate dalam Rupiah (integer). Sumber kebenaran tunggal — semua
 // handler generate baca dari sini, jangan hardcode angka di tempat lain.
 const MODEL_PRICES = {
-  sora: 1000,
-  gemini_omni: 1000,
+  sora: 2000,
+  gemini_omni: 2000,
   kling_mc: 2500,      // Kling V3 Motion Control
   kling26_mc: 2500,    // Kling 2.6 Pro Motion Control (Flora AI)
-  kling_i2v: 1500,     // Kling V3 I2V
-  kling_turbo: 1500,   // Kling V3 Turbo
+  kling_i2v: 2500,     // Kling V3 I2V
+  kling_turbo: 2500,   // Kling V3 Turbo
   seedance: 1000,
   seedance2: 2000,     // Seedance 2.0 (regular/premium)
-  wan: 1000,           // Wan 2.7 (i2v/t2v)
-  happyhorse: 1500,    // Happy Horse 1.1 (reference-to-video)
+  wan: 1500,           // Wan 2.7 (i2v/t2v)
+  happyhorse: 2500,    // Happy Horse 1.1 (reference-to-video)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
-  grok: 1000,
+  grok: 1500,
   nano_banana2: 200,
   banana_pro: 200,
   gpt_image: 200,
