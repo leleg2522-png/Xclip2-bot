@@ -48,10 +48,6 @@ export type KlingModelKey = keyof typeof KLING_MODELS;
 // `/workflows/seedance/options` pricing pre-check captured from the web app.
 export const SEEDANCE_MODEL = 'seedance_2_0_fast';
 
-// Grok Imagine — image-to-video only (requires a reference image). Endpoint
-// `/workflows/x-ai/v1/videos/generations/*`. Pricing ~5 credits/sec.
-export const GROK_MODEL = 'grok-imagine-video-1.5-preview';
-
 let db: Pool;
 let notifyOwner: (msg: string) => void = () => {};
 
@@ -864,98 +860,6 @@ export async function generateRunway(input: {
   });
 }
 
-// ─── Grok Imagine (image-to-video) ────────────────────────────────────────────
-
-export async function submitGrok(credId: number, input: {
-  prompt: string;
-  imageUrl: string;
-  duration: number;
-  ratio: string;
-}): Promise<string> {
-  const access = await getAccessToken(credId);
-  const params = {
-    model: GROK_MODEL,
-    prompt: input.prompt ?? '',
-    image: { url: input.imageUrl },
-    duration: input.duration,
-    aspect_ratio: input.ratio,
-  };
-  const r = await http.post(`${API_BASE}/workflows/x-ai/v1/videos/generations/submit`, { params }, {
-    headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
-    validateStatus: () => true,
-  });
-  const id = r.data?.response?.id;
-  if (!ok2xx(r.status) || !id) {
-    throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
-  }
-  return id;
-}
-
-export async function pollGrokResult(
-  credId: number,
-  id: string,
-  opts?: { maxAttempts?: number; intervalMs?: number; onTick?: (elapsedMs: number) => void }
-): Promise<{ url: string; credits?: number }> {
-  const maxAttempts = opts?.maxAttempts ?? 180; // ~15 min at 5s
-  const intervalMs = opts?.intervalMs ?? 5000;
-  const start = Date.now();
-  for (let i = 0; i < maxAttempts; i++) {
-    await new Promise((res) => setTimeout(res, intervalMs));
-    opts?.onTick?.(Date.now() - start);
-    const access = await getAccessToken(credId);
-    const r = await http.get(`${API_BASE}/workflows/x-ai/v1/videos/generations/${id}/result`, {
-      headers: commonHeaders({ authorization: `Bearer ${access}` }),
-      validateStatus: () => true,
-    });
-    if (!ok2xx(r.status)) continue;
-    const resp = r.data?.response;
-    const status = String(resp?.status ?? '').toUpperCase();
-    if (status === 'COMPLETED') {
-      const url = resp?.result?.url;
-      if (!url) throw new Error('PICSART_NO_RESULT_URL');
-      return { url, credits: resp.usage?.credits };
-    }
-    if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
-      throw new Error(`PICSART_GEN_FAILED: ${JSON.stringify(resp).slice(0, 200)}`);
-    }
-  }
-  throw new Error('PICSART_TIMEOUT');
-}
-
-// High-level orchestrator: image upload -> submit -> poll -> result URL.
-// Grok is image-to-video only, so a reference image is required.
-export async function generateGrok(input: {
-  userId: number;
-  prompt: string;
-  imageBuffer: Buffer;
-  imageName?: string;
-  imageMime?: string;
-  duration: number;
-  ratio: string;
-  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
-  onPoll?: (elapsedSec: number) => void;
-}): Promise<{ url: string; credits?: number }> {
-  return runWithAccount(input.userId, async (credId) => {
-    input.onStatus?.('upload');
-    const imageUrl = await uploadFile(
-      credId,
-      input.imageBuffer,
-      input.imageName || 'reference.jpg',
-      input.imageMime || 'image/jpeg'
-    );
-    input.onStatus?.('submit');
-    const id = await submitGrok(credId, {
-      prompt: input.prompt,
-      imageUrl,
-      duration: input.duration,
-      ratio: input.ratio,
-    });
-    input.onStatus?.('poll');
-    return pollGrokResult(credId, id, {
-      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
-    });
-  });
-}
 
 // ─── Sora 2 (OpenAI video: text-to-video or image-to-video) ───────────────────
 // POST /workflows/openai/v1/videos/submit          -> {response:{id}}
