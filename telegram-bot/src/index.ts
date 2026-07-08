@@ -118,12 +118,9 @@ const MODEL_PRICES = {
   gemini_omni: 2000,
   kling_mc: 2500,      // Kling V3 Motion Control
   kling26_mc: 2500,    // Kling 2.6 Pro Motion Control (Flora AI)
-  kling_i2v: 2500,     // Kling V3 I2V
-  kling_turbo: 2500,   // Kling V3 Turbo
   seedance: 1000,
   seedance2: 2000,     // Seedance 2.0 (regular/premium)
   wan: 1500,           // Wan 2.7 (i2v/t2v)
-  happyhorse: 2500,    // Happy Horse 1.1 (reference-to-video)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
   grok: 1500,
   nano_banana2: 200,
@@ -745,18 +742,10 @@ type Mode =
   | 's2_wait_prompt'
   | 'wan_wait_image'
   | 'wan_wait_prompt'
-  | 'hh_wait_image'
-  | 'hh_wait_prompt'
   | 'rw_wait_image'
   | 'rw_wait_prompt'
   | 'grok_wait_image'
   | 'grok_wait_prompt'
-  | 'kv3_wait_image'
-  | 'kv3_wait_start'
-  | 'kv3_wait_end'
-  | 'kv3_wait_prompt'
-  | 'kvt_wait_image'
-  | 'kvt_wait_prompt'
   | 'img_collect'
   | 'sora_wait_image'
   | 'sora_wait_prompt'
@@ -797,11 +786,6 @@ interface Session {
   wanRatio?: string;
   wanResolution?: string;
   wanImageUrl?: string;
-  // Happy Horse 1.1 wizard state (reference-to-video)
-  hhDuration?: number;
-  hhRatio?: string;
-  hhResolution?: string;
-  hhImageUrl?: string;
   // Runway Gen-4.5 wizard state (image-to-video only)
   rwDuration?: number;
   rwRatio?: string;
@@ -821,17 +805,6 @@ interface Session {
   gomniRatio?: string;
   gomniImageUrl?: string;
   gomniVideoUrl?: string;
-  // Kling V3 image-to-video wizard state
-  kv3InputMode?: 'i2v' | 'se';
-  kv3Duration?: number;
-  kv3Ratio?: string;
-  kv3StartImageUrl?: string;
-  kv3EndImageUrl?: string;
-  // Kling V3 Turbo image-to-video wizard state
-  kvtDuration?: number;
-  kvtRatio?: string;
-  kvtResolution?: string;
-  kvtImageUrl?: string;
   // Image generation wizard state (GPT Image 2 / Nano Banana Pro / Nano Banana 2)
   imgEngine?: 'gpt' | 'banana_pro' | 'banana2';
   imgRatio?: string;
@@ -1289,13 +1262,10 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🎬 Seedance 2.0 Fast', 'mode_seedance')],
     [Markup.button.callback('🎬 Seedance 2.0 (Premium)', 'mode_s2')],
     [Markup.button.callback('🌊 Wan 2.7', 'mode_wan')],
-    [Markup.button.callback('🐴 Happy Horse 1.1', 'mode_hh')],
     [Markup.button.callback('🚀 Runway Gen-4.5', 'mode_rw')],
     [Markup.button.callback('🤖 Grok Imagine', 'mode_grok')],
     [Markup.button.callback('🎥 Sora 2 (OpenAI)', 'mode_sora')],
     [Markup.button.callback('✨ Gemini Omni (Google)', 'mode_gomni')],
-    [Markup.button.callback('🎞️ Kling V3 (Image to Video)', 'mode_kv3')],
-    [Markup.button.callback('⚡ Kling V3 Turbo (Image to Video)', 'mode_kvt')],
     [Markup.button.callback('🎨 GPT Image 2 (Gambar)', 'mode_gpt')],
     [Markup.button.callback('🍌 Nano Banana Pro (Gambar)', 'mode_bananapro')],
     [Markup.button.callback('🍌 Nano Banana 2 (Gambar)', 'mode_banana2')],
@@ -1453,38 +1423,6 @@ function wanResolutionKeyboard() {
   ]);
 }
 
-// ─── Happy Horse 1.1 wizard keyboards (reference-to-video) ────────────────────
-
-function hhDurationKeyboard() {
-  return Markup.inlineKeyboard([
-    [
-      Markup.button.callback('5 detik', 'hh_dur_5'),
-      Markup.button.callback('10 detik', 'hh_dur_10'),
-      Markup.button.callback('15 detik', 'hh_dur_15'),
-    ],
-    [Markup.button.callback('« Kembali', 'back_main')],
-  ]);
-}
-
-function hhRatioKeyboard() {
-  return Markup.inlineKeyboard([
-    [
-      Markup.button.callback('📱 9:16', 'hh_ratio_916'),
-      Markup.button.callback('🖥️ 16:9', 'hh_ratio_169'),
-      Markup.button.callback('⬛ 1:1', 'hh_ratio_11'),
-    ],
-  ]);
-}
-
-function hhResolutionKeyboard() {
-  return Markup.inlineKeyboard([
-    [
-      Markup.button.callback('720p', 'hh_res_720'),
-      Markup.button.callback('1080p (HD)', 'hh_res_1080'),
-    ],
-  ]);
-}
-
 // ─── Runway Gen-4.5 wizard keyboards (image-to-video) ─────────────────────────
 
 function rwDurationKeyboard() {
@@ -1601,71 +1539,6 @@ function gomniRatioKeyboard() {
   ]);
 }
 
-// ─── Kling V3 Turbo image-to-video wizard keyboards ───────────────────────────
-
-function kvtDurationKeyboard() {
-  return Markup.inlineKeyboard([
-    [
-      Markup.button.callback('5 detik', 'kvt_dur_5'),
-      Markup.button.callback('10 detik', 'kvt_dur_10'),
-      Markup.button.callback('15 detik', 'kvt_dur_15'),
-    ],
-    [Markup.button.callback('« Kembali', 'back_main')],
-  ]);
-}
-
-function kvtRatioKeyboard() {
-  return Markup.inlineKeyboard([
-    [
-      Markup.button.callback('📱 9:16', 'kvt_ratio_916'),
-      Markup.button.callback('🖥️ 16:9', 'kvt_ratio_169'),
-      Markup.button.callback('⬛ 1:1', 'kvt_ratio_11'),
-    ],
-    [Markup.button.callback('« Kembali', 'mode_kvt')],
-  ]);
-}
-
-function kvtResolutionKeyboard() {
-  return Markup.inlineKeyboard([
-    [
-      Markup.button.callback('720p', 'kvt_res_720p'),
-      Markup.button.callback('1080p (HD)', 'kvt_res_1080p'),
-    ],
-    [Markup.button.callback('« Kembali', 'mode_kvt')],
-  ]);
-}
-
-// ─── Kling V3 image-to-video wizard keyboards ─────────────────────────────────
-
-function kv3InputKeyboard() {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('🖼️ Foto + Prompt', 'kv3_in_i2v')],
-    [Markup.button.callback('🎬 Foto Awal & Akhir', 'kv3_in_se')],
-    [Markup.button.callback('« Kembali', 'back_main')],
-  ]);
-}
-
-function kv3DurationKeyboard() {
-  return Markup.inlineKeyboard([
-    [
-      Markup.button.callback('5 detik', 'kv3_dur_5'),
-      Markup.button.callback('10 detik', 'kv3_dur_10'),
-      Markup.button.callback('15 detik', 'kv3_dur_15'),
-    ],
-    [Markup.button.callback('« Kembali', 'mode_kv3')],
-  ]);
-}
-
-function kv3RatioKeyboard() {
-  return Markup.inlineKeyboard([
-    [
-      Markup.button.callback('📱 9:16', 'kv3_ratio_916'),
-      Markup.button.callback('🖥️ 16:9', 'kv3_ratio_169'),
-      Markup.button.callback('⬛ 1:1', 'kv3_ratio_11'),
-    ],
-  ]);
-}
-
 // ─── Top-up helpers ───────────────────────────────────────────────────────────
 
 const TOPUP_MIN = 5000;
@@ -1680,13 +1553,10 @@ function hargaText(): string {
     `• Seedance 2.0 Fast — ${formatRupiah(MODEL_PRICES.seedance)}\n` +
     `• Seedance 2.0 (Premium) — ${formatRupiah(MODEL_PRICES.seedance2)}\n` +
     `• Wan 2.7 — ${formatRupiah(MODEL_PRICES.wan)}\n` +
-    `• Happy Horse 1.1 — ${formatRupiah(MODEL_PRICES.happyhorse)}\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
     `• Grok Imagine — ${formatRupiah(MODEL_PRICES.grok)}\n` +
     `• Kling V3 Motion Control — ${formatRupiah(MODEL_PRICES.kling_mc)}\n` +
-    `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling26_mc)}\n` +
-    `• Kling V3 Image-to-Video — ${formatRupiah(MODEL_PRICES.kling_i2v)}\n` +
-    `• Kling V3 Turbo — ${formatRupiah(MODEL_PRICES.kling_turbo)}\n\n` +
+    `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling26_mc)}\n\n` +
     '🎨 *Gambar*\n' +
     `• Nano Banana 2 — ${formatRupiah(MODEL_PRICES.nano_banana2)}\n` +
     `• Nano Banana Pro — ${formatRupiah(MODEL_PRICES.banana_pro)}\n` +
@@ -2995,49 +2865,6 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
-  // ── Happy Horse 1.1 wizard (reference-to-video) ──
-  if (data === 'mode_hh') {
-    setSession(userId, {
-      mode: 'idle',
-      hhDuration: undefined,
-      hhRatio: undefined,
-      hhResolution: undefined,
-      hhImageUrl: undefined,
-    });
-    return ctx.editMessageText(
-      '🐴 *Happy Horse 1.1*\n\nVideo dibuat dari *foto + prompt*.\n\n*Langkah 1:* Pilih durasi video:',
-      { parse_mode: 'Markdown', ...hhDurationKeyboard() }
-    );
-  }
-
-  if (data.startsWith('hh_dur_')) {
-    const dur = parseInt(data.replace('hh_dur_', ''), 10);
-    setSession(userId, { hhDuration: dur });
-    return ctx.editMessageText(
-      `🐴 *Happy Horse 1.1*\n\nDurasi: *${dur} detik*\n\n*Langkah 2:* Pilih rasio layar:`,
-      { parse_mode: 'Markdown', ...hhRatioKeyboard() }
-    );
-  }
-
-  if (data.startsWith('hh_ratio_')) {
-    const ratio = SD_RATIO_MAP[data.replace('hh_ratio_', '')] ?? '9:16';
-    setSession(userId, { hhRatio: ratio });
-    return ctx.editMessageText(
-      `🐴 *Happy Horse 1.1*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Pilih resolusi:`,
-      { parse_mode: 'Markdown', ...hhResolutionKeyboard() }
-    );
-  }
-
-  if (data.startsWith('hh_res_')) {
-    const res = data.replace('hh_res_', '') === '1080' ? '1080P' : '720P';
-    setSession(userId, { hhResolution: res, mode: 'hh_wait_image' });
-    return ctx.editMessageText(
-      `🐴 *Happy Horse 1.1*\n\nResolusi: *${res.toLowerCase()}*\n\n` +
-      '*Langkah 4:* Kirim *foto acuan* untuk video kamu.',
-      { parse_mode: 'Markdown' }
-    );
-  }
-
   // ── Runway Gen-4.5 wizard (image-to-video only) ──
   if (data === 'mode_rw') {
     setSession(userId, {
@@ -3203,97 +3030,6 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
-  // ── Kling V3 Turbo image-to-video wizard ──
-  if (data === 'mode_kvt') {
-    setSession(userId, {
-      mode: 'idle',
-      kvtDuration: undefined,
-      kvtRatio: undefined,
-      kvtResolution: undefined,
-      kvtImageUrl: undefined,
-    });
-    return ctx.editMessageText(
-      '⚡ *Kling V3 Turbo — Image to Video*\n\nLebih cepat dari V3 standar.\n\n*Langkah 1:* Pilih durasi video:',
-      { parse_mode: 'Markdown', ...kvtDurationKeyboard() }
-    );
-  }
-  if (data.startsWith('kvt_dur_')) {
-    const dur = parseInt(data.replace('kvt_dur_', ''), 10);
-    setSession(userId, { kvtDuration: dur });
-    return ctx.editMessageText(
-      `⚡ *Kling V3 Turbo*\n\nDurasi: *${dur} detik*\n\n*Langkah 2:* Pilih rasio layar:`,
-      { parse_mode: 'Markdown', ...kvtRatioKeyboard() }
-    );
-  }
-  if (data.startsWith('kvt_ratio_')) {
-    const ratio = SD_RATIO_MAP[data.replace('kvt_ratio_', '')] ?? '9:16';
-    setSession(userId, { kvtRatio: ratio });
-    return ctx.editMessageText(
-      `⚡ *Kling V3 Turbo*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Pilih resolusi:`,
-      { parse_mode: 'Markdown', ...kvtResolutionKeyboard() }
-    );
-  }
-  if (data.startsWith('kvt_res_')) {
-    const res = data === 'kvt_res_1080p' ? '1080p' : '720p';
-    setSession(userId, { kvtResolution: res, mode: 'kvt_wait_image' });
-    return ctx.editMessageText(
-      `⚡ *Kling V3 Turbo*\n\nResolusi: *${res}*\n\n*Langkah 4:* Kirim *foto acuan* untuk video kamu.`,
-      { parse_mode: 'Markdown' }
-    );
-  }
-
-  // ── Kling V3 image-to-video wizard ──
-  if (data === 'mode_kv3') {
-    setSession(userId, {
-      mode: 'idle',
-      kv3InputMode: undefined,
-      kv3Duration: undefined,
-      kv3Ratio: undefined,
-      kv3StartImageUrl: undefined,
-      kv3EndImageUrl: undefined,
-    });
-    return ctx.editMessageText(
-      '🎞️ *Kling V3 — Image to Video*\n\nPilih cara buat video:\n\n🖼️ *Foto + Prompt* — 1 foto jadi video.\n🎬 *Foto Awal & Akhir* — 2 foto (frame awal & akhir).',
-      { parse_mode: 'Markdown', ...kv3InputKeyboard() }
-    );
-  }
-
-  if (data === 'kv3_in_i2v' || data === 'kv3_in_se') {
-    const inputMode = data === 'kv3_in_se' ? 'se' : 'i2v';
-    setSession(userId, { kv3InputMode: inputMode });
-    const label = inputMode === 'se' ? 'Foto Awal & Akhir' : 'Foto + Prompt';
-    return ctx.editMessageText(
-      `🎞️ *Kling V3* — ${label}\n\n*Langkah 1:* Pilih durasi video:`,
-      { parse_mode: 'Markdown', ...kv3DurationKeyboard() }
-    );
-  }
-
-  if (data.startsWith('kv3_dur_')) {
-    const dur = parseInt(data.replace('kv3_dur_', ''), 10);
-    setSession(userId, { kv3Duration: dur });
-    return ctx.editMessageText(
-      `🎞️ *Kling V3*\n\nDurasi: *${dur} detik*\n\n*Langkah 2:* Pilih rasio layar:`,
-      { parse_mode: 'Markdown', ...kv3RatioKeyboard() }
-    );
-  }
-
-  if (data.startsWith('kv3_ratio_')) {
-    const ratio = SD_RATIO_MAP[data.replace('kv3_ratio_', '')] ?? '9:16';
-    const session = getSession(userId);
-    if (session.kv3InputMode === 'se') {
-      setSession(userId, { kv3Ratio: ratio, mode: 'kv3_wait_start' });
-      return ctx.editMessageText(
-        `🎞️ *Kling V3*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Kirim *foto AWAL* (frame pertama video).`,
-        { parse_mode: 'Markdown' }
-      );
-    }
-    setSession(userId, { kv3Ratio: ratio, mode: 'kv3_wait_image' });
-    return ctx.editMessageText(
-      `🎞️ *Kling V3*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Kirim *foto acuan* untuk video kamu.`,
-      { parse_mode: 'Markdown' }
-    );
-  }
-
   // ── Image generation wizard (GPT Image 2 / Nano Banana Pro / Nano Banana 2) ──
   if (data === 'mode_gpt' || data === 'mode_bananapro' || data === 'mode_banana2') {
     const engine = data === 'mode_gpt' ? 'gpt' : data === 'mode_bananapro' ? 'banana_pro' : 'banana2';
@@ -3387,15 +3123,6 @@ async function handleImageInput(ctx: any, fileUrl: string) {
     );
   }
 
-  if (session.mode === 'hh_wait_image') {
-    setSession(userId, { hhImageUrl: fileUrl, mode: 'hh_wait_prompt' });
-    return ctx.reply(
-      '✅ Foto acuan diterima!\n\n' +
-      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
-      { parse_mode: 'Markdown' }
-    );
-  }
-
   if (session.mode === 'rw_wait_image') {
     setSession(userId, { rwImageUrl: fileUrl, mode: 'rw_wait_prompt' });
     return ctx.reply(
@@ -3435,42 +3162,6 @@ async function handleImageInput(ctx: any, fileUrl: string) {
     setSession(userId, { gomniImageUrl: fileUrl, mode: 'gomni_wait_prompt' });
     return ctx.reply(
       '✅ Foto acuan diterima!\n\n' +
-      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
-      { parse_mode: 'Markdown' }
-    );
-  }
-
-  if (session.mode === 'kvt_wait_image') {
-    setSession(userId, { kvtImageUrl: fileUrl, mode: 'kvt_wait_prompt' });
-    return ctx.reply(
-      '✅ Foto acuan diterima!\n\n' +
-      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
-      { parse_mode: 'Markdown' }
-    );
-  }
-
-  if (session.mode === 'kv3_wait_image') {
-    setSession(userId, { kv3StartImageUrl: fileUrl, mode: 'kv3_wait_prompt' });
-    return ctx.reply(
-      '✅ Foto acuan diterima!\n\n' +
-      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
-      { parse_mode: 'Markdown' }
-    );
-  }
-
-  if (session.mode === 'kv3_wait_start') {
-    setSession(userId, { kv3StartImageUrl: fileUrl, mode: 'kv3_wait_end' });
-    return ctx.reply(
-      '✅ Foto awal diterima!\n\n' +
-      '*Langkah berikutnya:* Kirim *foto AKHIR* (frame terakhir video).',
-      { parse_mode: 'Markdown' }
-    );
-  }
-
-  if (session.mode === 'kv3_wait_end') {
-    setSession(userId, { kv3EndImageUrl: fileUrl, mode: 'kv3_wait_prompt' });
-    return ctx.reply(
-      '✅ Foto akhir diterima!\n\n' +
       '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
       { parse_mode: 'Markdown' }
     );
@@ -3709,35 +3400,6 @@ bot.on('text', async (ctx) => {
     return;
   }
 
-  // ── Happy Horse 1.1 prompt ──
-  if (session.mode === 'hh_wait_prompt') {
-    if (!await requireLogin(ctx)) return;
-    const prompt = ctx.message.text.trim();
-    if (!prompt) {
-      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
-    }
-    const cooldownMs = getCooldownRemainingMs(userId);
-    if (cooldownMs > 0) {
-      setSession(userId, { mode: 'idle' });
-      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
-    }
-    if (!session.hhImageUrl) {
-      setSession(userId, { mode: 'idle' });
-      return ctx.reply('⚠️ Foto acuan tidak ditemukan. Mulai lagi dari /menu.');
-    }
-    const opts = {
-      imageUrl: session.hhImageUrl,
-      duration: session.hhDuration ?? 10,
-      ratio: session.hhRatio ?? '9:16',
-      resolution: session.hhResolution ?? '1080P',
-    };
-    setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply('⏳ Memproses Happy Horse 1.1...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
-    runHappyHorse(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
-      .catch(e => console.error(`[${userId}] HappyHorse gen error:`, e.message));
-    return;
-  }
-
   // ── Runway Gen-4.5 prompt ──
   if (session.mode === 'rw_wait_prompt') {
     if (!await requireLogin(ctx)) return;
@@ -3849,68 +3511,6 @@ bot.on('text', async (ctx) => {
     return;
   }
 
-  // ── Kling V3 Turbo image-to-video prompt ──
-  if (session.mode === 'kvt_wait_prompt') {
-    if (!await requireLogin(ctx)) return;
-    const prompt = ctx.message.text.trim();
-    if (!prompt) {
-      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
-    }
-    const cooldownMs = getCooldownRemainingMs(userId);
-    if (cooldownMs > 0) {
-      setSession(userId, { mode: 'idle' });
-      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
-    }
-    if (!session.kvtImageUrl) {
-      setSession(userId, { mode: 'idle' });
-      return ctx.reply('⚠️ Foto acuan tidak ditemukan. Mulai lagi dari /menu.');
-    }
-    const opts = {
-      imageUrl: session.kvtImageUrl,
-      duration: session.kvtDuration ?? 5,
-      ratio: session.kvtRatio ?? '9:16',
-      resolution: session.kvtResolution ?? '720p',
-    };
-    setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply('⏳ Memproses Kling V3 Turbo...\nHasil dikirim otomatis (~2-5 menit).', { parse_mode: 'Markdown' });
-    runKlingI2VTurbo(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
-      .catch(e => console.error(`[${userId}] Kling V3 Turbo gen error:`, e.message));
-    return;
-  }
-
-  // ── Kling V3 image-to-video prompt ──
-  if (session.mode === 'kv3_wait_prompt') {
-    if (!await requireLogin(ctx)) return;
-    const prompt = ctx.message.text.trim();
-    if (!prompt) {
-      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
-    }
-    const cooldownMs = getCooldownRemainingMs(userId);
-    if (cooldownMs > 0) {
-      setSession(userId, { mode: 'idle' });
-      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
-    }
-    if (!session.kv3StartImageUrl) {
-      setSession(userId, { mode: 'idle' });
-      return ctx.reply('⚠️ Foto acuan tidak ditemukan. Mulai lagi dari /menu.');
-    }
-    if (session.kv3InputMode === 'se' && !session.kv3EndImageUrl) {
-      setSession(userId, { mode: 'idle' });
-      return ctx.reply('⚠️ Foto akhir tidak ditemukan. Mulai lagi dari /menu.');
-    }
-    const opts = {
-      startImageUrl: session.kv3StartImageUrl,
-      endImageUrl: session.kv3InputMode === 'se' ? session.kv3EndImageUrl : undefined,
-      duration: session.kv3Duration ?? 5,
-      ratio: session.kv3Ratio ?? '9:16',
-    };
-    setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply('⏳ Memproses Kling V3...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
-    runKlingI2V(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
-      .catch(e => console.error(`[${userId}] Kling V3 gen error:`, e.message));
-    return;
-  }
-
   // ── Image generation prompt (GPT Image 2 / Nano Banana Pro / Nano Banana 2) ──
   if (session.mode === 'img_collect') {
     if (!await requireLogin(ctx)) return;
@@ -3931,18 +3531,6 @@ bot.on('text', async (ctx) => {
   }
 
   // ── Guard: modes that expect a photo/video, not text ──
-  if (session.mode === 'kvt_wait_image') {
-    return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
-  }
-  if (session.mode === 'kv3_wait_image') {
-    return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
-  }
-  if (session.mode === 'kv3_wait_start') {
-    return ctx.reply('📸 Kirim *foto AWAL* dulu ya, atau /menu untuk batal.', { parse_mode: 'Markdown' });
-  }
-  if (session.mode === 'kv3_wait_end') {
-    return ctx.reply('📸 Kirim *foto AKHIR* ya, atau /menu untuk batal.', { parse_mode: 'Markdown' });
-  }
   if (session.mode === 'seedance_wait_image') {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
@@ -4616,103 +4204,6 @@ async function runWan(
   }
 }
 
-// ─── Background: Happy Horse 1.1 (reference-to-video) ────────────────────────
-
-async function runHappyHorse(
-  chatId: number,
-  userId: number,
-  dbUserId: number,
-  statusMsgId: number,
-  prompt: string,
-  opts: {
-    imageUrl: string;
-    duration: number;
-    ratio: string;
-    resolution: string;
-  }
-) {
-  console.log(`[${userId}] HappyHorse started — dur: ${opts.duration}s, ratio: ${opts.ratio}, res: ${opts.resolution}`);
-
-  const PRICE = MODEL_PRICES.happyhorse;
-  const charge = await beginCharge(dbUserId, PRICE);
-  if (!charge.ok) {
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
-    return;
-  }
-  let refund = true;
-
-  try {
-    const img = await downloadBuffer(opts.imageUrl);
-    console.log(`[${userId}] HappyHorse ref image — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
-
-    let lastEdit = 0;
-    const result = await picsart.generateHappyHorse({
-      userId: dbUserId,
-      prompt,
-      imageBuffer: img.buf,
-      imageName: `reference.${img.ext}`,
-      imageMime: img.mime,
-      duration: opts.duration,
-      ratio: opts.ratio,
-      resolution: opts.resolution,
-      onStatus: (stage) => {
-        const text = stage === 'upload'
-          ? '⏳ Happy Horse 1.1: mengunggah foto ke server... (1/3)'
-          : stage === 'submit'
-            ? '⏳ Happy Horse 1.1: mengirim perintah ke server... (2/3)'
-            : '⏳ Happy Horse 1.1: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 3–8 menit. Jangan tutup chat ini.';
-        lastEdit = Date.now();
-        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
-      },
-      onPoll: (elapsedSec) => {
-        if (Date.now() - lastEdit < 30_000) return;
-        lastEdit = Date.now();
-        const mins = Math.floor(elapsedSec / 60);
-        const secs = elapsedSec % 60;
-        const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
-        bot.telegram.editMessageText(
-          chatId, statusMsgId, undefined,
-          `⏳ Happy Horse 1.1: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${timer} (biasanya 3–8 menit).\nJangan tutup chat ini, video dikirim otomatis.`
-        ).catch(() => {});
-      },
-    });
-
-    const delivered = await sendResult(
-      chatId,
-      result.url,
-      `🐴 Happy Horse 1.1 (${opts.duration}s · ${opts.ratio} · ${opts.resolution.toLowerCase()})\n\n/menu untuk buat lagi`,
-      true
-    );
-    if (delivered) {
-      refund = false;
-      const newCount = await incrementKlingUsage(dbUserId);
-      markGenSuccess(userId);
-      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-      console.log(`[${userId}] HappyHorse done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
-    }
-
-  } catch (err: any) {
-    const msg = err?.message ?? String(err);
-    console.error(`[${userId}] HappyHorse error: ${msg}`);
-    let friendly: string;
-    if (msg.includes('PICSART_TIMEOUT')) {
-      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
-    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
-      friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
-    } else {
-      friendly = '❌ Gagal memproses. Coba lagi nanti.';
-    }
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${friendly}\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
-  } finally {
-    if (refund) {
-      await addSaldo(dbUserId, PRICE).catch(() => {});
-      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
-    }
-    generating.delete(dbUserId);
-  }
-}
 
 // ─── Background: Runway Gen-4.5 (image-to-video) ──────────────────────────────
 
@@ -5242,210 +4733,6 @@ async function runImageGen(
   }
 }
 
-// ─── Background: Kling V3 image-to-video ──────────────────────────────────────
-
-async function runKlingI2V(
-  chatId: number,
-  userId: number,
-  dbUserId: number,
-  statusMsgId: number,
-  prompt: string,
-  opts: {
-    startImageUrl: string;
-    endImageUrl?: string;
-    duration: number;
-    ratio: string;
-  }
-) {
-  const isSE = !!opts.endImageUrl;
-  console.log(`[${userId}] Kling V3 started — ${isSE ? 'start/end' : 'i2v'}, dur: ${opts.duration}s, ratio: ${opts.ratio}`);
-
-  const PRICE = MODEL_PRICES.kling_i2v;
-  const charge = await beginCharge(dbUserId, PRICE);
-  if (!charge.ok) {
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
-    return;
-  }
-  let refund = true;
-
-  try {
-    const startImg = await downloadBuffer(opts.startImageUrl);
-    console.log(`[${userId}] Kling V3 start image — ${startImg.mime} ${(startImg.buf.length / 1024).toFixed(1)}KB`);
-    let endImg: { buf: Buffer; mime: string; ext: string } | undefined;
-    if (opts.endImageUrl) {
-      endImg = await downloadBuffer(opts.endImageUrl);
-      console.log(`[${userId}] Kling V3 end image — ${endImg.mime} ${(endImg.buf.length / 1024).toFixed(1)}KB`);
-    }
-
-    let lastEdit = 0;
-    const result = await picsart.generateKlingI2V({
-      userId: dbUserId,
-      prompt,
-      imageBuffer: startImg.buf,
-      imageName: `start.${startImg.ext}`,
-      imageMime: startImg.mime,
-      imageTailBuffer: endImg?.buf,
-      imageTailName: endImg ? `end.${endImg.ext}` : undefined,
-      imageTailMime: endImg?.mime,
-      duration: opts.duration,
-      ratio: opts.ratio,
-      onStatus: (stage) => {
-        const text = stage === 'upload'
-          ? '⏳ Kling V3: mengunggah foto ke server... (1/3)'
-          : stage === 'submit'
-            ? '⏳ Kling V3: mengirim perintah ke server... (2/3)'
-            : '⏳ Kling V3: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 3–8 menit. Jangan tutup chat ini.';
-        lastEdit = Date.now();
-        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
-      },
-      onPoll: (elapsedSec) => {
-        if (Date.now() - lastEdit < 30_000) return;
-        lastEdit = Date.now();
-        const mins = Math.floor(elapsedSec / 60);
-        const secs = elapsedSec % 60;
-        const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
-        bot.telegram.editMessageText(
-          chatId, statusMsgId, undefined,
-          `⏳ Kling V3: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${timer} (biasanya 3–8 menit).\nJangan tutup chat ini, video dikirim otomatis.`
-        ).catch(() => {});
-      },
-    });
-
-    const modeLabel = isSE ? 'Awal & Akhir' : 'Image to Video';
-    const delivered = await sendResult(
-      chatId,
-      result.url,
-      `🎞️ Kling V3 · ${modeLabel} (${opts.duration}s · ${opts.ratio})\n\n/menu untuk buat lagi`,
-      true
-    );
-    if (delivered) {
-      refund = false;
-      const newCount = await incrementKlingUsage(dbUserId);
-      markGenSuccess(userId);
-      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-      console.log(`[${userId}] Kling V3 done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
-    }
-
-  } catch (err: any) {
-    const msg = err?.message ?? String(err);
-    console.error(`[${userId}] Kling V3 error: ${msg}`);
-    let friendly: string;
-    if (msg.includes('PICSART_TIMEOUT')) {
-      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
-    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
-      friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
-    } else {
-      friendly = '❌ Gagal memproses. Coba lagi nanti.';
-    }
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${friendly}\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
-  } finally {
-    if (refund) {
-      await addSaldo(dbUserId, PRICE).catch(() => {});
-      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
-    }
-    generating.delete(dbUserId);
-  }
-}
-
-// ─── Background: Kling V3 Turbo image-to-video ───────────────────────────────
-
-async function runKlingI2VTurbo(
-  chatId: number,
-  userId: number,
-  dbUserId: number,
-  statusMsgId: number,
-  prompt: string,
-  opts: {
-    imageUrl: string;
-    duration: number;
-    ratio: string;
-    resolution: string;
-  }
-) {
-  console.log(`[${userId}] Kling V3 Turbo started — dur: ${opts.duration}s, ratio: ${opts.ratio}, res: ${opts.resolution}`);
-
-  const PRICE = MODEL_PRICES.kling_turbo;
-  const charge = await beginCharge(dbUserId, PRICE);
-  if (!charge.ok) {
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
-    return;
-  }
-  let refund = true;
-
-  try {
-    const img = await downloadBuffer(opts.imageUrl);
-    console.log(`[${userId}] Kling V3 Turbo image — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
-
-    let lastEdit = 0;
-    const result = await picsart.generateKlingI2VTurbo({
-      userId: dbUserId,
-      prompt,
-      imageBuffer: img.buf,
-      imageName: `ref.${img.ext}`,
-      imageMime: img.mime,
-      duration: opts.duration,
-      ratio: opts.ratio,
-      resolution: opts.resolution,
-      onStatus: (stage) => {
-        const text = stage === 'upload'
-          ? '⏳ Kling V3 Turbo: mengunggah foto ke server... (1/3)'
-          : stage === 'submit'
-            ? '⏳ Kling V3 Turbo: mengirim perintah ke server... (2/3)'
-            : '⏳ Kling V3 Turbo: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 2–5 menit. Jangan tutup chat ini.';
-        lastEdit = Date.now();
-        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
-      },
-      onPoll: (elapsedSec) => {
-        if (Date.now() - lastEdit < 30_000) return;
-        lastEdit = Date.now();
-        const mins = Math.floor(elapsedSec / 60);
-        const secs = elapsedSec % 60;
-        const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
-        bot.telegram.editMessageText(
-          chatId, statusMsgId, undefined,
-          `⏳ Kling V3 Turbo: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${timer} (biasanya 2–5 menit).\nJangan tutup chat ini, video dikirim otomatis.`
-        ).catch(() => {});
-      },
-    });
-
-    const delivered = await sendResult(
-      chatId,
-      result.url,
-      `⚡ Kling V3 Turbo (${opts.duration}s · ${opts.ratio} · ${opts.resolution})\n\n/menu untuk buat lagi`,
-      true
-    );
-    if (delivered) {
-      refund = false;
-      const newCount = await incrementKlingUsage(dbUserId);
-      markGenSuccess(userId);
-      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-      console.log(`[${userId}] Kling V3 Turbo done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
-    }
-
-  } catch (err: any) {
-    const msg = err?.message ?? String(err);
-    console.error(`[${userId}] Kling V3 Turbo error: ${msg}`);
-    let friendly: string;
-    if (msg.includes('PICSART_TIMEOUT')) {
-      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
-    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
-      friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
-    } else {
-      friendly = '❌ Gagal memproses. Coba lagi nanti.';
-    }
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${friendly}\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
-  } finally {
-    if (refund) {
-      await addSaldo(dbUserId, PRICE).catch(() => {});
-      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
-    }
-    generating.delete(dbUserId);
-  }
-}
 
 // ─── Background: Image generation ────────────────────────────────────────────
 

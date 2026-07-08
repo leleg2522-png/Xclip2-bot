@@ -56,16 +56,6 @@ export const SEEDANCE2_MODEL = 'seedance_2_0';
 // `/workflows/x-ai/v1/videos/generations/*`. Pricing ~5 credits/sec.
 export const GROK_MODEL = 'grok-imagine-video-1.5-preview';
 
-// Kling V3 image-to-video — endpoint `/workflows/kling-image-to-video/*`.
-// Same endpoint serves both single-image (image only) and start/end-frame
-// (image + image_tail). Uses `mode: "pro"`. Pricing ~3 credits/sec.
-export const KLING_I2V_MODEL = 'kling-v3';
-
-// Kling V3 Turbo image-to-video — same endpoint as KV3 but with model_name
-// "kling-v3-turbo". No mode/multi_shot/shot_type fields. Has resolution param.
-// Pricing: 45 credits for 720p 15s, 60 credits for 1080p 15s.
-export const KLING_I2V_TURBO_MODEL = 'kling-v3-turbo';
-
 let db: Pool;
 let notifyOwner: (msg: string) => void = () => {};
 
@@ -696,7 +686,7 @@ export async function generateSeedance(input: {
 }
 
 // ─── Generic workflow poll (result at response.result.url) ───────────────────
-// Dipakai model-model baru (Wan 2.7, Happy Horse, Runway Gen-4.5) yang semuanya
+// Dipakai model-model baru (Wan 2.7, Runway Gen-4.5) yang semuanya
 // mengembalikan {response:{status, result:{url}, usage:{credits}}}.
 
 async function pollWorkflowUrl(
@@ -813,72 +803,6 @@ export async function generateWan(input: {
   });
 }
 
-// ─── Happy Horse 1.1 (reference-to-video) ─────────────────────────────────────
-// POST /workflows/happyhorse/v1.1/reference-to-video/submit
-//   {params:{prompt, media:[{type:"reference_image",url}], resolution:"1080P", ratio, duration, watermark:false}}
-// Result: GET /workflows/happyhorse/v1.1/reference-to-video/{id}/result → response.result.url
-
-export async function submitHappyHorse(credId: number, input: {
-  prompt: string;
-  imageUrl: string;
-  duration: number;
-  ratio: string;
-  resolution: string; // "720P" | "1080P"
-}): Promise<string> {
-  const access = await getAccessToken(credId);
-  const params = {
-    prompt: input.prompt ?? '',
-    media: [{ type: 'reference_image', url: input.imageUrl }],
-    resolution: input.resolution,
-    ratio: input.ratio,
-    duration: input.duration,
-    watermark: false,
-  };
-  const r = await http.post(`${API_BASE}/workflows/happyhorse/v1.1/reference-to-video/submit`, { params }, {
-    headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
-    validateStatus: () => true,
-  });
-  const id = r.data?.response?.id;
-  if (!ok2xx(r.status) || !id) {
-    throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
-  }
-  return id;
-}
-
-export async function generateHappyHorse(input: {
-  userId: number;
-  prompt: string;
-  imageBuffer: Buffer;
-  imageName?: string;
-  imageMime?: string;
-  duration: number;
-  ratio: string;
-  resolution: string;
-  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
-  onPoll?: (elapsedSec: number) => void;
-}): Promise<{ url: string; credits?: number }> {
-  return runWithAccount(input.userId, async (credId) => {
-    input.onStatus?.('upload');
-    const imageUrl = await uploadFile(
-      credId,
-      input.imageBuffer,
-      input.imageName || 'reference.jpg',
-      input.imageMime || 'image/jpeg'
-    );
-    input.onStatus?.('submit');
-    const id = await submitHappyHorse(credId, {
-      prompt: input.prompt,
-      imageUrl,
-      duration: input.duration,
-      ratio: input.ratio,
-      resolution: input.resolution,
-    });
-    input.onStatus?.('poll');
-    return pollWorkflowUrl(credId, (jid) => `/workflows/happyhorse/v1.1/reference-to-video/${jid}/result`, id, {
-      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
-    });
-  });
-}
 
 // ─── Runway Gen-4.5 (image-to-video) ──────────────────────────────────────────
 // POST /workflows/runway-gen4-5-image-to-video/submit
@@ -1259,183 +1183,6 @@ export async function generateGeminiOmni(input: {
   });
 }
 
-// ─── Kling V3 Turbo image-to-video ────────────────────────────────────────────
-// Single image only. Params: prompt, aspect_ratio, duration (string), model_name,
-// resolution (720p|1080p), image URL. No mode/multi_shot/shot_type fields.
-
-export async function submitKlingI2VTurbo(credId: number, input: {
-  prompt: string;
-  imageUrl: string;
-  duration: number;
-  ratio: string;
-  resolution: string;
-}): Promise<string> {
-  const access = await getAccessToken(credId);
-  const params: Record<string, unknown> = {
-    prompt: input.prompt ?? '',
-    aspect_ratio: input.ratio,
-    duration: String(input.duration),
-    model_name: KLING_I2V_TURBO_MODEL,
-    resolution: input.resolution,
-    image: input.imageUrl,
-  };
-  const r = await http.post(`${API_BASE}/workflows/kling-image-to-video/submit`, { params }, {
-    headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
-    validateStatus: () => true,
-  });
-  const id = r.data?.response?.id;
-  if (!ok2xx(r.status) || !id) {
-    throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
-  }
-  return id;
-}
-
-export async function generateKlingI2VTurbo(input: {
-  userId: number;
-  prompt: string;
-  imageBuffer: Buffer;
-  imageName?: string;
-  imageMime?: string;
-  duration: number;
-  ratio: string;
-  resolution: string;
-  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
-  onPoll?: (elapsedSec: number) => void;
-}): Promise<{ url: string; credits?: number }> {
-  return runWithAccount(input.userId, async (credId) => {
-    input.onStatus?.('upload');
-    const imageUrl = await uploadFile(
-      credId,
-      input.imageBuffer,
-      input.imageName || 'start.jpg',
-      input.imageMime || 'image/jpeg'
-    );
-    input.onStatus?.('submit');
-    const id = await submitKlingI2VTurbo(credId, {
-      prompt: input.prompt,
-      imageUrl,
-      duration: input.duration,
-      ratio: input.ratio,
-      resolution: input.resolution,
-    });
-    input.onStatus?.('poll');
-    return pollKlingI2VResult(credId, id, {
-      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
-    });
-  });
-}
-
-// ─── Kling V3 image-to-video ──────────────────────────────────────────────────
-// Single image (image-to-video) or two images (start frame + end frame).
-
-export async function submitKlingI2V(credId: number, input: {
-  prompt: string;
-  imageUrl: string;
-  imageTailUrl?: string;
-  duration: number;
-  ratio: string;
-}): Promise<string> {
-  const access = await getAccessToken(credId);
-  const params: Record<string, unknown> = {
-    prompt: input.prompt ?? '',
-    aspect_ratio: input.ratio,
-    duration: String(input.duration),
-    model_name: KLING_I2V_MODEL,
-    image: input.imageUrl,
-    mode: 'pro',
-    multi_shot: false,
-    shot_type: 'customize',
-  };
-  if (input.imageTailUrl) params.image_tail = input.imageTailUrl;
-  const r = await http.post(`${API_BASE}/workflows/kling-image-to-video/submit`, { params }, {
-    headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
-    validateStatus: () => true,
-  });
-  const id = r.data?.response?.id;
-  if (!ok2xx(r.status) || !id) {
-    throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
-  }
-  return id;
-}
-
-export async function pollKlingI2VResult(
-  credId: number,
-  id: string,
-  opts?: { maxAttempts?: number; intervalMs?: number; onTick?: (elapsedMs: number) => void }
-): Promise<{ url: string; credits?: number }> {
-  const maxAttempts = opts?.maxAttempts ?? 180; // ~15 min at 5s
-  const intervalMs = opts?.intervalMs ?? 5000;
-  const start = Date.now();
-  for (let i = 0; i < maxAttempts; i++) {
-    await new Promise((res) => setTimeout(res, intervalMs));
-    opts?.onTick?.(Date.now() - start);
-    const access = await getAccessToken(credId);
-    const r = await http.get(`${API_BASE}/workflows/kling-image-to-video/${id}/result`, {
-      headers: commonHeaders({ authorization: `Bearer ${access}` }),
-      validateStatus: () => true,
-    });
-    if (!ok2xx(r.status)) continue;
-    const resp = r.data?.response;
-    const status = String(resp?.status ?? '').toUpperCase();
-    if (status === 'COMPLETED') {
-      const url = resp?.result?.url;
-      if (!url) throw new Error('PICSART_NO_RESULT_URL');
-      return { url, credits: resp.usage?.credits };
-    }
-    if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
-      throw new Error(`PICSART_GEN_FAILED: ${JSON.stringify(resp).slice(0, 200)}`);
-    }
-  }
-  throw new Error('PICSART_TIMEOUT');
-}
-
-// High-level orchestrator: upload start image (and optional end image) ->
-// submit -> poll -> result URL. A start image is always required.
-export async function generateKlingI2V(input: {
-  userId: number;
-  prompt: string;
-  imageBuffer: Buffer;
-  imageName?: string;
-  imageMime?: string;
-  imageTailBuffer?: Buffer;
-  imageTailName?: string;
-  imageTailMime?: string;
-  duration: number;
-  ratio: string;
-  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
-  onPoll?: (elapsedSec: number) => void;
-}): Promise<{ url: string; credits?: number }> {
-  return runWithAccount(input.userId, async (credId) => {
-    input.onStatus?.('upload');
-    const imageUrl = await uploadFile(
-      credId,
-      input.imageBuffer,
-      input.imageName || 'start.jpg',
-      input.imageMime || 'image/jpeg'
-    );
-    let imageTailUrl: string | undefined;
-    if (input.imageTailBuffer) {
-      imageTailUrl = await uploadFile(
-        credId,
-        input.imageTailBuffer,
-        input.imageTailName || 'end.jpg',
-        input.imageTailMime || 'image/jpeg'
-      );
-    }
-    input.onStatus?.('submit');
-    const id = await submitKlingI2V(credId, {
-      prompt: input.prompt,
-      imageUrl,
-      imageTailUrl,
-      duration: input.duration,
-      ratio: input.ratio,
-    });
-    input.onStatus?.('poll');
-    return pollKlingI2VResult(credId, id, {
-      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
-    });
-  });
-}
 
 // ─── Image generation (GPT Image 2 + Nano Banana Pro/2) ───────────────────────
 // AI Playground image engines. Three engines, always highest resolution:
