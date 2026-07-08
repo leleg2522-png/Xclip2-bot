@@ -116,7 +116,7 @@ async function checkActiveSubscription(userId: number): Promise<boolean> {
 const MODEL_PRICES = {
   sora: 2000,
   gemini_omni: 2000,
-  kling_mc: 2500,      // Kling V3 Motion Control
+  kling_mc: 2500,      // Kling 2.6 MC Pro (Picsart motion control)
   kling26_mc: 2500,    // Kling 2.6 Pro Motion Control (Flora AI)
   seedance: 1000,
   wan: 1500,           // Wan 2.7 (i2v/t2v)
@@ -1284,7 +1284,7 @@ const MAX_IMG_REFS = 6;
 
 function klingModelKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('🆕 Kling v3.0 Motion Control', 'kling_v3')],
+    [Markup.button.callback('🆕 Kling 2.6 MC Pro', 'kling_v3')],
     [Markup.button.callback('💎 Kling MC V3 PRO P2', 'kling_26')],
     [Markup.button.callback('« Kembali', 'back_main')],
   ]);
@@ -1503,7 +1503,7 @@ function hargaText(): string {
     `• Wan 2.7 — ${formatRupiah(MODEL_PRICES.wan)}\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
     `• Grok Imagine — ${formatRupiah(MODEL_PRICES.grok)}\n` +
-    `• Kling V3 Motion Control — ${formatRupiah(MODEL_PRICES.kling_mc)}\n` +
+    `• Kling 2.6 MC Pro — ${formatRupiah(MODEL_PRICES.kling_mc)}\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling26_mc)}\n\n` +
     '🎨 *Gambar*\n' +
     `• Nano Banana 2 — ${formatRupiah(MODEL_PRICES.nano_banana2)}\n` +
@@ -2588,11 +2588,13 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  // Callback data 'kling_v3' dipertahankan agar tombol di menu lama tetap jalan,
+  // tapi sekarang rute ke Kling 2.6 MC Pro (Picsart, model kling-v2-6).
   if (data === 'kling_v3') {
     if (!await requireLogin(ctx)) return;
     setSession(userId, { mode: 'kling_wait_image' });
     return ctx.editMessageText(
-      `🕹️ *Kling v3.0 Motion Control*\n\n` +
+      `🕹️ *Kling 2.6 MC Pro*\n\n` +
       '*Langkah 1:* Kirim *foto karakter* yang ingin dianimasikan.\n\n' +
       '⚠️ *Syarat foto:*\n' +
       '• Tampilkan seluruh tubuh dari depan\n' +
@@ -3526,7 +3528,7 @@ function isFreepikKeyExhaustedError(raw: string): boolean {
 }
 
 async function runKlingMotionControl(chatId: number, userId: number, dbUserId: number, statusMsgId: number, videoFileIdOrUrl: string, imageUrl: string) {
-  const label = 'Kling v3.0';
+  const label = 'Kling 2.6 MC Pro';
   const PRICE = MODEL_PRICES.kling_mc;
   const charge = await beginCharge(dbUserId, PRICE);
   if (!charge.ok) {
@@ -3562,7 +3564,7 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
       imageBuffer: img.buf, imageName: `character.${img.ext}`, imageMime: img.mime,
       videoBuffer: vid.buf, videoName: `driver.${vidType.ext}`, videoMime: vidType.mime,
       prompt: '',
-      model: 'v3',
+      model: 'v26',
       onStatus: (stage) => {
         const text = stage === 'upload'
           ? `⏳ ${label}: mengunggah media ke server...`
@@ -3573,7 +3575,7 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
       },
     });
 
-    const delivered = await sendResult(chatId, result.url, `🕹️ Kling v3.0 Motion Control\n\n/menu untuk buat lagi`, true);
+    const delivered = await sendResult(chatId, result.url, `🕹️ Kling 2.6 MC Pro\n\n/menu untuk buat lagi`, true);
     if (delivered) {
       refund = false;
       const newCount = await incrementKlingUsage(dbUserId);

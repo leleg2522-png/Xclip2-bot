@@ -38,9 +38,9 @@ const http = axios.create({ timeout: 120_000 });
 // Picsart returns any 2xx (e.g. 200 OK or 201 Created) on success.
 const ok2xx = (s: number) => s >= 200 && s < 300;
 
-// Kling model_name mapping. v3 is live-verified.
+// Kling model_name mapping. v26 (kling-v2-6, mode pro) live-verified via HAR Jul 2026.
 export const KLING_MODELS = {
-  v3: { modelName: 'kling-v3', modelLabel: 'kling-motion-control-v3' },
+  v26: { modelName: 'kling-v2-6', modelLabel: 'kling-motion-control' },
 } as const;
 export type KlingModelKey = keyof typeof KLING_MODELS;
 
@@ -482,16 +482,18 @@ export async function submitKlingMotionControl(credId: number, input: {
       drive: {
         name: input.outputName || 'animation.mp4',
         attributes: {
-          tool: 'ai-playground',
           model: modelLabel,
-          prompt: input.prompt ?? '',
-          subType: 'i2v',
-          service: 'kling',
-          textScript: JSON.stringify({
+          aiSDKPayload: JSON.stringify({
+            prompt: input.prompt ?? '',
             resolution: '1080p',
-            referenceImageUrls: [input.imageUrl],
-            referenceVideoUrl: input.videoUrl,
+            renderingSpeed: 'pro',
+            characterOrientation: 'video',
+            keepOriginalSound: 'yes',
+            imageUrls: [input.imageUrl],
+            videoUrl: input.videoUrl,
           }),
+          appId: 'com.picsart.ai-playground',
+          appType: 'miniapp',
         },
         folder: { path: 'AI Playground' },
       },

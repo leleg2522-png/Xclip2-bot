@@ -27,7 +27,7 @@ Host: `https://api.picsart.com`, uploads on `https://upload.picsart.com`, result
 6. **Download** the `result.url` (.mp4/.png on cdn-editing-temp).
 
 ## Endpoint path differs per model family — do NOT hardcode one shape
-- Kling Motion Control: submit `/workflows/kling-motion-control/submit`, poll `/workflows/kling-motion-control/{id}/result`, `model_name:"kling-v3"`.
+- Kling Motion Control: submit `/workflows/kling-motion-control/submit`, poll `/workflows/kling-motion-control/{id}/result`. Per HAR Jul 2026 the playground moved to `model_name:"kling-v2-6"` with `mode:"pro"`; `options.drive.attributes` shape also changed to `{model:"kling-motion-control", aiSDKPayload:"<JSON string: prompt, resolution 1080p, renderingSpeed pro, characterOrientation video, keepOriginalSound yes, imageUrls[], videoUrl>", appId:"com.picsart.ai-playground", appType:"miniapp"}` (old tool/subType/service/textScript attrs gone). Model strings on this endpoint rotate — recapture HAR when a generate starts failing.
 - Grok Imagine (x-ai) video: poll `/workflows/x-ai/v1/videos/generations/{id}/result` (different nested shape). Each workflow/model has its own sub-path + payload schema; capture per model before relying on it.
 
 ## Grok Imagine — image-to-video (implemented in bot)
