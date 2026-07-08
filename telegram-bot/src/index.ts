@@ -119,7 +119,6 @@ const MODEL_PRICES = {
   kling_mc: 2500,      // Kling V3 Motion Control
   kling26_mc: 2500,    // Kling 2.6 Pro Motion Control (Flora AI)
   seedance: 1000,
-  seedance2: 2000,     // Seedance 2.0 (regular/premium)
   wan: 1500,           // Wan 2.7 (i2v/t2v)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
   grok: 1500,
@@ -738,8 +737,6 @@ type Mode =
   | 'kling_wait_video'
   | 'seedance_wait_image'
   | 'seedance_wait_prompt'
-  | 's2_wait_image'
-  | 's2_wait_prompt'
   | 'wan_wait_image'
   | 'wan_wait_prompt'
   | 'rw_wait_image'
@@ -773,13 +770,6 @@ interface Session {
   seedanceResolution?: string;
   seedanceAudio?: boolean;
   seedanceImageUrl?: string;
-  // Seedance 2.0 (regular) wizard state
-  s2InputMode?: 'i2v' | 't2v';
-  s2Duration?: number;
-  s2Ratio?: string;
-  s2Resolution?: string;
-  s2Audio?: boolean;
-  s2ImageUrl?: string;
   // Wan 2.7 wizard state (i2v/t2v)
   wanInputMode?: 'i2v' | 't2v';
   wanDuration?: number;
@@ -1260,7 +1250,6 @@ function mainMenuKeyboard() {
     ],
     [Markup.button.callback('🕹️ Kling Motion Control', 'mode_kling')],
     [Markup.button.callback('🎬 Seedance 2.0 Fast', 'mode_seedance')],
-    [Markup.button.callback('🎬 Seedance 2.0 (Premium)', 'mode_s2')],
     [Markup.button.callback('🌊 Wan 2.7', 'mode_wan')],
     [Markup.button.callback('🚀 Runway Gen-4.5', 'mode_rw')],
     [Markup.button.callback('🤖 Grok Imagine', 'mode_grok')],
@@ -1342,46 +1331,6 @@ function seedanceAudioKeyboard() {
 }
 
 const SD_RATIO_MAP: Record<string, string> = { '916': '9:16', '169': '16:9', '11': '1:1' };
-
-// ─── Seedance 2.0 (Premium) wizard keyboards ──────────────────────────────────
-
-function s2InputKeyboard() {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('🖼️ Foto + Prompt', 's2_in_i2v')],
-    [Markup.button.callback('✍️ Prompt Saja', 's2_in_t2v')],
-    [Markup.button.callback('« Kembali', 'back_main')],
-  ]);
-}
-
-function s2DurationKeyboard() {
-  return Markup.inlineKeyboard([
-    [
-      Markup.button.callback('5 detik', 's2_dur_5'),
-      Markup.button.callback('10 detik', 's2_dur_10'),
-      Markup.button.callback('15 detik', 's2_dur_15'),
-    ],
-    [Markup.button.callback('« Kembali', 'mode_s2')],
-  ]);
-}
-
-function s2RatioKeyboard() {
-  return Markup.inlineKeyboard([
-    [
-      Markup.button.callback('📱 9:16', 's2_ratio_916'),
-      Markup.button.callback('🖥️ 16:9', 's2_ratio_169'),
-      Markup.button.callback('⬛ 1:1', 's2_ratio_11'),
-    ],
-  ]);
-}
-
-function s2AudioKeyboard() {
-  return Markup.inlineKeyboard([
-    [
-      Markup.button.callback('🔊 Audio Nyala', 's2_audio_on'),
-      Markup.button.callback('🔇 Audio Mati', 's2_audio_off'),
-    ],
-  ]);
-}
 
 // ─── Wan 2.7 wizard keyboards (i2v/t2v) ───────────────────────────────────────
 
@@ -1551,7 +1500,6 @@ function hargaText(): string {
     `• Sora 2 — ${formatRupiah(MODEL_PRICES.sora)}\n` +
     `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
     `• Seedance 2.0 Fast — ${formatRupiah(MODEL_PRICES.seedance)}\n` +
-    `• Seedance 2.0 (Premium) — ${formatRupiah(MODEL_PRICES.seedance2)}\n` +
     `• Wan 2.7 — ${formatRupiah(MODEL_PRICES.wan)}\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
     `• Grok Imagine — ${formatRupiah(MODEL_PRICES.grok)}\n` +
@@ -2733,69 +2681,6 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
-  // ── Seedance 2.0 (Premium) wizard ──
-  if (data === 'mode_s2') {
-    setSession(userId, {
-      mode: 'idle',
-      s2InputMode: undefined,
-      s2Duration: undefined,
-      s2Ratio: undefined,
-      s2Resolution: undefined,
-      s2Audio: undefined,
-      s2ImageUrl: undefined,
-    });
-    return ctx.editMessageText(
-      '🎬 *Seedance 2.0 (Premium)*\n\nPilih cara membuat video:',
-      { parse_mode: 'Markdown', ...s2InputKeyboard() }
-    );
-  }
-
-  if (data === 's2_in_i2v' || data === 's2_in_t2v') {
-    setSession(userId, { s2InputMode: data === 's2_in_i2v' ? 'i2v' : 't2v' });
-    return ctx.editMessageText(
-      '🎬 *Seedance 2.0 (Premium)*\n\n*Langkah 1:* Pilih durasi video:',
-      { parse_mode: 'Markdown', ...s2DurationKeyboard() }
-    );
-  }
-
-  if (data.startsWith('s2_dur_')) {
-    const dur = parseInt(data.replace('s2_dur_', ''), 10);
-    setSession(userId, { s2Duration: dur });
-    return ctx.editMessageText(
-      `🎬 *Seedance 2.0 (Premium)*\n\nDurasi: *${dur} detik*\n\n*Langkah 2:* Pilih rasio layar:`,
-      { parse_mode: 'Markdown', ...s2RatioKeyboard() }
-    );
-  }
-
-  if (data.startsWith('s2_ratio_')) {
-    const ratio = SD_RATIO_MAP[data.replace('s2_ratio_', '')] ?? '9:16';
-    // Resolusi dikunci 720p (opsi 1080p dihilangkan), langsung ke langkah audio.
-    setSession(userId, { s2Ratio: ratio, s2Resolution: '720p' });
-    return ctx.editMessageText(
-      `🎬 *Seedance 2.0 (Premium)*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Audio video?`,
-      { parse_mode: 'Markdown', ...s2AudioKeyboard() }
-    );
-  }
-
-  if (data === 's2_audio_on' || data === 's2_audio_off') {
-    const audio = data === 's2_audio_on';
-    const session = getSession(userId);
-    if (session.s2InputMode === 'i2v') {
-      setSession(userId, { s2Audio: audio, mode: 's2_wait_image' });
-      return ctx.editMessageText(
-        `🎬 *Seedance 2.0 (Premium)*\n\nAudio: *${audio ? 'Nyala' : 'Mati'}*\n\n` +
-        '*Langkah 4:* Kirim *foto acuan* untuk video kamu.',
-        { parse_mode: 'Markdown' }
-      );
-    }
-    setSession(userId, { s2Audio: audio, mode: 's2_wait_prompt' });
-    return ctx.editMessageText(
-      `🎬 *Seedance 2.0 (Premium)*\n\nAudio: *${audio ? 'Nyala' : 'Mati'}*\n\n` +
-      '*Langkah 4:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
-      { parse_mode: 'Markdown' }
-    );
-  }
-
   // ── Wan 2.7 wizard (i2v/t2v) ──
   if (data === 'mode_wan') {
     setSession(userId, {
@@ -3105,15 +2990,6 @@ async function handleImageInput(ctx: any, fileUrl: string) {
     );
   }
 
-  if (session.mode === 's2_wait_image') {
-    setSession(userId, { s2ImageUrl: fileUrl, mode: 's2_wait_prompt' });
-    return ctx.reply(
-      '✅ Foto acuan diterima!\n\n' +
-      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
-      { parse_mode: 'Markdown' }
-    );
-  }
-
   if (session.mode === 'wan_wait_image') {
     setSession(userId, { wanImageUrl: fileUrl, mode: 'wan_wait_prompt' });
     return ctx.reply(
@@ -3340,33 +3216,6 @@ bot.on('text', async (ctx) => {
     const statusMsg = await ctx.reply('⏳ Memproses Seedance 2.0 Fast...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
     runSeedance(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
       .catch(e => console.error(`[${userId}] Seedance gen error:`, e.message));
-    return;
-  }
-
-  // ── Seedance 2.0 (Premium) prompt ──
-  if (session.mode === 's2_wait_prompt') {
-    if (!await requireLogin(ctx)) return;
-    const prompt = ctx.message.text.trim();
-    if (!prompt) {
-      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
-    }
-    const cooldownMs = getCooldownRemainingMs(userId);
-    if (cooldownMs > 0) {
-      setSession(userId, { mode: 'idle' });
-      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
-    }
-    const opts = {
-      inputMode: session.s2InputMode ?? 't2v',
-      imageUrl: session.s2ImageUrl,
-      duration: session.s2Duration ?? 5,
-      ratio: session.s2Ratio ?? '9:16',
-      resolution: session.s2Resolution ?? '720p',
-      audio: session.s2Audio ?? true,
-    };
-    setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply('⏳ Memproses Seedance 2.0 (Premium)...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
-    runSeedance2(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
-      .catch(e => console.error(`[${userId}] Seedance2 gen error:`, e.message));
     return;
   }
 
@@ -3987,115 +3836,6 @@ async function runSeedance(
   }
 }
 
-// ─── Background: Seedance 2.0 Premium (regular model) ────────────────────────
-
-async function runSeedance2(
-  chatId: number,
-  userId: number,
-  dbUserId: number,
-  statusMsgId: number,
-  prompt: string,
-  opts: {
-    inputMode: 'i2v' | 't2v';
-    imageUrl?: string;
-    duration: number;
-    ratio: string;
-    resolution: string;
-    audio: boolean;
-  }
-) {
-  console.log(`[${userId}] Seedance2 started — mode: ${opts.inputMode}, dur: ${opts.duration}s, ratio: ${opts.ratio}, res: ${opts.resolution}, audio: ${opts.audio}`);
-
-  const PRICE = MODEL_PRICES.seedance2;
-  const charge = await beginCharge(dbUserId, PRICE);
-  if (!charge.ok) {
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
-    return;
-  }
-  let refund = true;
-
-  try {
-    let imageBuffer: Buffer | undefined;
-    let imageName: string | undefined;
-    let imageMime: string | undefined;
-    if (opts.inputMode === 'i2v' && opts.imageUrl) {
-      const img = await downloadBuffer(opts.imageUrl);
-      imageBuffer = img.buf;
-      imageName = `reference.${img.ext}`;
-      imageMime = img.mime;
-      console.log(`[${userId}] Seedance2 ref image — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
-    }
-
-    let lastEdit = 0;
-    const result = await picsart.generateSeedance({
-      userId: dbUserId,
-      prompt,
-      imageBuffer,
-      imageName,
-      imageMime,
-      duration: opts.duration,
-      ratio: opts.ratio,
-      resolution: opts.resolution,
-      generateAudio: opts.audio,
-      model: picsart.SEEDANCE2_MODEL,
-      onStatus: (stage) => {
-        const text = stage === 'upload'
-          ? '⏳ Seedance 2.0 Premium: mengunggah foto ke server... (1/3)'
-          : stage === 'submit'
-            ? '⏳ Seedance 2.0 Premium: mengirim perintah ke server... (2/3)'
-            : '⏳ Seedance 2.0 Premium: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 3–8 menit. Jangan tutup chat ini.';
-        lastEdit = Date.now();
-        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
-      },
-      onPoll: (elapsedSec) => {
-        if (Date.now() - lastEdit < 30_000) return;
-        lastEdit = Date.now();
-        const mins = Math.floor(elapsedSec / 60);
-        const secs = elapsedSec % 60;
-        const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
-        bot.telegram.editMessageText(
-          chatId, statusMsgId, undefined,
-          `⏳ Seedance 2.0 Premium: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${timer} (biasanya 3–8 menit).\nJangan tutup chat ini, video dikirim otomatis.`
-        ).catch(() => {});
-      },
-    });
-
-    const delivered = await sendResult(
-      chatId,
-      result.url,
-      `🎬 Seedance 2.0 Premium (${opts.duration}s · ${opts.ratio} · ${opts.resolution}${opts.audio ? ' · audio' : ''})\n\n/menu untuk buat lagi`,
-      true
-    );
-    if (delivered) {
-      refund = false;
-      const newCount = await incrementKlingUsage(dbUserId);
-      markGenSuccess(userId);
-      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-      console.log(`[${userId}] Seedance2 done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
-    }
-
-  } catch (err: any) {
-    const msg = err?.message ?? String(err);
-    console.error(`[${userId}] Seedance2 error: ${msg}`);
-    let friendly: string;
-    if (msg.includes('PICSART_TIMEOUT')) {
-      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
-    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
-      friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
-    } else {
-      friendly = '❌ Gagal memproses. Coba lagi nanti.';
-    }
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${friendly}\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
-  } finally {
-    if (refund) {
-      await addSaldo(dbUserId, PRICE).catch(() => {});
-      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
-    }
-    generating.delete(dbUserId);
-  }
-}
 
 // ─── Background: Wan 2.7 (i2v/t2v) ────────────────────────────────────────────
 

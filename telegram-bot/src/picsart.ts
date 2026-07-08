@@ -48,10 +48,6 @@ export type KlingModelKey = keyof typeof KLING_MODELS;
 // `/workflows/seedance/options` pricing pre-check captured from the web app.
 export const SEEDANCE_MODEL = 'seedance_2_0_fast';
 
-// Seedance 2.0 (regular/premium) — same /workflows/seedance endpoint, beda model
-// string dan role gambar ('first_frame', bukan 'reference_image' — sesuai HAR).
-export const SEEDANCE2_MODEL = 'seedance_2_0';
-
 // Grok Imagine — image-to-video only (requires a reference image). Endpoint
 // `/workflows/x-ai/v1/videos/generations/*`. Pricing ~5 credits/sec.
 export const GROK_MODEL = 'grok-imagine-video-1.5-preview';
@@ -581,12 +577,11 @@ export async function submitSeedance(credId: number, input: {
   ratio: string;
   resolution: string;
   generateAudio: boolean;
-  model?: string; // default: SEEDANCE_MODEL (fast). SEEDANCE2_MODEL = regular.
+  model?: string; // default: SEEDANCE_MODEL (fast).
 }): Promise<string> {
   const access = await getAccessToken(credId);
   const model = input.model ?? SEEDANCE_MODEL;
-  // HAR: regular seedance_2_0 pakai role 'first_frame'; fast pakai 'reference_image'.
-  const imageRole = model === SEEDANCE2_MODEL ? 'first_frame' : 'reference_image';
+  const imageRole = 'reference_image';
   const content: Array<Record<string, unknown>> = [];
   if (input.imageUrl) {
     content.push({ type: 'image_url', image_url: { url: input.imageUrl }, role: imageRole });
