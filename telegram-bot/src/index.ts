@@ -1183,19 +1183,29 @@ async function pollForResult(taskId: string, userId: number, apiKey: string, pol
 
 function mainMenuKeyboard() {
   return Markup.inlineKeyboard([
+    // ── Akun & Saldo ──
     [
       Markup.button.callback('💳 Isi Saldo', 'menu_topup'),
       Markup.button.callback('💰 Cek Saldo', 'menu_saldo'),
     ],
+    [
+      Markup.button.callback('📋 Lihat Tarif', 'menu_harga'),
+      Markup.button.callback('🧾 Riwayat Top-up', 'menu_riwayat'),
+    ],
+    [Markup.button.callback('🔍 Cek Status Pembayaran', 'menu_cekbayar')],
+    // ── Generate Video ──
+    [Markup.button.callback('── 🎬 Generate Video ──', 'noop')],
     [Markup.button.callback('🕹️ Kling Motion Control', 'mode_kling')],
     [Markup.button.callback('🎬 Seedance 2.0 Fast', 'mode_seedance')],
     [Markup.button.callback('🌊 Wan 2.7', 'mode_wan')],
     [Markup.button.callback('🚀 Runway Gen-4.5', 'mode_rw')],
     [Markup.button.callback('🎥 Sora 2 (OpenAI)', 'mode_sora')],
     [Markup.button.callback('✨ Gemini Omni (Google)', 'mode_gomni')],
-    [Markup.button.callback('🎨 GPT Image 2 (Gambar)', 'mode_gpt')],
-    [Markup.button.callback('🍌 Nano Banana Pro (Gambar)', 'mode_bananapro')],
-    [Markup.button.callback('🍌 Nano Banana 2 (Gambar)', 'mode_banana2')],
+    // ── Generate Gambar ──
+    [Markup.button.callback('── 🎨 Generate Gambar ──', 'noop')],
+    [Markup.button.callback('🎨 GPT Image 2', 'mode_gpt')],
+    [Markup.button.callback('🍌 Nano Banana Pro', 'mode_bananapro')],
+    [Markup.button.callback('🍌 Nano Banana 2', 'mode_banana2')],
   ]);
 }
 
@@ -2445,9 +2455,57 @@ bot.on('callback_query', async (ctx) => {
     return ctx.reply(
       `💰 *Saldo kamu:* ${formatRupiah(saldo)}\n\n` +
       (saldo <= 0 ? 'Saldo kosong. Tekan 💳 Isi Saldo untuk top-up.\n' : 'Tekan 💳 Isi Saldo untuk top-up.\n') +
-      'Ketik /harga untuk lihat tarif tiap model.',
+      'Tekan 📋 Lihat Tarif untuk cek harga tiap model.',
       { parse_mode: 'Markdown' }
     );
+  }
+
+  if (data === 'menu_harga') {
+    return ctx.reply(hargaText(), { parse_mode: 'Markdown' });
+  }
+
+  if (data === 'menu_riwayat') {
+    const s = getSession(userId);
+    const rows = await getRecentTopups(s.dbUserId!, 10);
+    if (rows.length === 0) {
+      return ctx.reply('📭 Belum ada riwayat top-up.\n\nTekan 💳 Isi Saldo untuk top-up.');
+    }
+    const lines = rows.map((r) => {
+      const icon = r.status === 'PAID' ? '✅' : r.status === 'PENDING' ? '⏳' : '❌';
+      const when = new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+      return `${icon} ${formatRupiah(Number(r.amount))} · ${r.status} · ${when}`;
+    });
+    return ctx.reply(`🧾 *Riwayat top-up terakhir:*\n\n${lines.join('\n')}`, { parse_mode: 'Markdown' });
+  }
+
+  if (data === 'menu_cekbayar') {
+    const s = getSession(userId);
+    const pending = await db.query(
+      `SELECT order_id FROM topup_orders
+       WHERE db_user_id = $1 AND status <> 'PAID' AND created_at > NOW() - INTERVAL '1 hour'
+       ORDER BY created_at DESC LIMIT 1`,
+      [s.dbUserId!]
+    );
+    if (pending.rowCount === 0) {
+      return ctx.reply('ℹ️ Tidak ada top-up yang menunggu pembayaran.\n\nTekan 💳 Isi Saldo untuk top-up.');
+    }
+    const orderId = pending.rows[0].order_id as string;
+    await ctx.reply('🔄 Mengecek status pembayaran...');
+    await reconcileTopupOrder(orderId).catch((e) => console.error('menu_cekbayar reconcile error:', e?.message ?? e));
+    const saldo = await getSaldo(s.dbUserId!);
+    const still = await db.query(`SELECT status FROM topup_orders WHERE order_id = $1`, [orderId]);
+    const st = still.rows[0]?.status;
+    if (st === 'PAID') {
+      return ctx.reply(`✅ Pembayaran diterima!\n\n💰 Saldo kamu sekarang: *${formatRupiah(saldo)}*`, { parse_mode: 'Markdown' });
+    }
+    if (st === 'EXPIRED') {
+      return ctx.reply('❌ QRIS sudah kadaluarsa. Tekan 💳 Isi Saldo untuk buat baru.');
+    }
+    return ctx.reply('⏳ Belum terbayar. Selesaikan pembayaran QRIS-nya, lalu tekan 🔍 Cek Status Pembayaran lagi.');
+  }
+
+  if (data === 'noop') {
+    return ctx.answerCbQuery();
   }
 
   if (data === 'topup_custom') {
