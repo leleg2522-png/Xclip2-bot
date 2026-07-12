@@ -2,7 +2,6 @@ import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
 import FormData from 'form-data';
 import { Client, Pool } from 'pg';
-import bcrypt from 'bcryptjs';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import sharp from 'sharp';
 import express from 'express';
@@ -90,14 +89,6 @@ db.on('error', (err: any) => {
   console.warn('⚠️ PG pool idle-client error (bot masih jalan):', err?.message ?? err);
 });
 console.log('✅ Database pool initialized');
-
-async function findUserByUsernameOrEmail(input: string) {
-  const res = await db.query(
-    'SELECT * FROM users WHERE username = $1 OR email = $1 LIMIT 1',
-    [input]
-  );
-  return res.rows[0] || null;
-}
 
 async function checkActiveSubscription(userId: number): Promise<boolean> {
   const res = await db.query(
@@ -729,8 +720,6 @@ picsart.initPicsart(db, (msg: string) => {
 
 type Mode =
   | 'idle'
-  | 'login_wait_username'
-  | 'login_wait_password'
   | 'kling_wait_model'
   | 'kling_wait_image'
   | 'kling_wait_video'
@@ -757,7 +746,6 @@ interface Session {
   dbIsAdmin?: boolean;
   assignedKeys?: string[];
   keyIndex?: number;
-  loginTempUsername?: string;
   characterUrl?: string;
   kling26CharacterUrl?: string;
   // Seedance 2.0 Fast wizard state
@@ -912,48 +900,6 @@ function hydrateSession(userId: number, user: any): void {
     dbUsername: user.username,
     dbIsAdmin: user.is_admin === true,
   });
-}
-
-// Tautkan Telegram ID ke akun lama (hasil /login). Pindahkan saldo dari akun
-// auto-register (kalau ada) ke akun lama, lalu set telegram_id di akun lama.
-// Semua ATOMIK biar tak ada saldo hilang/dobel.
-async function linkTelegramToAccount(
-  tgId: number,
-  targetUserId: number
-): Promise<{ ok: boolean; reason?: string; saldo?: number }> {
-  const client = await db.connect();
-  try {
-    await client.query('BEGIN');
-    const tgt = await client.query(
-      'SELECT id, telegram_id, saldo FROM users WHERE id = $1 FOR UPDATE',
-      [targetUserId]
-    );
-    if ((tgt.rowCount ?? 0) === 0) { await client.query('ROLLBACK'); return { ok: false, reason: 'notfound' }; }
-    const target = tgt.rows[0];
-    if (target.telegram_id !== null && String(target.telegram_id) !== String(tgId)) {
-      await client.query('ROLLBACK');
-      return { ok: false, reason: 'linked_other' };
-    }
-    // Akun auto-register yang lagi kepakai Telegram ID ini (selain target) → tarik saldonya.
-    const cur = await client.query(
-      'SELECT id, saldo FROM users WHERE telegram_id = $1 AND id <> $2 FOR UPDATE',
-      [tgId, targetUserId]
-    );
-    let moved = 0;
-    for (const row of cur.rows) {
-      moved += Number(row.saldo ?? 0);
-      await client.query('UPDATE users SET telegram_id = NULL, saldo = 0 WHERE id = $1', [row.id]);
-    }
-    await client.query('UPDATE users SET telegram_id = $1, saldo = saldo + $2 WHERE id = $3', [tgId, moved, targetUserId]);
-    const fin = await client.query('SELECT saldo FROM users WHERE id = $1', [targetUserId]);
-    await client.query('COMMIT');
-    return { ok: true, saldo: Number(fin.rows[0].saldo) };
-  } catch (e) {
-    await client.query('ROLLBACK');
-    throw e;
-  } finally {
-    client.release();
-  }
 }
 
 // Pastikan user teridentifikasi (auto-register kalau perlu). Sistem sekarang
@@ -1250,7 +1196,6 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🎨 GPT Image 2 (Gambar)', 'mode_gpt')],
     [Markup.button.callback('🍌 Nano Banana Pro (Gambar)', 'mode_bananapro')],
     [Markup.button.callback('🍌 Nano Banana 2 (Gambar)', 'mode_banana2')],
-    [Markup.button.callback('🔗 Tautkan akun lama', 'menu_login')],
   ]);
 }
 
@@ -1631,8 +1576,7 @@ bot.start(async (ctx) => {
     `👋 Selamat datang di *XclipAI Bot*!\n\n` +
     `💰 Saldo kamu: *${formatRupiah(saldo)}*\n\n` +
     (saldo <= 0
-      ? `Saldomu masih kosong. Ketik /topup untuk isi saldo.\n` +
-        `Kalau kamu user lama (dulu langganan bulanan), ketik /login buat mindahin saldonya ke Telegram ini.\n\n`
+      ? `Saldomu masih kosong. Ketik /topup untuk isi saldo.\n\n`
       : ``) +
     `Ketik /harga untuk lihat tarif tiap model.\n\nPilih mode generasi:`,
     { parse_mode: 'Markdown', ...mainMenuKeyboard() }
@@ -1643,22 +1587,6 @@ bot.command('menu', async (ctx) => {
   if (!await requireLogin(ctx)) return;
   setSession(ctx.from.id, { mode: 'idle' });
   return ctx.reply('Pilih mode generasi:', mainMenuKeyboard());
-});
-
-bot.command('login', (ctx) => {
-  setSession(ctx.from.id, { mode: 'login_wait_username' });
-  return ctx.reply(
-    '🔗 *Tautkan akun lama XclipAI*\n\n' +
-    'Buat kamu yang dulu pakai email & password (langganan bulanan). Setelah ditautkan, ' +
-    'saldo kamu pindah ke Telegram ini dan kamu *tak perlu login lagi*.\n\n' +
-    'Masukkan *username atau email* kamu:',
-    { parse_mode: 'Markdown' }
-  );
-});
-
-bot.command('logout', (ctx) => {
-  setSession(ctx.from.id, { mode: 'idle', dbUserId: undefined, dbUsername: undefined, dbIsAdmin: undefined, assignedKeys: undefined, keyIndex: undefined, loginTempUsername: undefined });
-  return ctx.reply('✅ Sesi dibersihkan.\n\nAkun kamu tetap terkait dengan Telegram ini — cukup /start untuk lanjut.');
 });
 
 bot.command('status', async (ctx) => {
@@ -2522,18 +2450,6 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
-  if (data === 'menu_login') {
-    setSession(userId, { mode: 'login_wait_username' });
-    return ctx.reply(
-      '🔗 *Tautkan akun lama XclipAI*\n\n' +
-      'Buat kamu yang dulu pakai email & password (langganan bulanan). Setelah ditautkan, ' +
-      'saldo kamu pindah ke Telegram ini dan kamu *tak perlu login lagi*.\n\n' +
-      'Kalau kamu user baru, abaikan ini — langsung tekan 💳 Isi Saldo aja.\n\n' +
-      'Masukkan *username atau email* kamu:',
-      { parse_mode: 'Markdown' }
-    );
-  }
-
   if (data === 'topup_custom') {
     setSession(userId, { mode: 'topup_wait_custom' });
     return ctx.reply(`✏️ Ketik nominal top-up (angka saja), minimal ${formatRupiah(TOPUP_MIN)}.\n\nContoh: 30000`);
@@ -3063,50 +2979,6 @@ bot.on('video', async (ctx) => {
 bot.on('text', async (ctx) => {
   const userId = ctx.from.id;
   const session = getSession(userId);
-
-  // ── Login flow ──
-  if (session.mode === 'login_wait_username') {
-    const username = ctx.message.text.trim();
-    setSession(userId, { loginTempUsername: username, mode: 'login_wait_password' });
-    return ctx.reply('🔑 Masukkan *password* kamu:', { parse_mode: 'Markdown' });
-  }
-
-  if (session.mode === 'login_wait_password') {
-    const password = ctx.message.text.trim();
-    const username = session.loginTempUsername!;
-    setSession(userId, { mode: 'idle', loginTempUsername: undefined });
-
-    try {
-      const user = await findUserByUsernameOrEmail(username);
-      if (!user || !user.password_hash) {
-        return ctx.reply('❌ Username/email tidak ditemukan. Coba lagi dengan /login');
-      }
-      const valid = await bcrypt.compare(password, user.password_hash);
-      if (!valid) {
-        return ctx.reply('❌ Password salah. Coba lagi dengan /login');
-      }
-
-      // Tautkan Telegram ID ke akun lama + pindahkan saldo auto-register (kalau ada).
-      const link = await linkTelegramToAccount(ctx.from.id, user.id);
-      if (!link.ok) {
-        if (link.reason === 'linked_other') {
-          return ctx.reply('❌ Akun ini sudah ditautkan ke Telegram lain. Hubungi admin kalau menurutmu ini keliru.');
-        }
-        return ctx.reply('❌ Gagal menautkan akun. Coba lagi nanti.');
-      }
-
-      hydrateSession(userId, { id: user.id, username: user.username, is_admin: user.is_admin === true });
-      return ctx.reply(
-        `✅ Berhasil masuk & ditautkan sebagai *${user.username}*! 🎉\n\n` +
-        `💰 Saldo kamu: *${formatRupiah(link.saldo ?? 0)}*\n\n` +
-        `Mulai sekarang kamu *tak perlu login lagi* — cukup pakai Telegram ini.\n\nPilih mode generasi:`,
-        { parse_mode: 'Markdown', ...mainMenuKeyboard() }
-      );
-    } catch (e: any) {
-      console.error(`[${userId}] Login error:`, e.message);
-      return ctx.reply('❌ Terjadi kesalahan saat login. Coba lagi nanti.');
-    }
-  }
 
   // ── Top-up nominal custom ──
   if (session.mode === 'topup_wait_custom') {
