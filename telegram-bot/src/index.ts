@@ -723,6 +723,7 @@ type Mode =
   | 'kling_wait_model'
   | 'kling_wait_image'
   | 'kling_wait_video'
+  | 'kling_wait_prompt'
   | 'seedance_wait_image'
   | 'seedance_wait_prompt'
   | 'wan_wait_image'
@@ -747,6 +748,8 @@ interface Session {
   assignedKeys?: string[];
   keyIndex?: number;
   characterUrl?: string;
+  klingCharacterFileId?: string;
+  klingVideoFileId?: string;
   kling26CharacterUrl?: string;
   // Seedance 2.0 Fast wizard state
   seedanceInputMode?: 'i2v' | 't2v';
@@ -2534,7 +2537,7 @@ bot.on('callback_query', async (ctx) => {
   // tapi sekarang rute ke Kling MC3.0 PRO (Picsart, model kling-v2-6).
   if (data === 'kling_v3') {
     if (!await requireLogin(ctx)) return;
-    setSession(userId, { mode: 'kling_wait_image' });
+    setSession(userId, { mode: 'kling_wait_image', characterUrl: undefined, klingCharacterFileId: undefined, klingVideoFileId: undefined });
     return ctx.editMessageText(
       `🕹️ *Kling MC3.0 PRO*\n\n` +
       '*Langkah 1:* Kirim *foto karakter* yang ingin dianimasikan.\n\n' +
@@ -2863,12 +2866,19 @@ bot.on('callback_query', async (ctx) => {
 
 // ─── Shared photo/image handler ───────────────────────────────────────────────
 
-async function handleImageInput(ctx: any, fileUrl: string) {
+async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
   const userId = ctx.from.id;
   const session = getSession(userId);
 
+  if (session.mode === 'kling_wait_prompt') {
+    return ctx.reply(
+      '⚠️ Sekarang giliran *prompt teks*. Kirim deskripsi gerakan/adegan, atau ketik *-* untuk lewati.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (session.mode === 'kling_wait_image') {
-    setSession(userId, { characterUrl: fileUrl, mode: 'kling_wait_video' });
+    setSession(userId, { characterUrl: fileUrl, klingCharacterFileId: fileId, mode: 'kling_wait_video' });
     return ctx.reply(
       '✅ Foto karakter diterima!\n\n' +
       '*Langkah 2:* Kirim *video referensi gerakan*.\n\n' +
@@ -2972,7 +2982,7 @@ bot.on('photo', async (ctx) => {
   if (!await requireLogin(ctx)) return;
   const photo = ctx.message.photo[ctx.message.photo.length - 1];
   const fileLink = await ctx.telegram.getFileLink(photo.file_id);
-  await handleImageInput(ctx, fileLink.href);
+  await handleImageInput(ctx, fileLink.href, photo.file_id);
 });
 
 // ─── Video handler ────────────────────────────────────────────────────────────
@@ -2988,16 +2998,21 @@ bot.on('video', async (ctx) => {
     if (vid.file_size && vid.file_size > MAX_VIDEO_BYTES) {
       return ctx.reply(`❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
     }
-    const cooldownMs = getCooldownRemainingMs(userId);
-    if (cooldownMs > 0) {
-      setSession(userId, { mode: 'idle' });
-      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
-    }
-    setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply(`⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).`, { parse_mode: 'Markdown' });
-    runKlingMotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, vid.file_id, session.characterUrl)
-      .catch(e => console.error(`[${userId}] Kling gen error:`, e.message));
-    return;
+    setSession(userId, { klingVideoFileId: vid.file_id, mode: 'kling_wait_prompt' });
+    return ctx.reply(
+      '✅ Video referensi diterima!\n\n' +
+      '*Langkah 3:* Kirim *prompt teks* (deskripsi gerakan/adegan) untuk mengarahkan hasil video.\n\n' +
+      'Contoh: _buat dia mengikuti referensi tanpa kamera goyang_\n\n' +
+      'Atau ketik *-* untuk lewati (tanpa prompt).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'kling_wait_prompt') {
+    return ctx.reply(
+      '⚠️ Video referensi sudah diterima. Sekarang kirim *prompt teks*, atau ketik *-* untuk lewati.',
+      { parse_mode: 'Markdown' }
+    );
   }
 
   if (session.mode === 'kling26_wait_video' && session.kling26CharacterUrl) {
@@ -3048,6 +3063,30 @@ bot.on('text', async (ctx) => {
       return ctx.reply('⚠️ Nominal tidak valid. Ketik angka saja, misal 30000. Ulangi dengan /topup.');
     }
     await startTopupFlow(ctx, getSession(userId).dbUserId!, userId, amount);
+    return;
+  }
+
+  // ── Kling MC3.0 PRO (Picsart) prompt ──
+  if (session.mode === 'kling_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    if (!session.characterUrl || !session.klingVideoFileId) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply('⚠️ Sesi tidak lengkap. Ulangi dari /menu ya.');
+    }
+    const raw = ctx.message.text.trim();
+    const prompt = raw === '-' ? '' : raw;
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    const videoFileId = session.klingVideoFileId;
+    // Prefer file_id (fresh link resolved at generation time) over the possibly-expired URL.
+    const characterRef = session.klingCharacterFileId ?? session.characterUrl;
+    setSession(userId, { mode: 'idle', klingVideoFileId: undefined });
+    const statusMsg = await ctx.reply(`⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).`);
+    runKlingMotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, videoFileId, characterRef, prompt)
+      .catch(e => console.error(`[${userId}] Kling gen error:`, e.message));
     return;
   }
 
@@ -3242,7 +3281,7 @@ bot.on('document', async (ctx) => {
 
   if (doc.mime_type?.startsWith('image/')) {
     const fileLink = await ctx.telegram.getFileLink(doc.file_id);
-    await handleImageInput(ctx, fileLink.href);
+    await handleImageInput(ctx, fileLink.href, doc.file_id);
     return;
   }
 
@@ -3277,21 +3316,26 @@ bot.on('document', async (ctx) => {
     return;
   }
 
+  if (doc.mime_type?.startsWith('video/') && session.mode === 'kling_wait_prompt') {
+    return ctx.reply(
+      '⚠️ Video referensi sudah diterima. Sekarang kirim *prompt teks*, atau ketik *-* untuk lewati.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (doc.mime_type?.startsWith('video/') && session.mode === 'kling_wait_video' && session.characterUrl) {
     const MAX_VIDEO_BYTES = 19 * 1024 * 1024;
     if (doc.file_size && doc.file_size > MAX_VIDEO_BYTES) {
       return ctx.reply(`❌ Video terlalu besar (${(doc.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
     }
-    const cooldownMs = getCooldownRemainingMs(userId);
-    if (cooldownMs > 0) {
-      setSession(userId, { mode: 'idle' });
-      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
-    }
-    setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply(`⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).`);
-    runKlingMotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, doc.file_id, session.characterUrl)
-      .catch(console.error);
-    return;
+    setSession(userId, { klingVideoFileId: doc.file_id, mode: 'kling_wait_prompt' });
+    return ctx.reply(
+      '✅ Video referensi diterima!\n\n' +
+      '*Langkah 3:* Kirim *prompt teks* (deskripsi gerakan/adegan) untuk mengarahkan hasil video.\n\n' +
+      'Contoh: _buat dia mengikuti referensi tanpa kamera goyang_\n\n' +
+      'Atau ketik *-* untuk lewati (tanpa prompt).',
+      { parse_mode: 'Markdown' }
+    );
   }
 
   return ctx.reply('⚠️ Pilih mode terlebih dahulu:', mainMenuKeyboard());
@@ -3353,7 +3397,7 @@ function isFreepikKeyExhaustedError(raw: string): boolean {
   return /quota|rate.?limit|limit.?exceeded|insufficient|unauthorized|401|403|429|free.?trial|upgrade.?to.?a.?paid|reached.?the.?limit|trial.?usage|billing/i.test(raw);
 }
 
-async function runKlingMotionControl(chatId: number, userId: number, dbUserId: number, statusMsgId: number, videoFileIdOrUrl: string, imageUrl: string) {
+async function runKlingMotionControl(chatId: number, userId: number, dbUserId: number, statusMsgId: number, videoFileIdOrUrl: string, imageFileIdOrUrl: string, prompt: string = '') {
   const label = 'Kling MC3.0 PRO';
   const PRICE = MODEL_PRICES.kling_mc;
   const charge = await beginCharge(dbUserId, PRICE);
@@ -3364,12 +3408,16 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
   let refund = true;
 
   try {
-    // Support both Telegram file ID and direct URL
-    const isDirectUrl = videoFileIdOrUrl.startsWith('http://') || videoFileIdOrUrl.startsWith('https://');
-    const videoUrl = isDirectUrl
+    // Support both Telegram file ID and direct URL (file ID preferred — links expire)
+    const isDirectVideoUrl = videoFileIdOrUrl.startsWith('http://') || videoFileIdOrUrl.startsWith('https://');
+    const videoUrl = isDirectVideoUrl
       ? videoFileIdOrUrl
       : (await bot.telegram.getFileLink(videoFileIdOrUrl)).href;
-    console.log(`[${userId}] ${label} Motion Control (Picsart) started — img: ${imageUrl}, vid: ${videoUrl}`);
+    const isDirectImageUrl = imageFileIdOrUrl.startsWith('http://') || imageFileIdOrUrl.startsWith('https://');
+    const imageUrl = isDirectImageUrl
+      ? imageFileIdOrUrl
+      : (await bot.telegram.getFileLink(imageFileIdOrUrl)).href;
+    console.log(`[${userId}] ${label} Motion Control (Picsart) started — img: ${imageUrl}, vid: ${videoUrl}, prompt: "${prompt}"`);
 
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `⏳ ${label} sedang diproses...\nBiasanya 5–8 menit.`
@@ -3389,7 +3437,7 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
       userId: dbUserId,
       imageBuffer: img.buf, imageName: `character.${img.ext}`, imageMime: img.mime,
       videoBuffer: vid.buf, videoName: `driver.${vidType.ext}`, videoMime: vidType.mime,
-      prompt: '',
+      prompt,
       model: 'v26',
       onStatus: (stage) => {
         const text = stage === 'upload'
