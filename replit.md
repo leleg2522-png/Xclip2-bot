@@ -1,6 +1,6 @@
-# [Project name]
+# XclipAI (xclip2bot)
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Telegram bot ecosystem for AI video/image generation (Kling, Picsart, Flora, Freepik, Leonardo) with saldo billing via KlikQRIS, plus Picsart invite panel and media downloader web apps.
 
 ## Run & Operate
 
