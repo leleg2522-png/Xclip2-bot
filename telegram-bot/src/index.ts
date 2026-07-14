@@ -924,6 +924,18 @@ async function requireLogin(ctx: any): Promise<boolean> {
   }
 }
 
+// Cek admin: auto-hydrate akun dari telegram_id (login sudah dihapus),
+// lalu cek flag is_admin dari DB.
+async function requireAdmin(ctx: any): Promise<boolean> {
+  if (!(await requireLogin(ctx))) return false;
+  const session = getSession(ctx.from.id);
+  if (!session.dbIsAdmin) {
+    await ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
+    return false;
+  }
+  return true;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -1694,9 +1706,8 @@ bot.command('cekbayar', async (ctx) => {
 // ─── Admin commands ───────────────────────────────────────────────────────────
 
 bot.command('broadcast', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const text = ctx.message.text.replace(/^\/broadcast\s*/i, '').trim();
   if (!text) {
@@ -1724,9 +1735,8 @@ bot.command('broadcast', async (ctx) => {
 });
 
 bot.command('addkey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   // Ambil semua teks setelah /addkey, pisah berdasarkan spasi atau baris baru
   const raw = ctx.message.text.replace(/^\/addkey\s*/i, '').trim();
@@ -1763,9 +1773,8 @@ bot.command('addkey', async (ctx) => {
 });
 
 bot.command('poolstatus', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const stats = await getPoolStats();
   const total = stats.available + stats.assigned + stats.dead;
@@ -1781,9 +1790,8 @@ bot.command('poolstatus', async (ctx) => {
 });
 
 bot.command('removekey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const parts = ctx.message.text.trim().split(/\s+/);
   if (parts.length < 2) {
@@ -1800,9 +1808,8 @@ bot.command('removekey', async (ctx) => {
 });
 
 bot.command('restorekey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const parts = ctx.message.text.trim().split(/\s+/);
   if (parts.length < 2) {
@@ -1819,9 +1826,8 @@ bot.command('restorekey', async (ctx) => {
 });
 
 bot.command('restoredeadkeys', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const res = await db.query(
     `UPDATE renderful_key_pool SET status = 'available', dead_at = NULL, assigned_to = NULL, slot = NULL WHERE status = 'dead' RETURNING api_key`
@@ -1836,9 +1842,8 @@ bot.command('restoredeadkeys', async (ctx) => {
 });
 
 bot.command('validatekeys', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const res = await db.query(
     `SELECT api_key, status FROM renderful_key_pool WHERE status != 'dead' ORDER BY status, id`
@@ -1905,9 +1910,8 @@ bot.command('validatekeys', async (ctx) => {
 });
 
 bot.command('clearpool', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const res = await db.query(`DELETE FROM renderful_key_pool RETURNING api_key`);
   if (res.rows.length === 0) return ctx.reply('ℹ️ Pool sudah kosong.');
@@ -1920,9 +1924,8 @@ bot.command('clearpool', async (ctx) => {
 // ─── Admin commands: aivideoapi key pool ─────────────────────────────────────
 
 bot.command('addfreepikkey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const raw = ctx.message.text.replace(/^\/addfreepikkey\s*/i, '').trim();
   if (!raw) {
@@ -1953,9 +1956,8 @@ bot.command('addfreepikkey', async (ctx) => {
 });
 
 bot.command('freepikpoolstatus', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const stats = await getFreepikPoolStats();
   const total = stats.available + stats.dead;
@@ -1969,9 +1971,8 @@ bot.command('freepikpoolstatus', async (ctx) => {
 });
 
 bot.command('removefreepikkey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const parts = ctx.message.text.trim().split(/\s+/);
   if (parts.length < 2) return ctx.reply('📝 *Format:* `/removefreepikkey <api_key>`', { parse_mode: 'Markdown' });
@@ -1987,9 +1988,8 @@ bot.command('removefreepikkey', async (ctx) => {
 
 // ─── Picsart admin commands ───────────────────────────────────────────────────
 bot.command('addpicsartkey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const raw = ctx.message.text.replace(/^\/addpicsartkey\s*/i, '').trim();
   if (!raw) {
@@ -2019,9 +2019,8 @@ bot.command('addpicsartkey', async (ctx) => {
 });
 
 bot.command('picsartstatus', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
   const st = await picsart.getStatus();
   const counts = Object.entries(st.counts).map(([k, v]) => `• ${k}: ${v}`).join('\n') || '• (kosong)';
   return ctx.reply(
@@ -2031,9 +2030,8 @@ bot.command('picsartstatus', async (ctx) => {
 });
 
 bot.command('picsartcredits', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
   try {
     const pool = await picsart.getPool();
     if (pool.length === 0) return ctx.reply('❌ Belum ada akun. Tambah dengan /addpicsartkey rt:...');
@@ -2056,9 +2054,8 @@ bot.command('picsartcredits', async (ctx) => {
 });
 
 bot.command('picsartpool', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
   try {
     const pool = await picsart.getPool();
     if (pool.length === 0) return ctx.reply('📭 Pool akun kosong. Tambah dengan /addpicsartkey rt:...');
@@ -2076,9 +2073,8 @@ bot.command('picsartpool', async (ctx) => {
 });
 
 bot.command('restorefreepikkey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const parts = ctx.message.text.trim().split(/\s+/);
   if (parts.length < 2) return ctx.reply('📝 *Format:* `/restorefreepikkey <api_key>`', { parse_mode: 'Markdown' });
@@ -2093,9 +2089,8 @@ bot.command('restorefreepikkey', async (ctx) => {
 });
 
 bot.command('clearfreepikpool', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const res = await db.query(`DELETE FROM freepik_key_pool RETURNING api_key`);
   if (res.rows.length === 0) return ctx.reply('ℹ️ Pool Freepik sudah kosong.');
@@ -2103,9 +2098,8 @@ bot.command('clearfreepikpool', async (ctx) => {
 });
 
 bot.command('addi2vkey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const raw = ctx.message.text.replace(/^\/addi2vkey\s*/i, '').trim();
   if (!raw) {
@@ -2136,9 +2130,8 @@ bot.command('addi2vkey', async (ctx) => {
 });
 
 bot.command('i2vpoolstatus', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const stats = await getI2vPoolStats();
   const total = stats.available + stats.dead;
@@ -2152,9 +2145,8 @@ bot.command('i2vpoolstatus', async (ctx) => {
 });
 
 bot.command('removei2vkey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const parts = ctx.message.text.trim().split(/\s+/);
   if (parts.length < 2) return ctx.reply('📝 *Format:* `/removei2vkey <api_key>`', { parse_mode: 'Markdown' });
@@ -2169,9 +2161,8 @@ bot.command('removei2vkey', async (ctx) => {
 });
 
 bot.command('restorei2vkey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const parts = ctx.message.text.trim().split(/\s+/);
   if (parts.length < 2) return ctx.reply('📝 *Format:* `/restorei2vkey <api_key>`', { parse_mode: 'Markdown' });
@@ -2186,9 +2177,8 @@ bot.command('restorei2vkey', async (ctx) => {
 });
 
 bot.command('cleari2vpool', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const res = await db.query(`DELETE FROM aivideoapi_key_pool RETURNING api_key`);
   if (res.rows.length === 0) return ctx.reply('ℹ️ Pool i2v sudah kosong.');
@@ -2198,9 +2188,8 @@ bot.command('cleari2vpool', async (ctx) => {
 // ─── Admin: Leonardo AI Key Pool ─────────────────────────────────────────────
 
 bot.command('addleonardokey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const raw = ctx.message.text.replace(/^\/addleonardokey\s*/i, '').trim();
   if (!raw) {
@@ -2230,9 +2219,8 @@ bot.command('addleonardokey', async (ctx) => {
 });
 
 bot.command('leonardopoolstatus', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const stats = await getLeonardoPoolStats();
   const total = stats.available + stats.dead;
@@ -2246,9 +2234,8 @@ bot.command('leonardopoolstatus', async (ctx) => {
 });
 
 bot.command('removeleonardokey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const parts = ctx.message.text.trim().split(/\s+/);
   if (parts.length < 2) return ctx.reply('📝 *Format:* `/removeleonardokey <api_key>`', { parse_mode: 'Markdown' });
@@ -2263,9 +2250,8 @@ bot.command('removeleonardokey', async (ctx) => {
 });
 
 bot.command('restoreleonardokey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const parts = ctx.message.text.trim().split(/\s+/);
   if (parts.length < 2) return ctx.reply('📝 *Format:* `/restoreleonardokey <api_key>`', { parse_mode: 'Markdown' });
@@ -2280,9 +2266,8 @@ bot.command('restoreleonardokey', async (ctx) => {
 });
 
 bot.command('clearleonardopool', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const res = await db.query(`DELETE FROM leonardo_key_pool RETURNING api_key`);
   if (res.rows.length === 0) return ctx.reply('ℹ️ Pool Leonardo AI sudah kosong.');
@@ -2292,9 +2277,8 @@ bot.command('clearleonardopool', async (ctx) => {
 // ─── Admin: Flora AI Key Pool (Kling 2.6 Motion Control) ─────────────────────
 
 bot.command('addflorakey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const raw = ctx.message.text.replace(/^\/addflorakey\s*/i, '').trim();
   if (!raw) {
@@ -2324,9 +2308,8 @@ bot.command('addflorakey', async (ctx) => {
 });
 
 bot.command('florapoolstatus', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const stats = await getFloraPoolStats();
   const total = stats.available + stats.dead;
@@ -2341,9 +2324,8 @@ bot.command('florapoolstatus', async (ctx) => {
 });
 
 bot.command('validateflorakeys', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const res = await db.query(`SELECT api_key FROM flora_key_pool WHERE status = 'available' ORDER BY id`);
   if (res.rows.length === 0) return ctx.reply('ℹ️ Tidak ada key available di pool Flora AI.');
@@ -2365,9 +2347,8 @@ bot.command('validateflorakeys', async (ctx) => {
 });
 
 bot.command('removeflorakey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const parts = ctx.message.text.trim().split(/\s+/);
   if (parts.length < 2) return ctx.reply('📝 *Format:* `/removeflorakey <api_key>`', { parse_mode: 'Markdown' });
@@ -2382,9 +2363,8 @@ bot.command('removeflorakey', async (ctx) => {
 });
 
 bot.command('restoreflorakey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const parts = ctx.message.text.trim().split(/\s+/);
   if (parts.length < 2) return ctx.reply('📝 *Format:* `/restoreflorakey <api_key>`', { parse_mode: 'Markdown' });
@@ -2399,9 +2379,8 @@ bot.command('restoreflorakey', async (ctx) => {
 });
 
 bot.command('clearflorapool', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
-  if (!session.dbUserId) return ctx.reply('🔒 Belum login.');
-  if (!session.dbIsAdmin) return ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
 
   const res = await db.query(`DELETE FROM flora_key_pool RETURNING api_key`);
   if (res.rows.length === 0) return ctx.reply('ℹ️ Pool Flora AI sudah kosong.');
