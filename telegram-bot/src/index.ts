@@ -138,6 +138,10 @@ async function deductSaldo(dbUserId: number, amount: number): Promise<boolean> {
   return (res.rowCount ?? 0) > 0;
 }
 
+// Bonus referral: pengundang dapat 5% dari SETIAP top-up user undangannya,
+// langsung masuk saldo utama. Anti-dobel via UNIQUE(order_id) di referral_bonuses.
+const REFERRAL_RATE = 0.05;
+
 // Tambah/kembalikan saldo (top-up sukses ATAU refund saat generate gagal).
 async function addSaldo(dbUserId: number, amount: number): Promise<number> {
   const res = await db.query(
@@ -174,6 +178,17 @@ async function ensureBalanceSchema(): Promise<void> {
   await db.query(
     `CREATE TABLE IF NOT EXISTS bot_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`
   );
+  await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by INTEGER`);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS referral_bonuses (
+      id          SERIAL PRIMARY KEY,
+      referrer_id INTEGER NOT NULL,
+      referred_id INTEGER NOT NULL,
+      order_id    TEXT NOT NULL UNIQUE,
+      amount      BIGINT NOT NULL,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
   await db.query(`
     CREATE TABLE IF NOT EXISTS flora_key_pool (
       id         SERIAL PRIMARY KEY,
@@ -252,7 +267,10 @@ async function getPendingTopupOrders(): Promise<PendingTopup[]> {
 // /cekbayar jalan bersamaan.
 async function markTopupPaidAndCredit(
   orderId: string
-): Promise<{ amount: number; dbUserId: number; telegramId: number; newSaldo: number } | null> {
+): Promise<{
+  amount: number; dbUserId: number; telegramId: number; newSaldo: number;
+  referral: { referrerTelegramId: number | null; bonus: number } | null;
+} | null> {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
@@ -274,12 +292,38 @@ async function markTopupPaidAndCredit(
       `UPDATE users SET saldo = saldo + $2 WHERE id = $1 RETURNING saldo`,
       [row.db_user_id, row.amount]
     );
+
+    // Bonus referral 5% ke pengundang — dalam transaksi yang sama biar atomik.
+    // UNIQUE(order_id) menjamin bonus per order cuma sekali walau ada balapan.
+    let referral: { referrerTelegramId: number | null; bonus: number } | null = null;
+    const ref = await client.query(`SELECT referred_by FROM users WHERE id = $1`, [row.db_user_id]);
+    const referrerId = ref.rows[0]?.referred_by;
+    if (referrerId && Number(referrerId) !== Number(row.db_user_id)) {
+      const bonus = Math.floor(Number(row.amount) * REFERRAL_RATE);
+      if (bonus > 0) {
+        const ins = await client.query(
+          `INSERT INTO referral_bonuses (referrer_id, referred_id, order_id, amount)
+           VALUES ($1, $2, $3, $4) ON CONFLICT (order_id) DO NOTHING RETURNING id`,
+          [referrerId, row.db_user_id, orderId, bonus]
+        );
+        if ((ins.rowCount ?? 0) > 0) {
+          const r2 = await client.query(
+            `UPDATE users SET saldo = saldo + $2 WHERE id = $1 RETURNING telegram_id`,
+            [referrerId, bonus]
+          );
+          const tg = r2.rows[0]?.telegram_id;
+          referral = { referrerTelegramId: tg ? Number(tg) : null, bonus };
+        }
+      }
+    }
+
     await client.query('COMMIT');
     return {
       amount: Number(row.amount),
       dbUserId: Number(row.db_user_id),
       telegramId: Number(row.telegram_id),
       newSaldo: Number(bal.rows[0]?.saldo ?? 0),
+      referral,
     };
   } catch (e) {
     await client.query('ROLLBACK');
@@ -876,17 +920,23 @@ async function findUserByTelegramId(tgId: number) {
 
 // Auto-register: user Telegram yang belum pernah ada → bikin akun baru saldo Rp0.
 // Dipakai saat /start atau generate pertama. Aman terhadap balapan /start ganda.
-async function getOrCreateTelegramUser(ctx: any) {
+async function getOrCreateTelegramUser(ctx: any, refTgId?: number) {
   const tgId = ctx.from.id;
   const existing = await findUserByTelegramId(tgId);
   if (existing) return existing;
+  // Referral: hanya di-set SEKALI saat akun dibuat, tak bisa refer diri sendiri.
+  let referredBy: number | null = null;
+  if (refTgId && refTgId !== tgId) {
+    const refUser = await findUserByTelegramId(refTgId).catch(() => null);
+    if (refUser) referredBy = refUser.id;
+  }
   const uname = 'tg_' + tgId;
   const email = 'tg_' + tgId + '@telegram.local';
   try {
     const res = await db.query(
-      `INSERT INTO users (username, email, password_hash, is_admin, saldo, telegram_id)
-       VALUES ($1, $2, '', false, 0, $3) RETURNING *`,
-      [uname, email, tgId]
+      `INSERT INTO users (username, email, password_hash, is_admin, saldo, telegram_id, referred_by)
+       VALUES ($1, $2, '', false, 0, $3, $4) RETURNING *`,
+      [uname, email, tgId, referredBy]
     );
     return res.rows[0];
   } catch (e) {
@@ -908,12 +958,12 @@ function hydrateSession(userId: number, user: any): void {
 // Pastikan user teridentifikasi (auto-register kalau perlu). Sistem sekarang
 // pay-per-generate: TAK ada cek langganan di sini — saldo dicek & dipotong
 // per-model di dalam tiap fungsi generate (run*).
-async function requireLogin(ctx: any): Promise<boolean> {
+async function requireLogin(ctx: any, refTgId?: number): Promise<boolean> {
   const userId = ctx.from.id;
   const session = getSession(userId);
   if (session.dbUserId) return true;
   try {
-    const user = await getOrCreateTelegramUser(ctx);
+    const user = await getOrCreateTelegramUser(ctx, refTgId);
     if (!user) { await ctx.reply('⚠️ Gagal memuat akun kamu. Coba /start lagi.'); return false; }
     hydrateSession(userId, user);
     return true;
@@ -1545,6 +1595,13 @@ async function reconcileTopupOrder(
         { parse_mode: 'Markdown' }
       ).catch(() => {});
     }
+    // Kabari pengundang kalau ada bonus referral cair.
+    if (credited?.referral?.referrerTelegramId) {
+      await bot.telegram.sendMessage(
+        credited.referral.referrerTelegramId,
+        `🎁 Bonus referral +${formatRupiah(credited.referral.bonus)} masuk ke saldo kamu!\n\nTeman undanganmu baru saja top-up. Cek /referral untuk statistik.`
+      ).catch(() => {});
+    }
     return 'paid';
   }
 
@@ -1594,7 +1651,10 @@ async function pollPendingTopups(): Promise<void> {
 
 bot.start(async (ctx) => {
   setSession(ctx.from.id, { mode: 'idle' });
-  if (!await requireLogin(ctx)) return;
+  // Deteksi link referral: t.me/<bot>?start=ref_<telegramId>
+  const refMatch = ((ctx.message as any)?.text ?? '').match(/^\/start\s+ref_(\d+)/i);
+  const refTgId = refMatch ? Number(refMatch[1]) : undefined;
+  if (!await requireLogin(ctx, refTgId)) return;
   const dbUserId = getSession(ctx.from.id).dbUserId!;
   const saldo = await getSaldo(dbUserId).catch(() => 0);
   return ctx.reply(
@@ -1645,6 +1705,25 @@ bot.command('saldo', async (ctx) => {
 bot.command('harga', async (ctx) => {
   if (!await requireLogin(ctx)) return;
   return ctx.reply(hargaText(), { parse_mode: 'Markdown' });
+});
+
+bot.command('referral', async (ctx) => {
+  if (!await requireLogin(ctx)) return;
+  const session = getSession(ctx.from.id);
+  const botUsername = ctx.botInfo?.username ?? 'bot';
+  const link = `https://t.me/${botUsername}?start=ref_${ctx.from.id}`;
+  const [cnt, sum] = await Promise.all([
+    db.query(`SELECT COUNT(*) AS n FROM users WHERE referred_by = $1`, [session.dbUserId]),
+    db.query(`SELECT COALESCE(SUM(amount), 0) AS total FROM referral_bonuses WHERE referrer_id = $1`, [session.dbUserId]),
+  ]);
+  // Tanpa parse_mode: link mengandung underscore yang bisa merusak Markdown.
+  return ctx.reply(
+    `🎁 Program Referral\n\n` +
+    `Ajak teman pakai link di bawah. Setiap mereka top-up, kamu dapat bonus 5% dari nominalnya — langsung masuk saldo, berlaku selamanya.\n\n` +
+    `🔗 Link kamu:\n${link}\n\n` +
+    `👥 Teman diundang: ${cnt.rows[0]?.n ?? 0}\n` +
+    `💰 Total bonus diterima: ${formatRupiah(Number(sum.rows[0]?.total ?? 0))}`
+  );
 });
 
 bot.command('riwayat', async (ctx) => {
@@ -2397,6 +2476,7 @@ bot.help((ctx) => {
     '*Perintah:*\n' +
     '/start — Menu utama\n' +
     '/menu — Tampilkan menu\n' +
+    '/referral — Ajak teman, dapat bonus 5% tiap mereka top-up\n' +
     '/cancel — Batalkan proses\n\n' +
     '*🕹️ Kling Motion Control:*\n' +
     '• Transfer gerakan dari video referensi ke karakter dengan kualitas sinematik\n' +
