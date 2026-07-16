@@ -118,21 +118,19 @@ const MODEL_PRICES = {
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
 
-// Harga Kling V3 I2V per (kualitas, durasi) — proporsional ke kredit Picsart
-// (HAR Jul 2026): std 4 kredit/dtk, pro 6/dtk, 4k 13/dtk, turbo 720p 4/dtk,
-// turbo 1080p 5/dtk.
+// Harga Kling V3 I2V & V3 Turbo — flat Rp2.500 per generate (semua kualitas,
+// resolusi & durasi). Opsi 4K dihapus dari menu (Jul 2026).
 const KV3_PRICES: Record<string, number> = {
-  std_5: 1000, std_15: 2500,
-  pro_5: 1500, pro_15: 3500,
-  '4k_5': 2500, '4k_15': 7000,
-  '720p_5': 1000, '720p_15': 2500,
-  '1080p_5': 1200, '1080p_15': 3000,
+  std_5: 2500, std_15: 2500,
+  pro_5: 2500, pro_15: 2500,
+  '720p_5': 2500, '720p_15': 2500,
+  '1080p_5': 2500, '1080p_15': 2500,
 };
 function kv3Price(mode: string, dur: number): number {
   return KV3_PRICES[`${mode}_${dur}`] ?? 2500;
 }
 const KV3_MODE_LABEL: Record<string, string> = {
-  std: 'Standard', pro: 'Pro', '4k': '4K', '720p': 'Turbo 720p', '1080p': 'Turbo 1080p',
+  std: 'Standard', pro: 'Pro', '720p': 'Turbo 720p', '1080p': 'Turbo 1080p',
 };
 
 function formatRupiah(n: number): string {
@@ -1448,7 +1446,6 @@ function kv3ModeKeyboard() {
     [
       Markup.button.callback('Standard', 'kv3_mode_std'),
       Markup.button.callback('Pro', 'kv3_mode_pro'),
-      Markup.button.callback('4K', 'kv3_mode_4k'),
     ],
     [Markup.button.callback('« Kembali', 'back_main')],
   ]);
@@ -1560,8 +1557,8 @@ function hargaText(): string {
     `• Seedance 2.0 Fast — ${formatRupiah(MODEL_PRICES.seedance)}\n` +
     `• Wan 2.7 — ${formatRupiah(MODEL_PRICES.wan)}\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
-    `• Kling V3 I2V — mulai ${formatRupiah(KV3_PRICES.std_5)} (tergantung kualitas & durasi)\n` +
-    `• Kling V3 Turbo — mulai ${formatRupiah(KV3_PRICES['720p_5'])} (tergantung resolusi & durasi)\n` +
+    `• Kling V3 I2V — ${formatRupiah(KV3_PRICES.std_5)}\n` +
+    `• Kling V3 Turbo — ${formatRupiah(KV3_PRICES['720p_5'])}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)}\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling26_mc)}\n\n` +
     '🎨 *Gambar*\n' +
@@ -3384,7 +3381,7 @@ bot.on('text', async (ctx) => {
       return ctx.reply('⚠️ Foto acuan tidak ditemukan. Mulai lagi dari /menu.');
     }
     const variant = session.kv3Variant ?? ('v3' as const);
-    const validModes = variant === 'v3' ? ['std', 'pro', '4k'] : ['720p', '1080p'];
+    const validModes = variant === 'v3' ? ['std', 'pro'] : ['720p', '1080p'];
     const kvMode = session.kv3Mode ?? (variant === 'v3' ? 'std' : '1080p');
     if (!validModes.includes(kvMode)) {
       setSession(userId, { mode: 'idle' });
