@@ -861,6 +861,125 @@ export async function generateRunway(input: {
 }
 
 
+// ─── Kling V3 / V3 Turbo (image-to-video) ─────────────────────────────────────
+// Live-verified via HAR Jul 2026 (AI Playground):
+// POST /workflows/kling-image-to-video/submit
+//   kling-v3:       {prompt, aspect_ratio, duration:"5"|"15", model_name:"kling-v3",
+//                    image, sound:"on", mode:"std"|"pro"|"4k", multi_shot:false, shot_type:"customize"}
+//   kling-v3-turbo: {prompt, aspect_ratio, duration, model_name:"kling-v3-turbo",
+//                    resolution:"720p"|"1080p", image}
+// Result: GET /workflows/kling-image-to-video/{id}/result → response.result.url
+
+export async function submitKlingV3(credId: number, input: {
+  prompt: string;
+  imageUrl: string;
+  aspectRatio: string;   // "9:16" | "16:9"
+  duration: number;      // 5 | 15
+  variant: 'v3' | 'turbo';
+  mode?: 'std' | 'pro' | '4k';        // hanya variant v3
+  resolution?: '720p' | '1080p';      // hanya variant turbo
+  outputName?: string;
+}): Promise<string> {
+  const access = await getAccessToken(credId);
+  const base = {
+    prompt: input.prompt ?? '',
+    aspect_ratio: input.aspectRatio,
+    duration: String(input.duration),
+    image: input.imageUrl,
+  };
+  const params: Record<string, unknown> = input.variant === 'v3'
+    ? {
+        ...base,
+        model_name: 'kling-v3',
+        sound: 'on',
+        mode: input.mode ?? 'std',
+        multi_shot: false,
+        shot_type: 'customize',
+      }
+    : {
+        ...base,
+        model_name: 'kling-v3-turbo',
+        resolution: input.resolution ?? '1080p',
+      };
+  params.options = {
+    drive: {
+      name: input.outputName || 'video.mp4',
+      attributes: {
+        model: input.variant === 'v3' ? 'kling-v3' : 'kling-v3-turbo',
+        aiSDKPayload: JSON.stringify(input.variant === 'v3'
+          ? {
+              prompt: input.prompt ?? '',
+              aspectRatio: input.aspectRatio,
+              duration: input.duration,
+              generateAudio: true,
+              multiShot: false,
+              shotType: 'customize',
+              renderingSpeed: input.mode ?? 'std',
+              startFrame: input.imageUrl,
+            }
+          : {
+              prompt: input.prompt ?? '',
+              aspectRatio: input.aspectRatio,
+              duration: input.duration,
+              resolution: input.resolution ?? '1080p',
+              startFrame: input.imageUrl,
+            }),
+        appId: 'com.picsart.ai-playground',
+        appType: 'miniapp',
+      },
+      folder: { path: 'AI Playground' },
+    },
+  };
+  const r = await http.post(`${API_BASE}/workflows/kling-image-to-video/submit`, { params }, {
+    headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
+    validateStatus: () => true,
+  });
+  const id = r.data?.response?.id;
+  if (!ok2xx(r.status) || !id) {
+    throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+  }
+  return id;
+}
+
+export async function generateKlingV3(input: {
+  userId: number;
+  prompt: string;
+  imageBuffer: Buffer;
+  imageName?: string;
+  imageMime?: string;
+  aspectRatio: string;
+  duration: number;
+  variant: 'v3' | 'turbo';
+  mode?: 'std' | 'pro' | '4k';
+  resolution?: '720p' | '1080p';
+  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  return runWithAccount(input.userId, async (credId) => {
+    input.onStatus?.('upload');
+    const imageUrl = await uploadFile(
+      credId,
+      input.imageBuffer,
+      input.imageName || 'reference.jpg',
+      input.imageMime || 'image/jpeg'
+    );
+    input.onStatus?.('submit');
+    const id = await submitKlingV3(credId, {
+      prompt: input.prompt,
+      imageUrl,
+      aspectRatio: input.aspectRatio,
+      duration: input.duration,
+      variant: input.variant,
+      mode: input.mode,
+      resolution: input.resolution,
+    });
+    input.onStatus?.('poll');
+    return pollWorkflowUrl(credId, (jid) => `/workflows/kling-image-to-video/${jid}/result`, id, {
+      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+    });
+  });
+}
+
 // ─── Sora 2 (OpenAI video: text-to-video or image-to-video) ───────────────────
 // POST /workflows/openai/v1/videos/submit          -> {response:{id}}
 // poll GET /workflows/openai/v1/videos/{id}/result -> COMPLETED, result.videoUrl

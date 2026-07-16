@@ -7,3 +7,4 @@
 - [Telegram bot session resets](telegram-bot-session-resets.md) — in-memory logins wiped on every process crash/redeploy; keep bot.catch + process guards; never put unescaped free-text in parse_mode:Markdown
 - [XclipAI saldo billing & KlikQRIS](xclip-saldo-billing.md) — pay-per-generate: charge only if delivered, any failure=full refund, no saldo→cash; QRIS credit must accept status<>'PAID' so late payments recover
 - [Flora AI API](flora-ai-api.md) — generate pakai params.image_url/video_url (bukan inputs[]); upload form_fields snake_case; "1 key 1 task" salah (paralel jalan); tak ada endpoint saldo credits
+- [XclipAI referral scheme](xclip-referral-scheme.md) — 5% dari SETIAP top-up undangan masuk saldo utama pengundang; bonus cair hanya saat order PAID, idempotent via UNIQUE(order_id)
