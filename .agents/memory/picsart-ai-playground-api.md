@@ -80,3 +80,8 @@ Host: `https://api.picsart.com`, uploads on `https://upload.picsart.com`, result
 ## Video-model input matrix (from HAR)
 - **Gemini Omni** (`/workflows/gemini-omni/video/submit`) accepts a reference **video**: `video:{url}` — URL only, NO mimeType. But video ONLY ever appears alongside an `image:{url,mimeType}`, never alone. Treat v2v as photo+video+prompt.
 - **Sora 2** (`/openai/v1/videos/submit`) accepts only an image via `input_reference_url` — NO video input. Sora = prompt/photo only.
+
+## Seedream (Jul 2026, live-verified)
+- POST `/workflows/seedream/submit` — params `{ prompt, model, count, resolution, aspect_ratio, image:[urls]? }`; poll `/workflows/seedream/{id}/result` → COMPLETED `result.urls[0]`.
+- Model `seedream_4_5` max 4K; `seedream_5_0_pro` HANYA 1K/2K (4K ditolak invalid_request). Rasio 1:1/9:16/16:9/3:4/4:3/2:3/3:2/21:9 semua diterima. Multi-referensi i2i via array `image`.
+- `/workflows/<x>/options` = pre-check harga gratis (tidak charge) — cocok validasi param tanpa biaya.

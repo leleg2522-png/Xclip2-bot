@@ -1218,6 +1218,8 @@ export const IMAGE_ENGINES = {
   gpt: { model: 'gpt-image-2', label: 'GPT Image 2', service: 'openai' },
   banana_pro: { model: 'gemini-3-pro-image-preview', label: 'Nano Banana Pro', service: 'google' },
   banana2: { model: 'gemini-3.1-flash-image-preview', label: 'Nano Banana 2', service: 'google' },
+  seedream45: { model: 'seedream_4_5', label: 'Seedream 4.5', service: 'seedream' },
+  seedream5: { model: 'seedream_5_0_pro', label: 'Seedream 5 Pro', service: 'seedream' },
 } as const;
 export type ImageEngineKey = keyof typeof IMAGE_ENGINES;
 
@@ -1310,6 +1312,50 @@ async function submitGeminiImage(credId: number, input: {
   };
   if (input.imageUrls.length > 0) params.imageUrls = input.imageUrls;
   const r = await http.post(`${API_BASE}/workflows/gemini/v2/images/submit`, { params }, {
+    headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
+    validateStatus: () => true,
+  });
+  const id = r.data?.response?.id;
+  if (!ok2xx(r.status) || !id) {
+    throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+  }
+  return id;
+}
+
+// Seedream image engines (ByteDance via Picsart AI Playground). Captured from
+// HAR Jul 2026: POST /workflows/seedream/submit with params
+// { prompt, model: 'seedream_4_5' | 'seedream_5_0_pro', count, resolution:'4K',
+//   aspect_ratio, image:[urls] (opsional, multi-referensi i2i) }.
+// Poll GET /workflows/seedream/{id}/result -> COMPLETED, result.urls[0].
+async function submitSeedream(credId: number, input: {
+  model: string;
+  prompt: string;
+  ratio: string;
+  imageUrls: string[];
+}): Promise<string> {
+  const access = await getAccessToken(credId);
+  // Live-verified Jul 2026: seedream_4_5 max 4K; seedream_5_0_pro hanya 1K/2K.
+  const resolution = input.model === 'seedream_5_0_pro' ? '2K' : '4K';
+  const params: Record<string, unknown> = {
+    prompt: input.prompt ?? '',
+    model: input.model,
+    count: 1,
+    resolution,
+    aspect_ratio: input.ratio,
+    options: {
+      drive: {
+        name: 'image.png',
+        attributes: {
+          model: input.model.replace(/_/g, '-').replace('-4-5', '-4.5').replace('-5-0-', '-5.0-'),
+          appId: 'com.picsart.ai-playground',
+          appType: 'miniapp',
+        },
+        folder: { path: 'AI Playground' },
+      },
+    },
+  };
+  if (input.imageUrls.length > 0) params.image = input.imageUrls;
+  const r = await http.post(`${API_BASE}/workflows/seedream/submit`, { params }, {
     headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
     validateStatus: () => true,
   });
@@ -1423,6 +1469,14 @@ export async function generateImage(input: {
       });
       id = res.id;
       resultPath = res.resultPath;
+    } else if (input.engine === 'seedream45' || input.engine === 'seedream5') {
+      id = await submitSeedream(credId, {
+        model: IMAGE_ENGINES[input.engine].model,
+        prompt: input.prompt,
+        ratio: input.ratio,
+        imageUrls,
+      });
+      resultPath = 'seedream';
     } else {
       id = await submitGeminiImage(credId, {
         model: IMAGE_ENGINES[input.engine].model,

@@ -117,6 +117,8 @@ const MODEL_PRICES = {
   nano_banana2: 200,
   banana_pro: 200,
   gpt_image: 200,
+  seedream45: 200,     // Seedream 4.5 4K (Picsart AI Playground)
+  seedream5: 200,      // Seedream 5 Pro 2K (Picsart AI Playground; API tidak dukung 4K)
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
 
@@ -858,7 +860,7 @@ interface Session {
   gomniImageUrl?: string;
   gomniVideoUrl?: string;
   // Image generation wizard state (GPT Image 2 / Nano Banana Pro / Nano Banana 2)
-  imgEngine?: 'gpt' | 'banana_pro' | 'banana2';
+  imgEngine?: 'gpt' | 'banana_pro' | 'banana2' | 'seedream45' | 'seedream5';
   imgRatio?: string;
   imgRefs?: string[];
 }
@@ -1309,17 +1311,39 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🎨 GPT Image 2', 'mode_gpt')],
     [Markup.button.callback('🍌 Nano Banana Pro', 'mode_bananapro')],
     [Markup.button.callback('🍌 Nano Banana 2', 'mode_banana2')],
+    [Markup.button.callback('🌠 Seedream 4.5 (4K)', 'mode_seedream45')],
+    [Markup.button.callback('🌠 Seedream 5 Pro (2K)', 'mode_seedream5')],
   ]);
 }
 
 // ─── Image generation wizard keyboard ─────────────────────────────────────────
 
-function imageRatioKeyboard() {
+function imageRatioKeyboard(engine?: string) {
+  // GPT Image 2 hanya mendukung 3 ukuran; engine lain (Gemini/Seedream)
+  // mendukung rasio yang lebih lengkap.
+  if (engine === 'gpt') {
+    return Markup.inlineKeyboard([
+      [
+        Markup.button.callback('📱 9:16', 'img_ratio_916'),
+        Markup.button.callback('🖥️ 16:9', 'img_ratio_169'),
+        Markup.button.callback('⬜ 1:1', 'img_ratio_11'),
+      ],
+      [Markup.button.callback('« Kembali', 'back_main')],
+    ]);
+  }
   return Markup.inlineKeyboard([
     [
       Markup.button.callback('📱 9:16', 'img_ratio_916'),
       Markup.button.callback('🖥️ 16:9', 'img_ratio_169'),
+      Markup.button.callback('⬜ 1:1', 'img_ratio_11'),
     ],
+    [
+      Markup.button.callback('3:4', 'img_ratio_34'),
+      Markup.button.callback('4:3', 'img_ratio_43'),
+      Markup.button.callback('2:3', 'img_ratio_23'),
+      Markup.button.callback('3:2', 'img_ratio_32'),
+    ],
+    [Markup.button.callback('🎬 21:9', 'img_ratio_219')],
     [Markup.button.callback('« Kembali', 'back_main')],
   ]);
 }
@@ -1328,6 +1352,8 @@ const IMG_ENGINE_LABEL: Record<string, string> = {
   gpt: 'GPT Image 2',
   banana_pro: 'Nano Banana Pro',
   banana2: 'Nano Banana 2',
+  seedream45: 'Seedream 4.5 (4K)',
+  seedream5: 'Seedream 5 Pro (2K)',
 };
 
 const MAX_IMG_REFS = 6;
@@ -1380,7 +1406,10 @@ function seedanceAudioKeyboard() {
   ]);
 }
 
-const SD_RATIO_MAP: Record<string, string> = { '916': '9:16', '169': '16:9', '11': '1:1' };
+const SD_RATIO_MAP: Record<string, string> = {
+  '916': '9:16', '169': '16:9', '11': '1:1',
+  '34': '3:4', '43': '4:3', '23': '2:3', '32': '3:2', '219': '21:9',
+};
 
 // ─── Wan 2.7 wizard keyboards (i2v/t2v) ───────────────────────────────────────
 
@@ -1579,7 +1608,9 @@ function hargaText(): string {
     '🎨 *Gambar*\n' +
     `• Nano Banana 2 — ${formatRupiah(MODEL_PRICES.nano_banana2)}\n` +
     `• Nano Banana Pro — ${formatRupiah(MODEL_PRICES.banana_pro)}\n` +
-    `• GPT Image — ${formatRupiah(MODEL_PRICES.gpt_image)}\n\n` +
+    `• GPT Image — ${formatRupiah(MODEL_PRICES.gpt_image)}\n` +
+    `• Seedream 4.5 (4K) — ${formatRupiah(MODEL_PRICES.seedream45)}\n` +
+    `• Seedream 5 Pro (2K) — ${formatRupiah(MODEL_PRICES.seedream5)}\n\n` +
     'Saldo hanya dipotong kalau hasilnya *berhasil terkirim*. Gagal = saldo balik.\n\n' +
     'Ketik /topup untuk isi saldo · /saldo untuk cek.'
   );
@@ -3065,8 +3096,12 @@ bot.on('callback_query', async (ctx) => {
   }
 
   // ── Image generation wizard (GPT Image 2 / Nano Banana Pro / Nano Banana 2) ──
-  if (data === 'mode_gpt' || data === 'mode_bananapro' || data === 'mode_banana2') {
-    const engine = data === 'mode_gpt' ? 'gpt' : data === 'mode_bananapro' ? 'banana_pro' : 'banana2';
+  if (data === 'mode_gpt' || data === 'mode_bananapro' || data === 'mode_banana2' || data === 'mode_seedream45' || data === 'mode_seedream5') {
+    const engine =
+      data === 'mode_gpt' ? 'gpt' as const :
+      data === 'mode_bananapro' ? 'banana_pro' as const :
+      data === 'mode_banana2' ? 'banana2' as const :
+      data === 'mode_seedream45' ? 'seedream45' as const : 'seedream5' as const;
     setSession(userId, {
       mode: 'idle',
       imgEngine: engine,
@@ -3075,14 +3110,17 @@ bot.on('callback_query', async (ctx) => {
     });
     return ctx.editMessageText(
       `🎨 *${IMG_ENGINE_LABEL[engine]}*\n\nBuat gambar resolusi tertinggi.\n\n*Langkah 1:* Pilih rasio gambar:`,
-      { parse_mode: 'Markdown', ...imageRatioKeyboard() }
+      { parse_mode: 'Markdown', ...imageRatioKeyboard(engine) }
     );
   }
 
   if (data.startsWith('img_ratio_')) {
-    const ratio = SD_RATIO_MAP[data.replace('img_ratio_', '')] ?? '9:16';
+    let ratio = SD_RATIO_MAP[data.replace('img_ratio_', '')] ?? '9:16';
     const session = getSession(userId);
     const engine = session.imgEngine ?? 'gpt';
+    // GPT Image 2 hanya mendukung 9:16 / 16:9 / 1:1 — tolak rasio lain
+    // (mis. callback lama/dibuat manual) daripada diam-diam jadi 1:1.
+    if (engine === 'gpt' && !['9:16', '16:9', '1:1'].includes(ratio)) ratio = '9:16';
     setSession(userId, { imgRatio: ratio, imgRefs: [], mode: 'img_collect' });
     return ctx.editMessageText(
       `🎨 *${IMG_ENGINE_LABEL[engine]}*\n\nRasio: *${ratio}*\n\n` +
@@ -4720,7 +4758,7 @@ async function runImageGen(
   statusMsgId: number,
   prompt: string,
   opts: {
-    engine: 'gpt' | 'banana_pro' | 'banana2';
+    engine: 'gpt' | 'banana_pro' | 'banana2' | 'seedream45' | 'seedream5';
     ratio: string;
     refs: string[];
   }
@@ -4728,11 +4766,14 @@ async function runImageGen(
   const label = IMG_ENGINE_LABEL[opts.engine];
   console.log(`[${userId}] Image (${opts.engine}) started — ratio: ${opts.ratio}, refs: ${opts.refs.length}`);
 
-  const PRICE = opts.engine === 'gpt'
-    ? MODEL_PRICES.gpt_image
-    : opts.engine === 'banana_pro'
-      ? MODEL_PRICES.banana_pro
-      : MODEL_PRICES.nano_banana2;
+  const IMG_PRICES = {
+    gpt: MODEL_PRICES.gpt_image,
+    banana_pro: MODEL_PRICES.banana_pro,
+    banana2: MODEL_PRICES.nano_banana2,
+    seedream45: MODEL_PRICES.seedream45,
+    seedream5: MODEL_PRICES.seedream5,
+  } as const;
+  const PRICE = IMG_PRICES[opts.engine];
   const charge = await beginCharge(dbUserId, PRICE);
   if (!charge.ok) {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
