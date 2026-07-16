@@ -110,6 +110,7 @@ const MODEL_PRICES = {
   kling_mc: 2500,      // Kling MC3.0 PRO (Picsart motion control)
   kling26_mc: 2500,    // Kling 2.6 Pro Motion Control (Flora AI)
   kling21_i2v: 2500,   // Kling 2.1 Pro I2V 10 detik (Flora AI)
+  kling25_i2v: 2500,   // Kling 2.5 Turbo Pro I2V (Flora AI)
   seedance: 1000,
   wan: 1500,           // Wan 2.7 (i2v/t2v)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
@@ -802,6 +803,8 @@ type Mode =
   | 'kling26_wait_video'
   | 'k21_wait_image'
   | 'k21_wait_prompt'
+  | 'k25_wait_image'
+  | 'k25_wait_prompt'
   | 'topup_wait_custom';
 
 interface Session {
@@ -817,6 +820,9 @@ interface Session {
   kling26CharacterUrl?: string;
   // Kling 2.1 Pro I2V wizard state (foto + prompt, fix 10 detik)
   k21ImageUrl?: string;
+  // Kling 2.5 Turbo I2V wizard state (durasi 5/10 + foto + prompt)
+  k25Duration?: '5' | '10';
+  k25ImageUrl?: string;
   // Seedance 2.0 Fast wizard state
   seedanceInputMode?: 'i2v' | 't2v';
   seedanceDuration?: number;
@@ -1295,6 +1301,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🎬 Kling V3 I2V', 'mode_kv3')],
     [Markup.button.callback('⚡ Kling V3 Turbo', 'mode_kv3t')],
     [Markup.button.callback('🎞️ Kling 2.1 Pro I2V', 'mode_k21')],
+    [Markup.button.callback('⚡ Kling 2.5 Turbo I2V', 'mode_k25')],
     [Markup.button.callback('🎥 Sora 2 (OpenAI)', 'mode_sora')],
     [Markup.button.callback('✨ Gemini Omni (Google)', 'mode_gomni')],
     // ── Generate Gambar ──
@@ -1566,6 +1573,7 @@ function hargaText(): string {
     `• Kling V3 I2V — ${formatRupiah(KV3_PRICES.std_5)}\n` +
     `• Kling V3 Turbo — ${formatRupiah(KV3_PRICES['720p_5'])}\n` +
     `• Kling 2.1 Pro I2V (10 detik) — ${formatRupiah(MODEL_PRICES.kling21_i2v)}\n` +
+    `• Kling 2.5 Turbo I2V (5/10 detik) — ${formatRupiah(MODEL_PRICES.kling25_i2v)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)}\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling26_mc)}\n\n` +
     '🎨 *Gambar*\n' +
@@ -2775,6 +2783,37 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  // ── Kling 2.5 Turbo I2V wizard (durasi 5/10 + foto + prompt) ──
+  if (data === 'mode_k25') {
+    if (!await requireLogin(ctx)) return;
+    setSession(userId, { mode: 'idle', k25ImageUrl: undefined, k25Duration: undefined });
+    return ctx.editMessageText(
+      `⚡ *Kling 2.5 Turbo I2V*\n\n` +
+      `Video dibuat dari *foto + prompt* (versi cepat).\n` +
+      `💵 Harga: *${formatRupiah(MODEL_PRICES.kling25_i2v)}*\n\n` +
+      `*Langkah 1:* Pilih durasi video:`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [
+            Markup.button.callback('5 detik', 'k25_dur_5'),
+            Markup.button.callback('10 detik', 'k25_dur_10'),
+          ],
+          [Markup.button.callback('« Kembali', 'back_main')],
+        ]),
+      }
+    );
+  }
+
+  if (data === 'k25_dur_5' || data === 'k25_dur_10') {
+    const dur = data === 'k25_dur_5' ? '5' : '10';
+    setSession(userId, { k25Duration: dur, mode: 'k25_wait_image' });
+    return ctx.editMessageText(
+      `⚡ *Kling 2.5 Turbo I2V*\n\nDurasi: *${dur} detik*\n💵 Harga: *${formatRupiah(MODEL_PRICES.kling25_i2v)}*\n\n*Langkah 2:* Kirim *foto acuan* untuk video kamu.`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   // ── Wan 2.7 wizard (i2v/t2v) ──
   if (data === 'mode_wan') {
     setSession(userId, {
@@ -3107,6 +3146,15 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     );
   }
 
+  if (session.mode === 'k25_wait_image') {
+    setSession(userId, { k25ImageUrl: fileUrl, mode: 'k25_wait_prompt' });
+    return ctx.reply(
+      '✅ Foto acuan diterima!\n\n' +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi gerakan/adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (session.mode === 'seedance_wait_image') {
     setSession(userId, { seedanceImageUrl: fileUrl, mode: 'seedance_wait_prompt' });
     return ctx.reply(
@@ -3356,8 +3404,35 @@ bot.on('text', async (ctx) => {
     const imageUrl = session.k21ImageUrl;
     setSession(userId, { mode: 'idle' });
     const statusMsg = await ctx.reply('⏳ Memproses Kling 2.1 Pro I2V...\nHasil dikirim otomatis (~5-10 menit).', { parse_mode: 'Markdown' });
-    runKling21I2V(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, imageUrl)
+    runFloraI2V(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, imageUrl,
+      { label: 'Kling 2.1 Pro I2V', emoji: '🎞️', model: 'f2v-kling-2.1-pro', price: MODEL_PRICES.kling21_i2v, duration: '10' })
       .catch(e => console.error(`[${userId}] Kling21 gen error:`, e.message));
+    return;
+  }
+
+  // ── Kling 2.5 Turbo I2V prompt ──
+  if (session.mode === 'k25_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi gerakan/adegan untuk video kamu.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    if (!session.k25ImageUrl) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply('⚠️ Foto acuan tidak ditemukan. Mulai lagi dari /menu.');
+    }
+    const imageUrl = session.k25ImageUrl;
+    const duration = session.k25Duration === '5' ? '5' : '10';
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Memproses Kling 2.5 Turbo I2V...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
+    runFloraI2V(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, imageUrl,
+      { label: 'Kling 2.5 Turbo I2V', emoji: '⚡', model: 'i2v-kling-2.5', price: MODEL_PRICES.kling25_i2v, duration })
+      .catch(e => console.error(`[${userId}] Kling25 gen error:`, e.message));
     return;
   }
 
@@ -3881,11 +3956,15 @@ async function runKling26MotionControl(chatId: number, userId: number, dbUserId:
   }
 }
 
-// ─── Background: Kling 2.1 Pro I2V (Flora AI, fix 10 detik) ──────────────────
+// ─── Background: Flora I2V generik (Kling 2.1 Pro / Kling 2.5 Turbo) ─────────
 
-async function runKling21I2V(chatId: number, userId: number, dbUserId: number, statusMsgId: number, prompt: string, imageUrl: string) {
-  const label = 'Kling 2.1 Pro I2V';
-  const PRICE = MODEL_PRICES.kling21_i2v;
+async function runFloraI2V(
+  chatId: number, userId: number, dbUserId: number, statusMsgId: number,
+  prompt: string, imageUrl: string,
+  cfg: { label: string; emoji: string; model: string; price: number; duration: '5' | '10' }
+) {
+  const { label } = cfg;
+  const PRICE = cfg.price;
   const charge = await beginCharge(dbUserId, PRICE);
   if (!charge.ok) {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
@@ -3915,11 +3994,12 @@ async function runKling21I2V(chatId: number, userId: number, dbUserId: number, s
       const apiKey = acq.key;
       triedKeys.add(apiKey);
       try {
-        result = await flora.generateKling21ProI2V({
+        result = await flora.generateFloraI2V({
           apiKey,
+          model: cfg.model,
           imageBuffer: img.buf, imageName: `frame.${img.ext}`, imageMime: img.mime,
           prompt,
-          duration: '10',
+          duration: cfg.duration,
           onStatus: (stage) => {
             const text = stage === 'upload'
               ? `⏳ ${label}: mengunggah foto ke server...`
@@ -3949,7 +4029,7 @@ async function runKling21I2V(chatId: number, userId: number, dbUserId: number, s
       throw lastErr ?? new Error('FLORA_NO_KEYS: semua key habis');
     }
 
-    const delivered = await sendResult(chatId, result.url, `🎞️ Kling 2.1 Pro I2V\n\n/menu untuk buat lagi`, true);
+    const delivered = await sendResult(chatId, result.url, `${cfg.emoji} ${label}\n\n/menu untuk buat lagi`, true);
     if (delivered) {
       refund = false;
       markGenSuccess(userId);

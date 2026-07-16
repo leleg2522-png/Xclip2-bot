@@ -182,23 +182,26 @@ export async function generateKling26MotionControl(opts: FloraMotionControlOpts)
   throw new Error('FLORA_TIMEOUT: job belum selesai dalam batas waktu');
 }
 
-// ─── Kling 2.1 Pro — image-to-video (start frame), model f2v-kling-2.1-pro ───
-// Field input terverifikasi Jul 2026: params.image_url + params.duration ('5'|'10').
+// ─── Flora image-to-video generik (foto + prompt → video) ────────────────────
+// Dipakai untuk: Kling 2.1 Pro (f2v-kling-2.1-pro) dan Kling 2.5 Turbo Pro
+// (i2v-kling-2.5). Field input terverifikasi Jul 2026:
+// params.image_url + params.duration ('5'|'10').
 
-export interface FloraKling21Opts {
+export interface FloraI2VOpts {
   apiKey: string;
+  /** Flora model_id, mis. 'f2v-kling-2.1-pro' atau 'i2v-kling-2.5' */
+  model: string;
   imageBuffer: Buffer;
   imageName: string;
   imageMime: string;
   prompt: string;
-  /** '5' | '10' — bot memakai '10' */
   duration?: '5' | '10';
   onStatus?: (stage: 'upload' | 'submit' | 'processing') => void;
-  /** Batas tunggu polling (default 20 menit — estimasi resmi ~5,5 menit) */
+  /** Batas tunggu polling (default 20 menit) */
   timeoutMs?: number;
 }
 
-export async function generateKling21ProI2V(opts: FloraKling21Opts): Promise<FloraResult> {
+export async function generateFloraI2V(opts: FloraI2VOpts): Promise<FloraResult> {
   const { apiKey } = opts;
   const { workspaceId, projectId } = await resolveWorkspaceProject(apiKey);
 
@@ -213,7 +216,7 @@ export async function generateKling21ProI2V(opts: FloraKling21Opts): Promise<Flo
       prompt: opts.prompt.trim(),
       workspace_id: workspaceId,
       project_id: projectId,
-      model: 'f2v-kling-2.1-pro',
+      model: opts.model,
       params: {
         image_url: imageUrl,
         duration: opts.duration ?? '10',
