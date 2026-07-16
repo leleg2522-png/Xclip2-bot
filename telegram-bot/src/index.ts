@@ -110,7 +110,7 @@ const MODEL_PRICES = {
   kling_mc: 2500,      // Kling MC3.0 PRO (Picsart motion control)
   kling26_mc: 2500,    // Kling 2.6 Pro Motion Control (Flora AI)
   kling21_i2v: 2500,   // Kling 2.1 Pro I2V 10 detik (Flora AI)
-  kling25_i2v: 2500,   // Kling 2.5 Turbo Pro I2V (Flora AI)
+  kling25_i2v: 2000,   // Kling 2.5 Turbo Pro I2V (Flora AI)
   seedance: 1000,
   wan: 1500,           // Wan 2.7 (i2v/t2v)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
