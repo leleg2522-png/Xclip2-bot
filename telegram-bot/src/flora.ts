@@ -182,6 +182,82 @@ export async function generateKling26MotionControl(opts: FloraMotionControlOpts)
   throw new Error('FLORA_TIMEOUT: job belum selesai dalam batas waktu');
 }
 
+// ─── Kling 2.1 Pro — image-to-video (start frame), model f2v-kling-2.1-pro ───
+// Field input terverifikasi Jul 2026: params.image_url + params.duration ('5'|'10').
+
+export interface FloraKling21Opts {
+  apiKey: string;
+  imageBuffer: Buffer;
+  imageName: string;
+  imageMime: string;
+  prompt: string;
+  /** '5' | '10' — bot memakai '10' */
+  duration?: '5' | '10';
+  onStatus?: (stage: 'upload' | 'submit' | 'processing') => void;
+  /** Batas tunggu polling (default 20 menit — estimasi resmi ~5,5 menit) */
+  timeoutMs?: number;
+}
+
+export async function generateKling21ProI2V(opts: FloraKling21Opts): Promise<FloraResult> {
+  const { apiKey } = opts;
+  const { workspaceId, projectId } = await resolveWorkspaceProject(apiKey);
+
+  opts.onStatus?.('upload');
+  const imageUrl = await uploadAsset(apiKey, workspaceId, opts.imageBuffer, opts.imageName, opts.imageMime);
+
+  opts.onStatus?.('submit');
+  const gen = await floraApi(apiKey, '/generate', {
+    method: 'POST',
+    body: JSON.stringify({
+      type: 'video',
+      prompt: opts.prompt.trim(),
+      workspace_id: workspaceId,
+      project_id: projectId,
+      model: 'f2v-kling-2.1-pro',
+      params: {
+        image_url: imageUrl,
+        duration: opts.duration ?? '10',
+      },
+    }),
+  });
+  if (gen.status >= 300 || !gen.body?.run_id) throw floraError('FLORA_SUBMIT_FAILED', gen);
+  const runId: string = gen.body.run_id;
+
+  opts.onStatus?.('processing');
+  const timeoutMs = opts.timeoutMs ?? 20 * 60 * 1000;
+  const deadline = Date.now() + timeoutMs;
+  let pollErrors = 0;
+
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 15_000));
+    let run: FloraApiResult;
+    try {
+      run = await floraApi(apiKey, `/runs/${runId}`);
+    } catch {
+      if (++pollErrors > 8) throw new Error('FLORA_POLL_FAILED: koneksi ke Flora terputus terus');
+      continue;
+    }
+    if (run.status >= 300) {
+      if (++pollErrors > 8) throw floraError('FLORA_POLL_FAILED', run);
+      continue;
+    }
+    pollErrors = 0;
+
+    const status = run.body?.status;
+    if (status === 'completed') {
+      const url = run.body?.outputs?.find((o: any) => o?.url)?.url;
+      if (!url) throw new Error('FLORA_NO_OUTPUT: run selesai tapi tidak ada output URL');
+      return { url, runId };
+    }
+    if (status === 'failed' || status === 'canceled') {
+      const code = run.body?.error_code ?? 'UNKNOWN';
+      const msg = run.body?.error_message ?? '';
+      throw new Error(`FLORA_RUN_FAILED [${code}]: ${String(msg).slice(0, 200)}`);
+    }
+  }
+  throw new Error('FLORA_TIMEOUT: job belum selesai dalam batas waktu');
+}
+
 /** Validasi cepat sebuah key: coba list workspaces. */
 export async function validateFloraKey(apiKey: string): Promise<boolean> {
   try {

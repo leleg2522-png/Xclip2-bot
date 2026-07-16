@@ -8,6 +8,8 @@ description: Working call format for Flora AI generate/upload, key-pool behavior
 ## Format request yang benar
 - Base: `https://app.flora.ai/api/v1`, auth `Bearer sk_live_...` per akun (1 akun = 1 workspace sendiri).
 - Model motion control: `iv2v-kling-2.6-motion` (mixed-to-video).
+- Kling 2.1 Pro i2v = model `f2v-kling-2.1-pro` (first-frame-to-video): `params: { image_url, duration: '5'|'10' }` — terverifikasi jalan, output 10.04s. TIDAK ada model `i2v-kling-2.1-pro`; `i2v-kling-2.1` = Master. Submit TANPA image_url tetap diterima (charged $0.45) lalu failed GENERATION_INPUT_VALIDATION saat run — validasi input baru terjadi di run, bukan submit.
+- `GET /models` (butuh Bearer key) = daftar lengkap model_id + params resmi — selalu cek ini dulu sebelum nebak model id.
 - `POST /generate` inputs masuk lewat `params`, **bukan** array `inputs`:
   `params: { image_url, video_url, character_orientation: "video"|"image" }`.
   Pakai `inputs: [...]` → run failed `GENERATION_INPUT_VALIDATION: Field required (image_url)`.

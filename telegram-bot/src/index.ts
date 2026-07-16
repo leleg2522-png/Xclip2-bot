@@ -109,6 +109,7 @@ const MODEL_PRICES = {
   gemini_omni: 2000,
   kling_mc: 2500,      // Kling MC3.0 PRO (Picsart motion control)
   kling26_mc: 2500,    // Kling 2.6 Pro Motion Control (Flora AI)
+  kling21_i2v: 2500,   // Kling 2.1 Pro I2V 10 detik (Flora AI)
   seedance: 1000,
   wan: 1500,           // Wan 2.7 (i2v/t2v)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
@@ -799,6 +800,8 @@ type Mode =
   | 'gomni_wait_prompt'
   | 'kling26_wait_image'
   | 'kling26_wait_video'
+  | 'k21_wait_image'
+  | 'k21_wait_prompt'
   | 'topup_wait_custom';
 
 interface Session {
@@ -812,6 +815,8 @@ interface Session {
   klingCharacterFileId?: string;
   klingVideoFileId?: string;
   kling26CharacterUrl?: string;
+  // Kling 2.1 Pro I2V wizard state (foto + prompt, fix 10 detik)
+  k21ImageUrl?: string;
   // Seedance 2.0 Fast wizard state
   seedanceInputMode?: 'i2v' | 't2v';
   seedanceDuration?: number;
@@ -831,7 +836,7 @@ interface Session {
   rwImageUrl?: string;
   // Kling V3 / V3 Turbo wizard state (image-to-video)
   kv3Variant?: 'v3' | 'turbo';
-  kv3Mode?: string;       // std|pro|4k (v3) atau 720p|1080p (turbo)
+  kv3Mode?: string;       // std|pro (v3) atau 720p|1080p (turbo)
   kv3Duration?: number;   // 5 | 15
   kv3Ratio?: string;      // "9:16" | "16:9"
   kv3ImageUrl?: string;
@@ -1289,6 +1294,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🚀 Runway Gen-4.5', 'mode_rw')],
     [Markup.button.callback('🎬 Kling V3 I2V', 'mode_kv3')],
     [Markup.button.callback('⚡ Kling V3 Turbo', 'mode_kv3t')],
+    [Markup.button.callback('🎞️ Kling 2.1 Pro I2V', 'mode_k21')],
     [Markup.button.callback('🎥 Sora 2 (OpenAI)', 'mode_sora')],
     [Markup.button.callback('✨ Gemini Omni (Google)', 'mode_gomni')],
     // ── Generate Gambar ──
@@ -1559,6 +1565,7 @@ function hargaText(): string {
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
     `• Kling V3 I2V — ${formatRupiah(KV3_PRICES.std_5)}\n` +
     `• Kling V3 Turbo — ${formatRupiah(KV3_PRICES['720p_5'])}\n` +
+    `• Kling 2.1 Pro I2V (10 detik) — ${formatRupiah(MODEL_PRICES.kling21_i2v)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)}\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling26_mc)}\n\n` +
     '🎨 *Gambar*\n' +
@@ -2755,6 +2762,19 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  // ── Kling 2.1 Pro I2V wizard (foto + prompt, fix 10 detik) ──
+  if (data === 'mode_k21') {
+    if (!await requireLogin(ctx)) return;
+    setSession(userId, { mode: 'k21_wait_image', k21ImageUrl: undefined });
+    return ctx.editMessageText(
+      `🎞️ *Kling 2.1 Pro I2V*\n\n` +
+      `Video *10 detik* dibuat dari *foto + prompt*.\n` +
+      `💵 Harga: *${formatRupiah(MODEL_PRICES.kling21_i2v)}*\n\n` +
+      `*Langkah 1:* Kirim *foto acuan* untuk video kamu.`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   // ── Wan 2.7 wizard (i2v/t2v) ──
   if (data === 'mode_wan') {
     setSession(userId, {
@@ -3078,6 +3098,15 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     );
   }
 
+  if (session.mode === 'k21_wait_image') {
+    setSession(userId, { k21ImageUrl: fileUrl, mode: 'k21_wait_prompt' });
+    return ctx.reply(
+      '✅ Foto acuan diterima!\n\n' +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi gerakan/adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (session.mode === 'seedance_wait_image') {
     setSession(userId, { seedanceImageUrl: fileUrl, mode: 'seedance_wait_prompt' });
     return ctx.reply(
@@ -3305,6 +3334,30 @@ bot.on('text', async (ctx) => {
     const statusMsg = await ctx.reply('⏳ Memproses Seedance 2.0 Fast...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
     runSeedance(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
       .catch(e => console.error(`[${userId}] Seedance gen error:`, e.message));
+    return;
+  }
+
+  // ── Kling 2.1 Pro I2V prompt ──
+  if (session.mode === 'k21_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi gerakan/adegan untuk video kamu.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    if (!session.k21ImageUrl) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply('⚠️ Foto acuan tidak ditemukan. Mulai lagi dari /menu.');
+    }
+    const imageUrl = session.k21ImageUrl;
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Memproses Kling 2.1 Pro I2V...\nHasil dikirim otomatis (~5-10 menit).', { parse_mode: 'Markdown' });
+    runKling21I2V(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, imageUrl)
+      .catch(e => console.error(`[${userId}] Kling21 gen error:`, e.message));
     return;
   }
 
@@ -3828,6 +3881,111 @@ async function runKling26MotionControl(chatId: number, userId: number, dbUserId:
   }
 }
 
+// ─── Background: Kling 2.1 Pro I2V (Flora AI, fix 10 detik) ──────────────────
+
+async function runKling21I2V(chatId: number, userId: number, dbUserId: number, statusMsgId: number, prompt: string, imageUrl: string) {
+  const label = 'Kling 2.1 Pro I2V';
+  const PRICE = MODEL_PRICES.kling21_i2v;
+  const charge = await beginCharge(dbUserId, PRICE);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+
+  try {
+    console.log(`[${userId}] ${label} (Flora) started — img: ${imageUrl}`);
+    const img = await downloadBuffer(imageUrl);
+    console.log(`[${userId}] ${label} media — img: ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
+
+    // Rotasi key: sama seperti Kling 2.6 MC — key habis/invalid ditandai dead
+    // lalu rotasi; error konten TIDAK mematikan key dan tidak di-retry.
+    const MAX_KEY_ATTEMPTS = 3;
+    const triedKeys = new Set<string>();
+    let result: { url: string } | null = null;
+    let lastErr: any = null;
+
+    let sawAllBusy = false;
+    for (let attempt = 0; attempt < MAX_KEY_ATTEMPTS && !result; attempt++) {
+      const acq = await acquireNextFloraKey(triedKeys);
+      if (acq.key === null) {
+        if (acq.reason === 'busy') sawAllBusy = true;
+        break;
+      }
+      const apiKey = acq.key;
+      triedKeys.add(apiKey);
+      try {
+        result = await flora.generateKling21ProI2V({
+          apiKey,
+          imageBuffer: img.buf, imageName: `frame.${img.ext}`, imageMime: img.mime,
+          prompt,
+          duration: '10',
+          onStatus: (stage) => {
+            const text = stage === 'upload'
+              ? `⏳ ${label}: mengunggah foto ke server...`
+              : stage === 'submit'
+                ? `⏳ ${label}: mengirim job ke server...`
+                : `⏳ ${label} sedang diproses...\nBiasanya 5–10 menit.`;
+            bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+          },
+        });
+      } catch (err: any) {
+        lastErr = err;
+        const msg = err?.message ?? String(err);
+        if (flora.isFloraKeyExhaustedError(msg)) {
+          console.warn(`[${userId}] ${label} key habis/invalid (attempt ${attempt + 1}) — tandai dead & rotasi. ${msg.slice(0, 150)}`);
+          await markFloraKeyDead(apiKey).catch(() => {});
+          continue;
+        }
+        throw err;
+      } finally {
+        releaseFloraKey(apiKey);
+      }
+    }
+
+    if (!result) {
+      if (sawAllBusy) throw new Error('FLORA_ALL_BUSY: semua akun sedang dipakai');
+      if (triedKeys.size === 0) throw new Error('FLORA_NO_KEYS: pool kosong');
+      throw lastErr ?? new Error('FLORA_NO_KEYS: semua key habis');
+    }
+
+    const delivered = await sendResult(chatId, result.url, `🎞️ Kling 2.1 Pro I2V\n\n/menu untuk buat lagi`, true);
+    if (delivered) {
+      refund = false;
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] ${label} done via Flora`);
+    }
+
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    console.error(`[${userId}] ${label} Flora error: ${msg}`);
+    let friendly: string;
+    if (msg.includes('FLORA_ALL_BUSY')) {
+      friendly = '❌ Semua slot sedang dipakai user lain. Coba lagi beberapa menit ya.';
+    } else if (msg.includes('FLORA_NO_KEYS')) {
+      friendly = '❌ Server model sedang penuh. Coba lagi nanti ya.';
+    } else if (msg.includes('FLORA_TIMEOUT')) {
+      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
+    } else if (msg.includes('FLORA_UPLOAD_FAILED')) {
+      friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
+    } else if (msg.includes('FLORA_RUN_FAILED')) {
+      friendly = '❌ Foto/prompt ditolak model. Coba foto atau prompt lain.';
+    } else {
+      friendly = '❌ Gagal memproses. Coba lagi nanti.';
+    }
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    generating.delete(dbUserId);
+  }
+}
+
 // ─── Background: Seedance 2.0 Fast ─────────────────────────────────────────────────
 
 async function runSeedance(
@@ -4059,7 +4217,7 @@ async function runKlingV3(
   opts: {
     imageUrl: string;
     variant: 'v3' | 'turbo';
-    mode: string;      // std|pro|4k (v3) atau 720p|1080p (turbo)
+    mode: string;      // std|pro (v3) atau 720p|1080p (turbo)
     duration: number;
     ratio: string;
   }
@@ -4089,7 +4247,7 @@ async function runKlingV3(
       aspectRatio: opts.ratio,
       duration: opts.duration,
       variant: opts.variant,
-      mode: opts.variant === 'v3' ? (opts.mode as 'std' | 'pro' | '4k') : undefined,
+      mode: opts.variant === 'v3' ? (opts.mode as 'std' | 'pro') : undefined,
       resolution: opts.variant === 'turbo' ? (opts.mode as '720p' | '1080p') : undefined,
       onStatus: (stage) => {
         const text = stage === 'upload'
