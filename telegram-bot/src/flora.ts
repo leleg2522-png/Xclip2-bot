@@ -261,6 +261,85 @@ export async function generateFloraI2V(opts: FloraI2VOpts): Promise<FloraResult>
   throw new Error('FLORA_TIMEOUT: job belum selesai dalam batas waktu');
 }
 
+// ─── Flora Topaz Video Upscaler (video → video 4x + retiming FPS) ────────────
+// Model katalog: 'video-upscaler-topaz' — params terverifikasi Jul 2026:
+// upscale_factor (float 1–4) + target_fps (int 16–60).
+
+export interface FloraVideoUpscaleOpts {
+  apiKey: string;
+  videoBuffer: Buffer;
+  videoName: string;
+  videoMime: string;
+  /** 1–4 (default 4 = 4K dari 1080p) */
+  upscaleFactor?: number;
+  /** 16–60 (default 60) */
+  targetFps?: number;
+  onStatus?: (stage: 'upload' | 'submit' | 'processing') => void;
+  /** Batas tunggu polling (default 25 menit) */
+  timeoutMs?: number;
+}
+
+export async function generateFloraVideoUpscale(opts: FloraVideoUpscaleOpts): Promise<FloraResult> {
+  const { apiKey } = opts;
+  const { workspaceId, projectId } = await resolveWorkspaceProject(apiKey);
+
+  opts.onStatus?.('upload');
+  const videoUrl = await uploadAsset(apiKey, workspaceId, opts.videoBuffer, opts.videoName, opts.videoMime);
+
+  opts.onStatus?.('submit');
+  const gen = await floraApi(apiKey, '/generate', {
+    method: 'POST',
+    body: JSON.stringify({
+      type: 'video',
+      prompt: 'upscale',
+      workspace_id: workspaceId,
+      project_id: projectId,
+      model: 'video-upscaler-topaz',
+      params: {
+        video_url: videoUrl,
+        upscale_factor: opts.upscaleFactor ?? 4,
+        target_fps: opts.targetFps ?? 60,
+      },
+    }),
+  });
+  if (gen.status >= 300 || !gen.body?.run_id) throw floraError('FLORA_SUBMIT_FAILED', gen);
+  const runId: string = gen.body.run_id;
+
+  opts.onStatus?.('processing');
+  const timeoutMs = opts.timeoutMs ?? 25 * 60 * 1000;
+  const deadline = Date.now() + timeoutMs;
+  let pollErrors = 0;
+
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 15_000));
+    let run: FloraApiResult;
+    try {
+      run = await floraApi(apiKey, `/runs/${runId}`);
+    } catch {
+      if (++pollErrors > 8) throw new Error('FLORA_POLL_FAILED: koneksi ke Flora terputus terus');
+      continue;
+    }
+    if (run.status >= 300) {
+      if (++pollErrors > 8) throw floraError('FLORA_POLL_FAILED', run);
+      continue;
+    }
+    pollErrors = 0;
+
+    const status = run.body?.status;
+    if (status === 'completed') {
+      const url = run.body?.outputs?.find((o: any) => o?.url)?.url;
+      if (!url) throw new Error('FLORA_NO_OUTPUT: run selesai tapi tidak ada output URL');
+      return { url, runId };
+    }
+    if (status === 'failed' || status === 'canceled') {
+      const code = run.body?.error_code ?? 'UNKNOWN';
+      const msg = run.body?.error_message ?? '';
+      throw new Error(`FLORA_RUN_FAILED [${code}]: ${String(msg).slice(0, 200)}`);
+    }
+  }
+  throw new Error('FLORA_TIMEOUT: job belum selesai dalam batas waktu');
+}
+
 /** Validasi cepat sebuah key: coba list workspaces. */
 export async function validateFloraKey(apiKey: string): Promise<boolean> {
   try {

@@ -111,6 +111,7 @@ const MODEL_PRICES = {
   kling26_mc: 2500,    // Kling 2.6 Pro Motion Control (Flora AI)
   kling21_i2v: 2500,   // Kling 2.1 Pro I2V 10 detik (Flora AI)
   kling25_i2v: 2000,   // Kling 2.5 Turbo Pro I2V (Flora AI)
+  topaz_upscale: 700,  // Topaz Video Upscale 4K 60FPS (Flora AI)
   seedance: 1000,
   wan: 1500,           // Wan 2.7 (i2v/t2v)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
@@ -807,6 +808,7 @@ type Mode =
   | 'k21_wait_prompt'
   | 'k25_wait_image'
   | 'k25_wait_prompt'
+  | 'topaz_wait_video'
   | 'topup_wait_custom';
 
 interface Session {
@@ -1304,6 +1306,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('⚡ Kling V3 Turbo', 'mode_kv3t')],
     [Markup.button.callback('🎞️ Kling 2.1 Pro I2V', 'mode_k21')],
     [Markup.button.callback('⚡ Kling 2.5 Turbo I2V', 'mode_k25')],
+    [Markup.button.callback('🔼 Upscale Video 4K 60FPS', 'mode_topazup')],
     [Markup.button.callback('🎥 Sora 2 (OpenAI)', 'mode_sora')],
     [Markup.button.callback('✨ Gemini Omni (Google)', 'mode_gomni')],
     // ── Generate Gambar ──
@@ -1604,7 +1607,8 @@ function hargaText(): string {
     `• Kling 2.1 Pro I2V (10 detik) — ${formatRupiah(MODEL_PRICES.kling21_i2v)}\n` +
     `• Kling 2.5 Turbo I2V (5/10 detik) — ${formatRupiah(MODEL_PRICES.kling25_i2v)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)}\n` +
-    `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling26_mc)}\n\n` +
+    `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling26_mc)}\n` +
+    `• Upscale Video 4K 60FPS — ${formatRupiah(MODEL_PRICES.topaz_upscale)}\n\n` +
     '🎨 *Gambar*\n' +
     `• Nano Banana 2 — ${formatRupiah(MODEL_PRICES.nano_banana2)}\n` +
     `• Nano Banana Pro — ${formatRupiah(MODEL_PRICES.banana_pro)}\n` +
@@ -2845,6 +2849,22 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  // ── Topaz Video Upscale 4K 60FPS (Flora AI) ──
+  if (data === 'mode_topazup') {
+    if (!await requireLogin(ctx)) return;
+    setSession(userId, { mode: 'topaz_wait_video' });
+    return ctx.editMessageText(
+      `🔼 *Upscale Video 4K 60FPS*\n\n` +
+      `Video kamu di-upscale sampai *4x resolusi* (mis. 1080p → 4K) dan di-retime jadi *60 FPS* dengan Topaz.\n` +
+      `💵 Harga: *${formatRupiah(MODEL_PRICES.topaz_upscale)}*\n\n` +
+      `*Langkah 1:* Kirim *video* yang mau di-upscale.\n\n` +
+      `⚠️ *Syarat:*\n` +
+      `• Maks ukuran file: 19MB\n` +
+      `• Hasil maksimal 8192×8192 (di atas itu otomatis dibatasi)`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   // ── Wan 2.7 wizard (i2v/t2v) ──
   if (data === 'mode_wan') {
     setSession(userId, {
@@ -3227,6 +3247,13 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     );
   }
 
+  if (session.mode === 'topaz_wait_video') {
+    return ctx.reply(
+      '⚠️ Mode ini butuh *video*, bukan foto. Kirim video yang mau di-upscale (maks 19MB), atau /menu untuk ganti mode.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (session.mode === 'kv3_wait_image') {
     setSession(userId, { kv3ImageUrl: fileUrl, mode: 'kv3_wait_prompt' });
     return ctx.reply(
@@ -3337,6 +3364,22 @@ bot.on('video', async (ctx) => {
     return;
   }
 
+  if (session.mode === 'topaz_wait_video') {
+    if (vid.file_size && vid.file_size > MAX_VIDEO_BYTES) {
+      return ctx.reply(`❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply(`⏳ Memproses Upscale Video 4K 60FPS...\nHasil dikirim otomatis (~3-10 menit).`, { parse_mode: 'Markdown' });
+    runTopazUpscale(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, vid.file_id)
+      .catch(e => console.error(`[${userId}] Topaz upscale error:`, e.message));
+    return;
+  }
+
   if (session.mode === 'gomni_wait_video' && session.gomniImageUrl) {
     if (vid.file_size && vid.file_size > MAX_VIDEO_BYTES) {
       return ctx.reply(`❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
@@ -3370,6 +3413,14 @@ bot.on('text', async (ctx) => {
     }
     await startTopupFlow(ctx, getSession(userId).dbUserId!, userId, amount);
     return;
+  }
+
+  // ── Topaz upscale: user kirim teks padahal ditunggu video ──
+  if (session.mode === 'topaz_wait_video') {
+    return ctx.reply(
+      '⚠️ Mode ini butuh *video*. Kirim video yang mau di-upscale (maks 19MB), atau /menu untuk ganti mode.',
+      { parse_mode: 'Markdown' }
+    );
   }
 
   // ── Kling MC3.0 PRO (Picsart) prompt ──
@@ -3690,6 +3741,23 @@ bot.on('document', async (ctx) => {
       '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
       { parse_mode: 'Markdown' }
     );
+  }
+
+  if (doc.mime_type?.startsWith('video/') && session.mode === 'topaz_wait_video') {
+    const MAX_VIDEO_BYTES = 19 * 1024 * 1024;
+    if (doc.file_size && doc.file_size > MAX_VIDEO_BYTES) {
+      return ctx.reply(`❌ Video terlalu besar (${(doc.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply(`⏳ Memproses Upscale Video 4K 60FPS...\nHasil dikirim otomatis (~3-10 menit).`, { parse_mode: 'Markdown' });
+    runTopazUpscale(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, doc.file_id)
+      .catch(e => console.error(`[${userId}] Topaz upscale error:`, e.message));
+    return;
   }
 
   if (doc.mime_type?.startsWith('video/') && session.mode === 'kling26_wait_video' && session.kling26CharacterUrl) {
@@ -4089,6 +4157,115 @@ async function runFloraI2V(
       friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
     } else if (msg.includes('FLORA_RUN_FAILED')) {
       friendly = '❌ Foto/prompt ditolak model. Coba foto atau prompt lain.';
+    } else {
+      friendly = '❌ Gagal memproses. Coba lagi nanti.';
+    }
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    generating.delete(dbUserId);
+  }
+}
+
+// ─── Background: Topaz Video Upscale 4K 60FPS (Flora AI) ────────────────────
+
+async function runTopazUpscale(
+  chatId: number, userId: number, dbUserId: number, statusMsgId: number,
+  videoFileId: string,
+) {
+  const label = 'Upscale Video 4K 60FPS';
+  const PRICE = MODEL_PRICES.topaz_upscale;
+  const charge = await beginCharge(dbUserId, PRICE);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+
+  try {
+    const videoUrl = (await bot.telegram.getFileLink(videoFileId)).href;
+    console.log(`[${userId}] ${label} (Flora) started — vid: ${videoUrl}`);
+    const vid = await downloadBuffer(videoUrl);
+    // downloadBuffer pakai detectMime yang hanya kenal gambar — deteksi container video asli.
+    const vidType = detectVideoType(vid.buf, videoUrl);
+    console.log(`[${userId}] ${label} media — vid: ${vidType.mime} ${(vid.buf.length / 1024).toFixed(1)}KB`);
+
+    const MAX_KEY_ATTEMPTS = 3;
+    const triedKeys = new Set<string>();
+    let result: { url: string } | null = null;
+    let lastErr: any = null;
+
+    let sawAllBusy = false;
+    for (let attempt = 0; attempt < MAX_KEY_ATTEMPTS && !result; attempt++) {
+      const acq = await acquireNextFloraKey(triedKeys);
+      if (acq.key === null) {
+        if (acq.reason === 'busy') sawAllBusy = true;
+        break;
+      }
+      const apiKey = acq.key;
+      triedKeys.add(apiKey);
+      try {
+        result = await flora.generateFloraVideoUpscale({
+          apiKey,
+          videoBuffer: vid.buf, videoName: `input.${vidType.ext}`, videoMime: vidType.mime,
+          upscaleFactor: 4,
+          targetFps: 60,
+          onStatus: (stage) => {
+            const text = stage === 'upload'
+              ? `⏳ ${label}: mengunggah video ke server...`
+              : stage === 'submit'
+                ? `⏳ ${label}: mengirim job ke server...`
+                : `⏳ ${label} sedang diproses...\nBiasanya 3–10 menit.`;
+            bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+          },
+        });
+      } catch (err: any) {
+        lastErr = err;
+        const msg = err?.message ?? String(err);
+        if (flora.isFloraKeyExhaustedError(msg)) {
+          console.warn(`[${userId}] ${label} key habis/invalid (attempt ${attempt + 1}) — tandai dead & rotasi. ${msg.slice(0, 150)}`);
+          await markFloraKeyDead(apiKey).catch(() => {});
+          continue;
+        }
+        throw err;
+      } finally {
+        releaseFloraKey(apiKey);
+      }
+    }
+
+    if (!result) {
+      if (sawAllBusy) throw new Error('FLORA_ALL_BUSY: semua akun sedang dipakai');
+      if (triedKeys.size === 0) throw new Error('FLORA_NO_KEYS: pool kosong');
+      throw lastErr ?? new Error('FLORA_NO_KEYS: semua key habis');
+    }
+
+    const delivered = await sendResult(chatId, result.url, `🔼 ${label}\n\n/menu untuk buat lagi`, true);
+    if (delivered) {
+      refund = false;
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] ${label} done via Flora`);
+    }
+
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    console.error(`[${userId}] ${label} Flora error: ${msg}`);
+    let friendly: string;
+    if (msg.includes('FLORA_ALL_BUSY')) {
+      friendly = '❌ Semua slot sedang dipakai user lain. Coba lagi beberapa menit ya.';
+    } else if (msg.includes('FLORA_NO_KEYS')) {
+      friendly = '❌ Server model sedang penuh. Coba lagi nanti ya.';
+    } else if (msg.includes('FLORA_TIMEOUT')) {
+      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
+    } else if (msg.includes('FLORA_UPLOAD_FAILED')) {
+      friendly = '❌ Video tidak bisa diproses. Coba video lain.';
+    } else if (msg.includes('FLORA_RUN_FAILED')) {
+      friendly = '❌ Video ditolak model. Coba video lain (resolusi awal jangan terlalu besar).';
     } else {
       friendly = '❌ Gagal memproses. Coba lagi nanti.';
     }
