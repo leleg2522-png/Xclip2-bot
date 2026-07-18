@@ -1306,7 +1306,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('⚡ Kling V3 Turbo', 'mode_kv3t')],
     [Markup.button.callback('🎞️ Kling 2.1 Pro I2V', 'mode_k21')],
     [Markup.button.callback('⚡ Kling 2.5 Turbo I2V', 'mode_k25')],
-    [Markup.button.callback('🔼 Upscale Video 4K 60FPS', 'mode_topazup')],
+    [Markup.button.callback('🔼 TOPAZ UPSCALE 4K 60 FPS', 'mode_topazup')],
     [Markup.button.callback('🎥 Sora 2 (OpenAI)', 'mode_sora')],
     [Markup.button.callback('✨ Gemini Omni (Google)', 'mode_gomni')],
     // ── Generate Gambar ──
@@ -1608,7 +1608,7 @@ function hargaText(): string {
     `• Kling 2.5 Turbo I2V (5/10 detik) — ${formatRupiah(MODEL_PRICES.kling25_i2v)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)}\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling26_mc)}\n` +
-    `• Upscale Video 4K 60FPS — ${formatRupiah(MODEL_PRICES.topaz_upscale)}\n\n` +
+    `• TOPAZ UPSCALE 4K 60 FPS — ${formatRupiah(MODEL_PRICES.topaz_upscale)}\n\n` +
     '🎨 *Gambar*\n' +
     `• Nano Banana 2 — ${formatRupiah(MODEL_PRICES.nano_banana2)}\n` +
     `• Nano Banana Pro — ${formatRupiah(MODEL_PRICES.banana_pro)}\n` +
@@ -2854,7 +2854,7 @@ bot.on('callback_query', async (ctx) => {
     if (!await requireLogin(ctx)) return;
     setSession(userId, { mode: 'topaz_wait_video' });
     return ctx.editMessageText(
-      `🔼 *Upscale Video 4K 60FPS*\n\n` +
+      `🔼 *TOPAZ UPSCALE 4K 60 FPS*\n\n` +
       `Video kamu di-upscale sampai *4x resolusi* (mis. 1080p → 4K) dan di-retime jadi *60 FPS* dengan Topaz.\n` +
       `💵 Harga: *${formatRupiah(MODEL_PRICES.topaz_upscale)}*\n\n` +
       `*Langkah 1:* Kirim *video* yang mau di-upscale.\n\n` +
@@ -3374,7 +3374,7 @@ bot.on('video', async (ctx) => {
       return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
     }
     setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply(`⏳ Memproses Upscale Video 4K 60FPS...\nHasil dikirim otomatis (~3-10 menit).`, { parse_mode: 'Markdown' });
+    const statusMsg = await ctx.reply(`⏳ Memproses TOPAZ UPSCALE 4K 60 FPS...\nHasil dikirim otomatis (~3-10 menit).`, { parse_mode: 'Markdown' });
     runTopazUpscale(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, vid.file_id)
       .catch(e => console.error(`[${userId}] Topaz upscale error:`, e.message));
     return;
@@ -3754,7 +3754,7 @@ bot.on('document', async (ctx) => {
       return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
     }
     setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply(`⏳ Memproses Upscale Video 4K 60FPS...\nHasil dikirim otomatis (~3-10 menit).`, { parse_mode: 'Markdown' });
+    const statusMsg = await ctx.reply(`⏳ Memproses TOPAZ UPSCALE 4K 60 FPS...\nHasil dikirim otomatis (~3-10 menit).`, { parse_mode: 'Markdown' });
     runTopazUpscale(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, doc.file_id)
       .catch(e => console.error(`[${userId}] Topaz upscale error:`, e.message));
     return;
@@ -4178,7 +4178,7 @@ async function runTopazUpscale(
   chatId: number, userId: number, dbUserId: number, statusMsgId: number,
   videoFileId: string,
 ) {
-  const label = 'Upscale Video 4K 60FPS';
+  const label = 'TOPAZ UPSCALE 4K 60 FPS';
   const PRICE = MODEL_PRICES.topaz_upscale;
   const charge = await beginCharge(dbUserId, PRICE);
   if (!charge.ok) {
