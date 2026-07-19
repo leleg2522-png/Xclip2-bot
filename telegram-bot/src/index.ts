@@ -658,10 +658,15 @@ async function acquireNextFloraKey(skipKeys?: Set<string>): Promise<FloraKeyAcqu
 }
 
 async function markFloraKeyDead(apiKey: string): Promise<void> {
-  await db.query(
-    `UPDATE flora_key_pool SET status = 'dead', dead_at = NOW() WHERE api_key = $1`,
+  // Key habis credit / invalid langsung DIBUANG dari pool (bukan sekadar ditandai dead)
+  // biar tidak pernah kepakai user lagi dan pool tetap bersih.
+  const res = await db.query(
+    `DELETE FROM flora_key_pool WHERE api_key = $1 RETURNING id`,
     [apiKey]
   );
+  if (res.rows.length) {
+    console.warn(`[flora] key habis/invalid dibuang dari pool (id ${res.rows[0].id})`);
+  }
 }
 
 async function addFloraKeyToPool(apiKey: string): Promise<boolean> {
