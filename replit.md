@@ -10,6 +10,7 @@ Telegram bot ecosystem for AI video/image generation (Kling, Picsart, Flora, Fre
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string
+- Secret `RAILWAY_DATABASE_URL` — connection string ke Postgres Railway (database produksi bot yang sudah jalan di Railway; berisi semua tabel bot: users, payments, key pools, dll)
 
 ## Stack
 
