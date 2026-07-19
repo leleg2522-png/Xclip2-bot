@@ -358,14 +358,15 @@ export async function validateFloraKey(apiKey: string): Promise<boolean> {
  */
 export function isFloraKeyExhaustedError(raw: string): boolean {
   const lower = raw.toLowerCase();
-  if (lower.includes('flora_auth_failed')) return true;
   // Hanya evaluasi tahap sebelum job jalan — run failure bukan salah key.
   if (!lower.includes('flora_submit_failed') && !lower.includes('flora_upload_failed') && !lower.includes('flora_project_failed')) {
     return false;
   }
-  return lower.includes('http 401') || lower.includes('unauthorized')
-    || lower.includes('http 402') || lower.includes('payment required')
-    || lower.includes('http 403') || lower.includes('forbidden')
+  // HANYA buang key kalau CREDIT habis/tidak cukup. Error auth (401/403/unauthorized)
+  // TIDAK membuang key — bisa jadi masalah sesaat, key tetap di pool.
+  return lower.includes('http 402') || lower.includes('payment required')
     || lower.includes('insufficient credit') || lower.includes('insufficient_credit')
-    || lower.includes('not enough credit') || lower.includes('quota');
+    || lower.includes('not enough credit') || lower.includes('quota')
+    || lower.includes('insufficient_balance') || lower.includes('insufficient balance')
+    || lower.includes('out of credit') || lower.includes('no credit');
 }
