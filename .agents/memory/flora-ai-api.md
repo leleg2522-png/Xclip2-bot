@@ -3,6 +3,8 @@ name: Flora AI public API (Kling 2.6 Motion Control)
 description: Working call format for Flora AI generate/upload, key-pool behavior, and disproven "1 key 1 task" assumption
 ---
 
+**Billing error bisa muncul di tahap RUN:** Flora bisa lapor `FLORA_RUN_FAILED [BILLING_NOT_ENOUGH_CREDITS]` setelah job jalan (bukan hanya saat submit/upload). Deteksi key-habis tidak boleh hanya filter tahap pre-run — sinyal billing eksplisit harus selalu membuang key dari pool, apapun tahapnya.
+
 # Flora AI API — hasil verifikasi langsung (Jul 2026)
 
 ## Format request yang benar

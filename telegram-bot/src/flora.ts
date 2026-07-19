@@ -358,7 +358,14 @@ export async function validateFloraKey(apiKey: string): Promise<boolean> {
  */
 export function isFloraKeyExhaustedError(raw: string): boolean {
   const lower = raw.toLowerCase();
-  // Hanya evaluasi tahap sebelum job jalan — run failure bukan salah key.
+  // Kode billing eksplisit dari Flora bisa muncul di tahap RUN juga
+  // (contoh nyata: "FLORA_RUN_FAILED [BILLING_NOT_ENOUGH_CREDITS]") —
+  // ini jelas key habis credit, buang walau job sudah sempat jalan.
+  if (lower.includes('billing_not_enough_credits') || lower.includes('billing_') && lower.includes('credit')) {
+    return true;
+  }
+  // Selain sinyal billing eksplisit, hanya evaluasi tahap sebelum job jalan —
+  // run failure lain bukan salah key.
   if (!lower.includes('flora_submit_failed') && !lower.includes('flora_upload_failed') && !lower.includes('flora_project_failed')) {
     return false;
   }
