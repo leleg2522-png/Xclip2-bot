@@ -112,7 +112,7 @@ const MODEL_PRICES = {
   kling21_i2v: 2500,   // Kling 2.1 Pro I2V 10 detik (Flora AI)
   kling25_i2v: 2000,   // Kling 2.5 Turbo Pro I2V (Flora AI)
   topaz_upscale: 700,  // Topaz Video Upscale 4K 60FPS (Flora AI)
-  seedance: 1000,
+  seedance: 2000,
   wan: 1500,           // Wan 2.7 (i2v/t2v)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
   nano_banana2: 200,
