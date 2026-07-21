@@ -881,7 +881,7 @@ const generating = new Map<number, number>();
 
 function releaseGenerating(dbUserId: number): void {
   const n = (generating.get(dbUserId) ?? 0) - 1;
-  if (n <= 0) releaseGenerating(dbUserId);
+  if (n <= 0) generating.delete(dbUserId);
   else generating.set(dbUserId, n);
 }
 
