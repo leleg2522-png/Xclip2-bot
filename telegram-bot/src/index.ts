@@ -874,22 +874,31 @@ interface Session {
 
 const sessions = new Map<number, Session>();
 
-// dbUserId yang sedang menjalankan 1 generate (anti balapan & double-charge).
-const generating = new Set<number>();
+// Jumlah generate yang sedang berjalan per dbUserId (anti balapan & double-charge).
+// Model Picsart boleh sampai 3 job bersamaan per user; model Flora tetap 1
+// (key pool Flora terbatas). Limit ditentukan per pemanggilan beginCharge.
+const generating = new Map<number, number>();
+
+function releaseGenerating(dbUserId: number): void {
+  const n = (generating.get(dbUserId) ?? 0) - 1;
+  if (n <= 0) releaseGenerating(dbUserId);
+  else generating.set(dbUserId, n);
+}
 
 type ChargeResult = { ok: true } | { ok: false; reason: 'busy' | 'insufficient' | 'error' };
 
 // Kunci in-flight (SINKRON, sebelum await pertama → aman balapan) + potong saldo
 // atomik. WAJIB dipanggil paling awal di tiap run*. Kalau gagal, kunci dilepas.
-async function beginCharge(dbUserId: number, price: number): Promise<ChargeResult> {
-  if (generating.has(dbUserId)) return { ok: false, reason: 'busy' };
-  generating.add(dbUserId);
+// `maxConcurrent` = berapa job bersamaan yang diizinkan untuk user ini (default 1).
+async function beginCharge(dbUserId: number, price: number, maxConcurrent = 1): Promise<ChargeResult> {
+  if ((generating.get(dbUserId) ?? 0) >= maxConcurrent) return { ok: false, reason: 'busy' };
+  generating.set(dbUserId, (generating.get(dbUserId) ?? 0) + 1); // sinkron sebelum await pertama
   try {
     const ok = await deductSaldo(dbUserId, price);
-    if (!ok) { generating.delete(dbUserId); return { ok: false, reason: 'insufficient' }; }
+    if (!ok) { releaseGenerating(dbUserId); return { ok: false, reason: 'insufficient' }; }
     return { ok: true };
   } catch (e) {
-    generating.delete(dbUserId);
+    releaseGenerating(dbUserId);
     return { ok: false, reason: 'error' };
   }
 }
@@ -3866,7 +3875,7 @@ function isFreepikKeyExhaustedError(raw: string): boolean {
 async function runKlingMotionControl(chatId: number, userId: number, dbUserId: number, statusMsgId: number, videoFileIdOrUrl: string, imageFileIdOrUrl: string, prompt: string = '') {
   const label = 'Kling MC3.0 PRO';
   const PRICE = MODEL_PRICES.kling_mc;
-  const charge = await beginCharge(dbUserId, PRICE);
+  const charge = await beginCharge(dbUserId, PRICE, 3);
   if (!charge.ok) {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
     return;
@@ -3943,7 +3952,7 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
     }
-    generating.delete(dbUserId);
+    releaseGenerating(dbUserId);
   }
 }
 
@@ -4063,7 +4072,7 @@ async function runKling26MotionControl(chatId: number, userId: number, dbUserId:
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
     }
-    generating.delete(dbUserId);
+    releaseGenerating(dbUserId);
   }
 }
 
@@ -4173,7 +4182,7 @@ async function runFloraI2V(
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
     }
-    generating.delete(dbUserId);
+    releaseGenerating(dbUserId);
   }
 }
 
@@ -4282,7 +4291,7 @@ async function runTopazUpscale(
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
     }
-    generating.delete(dbUserId);
+    releaseGenerating(dbUserId);
   }
 }
 
@@ -4306,7 +4315,7 @@ async function runSeedance(
   console.log(`[${userId}] Seedance started — mode: ${opts.inputMode}, dur: ${opts.duration}s, ratio: ${opts.ratio}, res: ${opts.resolution}, audio: ${opts.audio}`);
 
   const PRICE = MODEL_PRICES.seedance;
-  const charge = await beginCharge(dbUserId, PRICE);
+  const charge = await beginCharge(dbUserId, PRICE, 3);
   if (!charge.ok) {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
     return;
@@ -4393,7 +4402,7 @@ async function runSeedance(
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
     }
-    generating.delete(dbUserId);
+    releaseGenerating(dbUserId);
   }
 }
 
@@ -4417,7 +4426,7 @@ async function runWan(
   console.log(`[${userId}] Wan started — mode: ${opts.inputMode}, dur: ${opts.duration}s, ratio: ${opts.ratio}, res: ${opts.resolution}`);
 
   const PRICE = MODEL_PRICES.wan;
-  const charge = await beginCharge(dbUserId, PRICE);
+  const charge = await beginCharge(dbUserId, PRICE, 3);
   if (!charge.ok) {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
     return;
@@ -4501,7 +4510,7 @@ async function runWan(
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
     }
-    generating.delete(dbUserId);
+    releaseGenerating(dbUserId);
   }
 }
 
@@ -4526,7 +4535,7 @@ async function runKlingV3(
   console.log(`[${userId}] ${label} started — mode: ${opts.mode}, dur: ${opts.duration}s, ratio: ${opts.ratio}, prompt: "${prompt.slice(0, 80)}"`);
 
   const PRICE = kv3Price(opts.mode, opts.duration);
-  const charge = await beginCharge(dbUserId, PRICE);
+  const charge = await beginCharge(dbUserId, PRICE, 3);
   if (!charge.ok) {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
     return;
@@ -4604,7 +4613,7 @@ async function runKlingV3(
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
     }
-    generating.delete(dbUserId);
+    releaseGenerating(dbUserId);
   }
 }
 
@@ -4625,7 +4634,7 @@ async function runRunway(
   console.log(`[${userId}] Runway started — dur: ${opts.duration}s, ratio: ${opts.ratio}`);
 
   const PRICE = MODEL_PRICES.runway;
-  const charge = await beginCharge(dbUserId, PRICE);
+  const charge = await beginCharge(dbUserId, PRICE, 3);
   if (!charge.ok) {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
     return;
@@ -4701,7 +4710,7 @@ async function runRunway(
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
     }
-    generating.delete(dbUserId);
+    releaseGenerating(dbUserId);
   }
 }
 
@@ -4724,7 +4733,7 @@ async function runSora(
   const size = SORA_SIZE_MAP[opts.ratio === '16:9' ? '169' : '916'] ?? '720x1280';
 
   const PRICE = MODEL_PRICES.sora;
-  const charge = await beginCharge(dbUserId, PRICE);
+  const charge = await beginCharge(dbUserId, PRICE, 3);
   if (!charge.ok) {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
     return;
@@ -4807,7 +4816,7 @@ async function runSora(
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
     }
-    generating.delete(dbUserId);
+    releaseGenerating(dbUserId);
   }
 }
 
@@ -4830,7 +4839,7 @@ async function runGeminiOmni(
   console.log(`[${userId}] Gemini Omni started — mode: ${opts.inputMode}, dur: ${opts.duration}s, ratio: ${opts.ratio}`);
 
   const PRICE = MODEL_PRICES.gemini_omni;
-  const charge = await beginCharge(dbUserId, PRICE);
+  const charge = await beginCharge(dbUserId, PRICE, 3);
   if (!charge.ok) {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
     return;
@@ -4927,7 +4936,7 @@ async function runGeminiOmni(
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
     }
-    generating.delete(dbUserId);
+    releaseGenerating(dbUserId);
   }
 }
 
@@ -4956,7 +4965,7 @@ async function runImageGen(
     seedream5: MODEL_PRICES.seedream5,
   } as const;
   const PRICE = IMG_PRICES[opts.engine];
-  const charge = await beginCharge(dbUserId, PRICE);
+  const charge = await beginCharge(dbUserId, PRICE, 3);
   if (!charge.ok) {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
     return;
@@ -5039,7 +5048,7 @@ async function runImageGen(
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
     }
-    generating.delete(dbUserId);
+    releaseGenerating(dbUserId);
   }
 }
 
