@@ -131,6 +131,27 @@ const KV3_PRICES: Record<string, number> = {
   '720p_5': 2500, '720p_15': 2500,
   '1080p_5': 2500, '1080p_15': 2500,
 };
+
+// Deskripsi error yang tahan banting untuk logging/notif admin: message kosong,
+// axios error (status + body), atau nilai non-Error tetap menghasilkan info berguna.
+function describeError(err: any): string {
+  const parts: string[] = [];
+  const msg = typeof err?.message === 'string' ? err.message : '';
+  if (msg) parts.push(msg);
+  if (!msg && err?.name) parts.push(String(err.name));
+  if (err?.code && !msg.includes(String(err.code))) parts.push(`code=${err.code}`);
+  if (err?.response?.status) {
+    let body = '';
+    try { body = JSON.stringify(err.response.data ?? '').slice(0, 200); } catch { /* ignore */ }
+    parts.push(`http ${err.response.status} ${body}`);
+  }
+  if (!parts.length) {
+    const stackLine = typeof err?.stack === 'string' ? err.stack.split('\n').slice(0, 2).join(' | ') : '';
+    parts.push(stackLine || (typeof err === 'object' ? JSON.stringify(err).slice(0, 200) : String(err)) || 'unknown error (pesan kosong)');
+  }
+  return parts.join(' ');
+}
+
 function kv3Price(mode: string, dur: number): number {
   return KV3_PRICES[`${mode}_${dur}`] ?? 2500;
 }
@@ -3934,7 +3955,7 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
     }
 
   } catch (err: any) {
-    const msg = err?.message ?? String(err);
+    const msg = describeError(err);
     console.error(`[${userId}] ${label} Picsart error: ${msg}`);
     let friendly: string;
     if (msg.includes('PICSART_TIMEOUT')) {
@@ -4021,7 +4042,7 @@ async function runKling26MotionControl(chatId: number, userId: number, dbUserId:
         });
       } catch (err: any) {
         lastErr = err;
-        const msg = err?.message ?? String(err);
+        const msg = describeError(err);
         if (flora.isFloraKeyExhaustedError(msg)) {
           console.warn(`[${userId}] ${label} key habis/invalid (attempt ${attempt + 1}) — tandai dead & rotasi. ${msg.slice(0, 150)}`);
           await markFloraKeyDead(apiKey).catch(() => {});
@@ -4048,7 +4069,7 @@ async function runKling26MotionControl(chatId: number, userId: number, dbUserId:
     }
 
   } catch (err: any) {
-    const msg = err?.message ?? String(err);
+    const msg = describeError(err);
     console.error(`[${userId}] ${label} Flora error: ${msg}`);
     let friendly: string;
     if (msg.includes('FLORA_ALL_BUSY')) {
@@ -4131,7 +4152,7 @@ async function runFloraI2V(
         });
       } catch (err: any) {
         lastErr = err;
-        const msg = err?.message ?? String(err);
+        const msg = describeError(err);
         if (flora.isFloraKeyExhaustedError(msg)) {
           console.warn(`[${userId}] ${label} key habis/invalid (attempt ${attempt + 1}) — tandai dead & rotasi. ${msg.slice(0, 150)}`);
           await markFloraKeyDead(apiKey).catch(() => {});
@@ -4158,7 +4179,7 @@ async function runFloraI2V(
     }
 
   } catch (err: any) {
-    const msg = err?.message ?? String(err);
+    const msg = describeError(err);
     console.error(`[${userId}] ${label} Flora error: ${msg}`);
     let friendly: string;
     if (msg.includes('FLORA_ALL_BUSY')) {
@@ -4240,7 +4261,7 @@ async function runTopazUpscale(
         });
       } catch (err: any) {
         lastErr = err;
-        const msg = err?.message ?? String(err);
+        const msg = describeError(err);
         if (flora.isFloraKeyExhaustedError(msg)) {
           console.warn(`[${userId}] ${label} key habis/invalid (attempt ${attempt + 1}) — tandai dead & rotasi. ${msg.slice(0, 150)}`);
           await markFloraKeyDead(apiKey).catch(() => {});
@@ -4267,7 +4288,7 @@ async function runTopazUpscale(
     }
 
   } catch (err: any) {
-    const msg = err?.message ?? String(err);
+    const msg = describeError(err);
     console.error(`[${userId}] ${label} Flora error: ${msg}`);
     let friendly: string;
     if (msg.includes('FLORA_ALL_BUSY')) {
@@ -4384,7 +4405,7 @@ async function runSeedance(
     }
 
   } catch (err: any) {
-    const msg = err?.message ?? String(err);
+    const msg = describeError(err);
     console.error(`[${userId}] Seedance error: ${msg}`);
     let friendly: string;
     if (msg.includes('PICSART_TIMEOUT')) {
@@ -4492,7 +4513,7 @@ async function runWan(
     }
 
   } catch (err: any) {
-    const msg = err?.message ?? String(err);
+    const msg = describeError(err);
     console.error(`[${userId}] Wan error: ${msg}`);
     let friendly: string;
     if (msg.includes('PICSART_TIMEOUT')) {
@@ -4595,7 +4616,7 @@ async function runKlingV3(
     }
 
   } catch (err: any) {
-    const msg = err?.message ?? String(err);
+    const msg = describeError(err);
     console.error(`[${userId}] ${label} error: ${msg}`);
     let friendly: string;
     if (msg.includes('PICSART_TIMEOUT')) {
@@ -4692,7 +4713,7 @@ async function runRunway(
     }
 
   } catch (err: any) {
-    const msg = err?.message ?? String(err);
+    const msg = describeError(err);
     console.error(`[${userId}] Runway error: ${msg}`);
     let friendly: string;
     if (msg.includes('PICSART_TIMEOUT')) {
@@ -4798,7 +4819,7 @@ async function runSora(
     }
 
   } catch (err: any) {
-    const msg = err?.message ?? String(err);
+    const msg = describeError(err);
     console.error(`[${userId}] Sora error: ${msg}`);
     let friendly: string;
     if (msg.includes('PICSART_TIMEOUT')) {
@@ -4918,7 +4939,7 @@ async function runGeminiOmni(
     }
 
   } catch (err: any) {
-    const msg = err?.message ?? String(err);
+    const msg = describeError(err);
     console.error(`[${userId}] Gemini Omni error: ${msg}`);
     let friendly: string;
     if (msg.includes('PICSART_TIMEOUT')) {
@@ -5030,7 +5051,7 @@ async function runImageGen(
     }
 
   } catch (err: any) {
-    const msg = err?.message ?? String(err);
+    const msg = describeError(err);
     console.error(`[${userId}] Image error: ${msg}`);
     let friendly: string;
     if (msg.includes('PICSART_TIMEOUT')) {
