@@ -38,6 +38,52 @@ const http = axios.create({ timeout: 120_000 });
 // Picsart returns any 2xx (e.g. 200 OK or 201 Created) on success.
 const ok2xx = (s: number) => s >= 200 && s < 300;
 
+// Poll diagnostics: melacak status HTTP terakhir selama polling supaya
+// PICSART_TIMEOUT membawa konteks (bukan cuma "timeout" tanpa penjelasan).
+// Juga fail-fast kalau polling terus-menerus kena 401/403 (akun/token mati)
+// daripada buang 15-30 menit lalu timeout tanpa alasan jelas.
+class PollDiag {
+  private lastStatus?: number;
+  private lastBody?: string;
+  private authFails = 0;
+  private polls = 0;
+  private readonly start = Date.now();
+
+  /** Catat hasil satu poll; return true kalau respons 2xx (boleh diproses). */
+  note(r: { status: number; data: unknown }): boolean {
+    this.polls++;
+    this.lastStatus = r.status;
+    try {
+      this.lastBody = JSON.stringify(r.data ?? '').slice(0, 200);
+    } catch {
+      this.lastBody = String(r.data).slice(0, 200);
+    }
+    if (r.status === 401 || r.status === 403) {
+      this.authFails++;
+      if (this.authFails >= 3) {
+        throw new Error(
+          `PICSART_AUTH_DEAD: poll kena ${r.status} ${this.authFails}x beruntun setelah ${this.elapsed()} — access token/akun Picsart kemungkinan mati`
+        );
+      }
+    } else {
+      this.authFails = 0;
+    }
+    return ok2xx(r.status);
+  }
+
+  private elapsed(): string {
+    const s = Math.round((Date.now() - this.start) / 1000);
+    return `${Math.floor(s / 60)}m${s % 60}s`;
+  }
+
+  /** Buat error PICSART_TIMEOUT yang membawa konteks poll terakhir. */
+  timeoutError(): Error {
+    return new Error(
+      `PICSART_TIMEOUT (setelah ${this.elapsed()}, ${this.polls} polls, respons terakhir: ${this.lastStatus ?? 'tidak ada'} ${this.lastBody ?? ''})`
+    );
+  }
+}
+
 // Kling model_name mapping. v26 (kling-v2-6, mode pro) live-verified via HAR Jul 2026.
 export const KLING_MODELS = {
   v26: { modelName: 'kling-v2-6', modelLabel: 'kling-motion-control' },
@@ -235,6 +281,20 @@ async function runWithAccount<T>(userId: number, fn: (credId: number) => Promise
       const msg = String(e?.message ?? '');
       if (msg.includes('PICSART_REFRESH_DEAD')) {
         // Account already marked 'dead' inside doRefresh — move to next account.
+        continue;
+      }
+      if (msg.includes('PICSART_AUTH_DEAD')) {
+        // Polling kena 401/403 beruntun: access token akun ini ditolak API.
+        // Tandai dead lalu failover ke akun lain (paritas dengan REFRESH_DEAD),
+        // supaya satu akun mati tidak langsung menggagalkan user.
+        await q(
+          `UPDATE picsart_credentials SET status = 'dead', dead_at = NOW(), updated_at = NOW() WHERE id = $1`,
+          [credId]
+        );
+        notifyOwner(
+          `⚠️ Akun Picsart #${credId} DITOLAK saat polling (${msg.slice(0, 150)}). ` +
+          `Sudah ditandai dead; user dialihkan ke akun lain.\nTambahkan token baru bila perlu:\n/addpicsartkey rt:...`
+        );
         continue;
       }
       if (msg.includes('PICSART_SUBMIT_FAILED') && isCreditError(msg)) {
@@ -511,8 +571,9 @@ export async function pollKlingResult(
   id: string,
   opts?: { maxAttempts?: number; intervalMs?: number }
 ): Promise<{ url: string; duration?: string; credits?: number }> {
-  const maxAttempts = opts?.maxAttempts ?? 180; // ~15 min at 5s
+  const maxAttempts = opts?.maxAttempts ?? 360; // ~30 min at 5s (Kling MC 1080p pro bisa >15 menit)
   const intervalMs = opts?.intervalMs ?? 5000;
+  const diag = new PollDiag();
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((res) => setTimeout(res, intervalMs));
     const access = await getAccessToken(credId);
@@ -520,7 +581,7 @@ export async function pollKlingResult(
       headers: commonHeaders({ authorization: `Bearer ${access}` }),
       validateStatus: () => true,
     });
-    if (!ok2xx(r.status)) continue;
+    if (!diag.note(r)) continue;
     const resp = r.data?.response;
     const status = String(resp?.status ?? '').toUpperCase();
     if (status === 'COMPLETED') {
@@ -532,7 +593,7 @@ export async function pollKlingResult(
       throw new Error(`PICSART_GEN_FAILED: ${JSON.stringify(resp).slice(0, 200)}`);
     }
   }
-  throw new Error('PICSART_TIMEOUT');
+  throw diag.timeoutError();
 }
 
 // High-level orchestrator: upload media -> submit -> poll -> return result URL.
@@ -612,6 +673,7 @@ export async function pollSeedanceResult(
   const maxAttempts = opts?.maxAttempts ?? 180; // ~15 min at 5s
   const intervalMs = opts?.intervalMs ?? 5000;
   const start = Date.now();
+  const diag = new PollDiag();
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((res) => setTimeout(res, intervalMs));
     opts?.onTick?.(Date.now() - start);
@@ -620,7 +682,7 @@ export async function pollSeedanceResult(
       headers: commonHeaders({ authorization: `Bearer ${access}` }),
       validateStatus: () => true,
     });
-    if (!ok2xx(r.status)) continue;
+    if (!diag.note(r)) continue;
     const resp = r.data?.response;
     const status = String(resp?.status ?? '').toUpperCase();
     if (status === 'COMPLETED') {
@@ -632,7 +694,7 @@ export async function pollSeedanceResult(
       throw new Error(`PICSART_GEN_FAILED: ${JSON.stringify(resp).slice(0, 200)}`);
     }
   }
-  throw new Error('PICSART_TIMEOUT');
+  throw diag.timeoutError();
 }
 
 // High-level orchestrator: optional image upload -> submit -> poll -> result URL.
@@ -691,6 +753,7 @@ async function pollWorkflowUrl(
   const maxAttempts = opts?.maxAttempts ?? 180; // ~15 min at 5s
   const intervalMs = opts?.intervalMs ?? 5000;
   const start = Date.now();
+  const diag = new PollDiag();
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((res) => setTimeout(res, intervalMs));
     opts?.onTick?.(Date.now() - start);
@@ -699,7 +762,7 @@ async function pollWorkflowUrl(
       headers: commonHeaders({ authorization: `Bearer ${access}` }),
       validateStatus: () => true,
     });
-    if (!ok2xx(r.status)) continue;
+    if (!diag.note(r)) continue;
     const resp = r.data?.response;
     const status = String(resp?.status ?? '').toUpperCase();
     if (status === 'COMPLETED') {
@@ -711,7 +774,7 @@ async function pollWorkflowUrl(
       throw new Error(`PICSART_GEN_FAILED: ${JSON.stringify(resp).slice(0, 200)}`);
     }
   }
-  throw new Error('PICSART_TIMEOUT');
+  throw diag.timeoutError();
 }
 
 // ─── Wan 2.7 (image-to-video / text-to-video) ─────────────────────────────────
@@ -1021,6 +1084,7 @@ export async function pollSoraResult(
   const maxAttempts = opts?.maxAttempts ?? 180; // ~15 min at 5s
   const intervalMs = opts?.intervalMs ?? 5000;
   const start = Date.now();
+  const diag = new PollDiag();
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((res) => setTimeout(res, intervalMs));
     opts?.onTick?.(Date.now() - start);
@@ -1029,7 +1093,7 @@ export async function pollSoraResult(
       headers: commonHeaders({ authorization: `Bearer ${access}` }),
       validateStatus: () => true,
     });
-    if (!ok2xx(r.status)) continue;
+    if (!diag.note(r)) continue;
     const resp = r.data?.response;
     const status = String(resp?.status ?? '').toUpperCase();
     if (status === 'COMPLETED') {
@@ -1041,7 +1105,7 @@ export async function pollSoraResult(
       throw new Error(`PICSART_GEN_FAILED: ${JSON.stringify(resp).slice(0, 200)}`);
     }
   }
-  throw new Error('PICSART_TIMEOUT');
+  throw diag.timeoutError();
 }
 
 // High-level orchestrator: optional image upload -> submit -> poll -> result URL.
@@ -1126,6 +1190,7 @@ export async function pollGeminiOmniResult(
   const maxAttempts = opts?.maxAttempts ?? 180; // ~15 min at 5s
   const intervalMs = opts?.intervalMs ?? 5000;
   const start = Date.now();
+  const diag = new PollDiag();
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((res) => setTimeout(res, intervalMs));
     opts?.onTick?.(Date.now() - start);
@@ -1134,7 +1199,7 @@ export async function pollGeminiOmniResult(
       headers: commonHeaders({ authorization: `Bearer ${access}` }),
       validateStatus: () => true,
     });
-    if (!ok2xx(r.status)) continue;
+    if (!diag.note(r)) continue;
     const resp = r.data?.response;
     const status = String(resp?.status ?? '').toUpperCase();
     if (status === 'COMPLETED') {
@@ -1146,7 +1211,7 @@ export async function pollGeminiOmniResult(
       throw new Error(`PICSART_GEN_FAILED: ${JSON.stringify(resp).slice(0, 200)}`);
     }
   }
-  throw new Error('PICSART_TIMEOUT');
+  throw diag.timeoutError();
 }
 
 // High-level orchestrator: optional image upload -> submit -> poll -> result URL.
@@ -1409,6 +1474,7 @@ async function pollImageResult(
   const maxAttempts = opts?.maxAttempts ?? 180; // ~15 min at 5s
   const intervalMs = opts?.intervalMs ?? 5000;
   const start = Date.now();
+  const diag = new PollDiag();
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((res) => setTimeout(res, intervalMs));
     opts?.onTick?.(Date.now() - start);
@@ -1417,7 +1483,7 @@ async function pollImageResult(
       headers: commonHeaders({ authorization: `Bearer ${access}` }),
       validateStatus: () => true,
     });
-    if (!ok2xx(r.status)) continue;
+    if (!diag.note(r)) continue;
     const resp = r.data?.response;
     const status = String(resp?.status ?? '').toUpperCase();
     if (status === 'COMPLETED') {
@@ -1429,7 +1495,7 @@ async function pollImageResult(
       throw new Error(`PICSART_GEN_FAILED: ${JSON.stringify(resp).slice(0, 200)}`);
     }
   }
-  throw new Error('PICSART_TIMEOUT');
+  throw diag.timeoutError();
 }
 
 // High-level orchestrator: upload optional reference images -> submit to the
