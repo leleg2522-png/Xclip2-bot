@@ -111,6 +111,9 @@ const MODEL_PRICES = {
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
 
+// Batas durasi video referensi Kling Motion Control (detik).
+const KLING_MAX_REF_SECONDS = 16;
+
 // Deskripsi error yang tahan banting untuk logging/notif admin: message kosong,
 // axios error (status + body), atau nilai non-Error tetap menghasilkan info berguna.
 function describeError(err: any): string {
@@ -2438,7 +2441,7 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
       '*Langkah 2:* Kirim *video referensi gerakan*.\n\n' +
       '⚠️ *Syarat video:*\n' +
       '• Orang terlihat jelas dalam video\n' +
-      '• Durasi 2–30 detik\n' +
+      '• Durasi *maksimal 16 detik* (lebih dari itu ditolak)\n' +
       '• Maks ukuran file: 19MB',
       { parse_mode: 'Markdown' }
     );
@@ -2503,6 +2506,13 @@ bot.on('video', async (ctx) => {
   if (session.mode === 'kling_wait_video' && session.characterUrl) {
     if (vid.file_size && vid.file_size > MAX_VIDEO_BYTES) {
       return ctx.reply(`❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
+    }
+    if (vid.duration && vid.duration > KLING_MAX_REF_SECONDS) {
+      return ctx.reply(
+        `❌ Video referensi terlalu panjang (${vid.duration} detik).\n` +
+        `Maksimal *${KLING_MAX_REF_SECONDS} detik*. Potong videonya dulu lalu kirim ulang.`,
+        { parse_mode: 'Markdown' }
+      );
     }
     setSession(userId, { klingVideoFileId: vid.file_id, mode: 'kling_wait_prompt' });
     return ctx.reply(
@@ -2724,6 +2734,7 @@ bot.on('document', async (ctx) => {
     }
     setSession(userId, { klingVideoFileId: doc.file_id, mode: 'kling_wait_prompt' });
     return ctx.reply(
+      `⚠️ Ingat: durasi video referensi *maksimal ${KLING_MAX_REF_SECONDS} detik* — kalau lebih, generate akan gagal.\n\n` +
       '✅ Video referensi diterima!\n\n' +
       '*Langkah 3:* Kirim *prompt teks* (deskripsi gerakan/adegan) untuk mengarahkan hasil video.\n\n' +
       'Contoh: _buat dia mengikuti referensi tanpa kamera goyang_\n\n' +
