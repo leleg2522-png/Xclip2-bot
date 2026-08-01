@@ -739,9 +739,11 @@ interface Session {
   // Veo 3.1 Fast (SnapGen) wizard state (text-to-video or image-to-video)
   veofastInputMode?: 'i2v' | 't2v';
   veofastImageUrl?: string;
+  veofastRatio?: string;
   // Veo 3.1 Lite (SnapGen) wizard state (text-to-video or image-to-video)
   veoliteInputMode?: 'i2v' | 't2v';
   veoliteImageUrl?: string;
+  veoliteRatio?: string;
   // Gemini Omni wizard state (text-to-video, image-to-video, or image+video ref)
   gomniInputMode?: 'i2v' | 't2v' | 'v2v';
   gomniDuration?: number;
@@ -1268,8 +1270,24 @@ function soraRatioKeyboard() {
 const SORA_SIZE_MAP: Record<string, string> = { '916': '720x1280', '169': '1280x720' };
 
 // ─── Veo 3.1 Fast/Lite wizard keyboards (SnapGen, text-to-video or image-to-video)
-// Durasi 8s, rasio 16:9, resolusi 1080p (Full HD) — semua tetap. User cuma pilih
+// Durasi 8s, resolusi 1080p (Full HD) tetap. User pilih rasio (16:9 / 9:16) lalu
 // input mode: prompt saja (t2v) atau foto + prompt (i2v).
+
+function veofastRatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('📺 16:9 (Landscape)', 'vf_ratio_169')],
+    [Markup.button.callback('📱 9:16 (Portrait)', 'vf_ratio_916')],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function veoliteRatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('📺 16:9 (Landscape)', 'vl_ratio_169')],
+    [Markup.button.callback('📱 9:16 (Portrait)', 'vl_ratio_916')],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
 
 function veofastInputKeyboard() {
   return Markup.inlineKeyboard([
@@ -2410,25 +2428,36 @@ bot.on('callback_query', async (ctx) => {
       mode: 'idle',
       veofastInputMode: undefined,
       veofastImageUrl: undefined,
+      veofastRatio: undefined,
     });
     return ctx.editMessageText(
-      '⚡ *Veo 3.1 Fast (Full HD)*\n\nVideo 8 detik · 16:9 · 1080p.\n\nPilih cara membuat video:',
+      '⚡ *Veo 3.1 Fast (Full HD)*\n\nVideo 8 detik · 1080p.\n\nPilih rasio video:',
+      { parse_mode: 'Markdown', ...veofastRatioKeyboard() }
+    );
+  }
+
+  if (data === 'vf_ratio_169' || data === 'vf_ratio_916') {
+    const ratio = data === 'vf_ratio_169' ? '16:9' : '9:16';
+    setSession(userId, { veofastRatio: ratio });
+    return ctx.editMessageText(
+      `⚡ *Veo 3.1 Fast (Full HD)*\n\nVideo 8 detik · ${ratio} · 1080p.\n\nPilih cara membuat video:`,
       { parse_mode: 'Markdown', ...veofastInputKeyboard() }
     );
   }
 
   if (data === 'vf_in_i2v' || data === 'vf_in_t2v') {
     const inputMode = data === 'vf_in_i2v' ? 'i2v' : 't2v';
+    const ratio = getSession(userId).veofastRatio ?? '16:9';
     if (inputMode === 'i2v') {
       setSession(userId, { veofastInputMode: 'i2v', mode: 'veofast_wait_image' });
       return ctx.editMessageText(
-        '⚡ *Veo 3.1 Fast (Full HD)*\n\n*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
+        `⚡ *Veo 3.1 Fast (Full HD)*\n\nRasio: ${ratio}\n\n*Langkah 1:* Kirim *foto acuan* untuk video kamu.`,
         { parse_mode: 'Markdown' }
       );
     }
     setSession(userId, { veofastInputMode: 't2v', mode: 'veofast_wait_prompt' });
     return ctx.editMessageText(
-      '⚡ *Veo 3.1 Fast (Full HD)*\n\n*Langkah 1:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      `⚡ *Veo 3.1 Fast (Full HD)*\n\nRasio: ${ratio}\n\n*Langkah 1:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -2439,25 +2468,36 @@ bot.on('callback_query', async (ctx) => {
       mode: 'idle',
       veoliteInputMode: undefined,
       veoliteImageUrl: undefined,
+      veoliteRatio: undefined,
     });
     return ctx.editMessageText(
-      '🎞️ *Veo 3.1 Lite (Full HD)*\n\nVideo 8 detik · 16:9 · 1080p · 🔊 dengan audio tersinkron.\n\nPilih cara membuat video:',
+      '🎞️ *Veo 3.1 Lite (Full HD)*\n\nVideo 8 detik · 1080p · 🔊 dengan audio tersinkron.\n\nPilih rasio video:',
+      { parse_mode: 'Markdown', ...veoliteRatioKeyboard() }
+    );
+  }
+
+  if (data === 'vl_ratio_169' || data === 'vl_ratio_916') {
+    const ratio = data === 'vl_ratio_169' ? '16:9' : '9:16';
+    setSession(userId, { veoliteRatio: ratio });
+    return ctx.editMessageText(
+      `🎞️ *Veo 3.1 Lite (Full HD)*\n\nVideo 8 detik · ${ratio} · 1080p · 🔊 dengan audio tersinkron.\n\nPilih cara membuat video:`,
       { parse_mode: 'Markdown', ...veoliteInputKeyboard() }
     );
   }
 
   if (data === 'vl_in_i2v' || data === 'vl_in_t2v') {
     const inputMode = data === 'vl_in_i2v' ? 'i2v' : 't2v';
+    const ratio = getSession(userId).veoliteRatio ?? '16:9';
     if (inputMode === 'i2v') {
       setSession(userId, { veoliteInputMode: 'i2v', mode: 'veolite_wait_image' });
       return ctx.editMessageText(
-        '🎞️ *Veo 3.1 Lite (Full HD)*\n\n*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
+        `🎞️ *Veo 3.1 Lite (Full HD)*\n\nRasio: ${ratio}\n\n*Langkah 1:* Kirim *foto acuan* untuk video kamu.`,
         { parse_mode: 'Markdown' }
       );
     }
     setSession(userId, { veoliteInputMode: 't2v', mode: 'veolite_wait_prompt' });
     return ctx.editMessageText(
-      '🎞️ *Veo 3.1 Lite (Full HD)*\n\n*Langkah 1:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      `🎞️ *Veo 3.1 Lite (Full HD)*\n\nRasio: ${ratio}\n\n*Langkah 1:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -2566,7 +2606,7 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
   if (session.mode === 'veofast_wait_image') {
     setSession(userId, { veofastImageUrl: fileUrl, mode: 'veofast_wait_prompt' });
     return ctx.reply(
-      '✅ Foto acuan diterima!\n\n' +
+      `✅ Foto acuan diterima! (Rasio: ${session.veofastRatio ?? '16:9'})\n\n` +
       '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
       { parse_mode: 'Markdown' }
     );
@@ -2575,7 +2615,7 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
   if (session.mode === 'veolite_wait_image') {
     setSession(userId, { veoliteImageUrl: fileUrl, mode: 'veolite_wait_prompt' });
     return ctx.reply(
-      '✅ Foto acuan diterima!\n\n' +
+      `✅ Foto acuan diterima! (Rasio: ${session.veoliteRatio ?? '16:9'})\n\n` +
       '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
       { parse_mode: 'Markdown' }
     );
@@ -2774,6 +2814,7 @@ bot.on('text', async (ctx) => {
     const opts = {
       inputMode: session.veofastInputMode ?? 't2v',
       imageUrl: session.veofastImageUrl,
+      ratio: session.veofastRatio ?? '16:9',
     };
     setSession(userId, { mode: 'idle' });
     const statusMsg = await ctx.reply('⏳ Memproses Veo 3.1 Fast...\nHasil dikirim otomatis (~3-15 menit).', { parse_mode: 'Markdown' });
@@ -2797,6 +2838,7 @@ bot.on('text', async (ctx) => {
     const opts = {
       inputMode: session.veoliteInputMode ?? 't2v',
       imageUrl: session.veoliteImageUrl,
+      ratio: session.veoliteRatio ?? '16:9',
     };
     setSession(userId, { mode: 'idle' });
     const statusMsg = await ctx.reply('⏳ Memproses Veo 3.1 Lite...\nHasil dikirim otomatis (~3-15 menit).', { parse_mode: 'Markdown' });
@@ -3260,7 +3302,7 @@ async function runSora(
 // ─── SnapGen AI (Veo 3.1 Fast / Lite) ─────────────────────────────────────────
 // Provider terpisah dari Picsart. Auth pakai header x-api-key.
 //   Submit: POST {SNAPGEN_BASE}/video-gen/veo  (multipart/form-data)
-//     fields: prompt, model, resolution '1080p', duration '8', aspect_ratio '16:9'
+//     fields: prompt, model, resolution '1080p', duration '8', aspect_ratio (16:9 / 9:16)
 //     image-to-video: mode_image 'frame' + ref_images (file buffer)
 //     → { uuid, status (1 processing, 2 completed, 3 failed), error_message, estimated_credit }
 //   Poll:   GET {SNAPGEN_BASE}/history/{uuid}  tiap ~10s hingga ~15 menit
@@ -3275,6 +3317,7 @@ async function snapgenSubmitVeo(input: {
   imageBuffer?: Buffer;
   imageName?: string;
   imageMime?: string;
+  aspectRatio?: string;
 }): Promise<SnapgenSubmitResult> {
   if (!SNAPGEN_API_KEY) throw new Error('SNAPGEN_KEY_MISSING: SNAPGEN_API_KEY tidak diset');
   const fd = new FormData();
@@ -3282,7 +3325,7 @@ async function snapgenSubmitVeo(input: {
   fd.append('model', input.model);
   fd.append('resolution', '1080p');
   fd.append('duration', '8');
-  fd.append('aspect_ratio', '16:9');
+  fd.append('aspect_ratio', input.aspectRatio ?? '16:9');
   if (input.imageBuffer) {
     // Foto diunduh sendiri lalu dilampirkan sebagai file — URL Telegram memuat
     // bot token jadi jangan diteruskan ke pihak ketiga.
@@ -3355,9 +3398,11 @@ async function runVeo(
     variant: 'fast' | 'lite';
     inputMode: 'i2v' | 't2v';
     imageUrl?: string;
+    ratio?: string;
   }
 ) {
   const isFast = opts.variant === 'fast';
+  const ratio = opts.ratio ?? '16:9';
   const label = isFast ? 'Veo 3.1 Fast' : 'Veo 3.1 Lite';
   const emoji = isFast ? '⚡' : '🎞️';
   const model = isFast ? 'veo-3.1-fast' : 'veo-3.1-lite';
@@ -3388,7 +3433,7 @@ async function runVeo(
       chatId, statusMsgId, undefined,
       `${emoji} ${label}: mengirim perintah ke server... (1/2)`
     ).catch(() => {});
-    const submitted = await snapgenSubmitVeo({ prompt, model, imageBuffer, imageName, imageMime });
+    const submitted = await snapgenSubmitVeo({ prompt, model, imageBuffer, imageName, imageMime, aspectRatio: ratio });
 
     lastEdit = Date.now();
     await bot.telegram.editMessageText(
@@ -3414,7 +3459,7 @@ async function runVeo(
     const delivered = await sendResult(
       chatId,
       result.url,
-      `${emoji} ${label} (8s · 16:9 · 1080p${audioNote})\n\n/menu untuk buat lagi`,
+      `${emoji} ${label} (8s · ${ratio} · 1080p${audioNote})\n\n/menu untuk buat lagi`,
       true
     );
     if (delivered) {
