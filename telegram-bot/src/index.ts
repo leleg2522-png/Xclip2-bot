@@ -111,11 +111,11 @@ const MODEL_PRICES = {
   gemini_omni: 2500,
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
-  veo_fast: 2500,      // Veo 3.1 Fast Full HD (SnapGen)
-  veo_lite: 2000,      // Veo 3.1 Lite Full HD (SnapGen, with audio)
-  nb_pro: 200,         // Nano Banana Pro (SnapGen image)
-  nb_2: 200,           // Nano Banana 2 (SnapGen image)
-  nb_2lite: 200,       // Nano Banana 2 Lite (SnapGen image)
+  veo_fast: 1500,      // Veo 3.1 Fast Full HD (SnapGen)
+  veo_lite: 1500,      // Veo 3.1 Lite Full HD (SnapGen, with audio)
+  nb_pro: 500,         // Nano Banana Pro (SnapGen image)
+  nb_2: 500,           // Nano Banana 2 (SnapGen image)
+  nb_2lite: 500,       // Nano Banana 2 Lite (SnapGen image)
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
 
