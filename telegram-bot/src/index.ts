@@ -3652,7 +3652,7 @@ async function runVeo(
 
 // ─── SnapGen AI (Nano Banana image generation) ────────────────────────────────
 // Submit: POST {SNAPGEN_BASE}/generate_image  (multipart/form-data), header x-api-key
-//   fields: prompt, model, aspect_ratio, resolution '2K', output 'jpeg'
+//   fields: prompt, model, aspect_ratio, resolution '4K', output 'jpeg'
 //   image-to-image: files (array field) — buffer foto acuan yang kita unduh sendiri
 //   → { uuid, status (1 processing, 2 completed, 3 failed), generate_result (URL), error_message }
 // Poll:   GET {SNAPGEN_BASE}/history/{uuid} tiap 5s hingga 5 menit
@@ -3672,7 +3672,7 @@ async function snapgenSubmitImage(input: {
   fd.append('prompt', input.prompt);
   fd.append('model', input.model);
   fd.append('aspect_ratio', input.aspectRatio ?? '1:1');
-  fd.append('resolution', '2K');
+  fd.append('resolution', '4K');
   fd.append('output', 'jpeg');
   if (input.imageBuffer) {
     // Foto diunduh sendiri lalu dilampirkan sebagai file — URL Telegram memuat
@@ -3814,7 +3814,7 @@ async function runImage(
       resultUrl = result.url;
     }
 
-    const caption = `🎨 ${label} (${ratio} · 2K)\n\n/menu untuk buat lagi`;
+    const caption = `🎨 ${label} (${ratio} · 4K)\n\n/menu untuk buat lagi`;
     const delivered = await sendImageResult(chatId, resultUrl, caption);
     if (delivered) {
       refund = false;
