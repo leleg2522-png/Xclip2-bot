@@ -104,9 +104,9 @@ async function checkActiveSubscription(userId: number): Promise<boolean> {
 // Harga per generate dalam Rupiah (integer). Sumber kebenaran tunggal — semua
 // handler generate baca dari sini, jangan hardcode angka di tempat lain.
 const MODEL_PRICES = {
-  sora: 2000,
-  gemini_omni: 2000,
-  kling_mc: 2500,      // Kling MC3.0 PRO (Picsart motion control)
+  sora: 2500,
+  gemini_omni: 2500,
+  kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
