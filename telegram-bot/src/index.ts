@@ -2277,7 +2277,8 @@ bot.on('callback_query', async (ctx) => {
       '• Tampilkan seluruh tubuh dari depan\n' +
       '• Bukan close-up wajah\n' +
       '• Resolusi min. 300px, maks 10MB\n' +
-      '• Format: JPG, PNG',
+      '• Format: JPG, PNG\n\n' +
+      `ℹ️ Nanti di langkah 2, video referensi gerakan *maksimal ${KLING_MAX_REF_SECONDS} detik*.`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -2687,7 +2688,10 @@ bot.on('text', async (ctx) => {
     return ctx.reply('📸 Kirim *foto karakter* dulu ya, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
   if (session.mode === 'kling_wait_video') {
-    return ctx.reply('🎥 Kirim *video referensi gerakan*, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+    return ctx.reply(
+      `🎥 Kirim *video referensi gerakan* (durasi maksimal *${KLING_MAX_REF_SECONDS} detik*), atau /menu untuk batal.`,
+      { parse_mode: 'Markdown' }
+    );
   }
 
 });
