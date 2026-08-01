@@ -3870,11 +3870,18 @@ async function sendImageResult(chatId: number, outputUrl: string, caption: strin
     return false;
   }
   const opts = { caption };
-  try {
-    await bot.telegram.sendPhoto(chatId, { source: buf, filename: 'output.jpg' }, opts);
-    return true;
-  } catch (e: any) {
-    console.log(`sendPhoto failed, fallback to document: ${e.message}`);
+  // Batas foto Telegram 10MB — hasil 4K sering lebih besar; langsung kirim
+  // sebagai dokumen (kualitas penuh, tanpa kompresi) tanpa buang waktu coba foto.
+  const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
+  if (buf.length <= PHOTO_MAX_BYTES) {
+    try {
+      await bot.telegram.sendPhoto(chatId, { source: buf, filename: 'output.jpg' }, opts);
+      return true;
+    } catch (e: any) {
+      console.log(`sendPhoto failed, fallback to document: ${e.message}`);
+    }
+  } else {
+    console.log(`Image ${(buf.length / 1048576).toFixed(1)} MB > 10 MB, sending as document`);
   }
   try {
     await bot.telegram.sendDocument(chatId, { source: buf, filename: 'output.jpg' }, opts);
