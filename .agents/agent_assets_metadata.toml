@@ -253,3 +253,10 @@ uri = "file://test_results/veo_fast_test.mp4"
 type = "video"
 title = "Tes Veo 3.1 Fast (Full HD)"
 description = "Hasil tes generate SnapGen veo-3.1-fast, 1080p, 8 detik, 16:9."
+
+[[outputs]]
+id = "zyrGCIXjkXZRL8RFv3stU"
+uri = "file://test_results/veo_fast_i2v_test.mp4"
+type = "video"
+title = "Tes Veo 3.1 Fast — Image-to-Video"
+description = "Foto referensi jacket_seedream.jpg dianimasikan jadi video 1080p 8 detik (mode frame)."
