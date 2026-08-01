@@ -20,10 +20,13 @@ const AIVIDEOAPI_BASE = 'https://api.aivideoapi.ai/v1';
 const FREEPIK_API_KEY = process.env.FREEPIK_API_KEY;
 const FREEPIK_BASE = 'https://api.freepik.com/v1';
 const LEONARDO_BASE = 'https://cloud.leonardo.ai/api/rest/v1';
+const SNAPGEN_API_KEY = process.env.SNAPGEN_API_KEY;
+const SNAPGEN_BASE = 'https://api.snapgen.ai/uapi/v1';
 
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!DATABASE_URL) throw new Error('RAILWAY_DATABASE_URL is required');
 if (!RENDERFUL_API_KEY) console.warn('⚠️ RENDERFUL_API_KEY tidak diset — backend Renderful nonaktif (Kling Motion Control kini pakai Picsart).');
+if (!SNAPGEN_API_KEY) console.warn('⚠️ SNAPGEN_API_KEY tidak diset — backend SnapGen nonaktif (Veo 3.1 Fast/Lite).');
 
 // Decodo rotating proxy — set DECODO_PROXY_URL=http://user:pass@gate.decodo.com:port
 const DECODO_PROXY_URL = process.env.DECODO_PROXY_URL;
@@ -108,6 +111,8 @@ const MODEL_PRICES = {
   gemini_omni: 2500,
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
+  veo_fast: 2500,      // Veo 3.1 Fast Full HD (SnapGen)
+  veo_lite: 2000,      // Veo 3.1 Lite Full HD (SnapGen, with audio)
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
 
@@ -703,6 +708,10 @@ type Mode =
   | 'rw_wait_prompt'
   | 'sora_wait_image'
   | 'sora_wait_prompt'
+  | 'veofast_wait_image'
+  | 'veofast_wait_prompt'
+  | 'veolite_wait_image'
+  | 'veolite_wait_prompt'
   | 'gomni_wait_image'
   | 'gomni_wait_video'
   | 'gomni_wait_prompt'
@@ -727,6 +736,12 @@ interface Session {
   soraDuration?: number;
   soraRatio?: string;
   soraImageUrl?: string;
+  // Veo 3.1 Fast (SnapGen) wizard state (text-to-video or image-to-video)
+  veofastInputMode?: 'i2v' | 't2v';
+  veofastImageUrl?: string;
+  // Veo 3.1 Lite (SnapGen) wizard state (text-to-video or image-to-video)
+  veoliteInputMode?: 'i2v' | 't2v';
+  veoliteImageUrl?: string;
   // Gemini Omni wizard state (text-to-video, image-to-video, or image+video ref)
   gomniInputMode?: 'i2v' | 't2v' | 'v2v';
   gomniDuration?: number;
@@ -1178,6 +1193,8 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🕹️ Kling Motion Control', 'mode_kling')],
     [Markup.button.callback('🚀 Runway Gen-4.5', 'mode_rw')],
     [Markup.button.callback('🎥 Sora 2 (OpenAI)', 'mode_sora')],
+    [Markup.button.callback('⚡ Veo 3.1 Fast (Full HD)', 'mode_veofast')],
+    [Markup.button.callback('🎞️ Veo 3.1 Lite (Full HD)', 'mode_veolite')],
     [Markup.button.callback('✨ Gemini Omni (Google)', 'mode_gomni')],
   ]);
 }
@@ -1250,6 +1267,26 @@ function soraRatioKeyboard() {
 // Sora "size" strings (base sora-2 = 720p). Keyed by ratio code.
 const SORA_SIZE_MAP: Record<string, string> = { '916': '720x1280', '169': '1280x720' };
 
+// ─── Veo 3.1 Fast/Lite wizard keyboards (SnapGen, text-to-video or image-to-video)
+// Durasi 8s, rasio 16:9, resolusi 1080p (Full HD) — semua tetap. User cuma pilih
+// input mode: prompt saja (t2v) atau foto + prompt (i2v).
+
+function veofastInputKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🖼️ Foto + Prompt', 'vf_in_i2v')],
+    [Markup.button.callback('✍️ Prompt Saja', 'vf_in_t2v')],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function veoliteInputKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🖼️ Foto + Prompt', 'vl_in_i2v')],
+    [Markup.button.callback('✍️ Prompt Saja', 'vl_in_t2v')],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
 // ─── Gemini Omni wizard keyboards (text-to-video or image-to-video) ───────────
 
 function gomniInputKeyboard() {
@@ -1290,6 +1327,8 @@ function hargaText(): string {
     '💵 *Tarif per generate:*\n\n' +
     '🎬 *Video*\n' +
     `• Sora 2 — ${formatRupiah(MODEL_PRICES.sora)}\n` +
+    `• Veo 3.1 Fast (Full HD) — ${formatRupiah(MODEL_PRICES.veo_fast)}\n` +
+    `• Veo 3.1 Lite (Full HD) — ${formatRupiah(MODEL_PRICES.veo_lite)}\n` +
     `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)}\n\n` +
@@ -2365,6 +2404,64 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  // ── Veo 3.1 Fast wizard (SnapGen, text-to-video or image-to-video) ──
+  if (data === 'mode_veofast') {
+    setSession(userId, {
+      mode: 'idle',
+      veofastInputMode: undefined,
+      veofastImageUrl: undefined,
+    });
+    return ctx.editMessageText(
+      '⚡ *Veo 3.1 Fast (Full HD)*\n\nVideo 8 detik · 16:9 · 1080p.\n\nPilih cara membuat video:',
+      { parse_mode: 'Markdown', ...veofastInputKeyboard() }
+    );
+  }
+
+  if (data === 'vf_in_i2v' || data === 'vf_in_t2v') {
+    const inputMode = data === 'vf_in_i2v' ? 'i2v' : 't2v';
+    if (inputMode === 'i2v') {
+      setSession(userId, { veofastInputMode: 'i2v', mode: 'veofast_wait_image' });
+      return ctx.editMessageText(
+        '⚡ *Veo 3.1 Fast (Full HD)*\n\n*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
+        { parse_mode: 'Markdown' }
+      );
+    }
+    setSession(userId, { veofastInputMode: 't2v', mode: 'veofast_wait_prompt' });
+    return ctx.editMessageText(
+      '⚡ *Veo 3.1 Fast (Full HD)*\n\n*Langkah 1:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  // ── Veo 3.1 Lite wizard (SnapGen, text-to-video or image-to-video) ──
+  if (data === 'mode_veolite') {
+    setSession(userId, {
+      mode: 'idle',
+      veoliteInputMode: undefined,
+      veoliteImageUrl: undefined,
+    });
+    return ctx.editMessageText(
+      '🎞️ *Veo 3.1 Lite (Full HD)*\n\nVideo 8 detik · 16:9 · 1080p · 🔊 dengan audio tersinkron.\n\nPilih cara membuat video:',
+      { parse_mode: 'Markdown', ...veoliteInputKeyboard() }
+    );
+  }
+
+  if (data === 'vl_in_i2v' || data === 'vl_in_t2v') {
+    const inputMode = data === 'vl_in_i2v' ? 'i2v' : 't2v';
+    if (inputMode === 'i2v') {
+      setSession(userId, { veoliteInputMode: 'i2v', mode: 'veolite_wait_image' });
+      return ctx.editMessageText(
+        '🎞️ *Veo 3.1 Lite (Full HD)*\n\n*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
+        { parse_mode: 'Markdown' }
+      );
+    }
+    setSession(userId, { veoliteInputMode: 't2v', mode: 'veolite_wait_prompt' });
+    return ctx.editMessageText(
+      '🎞️ *Veo 3.1 Lite (Full HD)*\n\n*Langkah 1:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   // ── Gemini Omni wizard (text-to-video or image-to-video) ──
   if (data === 'mode_gomni') {
     setSession(userId, {
@@ -2459,6 +2556,24 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
 
   if (session.mode === 'sora_wait_image') {
     setSession(userId, { soraImageUrl: fileUrl, mode: 'sora_wait_prompt' });
+    return ctx.reply(
+      '✅ Foto acuan diterima!\n\n' +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'veofast_wait_image') {
+    setSession(userId, { veofastImageUrl: fileUrl, mode: 'veofast_wait_prompt' });
+    return ctx.reply(
+      '✅ Foto acuan diterima!\n\n' +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'veolite_wait_image') {
+    setSession(userId, { veoliteImageUrl: fileUrl, mode: 'veolite_wait_prompt' });
     return ctx.reply(
       '✅ Foto acuan diterima!\n\n' +
       '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
@@ -2644,6 +2759,52 @@ bot.on('text', async (ctx) => {
     return;
   }
 
+  // ── Veo 3.1 Fast prompt (SnapGen) ──
+  if (session.mode === 'veofast_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    const opts = {
+      inputMode: session.veofastInputMode ?? 't2v',
+      imageUrl: session.veofastImageUrl,
+    };
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Memproses Veo 3.1 Fast...\nHasil dikirim otomatis (~3-15 menit).', { parse_mode: 'Markdown' });
+    runVeo(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, { ...opts, variant: 'fast' })
+      .catch(e => console.error(`[${userId}] Veo Fast gen error:`, e.message));
+    return;
+  }
+
+  // ── Veo 3.1 Lite prompt (SnapGen) ──
+  if (session.mode === 'veolite_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    const opts = {
+      inputMode: session.veoliteInputMode ?? 't2v',
+      imageUrl: session.veoliteImageUrl,
+    };
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Memproses Veo 3.1 Lite...\nHasil dikirim otomatis (~3-15 menit).', { parse_mode: 'Markdown' });
+    runVeo(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, { ...opts, variant: 'lite' })
+      .catch(e => console.error(`[${userId}] Veo Lite gen error:`, e.message));
+    return;
+  }
+
   // ── Gemini Omni prompt ──
   if (session.mode === 'gomni_wait_prompt') {
     if (!await requireLogin(ctx)) return;
@@ -2676,6 +2837,9 @@ bot.on('text', async (ctx) => {
 
   // ── Guard: modes that expect a photo/video, not text ──
   if (session.mode === 'sora_wait_image') {
+    return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+  }
+  if (session.mode === 'veofast_wait_image' || session.mode === 'veolite_wait_image') {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
   if (session.mode === 'gomni_wait_image') {
@@ -3084,6 +3248,200 @@ async function runSora(
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `${friendly}\n\n/menu untuk coba lagi`
     ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
+// ─── SnapGen AI (Veo 3.1 Fast / Lite) ─────────────────────────────────────────
+// Provider terpisah dari Picsart. Auth pakai header x-api-key.
+//   Submit: POST {SNAPGEN_BASE}/video-gen/veo  (multipart/form-data)
+//     fields: prompt, model, resolution '1080p', duration '8', aspect_ratio '16:9'
+//     image-to-video: mode_image 'frame' + ref_images (file buffer)
+//     → { uuid, status (1 processing, 2 completed, 3 failed), error_message, estimated_credit }
+//   Poll:   GET {SNAPGEN_BASE}/history/{uuid}  tiap ~10s hingga ~15 menit
+//     status 2 = selesai → generated_video[0].video_url; status 3 = gagal → error_message
+const snapgenHttp = axios.create({ timeout: 120_000 });
+
+interface SnapgenSubmitResult { uuid: string; }
+
+async function snapgenSubmitVeo(input: {
+  prompt: string;
+  model: 'veo-3.1-fast' | 'veo-3.1-lite';
+  imageBuffer?: Buffer;
+  imageName?: string;
+  imageMime?: string;
+}): Promise<SnapgenSubmitResult> {
+  if (!SNAPGEN_API_KEY) throw new Error('SNAPGEN_KEY_MISSING: SNAPGEN_API_KEY tidak diset');
+  const fd = new FormData();
+  fd.append('prompt', input.prompt);
+  fd.append('model', input.model);
+  fd.append('resolution', '1080p');
+  fd.append('duration', '8');
+  fd.append('aspect_ratio', '16:9');
+  if (input.imageBuffer) {
+    // Foto diunduh sendiri lalu dilampirkan sebagai file — URL Telegram memuat
+    // bot token jadi jangan diteruskan ke pihak ketiga.
+    fd.append('mode_image', 'frame');
+    fd.append('ref_images', input.imageBuffer, {
+      filename: input.imageName ?? 'reference.jpg',
+      contentType: input.imageMime ?? 'image/jpeg',
+    });
+  }
+  const r = await snapgenHttp.post(`${SNAPGEN_BASE}/video-gen/veo`, fd, {
+    headers: { ...fd.getHeaders(), 'x-api-key': SNAPGEN_API_KEY },
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
+    validateStatus: () => true,
+  });
+  const body = r.data;
+  const uuid = body?.uuid;
+  const status = Number(body?.status);
+  if (r.status < 200 || r.status >= 300 || !uuid) {
+    throw new Error(`SNAPGEN_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(body ?? '').slice(0, 300)}`);
+  }
+  if (status === 3) {
+    throw new Error(`SNAPGEN_SUBMIT_FAILED: ${body?.error_message ?? 'ditolak server'}`);
+  }
+  return { uuid };
+}
+
+async function snapgenPollVeo(
+  uuid: string,
+  opts?: { maxAttempts?: number; intervalMs?: number; onTick?: (elapsedSec: number) => void }
+): Promise<{ url: string }> {
+  if (!SNAPGEN_API_KEY) throw new Error('SNAPGEN_KEY_MISSING: SNAPGEN_API_KEY tidak diset');
+  const maxAttempts = opts?.maxAttempts ?? 90; // ~15 min at 10s
+  const intervalMs = opts?.intervalMs ?? 10_000;
+  const start = Date.now();
+  for (let i = 0; i < maxAttempts; i++) {
+    await sleep(intervalMs);
+    opts?.onTick?.(Math.round((Date.now() - start) / 1000));
+    const r = await snapgenHttp.get(`${SNAPGEN_BASE}/history/${uuid}`, {
+      headers: { 'x-api-key': SNAPGEN_API_KEY },
+      validateStatus: () => true,
+    });
+    if (r.status < 200 || r.status >= 300) continue;
+    const body = r.data;
+    const status = Number(body?.status);
+    const gen = Array.isArray(body?.generated_video) ? body.generated_video[0] : undefined;
+    const genStatus = gen?.status !== undefined ? Number(gen.status) : undefined;
+    if (status === 2 || genStatus === 2) {
+      const url = gen?.video_url;
+      if (!url) throw new Error('SNAPGEN_NO_RESULT_URL');
+      return { url };
+    }
+    if (status === 3 || genStatus === 3) {
+      const errMsg = body?.error_message ?? gen?.error_message ?? 'generate gagal';
+      throw new Error(`SNAPGEN_GEN_FAILED: ${String(errMsg).slice(0, 200)}`);
+    }
+  }
+  throw new Error(`SNAPGEN_TIMEOUT: proses melebihi ${Math.round((maxAttempts * intervalMs) / 60000)} menit`);
+}
+
+// ─── Background: Veo 3.1 Fast / Lite (SnapGen, text-to-video or image-to-video) ─
+
+async function runVeo(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  opts: {
+    variant: 'fast' | 'lite';
+    inputMode: 'i2v' | 't2v';
+    imageUrl?: string;
+  }
+) {
+  const isFast = opts.variant === 'fast';
+  const label = isFast ? 'Veo 3.1 Fast' : 'Veo 3.1 Lite';
+  const emoji = isFast ? '⚡' : '🎞️';
+  const model = isFast ? 'veo-3.1-fast' : 'veo-3.1-lite';
+  const PRICE = isFast ? MODEL_PRICES.veo_fast : MODEL_PRICES.veo_lite;
+  console.log(`[${userId}] ${label} started — mode: ${opts.inputMode}`);
+
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+
+  try {
+    let imageBuffer: Buffer | undefined;
+    let imageName: string | undefined;
+    let imageMime: string | undefined;
+    if (opts.inputMode === 'i2v' && opts.imageUrl) {
+      const img = await downloadBuffer(opts.imageUrl);
+      imageBuffer = img.buf;
+      imageName = `reference.${img.ext}`;
+      imageMime = img.mime;
+      console.log(`[${userId}] ${label} ref image — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
+    }
+
+    let lastEdit = 0;
+    await bot.telegram.editMessageText(
+      chatId, statusMsgId, undefined,
+      `${emoji} ${label}: mengirim perintah ke server... (1/2)`
+    ).catch(() => {});
+    const submitted = await snapgenSubmitVeo({ prompt, model, imageBuffer, imageName, imageMime });
+
+    lastEdit = Date.now();
+    await bot.telegram.editMessageText(
+      chatId, statusMsgId, undefined,
+      `${emoji} ${label}: video sedang dibuat... (2/2)\n⏱️ Mohon tunggu, biasanya 3–15 menit. Jangan tutup chat ini.`
+    ).catch(() => {});
+
+    const result = await snapgenPollVeo(submitted.uuid, {
+      onTick: (elapsedSec) => {
+        if (Date.now() - lastEdit < 30_000) return;
+        lastEdit = Date.now();
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = elapsedSec % 60;
+        const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
+        bot.telegram.editMessageText(
+          chatId, statusMsgId, undefined,
+          `${emoji} ${label}: video sedang dibuat... (2/2)\n⏱️ Sudah berjalan ${timer} (biasanya 3–15 menit).\nJangan tutup chat ini, video dikirim otomatis.`
+        ).catch(() => {});
+      },
+    });
+
+    const audioNote = isFast ? '' : ' · 🔊 audio';
+    const delivered = await sendResult(
+      chatId,
+      result.url,
+      `${emoji} ${label} (8s · 16:9 · 1080p${audioNote})\n\n/menu untuk buat lagi`,
+      true
+    );
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] ${label} done (usage: ${newCount})`);
+    }
+
+  } catch (err: any) {
+    const msg = describeError(err);
+    console.error(`[${userId}] ${label} error: ${msg}`);
+    let friendly: string;
+    if (msg.includes('SNAPGEN_TIMEOUT')) {
+      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
+    } else if (msg.includes('SNAPGEN_KEY_MISSING')) {
+      friendly = '❌ Layanan sedang tidak tersedia. Coba lagi nanti.';
+    } else {
+      friendly = '❌ Gagal memproses. Coba lagi nanti.';
+    }
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+    // Notifikasi admin (sejalan dengan pola notify owner di backend lain).
+    const owner = process.env.PICSART_OWNER_CHAT_ID;
+    if (owner) bot.telegram.sendMessage(owner, `⚠️ ${label} gagal untuk user ${userId}: ${msg.slice(0, 300)}`).catch(() => {});
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
