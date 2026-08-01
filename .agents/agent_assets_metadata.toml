@@ -260,3 +260,10 @@ uri = "file://test_results/veo_fast_i2v_test.mp4"
 type = "video"
 title = "Tes Veo 3.1 Fast — Image-to-Video"
 description = "Foto referensi jacket_seedream.jpg dianimasikan jadi video 1080p 8 detik (mode frame)."
+
+[[outputs]]
+id = "fHqvcF-9ZgyujboBkYyBo"
+uri = "file://test_results/nb2_i2i_test.png"
+type = "image"
+title = "Tes Nano Banana 2 — Image-to-Image"
+description = "Foto jaket diedit via prompt 'ubah warna jaket jadi merah' — nano-banana-2, 2K, rasio 3:4."
