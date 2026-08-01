@@ -113,6 +113,9 @@ const MODEL_PRICES = {
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
   veo_fast: 2500,      // Veo 3.1 Fast Full HD (SnapGen)
   veo_lite: 2000,      // Veo 3.1 Lite Full HD (SnapGen, with audio)
+  nb_pro: 200,         // Nano Banana Pro (SnapGen image)
+  nb_2: 200,           // Nano Banana 2 (SnapGen image)
+  nb_2lite: 200,       // Nano Banana 2 Lite (SnapGen image)
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
 
@@ -715,6 +718,8 @@ type Mode =
   | 'gomni_wait_image'
   | 'gomni_wait_video'
   | 'gomni_wait_prompt'
+  | 'img_wait_image'
+  | 'img_wait_prompt'
   | 'topup_wait_custom';
 
 interface Session {
@@ -750,6 +755,12 @@ interface Session {
   gomniRatio?: string;
   gomniImageUrl?: string;
   gomniVideoUrl?: string;
+  // Image generation wizard state (SnapGen: Nano Banana Pro / 2 / 2 Lite)
+  imgModel?: 'nano-banana-pro' | 'nano-banana-2' | 'nano-banana-2-lite';
+  imgPriceKey?: 'nb_pro' | 'nb_2' | 'nb_2lite';
+  imgRatio?: string;
+  imgInputMode?: 'i2i' | 't2i';
+  imgImageUrl?: string;
 }
 
 const sessions = new Map<number, Session>();
@@ -1198,6 +1209,11 @@ function mainMenuKeyboard() {
     [Markup.button.callback('⚡ Veo 3.1 Fast (Full HD)', 'mode_veofast')],
     [Markup.button.callback('🎞️ Veo 3.1 Lite (Full HD)', 'mode_veolite')],
     [Markup.button.callback('✨ Gemini Omni (Google)', 'mode_gomni')],
+    // ── Generate Gambar ──
+    [Markup.button.callback('── 🎨 Generate Gambar ──', 'noop')],
+    [Markup.button.callback('🍌 Nano Banana Pro', 'mode_nbpro')],
+    [Markup.button.callback('🍌 Nano Banana 2', 'mode_nb2')],
+    [Markup.button.callback('🍌 Nano Banana 2 Lite', 'mode_nb2lite')],
   ]);
 }
 
@@ -1335,6 +1351,48 @@ function gomniRatioKeyboard() {
   ]);
 }
 
+// ─── Nano Banana image wizard keyboards (SnapGen, text-to-image / image-to-image)
+// Shared wizard untuk 3 model. Model tersimpan di session. User pilih rasio lalu
+// input mode: prompt saja (t2i) atau foto + prompt (i2i).
+
+function imgRatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('⬛ 1:1', 'img_ratio_11'),
+      Markup.button.callback('🖥️ 16:9', 'img_ratio_169'),
+      Markup.button.callback('📱 9:16', 'img_ratio_916'),
+    ],
+    [
+      Markup.button.callback('🖼️ 4:3', 'img_ratio_43'),
+      Markup.button.callback('🖼️ 3:4', 'img_ratio_34'),
+    ],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function imgInputKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🖼️ Foto + Prompt', 'img_in_i2i')],
+    [Markup.button.callback('✍️ Prompt Saja', 'img_in_t2i')],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+// Peta callback model → { model API, price key, label + emoji }
+const IMG_MODELS: Record<string, {
+  model: 'nano-banana-pro' | 'nano-banana-2' | 'nano-banana-2-lite';
+  priceKey: 'nb_pro' | 'nb_2' | 'nb_2lite';
+  label: string;
+}> = {
+  mode_nbpro: { model: 'nano-banana-pro', priceKey: 'nb_pro', label: '🍌 Nano Banana Pro' },
+  mode_nb2: { model: 'nano-banana-2', priceKey: 'nb_2', label: '🍌 Nano Banana 2' },
+  mode_nb2lite: { model: 'nano-banana-2-lite', priceKey: 'nb_2lite', label: '🍌 Nano Banana 2 Lite' },
+};
+
+const IMG_RATIO_MAP: Record<string, string> = {
+  '11': '1:1', '169': '16:9', '916': '9:16', '43': '4:3', '34': '3:4',
+};
+
 // ─── Top-up helpers ───────────────────────────────────────────────────────────
 
 const TOPUP_MIN = 5000;
@@ -1350,6 +1408,10 @@ function hargaText(): string {
     `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)}\n\n` +
+    '🎨 *Gambar*\n' +
+    `• Nano Banana Pro — ${formatRupiah(MODEL_PRICES.nb_pro)}\n` +
+    `• Nano Banana 2 — ${formatRupiah(MODEL_PRICES.nb_2)}\n` +
+    `• Nano Banana 2 Lite — ${formatRupiah(MODEL_PRICES.nb_2lite)}\n\n` +
     'Saldo hanya dipotong kalau hasilnya *berhasil terkirim*. Gagal = saldo balik.\n\n' +
     'Ketik /topup untuk isi saldo · /saldo untuk cek.'
   );
@@ -2553,11 +2615,63 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  // ── Nano Banana image wizard (SnapGen, text-to-image or image-to-image) ──
+  if (data === 'mode_nbpro' || data === 'mode_nb2' || data === 'mode_nb2lite') {
+    const cfg = IMG_MODELS[data];
+    setSession(userId, {
+      mode: 'idle',
+      imgModel: cfg.model,
+      imgPriceKey: cfg.priceKey,
+      imgRatio: undefined,
+      imgInputMode: undefined,
+      imgImageUrl: undefined,
+    });
+    return ctx.editMessageText(
+      `${cfg.label}\n\nGenerate gambar (${formatRupiah(MODEL_PRICES[cfg.priceKey])}).\n\nPilih rasio gambar:`,
+      { parse_mode: 'Markdown', ...imgRatioKeyboard() }
+    );
+  }
+
+  if (data.startsWith('img_ratio_')) {
+    const ratio = IMG_RATIO_MAP[data.replace('img_ratio_', '')] ?? '1:1';
+    const label = imgLabelFor(userId);
+    setSession(userId, { imgRatio: ratio });
+    return ctx.editMessageText(
+      `${label}\n\nRasio: ${ratio}\n\nPilih cara membuat gambar:`,
+      { parse_mode: 'Markdown', ...imgInputKeyboard() }
+    );
+  }
+
+  if (data === 'img_in_i2i' || data === 'img_in_t2i') {
+    const inputMode = data === 'img_in_i2i' ? 'i2i' : 't2i';
+    const label = imgLabelFor(userId);
+    const ratio = getSession(userId).imgRatio ?? '1:1';
+    if (inputMode === 'i2i') {
+      setSession(userId, { imgInputMode: 'i2i', mode: 'img_wait_image' });
+      return ctx.editMessageText(
+        `${label}\n\nRasio: ${ratio}\n\n*Langkah 1:* Kirim *foto acuan* untuk gambar kamu.`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+    setSession(userId, { imgInputMode: 't2i', mode: 'img_wait_prompt' });
+    return ctx.editMessageText(
+      `${label}\n\nRasio: ${ratio}\n\n*Langkah 1:* Kirim *prompt teks* untuk gambar kamu (deskripsi gambar).`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (data === 'back_main') {
     setSession(userId, { mode: 'idle' });
     return ctx.editMessageText('Pilih mode generasi:', mainMenuKeyboard());
   }
 });
+
+// Label model gambar berdasarkan session aktif (dipakai di beberapa langkah wizard).
+function imgLabelFor(userId: number): string {
+  const model = getSession(userId).imgModel;
+  const entry = Object.values(IMG_MODELS).find((m) => m.model === model);
+  return entry ? `*${entry.label}*` : '*Nano Banana*';
+}
 
 // ─── Shared photo/image handler ───────────────────────────────────────────────
 
@@ -2617,6 +2731,15 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     return ctx.reply(
       `✅ Foto acuan diterima! (Rasio: ${session.veoliteRatio ?? '16:9'})\n\n` +
       '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'img_wait_image') {
+    setSession(userId, { imgImageUrl: fileUrl, mode: 'img_wait_prompt' });
+    return ctx.reply(
+      `✅ Foto acuan diterima! (Rasio: ${session.imgRatio ?? '1:1'})\n\n` +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk gambar kamu (deskripsi gambar).',
       { parse_mode: 'Markdown' }
     );
   }
@@ -2877,11 +3000,42 @@ bot.on('text', async (ctx) => {
     return;
   }
 
+  // ── Nano Banana image prompt (SnapGen) ──
+  if (session.mode === 'img_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi gambar yang kamu mau.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    const model = session.imgModel ?? 'nano-banana-pro';
+    const priceKey = session.imgPriceKey ?? 'nb_pro';
+    const opts = {
+      model,
+      priceKey,
+      inputMode: session.imgInputMode ?? 't2i',
+      imageUrl: session.imgImageUrl,
+      ratio: session.imgRatio ?? '1:1',
+    } as const;
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Memproses gambar...\nHasil dikirim otomatis (~1-3 menit).', { parse_mode: 'Markdown' });
+    runImage(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
+      .catch(e => console.error(`[${userId}] Image gen error:`, e.message));
+    return;
+  }
+
   // ── Guard: modes that expect a photo/video, not text ──
   if (session.mode === 'sora_wait_image') {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
   if (session.mode === 'veofast_wait_image' || session.mode === 'veolite_wait_image') {
+    return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+  }
+  if (session.mode === 'img_wait_image') {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
   if (session.mode === 'gomni_wait_image') {
@@ -3493,6 +3647,241 @@ async function runVeo(
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
     }
     releaseGenerating(dbUserId);
+  }
+}
+
+// ─── SnapGen AI (Nano Banana image generation) ────────────────────────────────
+// Submit: POST {SNAPGEN_BASE}/generate_image  (multipart/form-data), header x-api-key
+//   fields: prompt, model, aspect_ratio, resolution '2K', output 'jpeg'
+//   image-to-image: files (array field) — buffer foto acuan yang kita unduh sendiri
+//   → { uuid, status (1 processing, 2 completed, 3 failed), generate_result (URL), error_message }
+// Poll:   GET {SNAPGEN_BASE}/history/{uuid} tiap 5s hingga 5 menit
+//   status 2 = selesai → generate_result / generated_image[0].image_url / file_download_url
+//   status 3 = gagal → error_message
+
+async function snapgenSubmitImage(input: {
+  prompt: string;
+  model: 'nano-banana-pro' | 'nano-banana-2' | 'nano-banana-2-lite';
+  aspectRatio?: string;
+  imageBuffer?: Buffer;
+  imageName?: string;
+  imageMime?: string;
+}): Promise<{ uuid: string; url?: string }> {
+  if (!SNAPGEN_API_KEY) throw new Error('SNAPGEN_KEY_MISSING: SNAPGEN_API_KEY tidak diset');
+  const fd = new FormData();
+  fd.append('prompt', input.prompt);
+  fd.append('model', input.model);
+  fd.append('aspect_ratio', input.aspectRatio ?? '1:1');
+  fd.append('resolution', '2K');
+  fd.append('output', 'jpeg');
+  if (input.imageBuffer) {
+    // Foto diunduh sendiri lalu dilampirkan sebagai file — URL Telegram memuat
+    // bot token jadi jangan diteruskan ke pihak ketiga lewat file_urls.
+    fd.append('files', input.imageBuffer, {
+      filename: input.imageName ?? 'reference.jpg',
+      contentType: input.imageMime ?? 'image/jpeg',
+    });
+  }
+  const r = await snapgenHttp.post(`${SNAPGEN_BASE}/generate_image`, fd, {
+    headers: { ...fd.getHeaders(), 'x-api-key': SNAPGEN_API_KEY },
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
+    validateStatus: () => true,
+  });
+  const body = r.data;
+  const uuid = body?.uuid;
+  const status = Number(body?.status);
+  if (r.status < 200 || r.status >= 300 || !uuid) {
+    throw new Error(`SNAPGEN_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(body ?? '').slice(0, 300)}`);
+  }
+  if (status === 3) {
+    throw new Error(`SNAPGEN_SUBMIT_FAILED: ${body?.error_message ?? 'ditolak server'}`);
+  }
+  // Kadang server langsung selesai (status 2) — ambil URL kalau ada.
+  if (status === 2) {
+    const url = extractSnapgenImageUrl(body);
+    if (url) return { uuid, url };
+  }
+  return { uuid };
+}
+
+function extractSnapgenImageUrl(body: any): string | undefined {
+  if (!body) return undefined;
+  if (typeof body.generate_result === 'string' && body.generate_result) return body.generate_result;
+  const gen = Array.isArray(body.generated_image) ? body.generated_image[0] : undefined;
+  return gen?.image_url ?? gen?.file_download_url ?? undefined;
+}
+
+async function snapgenPollImage(
+  uuid: string,
+  opts?: { maxAttempts?: number; intervalMs?: number; onTick?: (elapsedSec: number) => void }
+): Promise<{ url: string }> {
+  if (!SNAPGEN_API_KEY) throw new Error('SNAPGEN_KEY_MISSING: SNAPGEN_API_KEY tidak diset');
+  const maxAttempts = opts?.maxAttempts ?? 60; // ~5 min at 5s
+  const intervalMs = opts?.intervalMs ?? 5_000;
+  const start = Date.now();
+  for (let i = 0; i < maxAttempts; i++) {
+    await sleep(intervalMs);
+    opts?.onTick?.(Math.round((Date.now() - start) / 1000));
+    const r = await snapgenHttp.get(`${SNAPGEN_BASE}/history/${uuid}`, {
+      headers: { 'x-api-key': SNAPGEN_API_KEY },
+      validateStatus: () => true,
+    });
+    if (r.status < 200 || r.status >= 300) continue;
+    const body = r.data;
+    const status = Number(body?.status);
+    if (status === 2) {
+      const url = extractSnapgenImageUrl(body);
+      if (!url) throw new Error('SNAPGEN_NO_RESULT_URL');
+      return { url };
+    }
+    if (status === 3) {
+      const errMsg = body?.error_message ?? 'generate gagal';
+      throw new Error(`SNAPGEN_GEN_FAILED: ${String(errMsg).slice(0, 200)}`);
+    }
+  }
+  throw new Error(`SNAPGEN_TIMEOUT: proses melebihi ${Math.round((maxAttempts * intervalMs) / 60000)} menit`);
+}
+
+// ─── Background: Nano Banana image (SnapGen, text-to-image or image-to-image) ──
+
+async function runImage(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  opts: {
+    model: 'nano-banana-pro' | 'nano-banana-2' | 'nano-banana-2-lite';
+    priceKey: 'nb_pro' | 'nb_2' | 'nb_2lite';
+    inputMode: 'i2i' | 't2i';
+    imageUrl?: string;
+    ratio: string;
+  }
+) {
+  const entry = Object.values(IMG_MODELS).find((m) => m.model === opts.model);
+  const label = entry ? entry.label : '🍌 Nano Banana';
+  const ratio = opts.ratio ?? '1:1';
+  const PRICE = MODEL_PRICES[opts.priceKey];
+  console.log(`[${userId}] ${label} started — mode: ${opts.inputMode}, ratio: ${ratio}`);
+
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+
+  try {
+    let imageBuffer: Buffer | undefined;
+    let imageName: string | undefined;
+    let imageMime: string | undefined;
+    if (opts.inputMode === 'i2i' && opts.imageUrl) {
+      const img = await downloadBuffer(opts.imageUrl);
+      imageBuffer = img.buf;
+      imageName = `reference.${img.ext}`;
+      imageMime = img.mime;
+      console.log(`[${userId}] ${label} ref image — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
+    }
+
+    let lastEdit = 0;
+    await bot.telegram.editMessageText(
+      chatId, statusMsgId, undefined,
+      `🎨 ${label}: mengirim perintah ke server... (1/2)`
+    ).catch(() => {});
+    const submitted = await snapgenSubmitImage({ prompt, model: opts.model, aspectRatio: ratio, imageBuffer, imageName, imageMime });
+
+    let resultUrl = submitted.url;
+    if (!resultUrl) {
+      lastEdit = Date.now();
+      await bot.telegram.editMessageText(
+        chatId, statusMsgId, undefined,
+        `🎨 ${label}: gambar sedang dibuat... (2/2)\n⏱️ Mohon tunggu, biasanya 1–3 menit. Jangan tutup chat ini.`
+      ).catch(() => {});
+      const result = await snapgenPollImage(submitted.uuid, {
+        onTick: (elapsedSec) => {
+          if (Date.now() - lastEdit < 15_000) return;
+          lastEdit = Date.now();
+          const mins = Math.floor(elapsedSec / 60);
+          const secs = elapsedSec % 60;
+          const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
+          bot.telegram.editMessageText(
+            chatId, statusMsgId, undefined,
+            `🎨 ${label}: gambar sedang dibuat... (2/2)\n⏱️ Sudah berjalan ${timer}.\nJangan tutup chat ini, gambar dikirim otomatis.`
+          ).catch(() => {});
+        },
+      });
+      resultUrl = result.url;
+    }
+
+    const caption = `🎨 ${label} (${ratio} · 2K)\n\n/menu untuk buat lagi`;
+    const delivered = await sendImageResult(chatId, resultUrl, caption);
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] ${label} done (usage: ${newCount})`);
+    }
+
+  } catch (err: any) {
+    const msg = describeError(err);
+    console.error(`[${userId}] ${label} error: ${msg}`);
+    let friendly: string;
+    if (msg.includes('SNAPGEN_TIMEOUT')) {
+      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
+    } else if (msg.includes('SNAPGEN_KEY_MISSING')) {
+      friendly = '❌ Layanan sedang tidak tersedia. Coba lagi nanti.';
+    } else {
+      friendly = '❌ Gagal memproses. Coba lagi nanti.';
+    }
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+    const owner = process.env.PICSART_OWNER_CHAT_ID;
+    if (owner) bot.telegram.sendMessage(owner, `⚠️ ${label} gagal untuk user ${userId}: ${msg.slice(0, 300)}`).catch(() => {});
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
+// Kirim gambar hasil via replyWithPhoto; fallback ke document jika gagal. Kita
+// unduh sendiri lalu upload bytes-nya supaya URL upstream tidak pernah terlihat.
+async function sendImageResult(chatId: number, outputUrl: string, caption: string): Promise<boolean> {
+  let buf: Buffer | null = null;
+  try {
+    const res = await telegramHttp.get(outputUrl, { responseType: 'arraybuffer', timeout: 120_000 });
+    buf = Buffer.from(res.data);
+    console.log(`Downloaded image result: ${(buf.length / 1024).toFixed(1)} KB`);
+  } catch (e: any) {
+    console.log(`Image download failed: ${e.message}`);
+  }
+  if (!buf) {
+    await bot.telegram.sendMessage(chatId,
+      `✅ Gambar selesai, tapi gagal mengambil file. Coba lagi sebentar ya.\n\n${caption}`
+    );
+    return false;
+  }
+  const opts = { caption };
+  try {
+    await bot.telegram.sendPhoto(chatId, { source: buf, filename: 'output.jpg' }, opts);
+    return true;
+  } catch (e: any) {
+    console.log(`sendPhoto failed, fallback to document: ${e.message}`);
+  }
+  try {
+    await bot.telegram.sendDocument(chatId, { source: buf, filename: 'output.jpg' }, opts);
+    return true;
+  } catch (e: any) {
+    console.log(`sendDocument failed: ${e.message}`);
+    await bot.telegram.sendMessage(chatId,
+      `✅ Gambar selesai, tapi gagal mengirim file. Coba lagi sebentar ya.\n\n${caption}`
+    );
+    return false;
   }
 }
 
