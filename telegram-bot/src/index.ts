@@ -918,11 +918,14 @@ async function requireLogin(ctx: any, refTgId?: number): Promise<boolean> {
 }
 
 // Cek admin: auto-hydrate akun dari telegram_id (login sudah dihapus),
-// lalu cek flag is_admin dari DB.
+// lalu cek flag is_admin LANGSUNG dari DB (bukan cache sesi — supaya user yang
+// baru dijadikan admin langsung bisa pakai perintah admin tanpa restart bot).
 async function requireAdmin(ctx: any): Promise<boolean> {
   if (!(await requireLogin(ctx))) return false;
   const session = getSession(ctx.from.id);
-  if (!session.dbIsAdmin) {
+  const admin = session.dbUserId ? await isAdmin(session.dbUserId) : false;
+  setSession(ctx.from.id, { dbIsAdmin: admin });
+  if (!admin) {
     await ctx.reply('❌ Hanya admin yang bisa menggunakan perintah ini.');
     return false;
   }
