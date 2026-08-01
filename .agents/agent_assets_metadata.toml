@@ -246,3 +246,10 @@ id = "dy7Dz0eTbWPanV6a7D0s8"
 uri = "file://exports/kling26_motion_test.mp4"
 type = "video"
 title = "Hasil Tes Kling 2.6 Pro Motion Control (Flora AI)"
+
+[[outputs]]
+id = "i7k2vH3igR1HngFOT1iFm"
+uri = "file://test_results/veo_fast_test.mp4"
+type = "video"
+title = "Tes Veo 3.1 Fast (Full HD)"
+description = "Hasil tes generate SnapGen veo-3.1-fast, 1080p, 8 detik, 16:9."
