@@ -760,7 +760,7 @@ interface Session {
   imgPriceKey?: 'nb_pro' | 'nb_2' | 'nb_2lite';
   imgRatio?: string;
   imgInputMode?: 'i2i' | 't2i';
-  imgImageUrl?: string;
+  imgImageUrls?: string[];
 }
 
 const sessions = new Map<number, Session>();
@@ -2627,7 +2627,7 @@ bot.on('callback_query', async (ctx) => {
       imgPriceKey: cfg.priceKey,
       imgRatio: undefined,
       imgInputMode: undefined,
-      imgImageUrl: undefined,
+      imgImageUrls: undefined,
     });
     return ctx.editMessageText(
       `${cfg.label}\n\nGenerate gambar (${formatRupiah(MODEL_PRICES[cfg.priceKey])}).\n\nPilih rasio gambar:`,
@@ -2650,9 +2650,9 @@ bot.on('callback_query', async (ctx) => {
     const label = imgLabelFor(userId);
     const ratio = getSession(userId).imgRatio ?? '1:1';
     if (inputMode === 'i2i') {
-      setSession(userId, { imgInputMode: 'i2i', mode: 'img_wait_image' });
+      setSession(userId, { imgInputMode: 'i2i', mode: 'img_wait_image', imgImageUrls: [] });
       return ctx.editMessageText(
-        `${label}\n\nRasio: ${ratio}\n\n*Langkah 1:* Kirim *foto acuan* untuk gambar kamu.`,
+        `${label}\n\nRasio: ${ratio}\n\n*Langkah 1:* Kirim *foto acuan* untuk gambar kamu (maksimal 2 foto).`,
         { parse_mode: 'Markdown' }
       );
     }
@@ -2663,11 +2663,46 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  // ── Tambah foto ke-2: tetap di img_wait_image, tunggu foto berikutnya ──
+  if (data === 'img_add_photo') {
+    const session = getSession(userId);
+    if (session.mode !== 'img_wait_image') {
+      return ctx.answerCbQuery('Sesi sudah berubah, ulangi dari /menu.').catch(() => {});
+    }
+    await ctx.answerCbQuery().catch(() => {});
+    return ctx.editMessageText(
+      `${imgLabelFor(userId)}\n\n📸 Kirim *foto acuan ke-2* kamu.`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  // ── Lanjut ke prompt setelah 1 foto (opsi tambah foto ke-2) ──
+  if (data === 'img_photos_done') {
+    const session = getSession(userId);
+    if (session.mode !== 'img_wait_image' || !(session.imgImageUrls && session.imgImageUrls.length > 0)) {
+      return ctx.answerCbQuery('Kirim minimal 1 foto dulu ya.').catch(() => {});
+    }
+    setSession(userId, { mode: 'img_wait_prompt' });
+    await ctx.answerCbQuery().catch(() => {});
+    return ctx.editMessageText(
+      `${imgLabelFor(userId)}\n\n✅ ${session.imgImageUrls.length} foto acuan diterima.\n\n*Langkah terakhir:* Kirim *prompt teks* untuk gambar kamu (deskripsi gambar).`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (data === 'back_main') {
     setSession(userId, { mode: 'idle' });
     return ctx.editMessageText('Pilih mode generasi:', mainMenuKeyboard());
   }
 });
+
+// Keyboard setelah foto pertama: tambah 1 foto lagi atau lanjut ke prompt.
+function imgAddPhotoKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('➕ Tambah 1 Foto Lagi', 'img_add_photo')],
+    [Markup.button.callback('✅ Lanjut ke Prompt', 'img_photos_done')],
+  ]);
+}
 
 // Label model gambar berdasarkan session aktif (dipakai di beberapa langkah wizard).
 function imgLabelFor(userId: number): string {
@@ -2739,11 +2774,22 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
   }
 
   if (session.mode === 'img_wait_image') {
-    setSession(userId, { imgImageUrl: fileUrl, mode: 'img_wait_prompt' });
+    const urls = [...(session.imgImageUrls ?? []), fileUrl].slice(0, 2);
+    // Foto ke-2 (atau lebih) → langsung lanjut ke prompt.
+    if (urls.length >= 2) {
+      setSession(userId, { imgImageUrls: urls, mode: 'img_wait_prompt' });
+      return ctx.reply(
+        `✅ 2 foto acuan diterima (maksimal 2). (Rasio: ${session.imgRatio ?? '1:1'})\n\n` +
+        '*Langkah terakhir:* Kirim *prompt teks* untuk gambar kamu (deskripsi gambar).',
+        { parse_mode: 'Markdown' }
+      );
+    }
+    // Foto pertama → tawarkan tambah foto ke-2 atau lanjut ke prompt.
+    setSession(userId, { imgImageUrls: urls });
     return ctx.reply(
-      `✅ Foto acuan diterima! (Rasio: ${session.imgRatio ?? '1:1'})\n\n` +
-      '*Langkah terakhir:* Kirim *prompt teks* untuk gambar kamu (deskripsi gambar).',
-      { parse_mode: 'Markdown' }
+      `✅ Foto acuan ke-1 diterima! (Rasio: ${session.imgRatio ?? '1:1'})\n\n` +
+      'Kamu bisa kirim *1 foto lagi* (maksimal 2 foto) atau langsung lanjut ke prompt.',
+      { parse_mode: 'Markdown', ...imgAddPhotoKeyboard() }
     );
   }
 
@@ -3021,7 +3067,7 @@ bot.on('text', async (ctx) => {
       model,
       priceKey,
       inputMode: session.imgInputMode ?? 't2i',
-      imageUrl: session.imgImageUrl,
+      imageUrls: session.imgImageUrls ?? [],
       ratio: session.imgRatio ?? '1:1',
     } as const;
     setSession(userId, { mode: 'idle' });
@@ -3666,9 +3712,7 @@ async function snapgenSubmitImage(input: {
   prompt: string;
   model: 'nano-banana-pro' | 'nano-banana-2' | 'nano-banana-2-lite';
   aspectRatio?: string;
-  imageBuffer?: Buffer;
-  imageName?: string;
-  imageMime?: string;
+  images?: Array<{ buffer: Buffer; name: string; mime: string }>;
 }): Promise<{ uuid: string; url?: string }> {
   if (!SNAPGEN_API_KEY) throw new Error('SNAPGEN_KEY_MISSING: SNAPGEN_API_KEY tidak diset');
   const fd = new FormData();
@@ -3677,12 +3721,12 @@ async function snapgenSubmitImage(input: {
   fd.append('aspect_ratio', input.aspectRatio ?? '1:1');
   fd.append('resolution', '4K');
   fd.append('output', 'jpeg');
-  if (input.imageBuffer) {
-    // Foto diunduh sendiri lalu dilampirkan sebagai file — URL Telegram memuat
-    // bot token jadi jangan diteruskan ke pihak ketiga lewat file_urls.
-    fd.append('files', input.imageBuffer, {
-      filename: input.imageName ?? 'reference.jpg',
-      contentType: input.imageMime ?? 'image/jpeg',
+  // Setiap foto diunduh sendiri lalu dilampirkan sebagai entri 'files' tersendiri
+  // — URL Telegram memuat bot token jadi jangan diteruskan ke pihak ketiga.
+  for (const img of input.images ?? []) {
+    fd.append('files', img.buffer, {
+      filename: img.name,
+      contentType: img.mime,
     });
   }
   const r = await snapgenHttp.post(`${SNAPGEN_BASE}/generate_image`, fd, {
@@ -3758,7 +3802,7 @@ async function runImage(
     model: 'nano-banana-pro' | 'nano-banana-2' | 'nano-banana-2-lite';
     priceKey: 'nb_pro' | 'nb_2' | 'nb_2lite';
     inputMode: 'i2i' | 't2i';
-    imageUrl?: string;
+    imageUrls?: readonly string[];
     ratio: string;
   }
 ) {
@@ -3776,15 +3820,15 @@ async function runImage(
   let refund = true;
 
   try {
-    let imageBuffer: Buffer | undefined;
-    let imageName: string | undefined;
-    let imageMime: string | undefined;
-    if (opts.inputMode === 'i2i' && opts.imageUrl) {
-      const img = await downloadBuffer(opts.imageUrl);
-      imageBuffer = img.buf;
-      imageName = `reference.${img.ext}`;
-      imageMime = img.mime;
-      console.log(`[${userId}] ${label} ref image — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
+    const images: Array<{ buffer: Buffer; name: string; mime: string }> = [];
+    if (opts.inputMode === 'i2i' && opts.imageUrls && opts.imageUrls.length > 0) {
+      let idx = 0;
+      for (const url of opts.imageUrls.slice(0, 2)) {
+        idx++;
+        const img = await downloadBuffer(url);
+        images.push({ buffer: img.buf, name: `reference-${idx}.${img.ext}`, mime: img.mime });
+        console.log(`[${userId}] ${label} ref image ${idx} — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
+      }
     }
 
     let lastEdit = 0;
@@ -3792,7 +3836,7 @@ async function runImage(
       chatId, statusMsgId, undefined,
       `🎨 ${label}: mengirim perintah ke server... (1/2)`
     ).catch(() => {});
-    const submitted = await snapgenSubmitImage({ prompt, model: opts.model, aspectRatio: ratio, imageBuffer, imageName, imageMime });
+    const submitted = await snapgenSubmitImage({ prompt, model: opts.model, aspectRatio: ratio, images });
 
     let resultUrl = submitted.url;
     if (!resultUrl) {
