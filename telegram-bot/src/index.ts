@@ -608,6 +608,65 @@ function isLeonardoKeyExhaustedError(raw: string): boolean {
     || lower.includes('forbidden') || lower.includes('403') || lower.includes('token limit');
 }
 
+// ─── Edanbot Cookie Pool (Kling MC V3 PRO P2) ────────────────────────────────
+// Cookies disimpan di DB (tabel edanbot_cookie_pool). Bot memakai cookie
+// 'available' pertama; kalau ditolak (401/403), cookie di-mark dead dan bot
+// otomatis coba cookie berikutnya. Fallback: env EDANBOT_COOKIE.
+
+function normalizeEdanbotCookie(raw: string): string {
+  const c = raw.trim();
+  return c.startsWith('session=') ? c : 'session=' + c;
+}
+
+async function ensureEdanbotPoolTable(): Promise<void> {
+  await db.query(
+    `CREATE TABLE IF NOT EXISTS edanbot_cookie_pool (
+       id SERIAL PRIMARY KEY,
+       cookie TEXT UNIQUE NOT NULL,
+       status TEXT NOT NULL DEFAULT 'available',
+       dead_at TIMESTAMPTZ,
+       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+     )`
+  );
+}
+
+async function getAvailableEdanbotCookies(): Promise<{ id: number; cookie: string }[]> {
+  await ensureEdanbotPoolTable();
+  const res = await db.query(
+    `SELECT id, cookie FROM edanbot_cookie_pool WHERE status = 'available' ORDER BY id`
+  );
+  const rows = res.rows.map((r: any) => ({ id: r.id, cookie: normalizeEdanbotCookie(r.cookie) }));
+  // Fallback: env cookie kalau pool kosong (id 0 = tidak bisa di-mark dead di DB).
+  if (rows.length === 0 && process.env.EDANBOT_COOKIE?.trim()) {
+    rows.push({ id: 0, cookie: normalizeEdanbotCookie(process.env.EDANBOT_COOKIE) });
+  }
+  return rows;
+}
+
+async function markEdanbotCookieDead(id: number): Promise<void> {
+  if (id === 0) return; // env fallback, bukan baris DB
+  await db.query(`UPDATE edanbot_cookie_pool SET status = 'dead', dead_at = NOW() WHERE id = $1`, [id]);
+}
+
+async function addEdanbotCookieToPool(cookie: string): Promise<boolean> {
+  await ensureEdanbotPoolTable();
+  const raw = cookie.trim().replace(/^session=/, '');
+  if (!raw) return false;
+  const res = await db.query(
+    `INSERT INTO edanbot_cookie_pool (cookie, status) VALUES ($1, 'available') ON CONFLICT (cookie) DO NOTHING RETURNING id`,
+    [raw]
+  );
+  return res.rows.length > 0;
+}
+
+async function getEdanbotPoolStats(): Promise<{ available: number; dead: number }> {
+  await ensureEdanbotPoolTable();
+  const res = await db.query(`SELECT status, COUNT(*) AS cnt FROM edanbot_cookie_pool GROUP BY status`);
+  const stats: any = { available: 0, dead: 0 };
+  for (const row of res.rows) stats[row.status] = parseInt(row.cnt);
+  return stats;
+}
+
 // ─── Generate Cooldown ────────────────────────────────────────────────────────
 
 const GEN_COOLDOWN_MS = 0; // cooldown dinonaktifkan
@@ -1778,6 +1837,45 @@ bot.command('addkey', async (ctx) => {
   msg += `• Dead: ${stats.dead}`;
 
   return ctx.reply(msg);
+});
+
+bot.command('addedancookie', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  const raw = ctx.message.text.replace(/^\/addedancookie\s*/i, '').trim();
+  if (!raw) {
+    return ctx.reply(
+      '📝 Format:\n/addedancookie <cookie>\n\n' +
+      'Atau banyak sekaligus (satu per baris):\n/addedancookie cookie1\ncookie2\ncookie3\n\n' +
+      'Boleh dengan atau tanpa awalan session='
+    );
+  }
+  const cookies = raw.split(/\r?\n/).map((c) => c.trim()).filter((c) => c.length > 0);
+  let added = 0, skipped = 0;
+  for (const c of cookies) {
+    if (await addEdanbotCookieToPool(c)) added++;
+    else skipped++;
+  }
+  const stats = await getEdanbotPoolStats();
+  return ctx.reply(
+    `✅ Selesai!\n• Ditambah: ${added}\n${skipped > 0 ? `• Sudah ada / gagal: ${skipped}\n` : ''}\n📊 Pool cookie:\n• Available: ${stats.available}\n• Dead: ${stats.dead}`
+  );
+});
+
+bot.command('edanpool', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  const stats = await getEdanbotPoolStats();
+  const res = await db.query(
+    `SELECT id, status, dead_at, LEFT(cookie, 16) AS head FROM edanbot_cookie_pool ORDER BY id`
+  );
+  const lines = res.rows.map((r: any) =>
+    `• #${r.id} \`${r.head}...\` — ${r.status === 'available' ? '✅ available' : '❌ dead'}`
+  );
+  return ctx.reply(
+    `📊 *Pool Cookie (P2)*\n\n` +
+    `• ✅ Available: *${stats.available}*\n• ❌ Dead: *${stats.dead}*\n\n` +
+    (lines.length ? lines.join('\n') : '_Pool kosong — bot pakai fallback env._'),
+    { parse_mode: 'Markdown' }
+  );
 });
 
 bot.command('poolstatus', async (ctx) => {
@@ -3465,6 +3563,7 @@ async function runKlingP2(
     return;
   }
   let refund = true;
+  let cookiePoolIdRef = 0; // id cookie pool yang dipakai (untuk mark dead di catch)
 
   const failGeneric = async (reason: string) => {
     console.error(`[${userId}] ${label} error: ${reason}`);
@@ -3476,16 +3575,42 @@ async function runKlingP2(
   try {
     // Internal provider config — MUST stay hidden from the user.
     const base = 'https://edanbot.digital';
-    let cookie = process.env.EDANBOT_COOKIE?.trim() ?? '';
+    // Ambil cookie dari pool DB (fallback: env). Validasi dulu; cookie mati
+    // (401/403) otomatis di-mark dead dan bot pakai cookie berikutnya.
+    let cookie = '';
+    {
+      const candidates = await getAvailableEdanbotCookies();
+      for (const cand of candidates) {
+        try {
+          const check = await freepikHttp.get(`${base}/api/user/info`, {
+            headers: { cookie: cand.cookie, 'user-agent': 'Mozilla/5.0', referer: base + '/dashboard' },
+            timeout: 30_000,
+            validateStatus: () => true,
+          });
+          if (check.status === 200 && check.data && typeof check.data === 'object') {
+            cookie = cand.cookie;
+            cookiePoolIdRef = cand.id;
+            break;
+          }
+          if (check.status === 401 || check.status === 403) {
+            console.error(`[${userId}] ${label}: cookie #${cand.id} ditolak (${check.status}) → mark dead`);
+            await markEdanbotCookieDead(cand.id);
+          } else {
+            console.error(`[${userId}] ${label}: cookie #${cand.id} cek gagal (HTTP ${check.status}) — skip tanpa mark dead`);
+          }
+        } catch (e: any) {
+          console.error(`[${userId}] ${label}: cookie #${cand.id} cek error: ${e?.message}`);
+        }
+      }
+    }
     if (!cookie) {
       // Fail gracefully without leaking the provider; log the real reason.
       await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
         `⚠️ Layanan sedang tidak tersedia. Coba lagi nanti ya.\n\n/menu untuk coba lagi`
       ).catch(() => bot.telegram.sendMessage(chatId, `⚠️ Layanan sedang tidak tersedia. Coba lagi nanti ya.\n\n/menu untuk coba lagi`));
-      console.error(`[${userId}] ${label} error: EDANBOT_COOKIE tidak diset`);
+      console.error(`[${userId}] ${label} error: tidak ada cookie edanbot yang valid (pool kosong/semua dead)`);
       return; // refund handled in finally
     }
-    if (!cookie.startsWith('session=')) cookie = 'session=' + cookie;
     const headers = { cookie, 'user-agent': 'Mozilla/5.0', referer: base + '/dashboard', origin: base };
 
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
@@ -3571,6 +3696,13 @@ async function runKlingP2(
     }
 
   } catch (err: any) {
+    // Cookie ditolak di tengah proses (mis. logout saat upload/generate/poll):
+    // mark dead supaya request berikutnya langsung pakai cookie lain.
+    const httpStatus = (err as any)?.response?.status;
+    if ((httpStatus === 401 || httpStatus === 403) && cookiePoolIdRef > 0) {
+      await markEdanbotCookieDead(cookiePoolIdRef).catch(() => {});
+      console.error(`[${userId}] ${label}: cookie #${cookiePoolIdRef} mati di tengah proses → mark dead`);
+    }
     await failGeneric(describeError(err));
   } finally {
     if (refund) {
