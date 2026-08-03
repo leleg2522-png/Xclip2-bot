@@ -122,6 +122,8 @@ type ModelKey = keyof typeof MODEL_PRICES;
 
 // Batas durasi video referensi Kling Motion Control (detik).
 const KLING_MAX_REF_SECONDS = 16;
+// Batas durasi video referensi Kling MC V3 PRO P2 (detik).
+const KLING_P2_MAX_REF_SECONDS = 30;
 
 // Deskripsi error yang tahan banting untuk logging/notif admin: message kosong,
 // axios error (status + body), atau nilai non-Error tetap menghasilkan info berguna.
@@ -1214,8 +1216,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🔍 Cek Status Pembayaran', 'menu_cekbayar')],
     // ── Generate Video ──
     [Markup.button.callback('── 🎬 Generate Video ──', 'noop')],
-    [Markup.button.callback('🕹️ Kling Motion Control', 'mode_kling')],
-    [Markup.button.callback('🎬 Kling MC V3 PRO P2', 'mode_klingp2')],
+    [Markup.button.callback('🕹️ Kling Motion Control', 'menu_kling_list')],
     [Markup.button.callback('🚀 Runway Gen-4.5', 'mode_rw')],
     [Markup.button.callback('🎥 Sora 2 (OpenAI)', 'mode_sora')],
     [Markup.button.callback('⚡ Veo 3.1 Fast (Full HD)', 'mode_veofast')],
@@ -2399,6 +2400,21 @@ bot.on('callback_query', async (ctx) => {
     return;
   }
 
+  if (data === 'menu_kling_list') {
+    if (!await requireLogin(ctx)) return;
+    return ctx.editMessageText(
+      '🕹️ *Kling Motion Control*\n\nPilih model:',
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('🕹️ Kling MC3.0 PRO', 'mode_kling')],
+          [Markup.button.callback('🎬 Kling MC V3 PRO P2', 'mode_klingp2')],
+          [Markup.button.callback('⬅️ Kembali', 'back_main')],
+        ]),
+      }
+    );
+  }
+
   if (data === 'mode_kling') {
     if (!await requireLogin(ctx)) return;
     setSession(userId, { mode: 'kling_wait_image', characterUrl: undefined, klingCharacterFileId: undefined, klingVideoFileId: undefined });
@@ -2426,7 +2442,7 @@ bot.on('callback_query', async (ctx) => {
       '• Bukan close-up wajah\n' +
       '• Resolusi min. 300px, maks 10MB\n' +
       '• Format: JPG, PNG\n\n' +
-      `ℹ️ Nanti di langkah 2, video referensi gerakan *maksimal ${KLING_MAX_REF_SECONDS} detik*.`,
+      `ℹ️ Nanti di langkah 2, video referensi gerakan *maksimal ${KLING_P2_MAX_REF_SECONDS} detik*.`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -2909,10 +2925,10 @@ bot.on('video', async (ctx) => {
     if (vid.file_size && vid.file_size > MAX_VIDEO_BYTES) {
       return ctx.reply(`❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
     }
-    if (vid.duration && vid.duration > KLING_MAX_REF_SECONDS) {
+    if (vid.duration && vid.duration > KLING_P2_MAX_REF_SECONDS) {
       return ctx.reply(
         `❌ Video referensi terlalu panjang (${vid.duration} detik).\n` +
-        `Maksimal *${KLING_MAX_REF_SECONDS} detik*. Potong videonya dulu lalu kirim ulang.`,
+        `Maksimal *${KLING_P2_MAX_REF_SECONDS} detik*. Potong videonya dulu lalu kirim ulang.`,
         { parse_mode: 'Markdown' }
       );
     }
@@ -3205,7 +3221,7 @@ bot.on('text', async (ctx) => {
   }
   if (session.mode === 'klingp2_wait_video') {
     return ctx.reply(
-      `🎥 Kirim *video referensi gerakan* (durasi maksimal *${KLING_MAX_REF_SECONDS} detik*), atau /menu untuk batal.`,
+      `🎥 Kirim *video referensi gerakan* (durasi maksimal *${KLING_P2_MAX_REF_SECONDS} detik*), atau /menu untuk batal.`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -3277,7 +3293,7 @@ bot.on('document', async (ctx) => {
     }
     setSession(userId, { klingP2VideoFileId: doc.file_id, klingP2VideoDuration: (doc as any).duration ?? undefined, mode: 'klingp2_wait_prompt' });
     return ctx.reply(
-      `⚠️ Ingat: durasi video referensi *maksimal ${KLING_MAX_REF_SECONDS} detik* — kalau lebih, generate akan gagal.\n\n` +
+      `⚠️ Ingat: durasi video referensi *maksimal ${KLING_P2_MAX_REF_SECONDS} detik* — kalau lebih, generate akan gagal.\n\n` +
       '✅ Video referensi diterima!\n\n' +
       '*Langkah 3:* Kirim *prompt teks* (deskripsi gerakan/adegan) untuk mengarahkan hasil video.\n\n' +
       'Contoh: _buat dia mengikuti referensi tanpa kamera goyang_\n\n' +
