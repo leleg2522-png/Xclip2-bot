@@ -66,6 +66,10 @@ const leonardoHttp = axios.create({ timeout: 120_000 });
 // Direct HTTP client for Telegram downloads — tidak pakai proxy
 const telegramHttp = axios.create({ timeout: 60_000 });
 
+// Direct HTTP client untuk Kling MC V3 PRO P2 — TANPA proxy. Cookie session-nya
+// tidak terikat IP, dan lewat proxy Decodo malah kena 407 (proxy auth) di Railway.
+const edanbotHttp = axios.create({ timeout: 120_000 });
+
 
 // ─── Database ─────────────────────────────────────────────────────────────────
 
@@ -3582,7 +3586,7 @@ async function runKlingP2(
       const candidates = await getAvailableEdanbotCookies();
       for (const cand of candidates) {
         try {
-          const check = await freepikHttp.get(`${base}/api/user/info`, {
+          const check = await edanbotHttp.get(`${base}/api/user/info`, {
             headers: { cookie: cand.cookie, 'user-agent': 'Mozilla/5.0', referer: base + '/dashboard' },
             timeout: 30_000,
             validateStatus: () => true,
@@ -3633,7 +3637,7 @@ async function runKlingP2(
     // Upload the character photo.
     const imgForm = new FormData();
     imgForm.append('file', img.buf, { filename: `character.${img.ext}`, contentType: img.mime });
-    const imgUpRes = await freepikHttp.post(`${base}/api/uploads`, imgForm, {
+    const imgUpRes = await edanbotHttp.post(`${base}/api/uploads`, imgForm, {
       headers: { ...headers, ...imgForm.getHeaders() },
       timeout: 120_000,
     });
@@ -3643,7 +3647,7 @@ async function runKlingP2(
     // Upload the reference video.
     const vidForm = new FormData();
     vidForm.append('file', vid.buf, { filename: `driver.${vidType.ext}`, contentType: vidType.mime });
-    const vidUpRes = await freepikHttp.post(`${base}/api/uploads`, vidForm, {
+    const vidUpRes = await edanbotHttp.post(`${base}/api/uploads`, vidForm, {
       headers: { ...headers, ...vidForm.getHeaders() },
       timeout: 120_000,
     });
@@ -3651,7 +3655,7 @@ async function runKlingP2(
     if (!videoAsset) throw new Error('upload video gagal (asset kosong)');
 
     // Kick off generation.
-    const genRes = await freepikHttp.post(`${base}/api/generate`, {
+    const genRes = await edanbotHttp.post(`${base}/api/generate`, {
       model: 'kling-motion-26-pro',
       fields: {
         prompt,
@@ -3669,7 +3673,7 @@ async function runKlingP2(
     let resultUrl = '';
     for (let i = 0; i < 90; i++) {
       await sleep(10_000);
-      const jobRes = await freepikHttp.get(`${base}/api/jobs/${jobId}`, { headers, timeout: 60_000 });
+      const jobRes = await edanbotHttp.get(`${base}/api/jobs/${jobId}`, { headers, timeout: 60_000 });
       const status = jobRes.data?.status;
       const jobErr = jobRes.data?.error;
       console.log(`[${userId}] ${label} poll ${i + 1}: ${status}`);
