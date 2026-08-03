@@ -267,3 +267,10 @@ uri = "file://test_results/nb2_i2i_test.png"
 type = "image"
 title = "Tes Nano Banana 2 — Image-to-Image"
 description = "Foto jaket diedit via prompt 'ubah warna jaket jadi merah' — nano-banana-2, 2K, rasio 3:4."
+
+[[outputs]]
+id = "zpqX98fyh3s11KWf5VZGe"
+uri = "file://test_results/edanbot_kling_motion_test.mp4"
+type = "video"
+title = "Tes Kling Motion 2.6 Pro via edanbot"
+description = "Generate lewat akun edanbot kamu: foto jaket + video referensi 8 detik → Kling Motion 2.6 Pro. Kredit terpotong 200."
