@@ -113,7 +113,8 @@ async function checkActiveSubscription(userId: number): Promise<boolean> {
 const MODEL_PRICES = {
   sora: 2500,
   gemini_omni: 2500,
-  seedance: 2500,      // Seedance 2.5 (ByteDance, 480p, up to 5 ref images)
+  seedance_15: 3500,   // Seedance 2.5 (ByteDance, 480p, 15 detik)
+  seedance_30: 5000,   // Seedance 2.5 (ByteDance, 480p, 30 detik)
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
   kling_p2: 4200,      // Kling MC V3 PRO P2 (internal: edanbot)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
@@ -1441,8 +1442,8 @@ const SEEDANCE_MAX_PHOTOS = 5;
 function seedanceDurationKeyboard() {
   return Markup.inlineKeyboard([
     [
-      Markup.button.callback('15 detik', 'se_dur_15'),
-      Markup.button.callback('30 detik', 'se_dur_30'),
+      Markup.button.callback(`15 detik — ${formatRupiah(MODEL_PRICES.seedance_15)}`, 'se_dur_15'),
+      Markup.button.callback(`30 detik — ${formatRupiah(MODEL_PRICES.seedance_30)}`, 'se_dur_30'),
     ],
     [Markup.button.callback('« Kembali', 'back_main')],
   ]);
@@ -1519,7 +1520,7 @@ function hargaText(): string {
     `• Veo 3.1 Fast (Full HD) — ${formatRupiah(MODEL_PRICES.veo_fast)}\n` +
     `• Veo 3.1 Lite (Full HD) — ${formatRupiah(MODEL_PRICES.veo_lite)}\n` +
     `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
-    `• Seedance 2.5 (480p) — ${formatRupiah(MODEL_PRICES.seedance)}\n` +
+    `• Seedance 2.5 (480p) — 15 dtk ${formatRupiah(MODEL_PRICES.seedance_15)} · 30 dtk ${formatRupiah(MODEL_PRICES.seedance_30)}\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)}\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)}\n\n` +
@@ -4626,7 +4627,7 @@ async function runSeedance(
 ) {
   console.log(`[${userId}] Seedance started — dur: ${opts.duration}s, ratio: ${opts.ratio}, refs: ${opts.imageUrls.length}`);
 
-  const PRICE = MODEL_PRICES.seedance;
+  const PRICE = opts.duration >= 30 ? MODEL_PRICES.seedance_30 : MODEL_PRICES.seedance_15;
   const charge = await beginCharge(dbUserId, PRICE, 3);
   if (!charge.ok) {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});

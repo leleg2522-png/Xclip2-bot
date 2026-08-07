@@ -1169,8 +1169,8 @@ export async function generateSeedance(input: {
   onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
-  // Seedance: pool 5-100 (same as Runway/Sora/Gemini).
-  return runWithAccount(input.userId, 'p100', async (credId) => {
+  // Seedance: pool 500 kredit.
+  return runWithAccount(input.userId, 'p500', async (credId) => {
     const imgs = (input.images || []).slice(0, SEEDANCE_MAX_REF_IMAGES);
     const imageUrls: string[] = [];
     for (const img of imgs) {

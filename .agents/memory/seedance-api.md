@@ -17,4 +17,4 @@ Reverse-engineered from an AI Playground HAR. Follows the same access-token / `c
 - **Ref image upload:** same `POST upload.picsart.com/v2/files` (multipart, `type=editing-temp`) as other models; returns a `cdn-editing-temp.picsart.com` url.
 - **Options probe:** `POST /workflows/seedance/options` shows defaults `ratio:"16:9", duration:5, resolution:"720p", generate_audio:false` — the playground UI overrides these; our bot forces 480p and 15/30.
 
-**How to apply:** implemented as `generateSeedance` in `telegram-bot/src/picsart.ts`, pool `p100` (same as Runway/Sora/Gemini). If Picsart later rejects the payload, re-capture a HAR while actually generating (the generate call only appears when you click Generate and let it finish — page-load-only HARs miss it entirely).
+**How to apply:** implemented as `generateSeedance` in `telegram-bot/src/picsart.ts`, pool `p500` (user decision; billing 15s=Rp3.500, 30s=Rp5.000). If Picsart later rejects the payload, re-capture a HAR while actually generating (the generate call only appears when you click Generate and let it finish — page-load-only HARs miss it entirely).
