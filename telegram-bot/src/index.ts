@@ -2117,9 +2117,12 @@ bot.command('addpicsartkey', async (ctx) => {
   const credId = await picsart.addRefreshToken(token, label);
   if (credId == null) return ctx.reply('❌ Token tidak valid. Harus diawali "rt:".');
   try {
-    const c = await picsart.getCredits(credId);
+    const c = await picsart.categorizeAccount(credId);
+    const poolLabel = c.pool === 'p500' ? 'Pool 500 (premium)' : 'Pool 5-100';
     return ctx.reply(
       `✅ Akun Picsart baru ditambahkan ke pool!${label ? `\n🏷️ Label: ${label}` : ''}\n💳 Sisa kredit: ${c.credits}` +
+      (c.tierCredits != null ? `\n🎚️ Tier: ${c.tierCredits}` : '') +
+      `\n🗂️ Masuk: ${poolLabel}` +
       (c.renewDate ? `\n🔄 Reset: ${new Date(c.renewDate).toLocaleDateString('id-ID')}` : '') +
       `\n\n🗂️ Lihat semua akun: /picsartpool`
     );
@@ -2133,8 +2136,10 @@ bot.command('picsartstatus', async (ctx) => {
   const session = getSession(ctx.from.id);
   const st = await picsart.getStatus();
   const counts = Object.entries(st.counts).map(([k, v]) => `• ${k}: ${v}`).join('\n') || '• (kosong)';
+  const poolLabel: Record<string, string> = { p500: 'Pool 500 (premium)', p100: 'Pool 5-100', uncategorized: 'Belum dikategori (wildcard)' };
+  const pools = Object.entries(st.pools).map(([k, v]) => `• ${poolLabel[k] ?? k}: ${v}`).join('\n') || '• (kosong)';
   return ctx.reply(
-    `📊 *Status Picsart*\n\nAkun siap pakai: ${st.available}\nUser terdaftar: ${st.totalUsers}\n\n${counts}`,
+    `📊 *Status Picsart*\n\nAkun siap pakai: ${st.available}\nUser terdaftar: ${st.totalUsers}\n\n${counts}\n\n🗂️ *Pool (akun siap pakai)*\n${pools}`,
     { parse_mode: 'Markdown' }
   );
 });
@@ -2170,10 +2175,12 @@ bot.command('picsartpool', async (ctx) => {
     const pool = await picsart.getPool();
     if (pool.length === 0) return ctx.reply('📭 Pool akun kosong. Tambah dengan /addpicsartkey rt:...');
     const icon: Record<string, string> = { available: '✅', exhausted: '🪫', dead: '💀', replaced: '🔁' };
+    const poolTag: Record<string, string> = { p500: '🏅500', p100: '🎫5-100' };
     const lines = pool.map((acc) => {
       const name = mdEscape(acc.label ? acc.label : `#${acc.id}`);
       const badge = icon[acc.status] ?? '•';
-      return `${badge} ${name} — ${acc.status} · 👤 ${acc.users} user`;
+      const tag = acc.pool ? ` · ${poolTag[acc.pool] ?? acc.pool}` : '';
+      return `${badge} ${name} — ${acc.status}${tag} · 👤 ${acc.users} user`;
     });
     const totalUsers = pool.reduce((s, a) => s + a.users, 0);
     return replyLong(ctx, `🗂️ *Pool Akun Picsart* (${pool.length} akun · ${totalUsers} user)\n`, lines);

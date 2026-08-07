@@ -8,4 +8,5 @@
 - [XclipAI saldo billing & KlikQRIS](xclip-saldo-billing.md) — pay-per-generate: charge only if delivered, any failure=full refund, no saldo→cash; QRIS credit must accept status<>'PAID' so late payments recover
 - [Flora AI API](flora-ai-api.md) — generate pakai params.image_url/video_url (bukan inputs[]); upload form_fields snake_case; "1 key 1 task" salah (paralel jalan); tak ada endpoint saldo credits
 - [XclipAI referral scheme](xclip-referral-scheme.md) — 5% dari SETIAP top-up undangan masuk saldo utama pengundang; bonus cair hanya saat order PAID, idempotent via UNIQUE(order_id)
+- [Picsart account pools](picsart-account-pools.md) — split by tierCredits (p500 vs p100), tag NEW accounts only, NULL=wildcard for legacy; per-(user,pool) sticky; model routing Kling=any, Runway/Sora/Gemini=p100
 - [edanbot Kling Motion](edanbot-kling-motion.md) — bot's "Kling MC V3 PRO P2" is really edanbot.digital→roboneo; auth = fragile Flask signed session= cookie (EDANBOT_COOKIE, needs prefix); job_id isolates users; never leak provider name

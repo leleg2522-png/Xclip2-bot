@@ -154,14 +154,47 @@ export async function ensurePicsartSchema(): Promise<void> {
       dead_at TIMESTAMPTZ
     )
   `);
-  // Sticky mapping: each user gets ONE dedicated account so concurrent users
-  // never share an account (no collisions, no results leaking across users).
+  // Pool tag by seller/tier. Set only for NEW accounts at add-time from the
+  // account's tierCredits ('p500' when tier is 500, else 'p100'). Existing
+  // accounts stay NULL = uncategorized, and NULL is treated as a WILDCARD
+  // usable by any pool request so nothing that already works breaks.
+  await q(`ALTER TABLE picsart_credentials ADD COLUMN IF NOT EXISTS pool TEXT`);
+  await q(`ALTER TABLE picsart_credentials ADD COLUMN IF NOT EXISTS tier_credits INTEGER`);
+
+  // Sticky mapping: each user gets ONE dedicated account PER pool key so
+  // concurrent users never share an account, and a user pinned to a p100
+  // account for Runway can still get a separate account for another pool.
   await q(`
     CREATE TABLE IF NOT EXISTS picsart_user_accounts (
-      user_id BIGINT PRIMARY KEY,
+      user_id BIGINT,
       credential_id INTEGER NOT NULL REFERENCES picsart_credentials(id) ON DELETE CASCADE,
       assigned_at TIMESTAMPTZ DEFAULT NOW()
     )
+  `);
+  // Migrate the sticky table to a composite (user_id, pool) key. Idempotent:
+  // DROP ... IF EXISTS clears whatever pkey exists (single- or multi-column),
+  // then we re-add the composite. Existing rows default to the 'any' pool key,
+  // which is exactly the key used by pool-agnostic models (e.g. Kling).
+  await q(`ALTER TABLE picsart_user_accounts ADD COLUMN IF NOT EXISTS pool TEXT NOT NULL DEFAULT 'any'`);
+  // Migrate the PK to composite (user_id, pool) ONCE. The guard checks the live
+  // primary-key columns and only performs the heavyweight DROP/ADD DDL when the
+  // PK isn't already (user_id, pool). This avoids taking an exclusive table lock
+  // and rebuilding the unique index on every process start, and avoids two
+  // instances racing the DROP/ADD during concurrent boots.
+  await q(`
+    DO $$
+    DECLARE cols text;
+    BEGIN
+      SELECT string_agg(a.attname, ',' ORDER BY array_position(i.indkey, a.attnum))
+        INTO cols
+        FROM pg_index i
+        JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+       WHERE i.indrelid = 'picsart_user_accounts'::regclass AND i.indisprimary;
+      IF cols IS DISTINCT FROM 'user_id,pool' THEN
+        ALTER TABLE picsart_user_accounts DROP CONSTRAINT IF EXISTS picsart_user_accounts_pkey;
+        ALTER TABLE picsart_user_accounts ADD PRIMARY KEY (user_id, pool);
+      END IF;
+    END $$;
   `);
 }
 
@@ -196,20 +229,33 @@ async function loadCredential(credId: number): Promise<CredRow | null> {
   return r.rows[0] ?? null;
 }
 
-// Pick the account for a user (sticky 1-user-1-account).
-//  • If the user already has an assignment to an available account → reuse it.
-//  • Otherwise assign the available account with the FEWEST users (so users
-//    spread out 1:1 across accounts whenever there are enough accounts).
+// Which pool of accounts a model draws from. `null` = any pool (no restriction).
+//  • 'p500'  → premium accounts (tierCredits === 500)
+//  • 'p100'  → low-tier accounts (tierCredits !== 500)
+// Uncategorized accounts (pool IS NULL, i.e. all pre-existing accounts) are a
+// WILDCARD: they match every pool request, so routing never starves them.
+export type PicsartPool = 'p500' | 'p100';
+
+// Pick the account for a user (sticky 1-user-1-account, now PER pool key).
+//  • If the user already has an assignment for this pool to an available,
+//    pool-matching account → reuse it.
+//  • Otherwise assign the available pool-matching account with the FEWEST users.
 //  • `exclude` lets the failover loop skip accounts that just failed.
 // Returns the credential id, or null when no usable account exists.
-async function acquireAccount(userId: number, exclude: number[] = []): Promise<number | null> {
+async function acquireAccount(
+  userId: number,
+  poolFilter: PicsartPool | null = null,
+  exclude: number[] = []
+): Promise<number | null> {
+  const stickyKey = poolFilter ?? 'any';
   const existing = await q(
     `SELECT a.credential_id AS id
        FROM picsart_user_accounts a
        JOIN picsart_credentials c ON c.id = a.credential_id
-      WHERE a.user_id = $1 AND c.status = 'available'
-        AND NOT (a.credential_id = ANY($2::int[]))`,
-    [userId, exclude]
+      WHERE a.user_id = $1 AND a.pool = $2 AND c.status = 'available'
+        AND NOT (a.credential_id = ANY($3::int[]))
+        AND ($4::text IS NULL OR c.pool = $4 OR c.pool IS NULL)`,
+    [userId, stickyKey, exclude, poolFilter]
   );
   if (existing.rows[0]) return existing.rows[0].id as number;
 
@@ -218,20 +264,21 @@ async function acquireAccount(userId: number, exclude: number[] = []): Promise<n
        FROM picsart_credentials c
        LEFT JOIN picsart_user_accounts a ON a.credential_id = c.id
       WHERE c.status = 'available' AND NOT (c.id = ANY($1::int[]))
+        AND ($2::text IS NULL OR c.pool = $2 OR c.pool IS NULL)
       GROUP BY c.id
       ORDER BY COUNT(a.user_id) ASC, c.updated_at ASC
       LIMIT 1`,
-    [exclude]
+    [exclude, poolFilter]
   );
   const credId = pick.rows[0]?.id as number | undefined;
   if (credId == null) return null;
 
   await q(
-    `INSERT INTO picsart_user_accounts (user_id, credential_id, assigned_at)
-       VALUES ($1, $2, NOW())
-     ON CONFLICT (user_id)
+    `INSERT INTO picsart_user_accounts (user_id, pool, credential_id, assigned_at)
+       VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (user_id, pool)
        DO UPDATE SET credential_id = EXCLUDED.credential_id, assigned_at = NOW()`,
-    [userId, credId]
+    [userId, stickyKey, credId]
   );
   return credId;
 }
@@ -258,7 +305,11 @@ function isCreditError(msg: string): boolean {
 // dead (token rejected) or out of credits, transparently move the user to
 // another available account and retry — so a single exhausted account never
 // fails the user while others still have credits.
-async function runWithAccount<T>(userId: number, fn: (credId: number) => Promise<T>): Promise<T> {
+async function runWithAccount<T>(
+  userId: number,
+  poolFilter: PicsartPool | null,
+  fn: (credId: number) => Promise<T>
+): Promise<T> {
   const tried: number[] = [];
   let lastErr: unknown = null;
   // Try every account in the pool before giving up (acquireAccount returns null
@@ -267,7 +318,7 @@ async function runWithAccount<T>(userId: number, fn: (credId: number) => Promise
   const poolCount = await q(`SELECT COUNT(*)::int AS n FROM picsart_credentials`);
   const ceiling = Math.min(MAX_ACCOUNT_ATTEMPTS, Math.max(1, poolCount.rows[0]?.n ?? 1));
   for (let attempt = 0; attempt < ceiling; attempt++) {
-    const credId = await acquireAccount(userId, tried);
+    const credId = await acquireAccount(userId, poolFilter, tried);
     if (credId == null) break;
     tried.push(credId);
     try {
@@ -323,8 +374,13 @@ export async function addRefreshToken(rt: string, label?: string): Promise<numbe
   // an automatic retry would create a DUPLICATE account row. This is an
   // admin-only command, so on a rare transient failure the owner simply re-runs
   // /addpicsartkey rather than risking a silent duplicate.
+  // Provisional pool 'p100' (the conservative low tier). categorizeAccount()
+  // upgrades it to 'p500' right after when the account's tier is 500. Seeding a
+  // concrete pool here (instead of NULL) means a NEW account whose categorization
+  // fails stays scoped to p100 rather than becoming an all-pools wildcard — the
+  // wildcard exception is reserved for pre-existing legacy accounts only.
   const r = await db.query(
-    `INSERT INTO picsart_credentials (refresh_token, label, status) VALUES ($1, $2, 'available') RETURNING id`,
+    `INSERT INTO picsart_credentials (refresh_token, label, status, pool) VALUES ($1, $2, 'available', 'p100') RETURNING id`,
     [token, label ?? null]
   );
   return r.rows[0].id as number;
@@ -332,6 +388,7 @@ export async function addRefreshToken(rt: string, label?: string): Promise<numbe
 
 export async function getStatus(): Promise<{
   counts: Record<string, number>;
+  pools: Record<string, number>;
   available: number;
   totalUsers: number;
 }> {
@@ -339,7 +396,14 @@ export async function getStatus(): Promise<{
   const counts: Record<string, number> = {};
   for (const row of r.rows) counts[row.status] = row.cnt;
   const u = await q(`SELECT COUNT(*)::int AS cnt FROM picsart_user_accounts`);
-  return { counts, available: counts['available'] ?? 0, totalUsers: u.rows[0]?.cnt ?? 0 };
+  // Pool breakdown of the available accounts (NULL = uncategorized/wildcard).
+  const p = await q(
+    `SELECT COALESCE(pool, 'uncategorized') AS pool, COUNT(*)::int AS cnt
+       FROM picsart_credentials WHERE status = 'available' GROUP BY COALESCE(pool, 'uncategorized')`
+  );
+  const pools: Record<string, number> = {};
+  for (const row of p.rows) pools[row.pool] = row.cnt;
+  return { counts, pools, available: counts['available'] ?? 0, totalUsers: u.rows[0]?.cnt ?? 0 };
 }
 
 // Admin: full view of the account pool, with how many users are pinned to each.
@@ -347,12 +411,14 @@ export async function getPool(): Promise<Array<{
   id: number;
   label: string | null;
   status: string;
+  pool: string | null;
+  tierCredits: number | null;
   users: number;
   accessValidUntil: string | null;
   createdAt: string;
 }>> {
   const r = await q(
-    `SELECT c.id, c.label, c.status, c.access_expires_at, c.created_at,
+    `SELECT c.id, c.label, c.status, c.pool, c.tier_credits, c.access_expires_at, c.created_at,
             COUNT(a.user_id)::int AS users
        FROM picsart_credentials c
        LEFT JOIN picsart_user_accounts a ON a.credential_id = c.id
@@ -363,6 +429,8 @@ export async function getPool(): Promise<Array<{
     id: row.id,
     label: row.label,
     status: row.status,
+    pool: row.pool,
+    tierCredits: row.tier_credits,
     users: row.users,
     accessValidUntil: row.access_expires_at,
     createdAt: row.created_at,
@@ -485,14 +553,42 @@ export function startPicsartKeepalive(intervalMs = 3 * 24 * 60 * 60 * 1000): Nod
   return timer;
 }
 
-export async function getCredits(credId: number): Promise<{ credits: number; renewDate?: string }> {
+export async function getCredits(
+  credId: number
+): Promise<{ credits: number; tierCredits?: number; renewDate?: string }> {
   const access = await getAccessToken(credId);
   const r = await http.get(`${API_BASE}/guard/credits`, {
     headers: commonHeaders({ authorization: `Bearer ${access}` }),
     validateStatus: () => true,
   });
   if (!ok2xx(r.status)) throw new Error(`PICSART_CREDITS_FAILED status ${r.status}`);
-  return { credits: r.data?.response?.credits ?? r.data?.credits, renewDate: r.data?.response?.renewDate };
+  return {
+    credits: r.data?.response?.credits ?? r.data?.credits,
+    tierCredits: r.data?.response?.tierCredits,
+    renewDate: r.data?.response?.renewDate,
+  };
+}
+
+// Derive a pool tag from an account's tier: tierCredits === 500 → 'p500'
+// (premium seller), anything else → 'p100' (low-tier seller). Tier is stable
+// across usage, unlike the remaining `credits` balance.
+export function poolFromTier(tierCredits: number | undefined | null): PicsartPool {
+  return tierCredits === 500 ? 'p500' : 'p100';
+}
+
+// Admin add-time: fetch credits, derive the pool from tierCredits, persist both
+// the pool tag and tier on the account. Returns what was captured so the add
+// command can report it. Called only for NEW accounts.
+export async function categorizeAccount(
+  credId: number
+): Promise<{ credits: number; tierCredits?: number; pool: PicsartPool; renewDate?: string }> {
+  const c = await getCredits(credId);
+  const pool = poolFromTier(c.tierCredits);
+  await q(
+    `UPDATE picsart_credentials SET pool = $1, tier_credits = $2, updated_at = NOW() WHERE id = $3`,
+    [pool, c.tierCredits ?? null, credId]
+  );
+  return { credits: c.credits, tierCredits: c.tierCredits, pool, renewDate: c.renewDate };
 }
 
 export async function uploadFile(credId: number, buf: Buffer, filename: string, contentType: string): Promise<string> {
@@ -607,7 +703,8 @@ export async function generateKlingMotionControl(input: {
   model: KlingModelKey;
   onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
 }): Promise<{ url: string; credits?: number; duration?: string; usedModel: KlingModelKey }> {
-  return runWithAccount(input.userId, async (credId) => {
+  // Kling: pool-agnostic — draws from either pool ('any').
+  return runWithAccount(input.userId, null, async (credId) => {
     input.onStatus?.('upload');
     const imageUrl = await uploadFile(credId, input.imageBuffer, input.imageName, input.imageMime);
     const videoUrl = await uploadFile(credId, input.videoBuffer, input.videoName, input.videoMime);
@@ -701,7 +798,8 @@ export async function generateRunway(input: {
   onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
-  return runWithAccount(input.userId, async (credId) => {
+  // Runway: pool 5-100.
+  return runWithAccount(input.userId, 'p100', async (credId) => {
     input.onStatus?.('upload');
     const imageUrl = await uploadFile(
       credId,
@@ -801,7 +899,8 @@ export async function generateSora(input: {
   onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
-  return runWithAccount(input.userId, async (credId) => {
+  // Sora: pool 5-100.
+  return runWithAccount(input.userId, 'p100', async (credId) => {
     let imageUrl: string | undefined;
     if (input.imageBuffer) {
       input.onStatus?.('upload');
@@ -910,7 +1009,8 @@ export async function generateGeminiOmni(input: {
   onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
-  return runWithAccount(input.userId, async (credId) => {
+  // Gemini Omni: pool 5-100.
+  return runWithAccount(input.userId, 'p100', async (credId) => {
     let imageUrl: string | undefined;
     let imageMime: string | undefined;
     if (input.imageBuffer) {
