@@ -1056,3 +1056,146 @@ export async function generateGeminiOmni(input: {
 }
 
 
+// ─── Seedance 2.5 (ByteDance video: text + up to 5 reference images) ───────────
+// POST /workflows/seedance/submit          -> {response:{id}}
+// poll GET /workflows/seedance/{id}/result -> COMPLETED, result.video_url
+// params: {model:"seedance_2_5", content:[{type:"image_url",image_url:{url},role:"reference_image"}..., {type:"text",text}],
+//          ratio:"9:16"|"16:9"|..., duration:15|30, resolution:"480p", generate_audio, output_format:"mp4"}
+export const SEEDANCE_MODEL = 'seedance_2_5';
+export const SEEDANCE_MAX_REF_IMAGES = 5;
+
+export async function submitSeedance(credId: number, input: {
+  prompt: string;
+  imageUrls: string[];
+  duration: number; // 15 | 30
+  ratio: string; // label mis. "9:16", "16:9"
+  resolution?: string; // default "480p"
+  generateAudio?: boolean;
+  outputName?: string;
+}): Promise<string> {
+  const access = await getAccessToken(credId);
+  const resolution = input.resolution || '480p';
+  const generateAudio = input.generateAudio ?? true;
+  const content: Array<Record<string, unknown>> = [
+    ...input.imageUrls.map((url) => ({
+      type: 'image_url',
+      image_url: { url },
+      role: 'reference_image',
+    })),
+    { type: 'text', text: input.prompt ?? '' },
+  ];
+  const params = {
+    model: SEEDANCE_MODEL,
+    content,
+    ratio: input.ratio,
+    duration: input.duration,
+    resolution,
+    generate_audio: generateAudio,
+    output_format: 'mp4',
+    options: {
+      drive: {
+        name: input.outputName || 'seedance.mp4',
+        attributes: {
+          model: 'seedance-2.5',
+          aiSDKPayload: JSON.stringify({
+            prompt: input.prompt ?? '',
+            aspectRatio: input.ratio,
+            resolution,
+            duration: input.duration,
+            generateAudio,
+            returnLastFrame: false,
+            outputFormat: 'mp4',
+            imageUrls: input.imageUrls,
+          }),
+          appId: 'com.picsart.ai-playground',
+          appType: 'miniapp',
+        },
+        folder: { path: 'AI Playground' },
+      },
+    },
+  };
+  const r = await http.post(`${API_BASE}/workflows/seedance/submit`, { params }, {
+    headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
+    validateStatus: () => true,
+  });
+  const id = r.data?.response?.id;
+  if (!ok2xx(r.status) || !id) {
+    throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+  }
+  return id;
+}
+
+export async function pollSeedanceResult(
+  credId: number,
+  id: string,
+  opts?: { maxAttempts?: number; intervalMs?: number; onTick?: (elapsedMs: number) => void }
+): Promise<{ url: string; credits?: number }> {
+  const maxAttempts = opts?.maxAttempts ?? 300; // ~25 min at 5s (seedance can run long)
+  const intervalMs = opts?.intervalMs ?? 5000;
+  const start = Date.now();
+  const diag = new PollDiag();
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((res) => setTimeout(res, intervalMs));
+    opts?.onTick?.(Date.now() - start);
+    const access = await getAccessToken(credId);
+    const r = await http.get(`${API_BASE}/workflows/seedance/${id}/result`, {
+      headers: commonHeaders({ authorization: `Bearer ${access}` }),
+      validateStatus: () => true,
+    });
+    if (!diag.note(r)) continue;
+    const resp = r.data?.response;
+    const status = String(resp?.status ?? '').toUpperCase();
+    if (status === 'COMPLETED') {
+      const url = resp?.result?.video_url;
+      if (!url) throw new Error('PICSART_NO_RESULT_URL');
+      return { url, credits: resp.usage?.credits };
+    }
+    if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
+      throw new Error(`PICSART_GEN_FAILED: ${JSON.stringify(resp).slice(0, 200)}`);
+    }
+  }
+  throw diag.timeoutError();
+}
+
+// High-level orchestrator: upload up to 5 reference images -> submit -> poll -> result URL.
+export async function generateSeedance(input: {
+  userId: number;
+  prompt: string;
+  images: Array<{ buffer: Buffer; name?: string; mime?: string }>;
+  duration: number; // 15 | 30
+  ratio: string; // "9:16" | "16:9" | ...
+  resolution?: string; // default "480p"
+  generateAudio?: boolean;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  // Seedance: pool 5-100 (same as Runway/Sora/Gemini).
+  return runWithAccount(input.userId, 'p100', async (credId) => {
+    const imgs = (input.images || []).slice(0, SEEDANCE_MAX_REF_IMAGES);
+    const imageUrls: string[] = [];
+    for (const img of imgs) {
+      input.onStatus?.('upload');
+      const url = await uploadFile(
+        credId,
+        img.buffer,
+        img.name || 'reference.jpg',
+        img.mime || 'image/jpeg'
+      );
+      imageUrls.push(url);
+    }
+    input.onStatus?.('submit');
+    const id = await submitSeedance(credId, {
+      prompt: input.prompt,
+      imageUrls,
+      duration: input.duration,
+      ratio: input.ratio,
+      resolution: input.resolution,
+      generateAudio: input.generateAudio,
+    });
+    input.onStatus?.('poll');
+    return pollSeedanceResult(credId, id, {
+      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+    });
+  });
+}
+

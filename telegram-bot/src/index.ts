@@ -113,6 +113,7 @@ async function checkActiveSubscription(userId: number): Promise<boolean> {
 const MODEL_PRICES = {
   sora: 2500,
   gemini_omni: 2500,
+  seedance: 2500,      // Seedance 2.5 (ByteDance, 480p, up to 5 ref images)
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
   kling_p2: 4200,      // Kling MC V3 PRO P2 (internal: edanbot)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
@@ -787,6 +788,8 @@ type Mode =
   | 'gomni_wait_image'
   | 'gomni_wait_video'
   | 'gomni_wait_prompt'
+  | 'seedance_wait_image'
+  | 'seedance_wait_prompt'
   | 'img_wait_image'
   | 'img_wait_prompt'
   | 'topup_wait_custom';
@@ -834,6 +837,10 @@ interface Session {
   imgRatio?: string;
   imgInputMode?: 'i2i' | 't2i';
   imgImageUrls?: string[];
+  // Seedance 2.5 wizard state (prompt + up to 5 reference images)
+  sdDuration?: number;
+  sdRatio?: string;
+  sdImageUrls?: string[];
 }
 
 const sessions = new Map<number, Session>();
@@ -1285,6 +1292,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('⚡ Veo 3.1 Fast (Full HD)', 'mode_veofast')],
     [Markup.button.callback('🎞️ Veo 3.1 Lite (Full HD)', 'mode_veolite')],
     [Markup.button.callback('✨ Gemini Omni (Google)', 'mode_gomni')],
+    [Markup.button.callback('🌊 Seedance 2.5 (ByteDance)', 'mode_seedance')],
     // ── Generate Gambar ──
     [Markup.button.callback('── 🎨 Generate Gambar ──', 'noop')],
     [Markup.button.callback('🍌 Nano Banana Pro', 'mode_nbpro')],
@@ -1427,6 +1435,35 @@ function gomniRatioKeyboard() {
   ]);
 }
 
+// ─── Seedance 2.5 wizard keyboards (prompt + up to 5 reference images, 480p) ───
+const SEEDANCE_MAX_PHOTOS = 5;
+
+function seedanceDurationKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('15 detik', 'se_dur_15'),
+      Markup.button.callback('30 detik', 'se_dur_30'),
+    ],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function seedanceRatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('📱 9:16', 'se_ratio_916'),
+      Markup.button.callback('🖥️ 16:9', 'se_ratio_169'),
+    ],
+    [Markup.button.callback('« Kembali', 'mode_seedance')],
+  ]);
+}
+
+function seedanceAddPhotoKeyboard(count: number) {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(`✅ Lanjut ke prompt (${count} foto)`, 'se_done')],
+  ]);
+}
+
 // ─── Nano Banana image wizard keyboards (SnapGen, text-to-image / image-to-image)
 // Shared wizard untuk 3 model. Model tersimpan di session. User pilih rasio lalu
 // input mode: prompt saja (t2i) atau foto + prompt (i2i).
@@ -1482,6 +1519,7 @@ function hargaText(): string {
     `• Veo 3.1 Fast (Full HD) — ${formatRupiah(MODEL_PRICES.veo_fast)}\n` +
     `• Veo 3.1 Lite (Full HD) — ${formatRupiah(MODEL_PRICES.veo_lite)}\n` +
     `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
+    `• Seedance 2.5 (480p) — ${formatRupiah(MODEL_PRICES.seedance)}\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)}\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)}\n\n` +
@@ -2769,6 +2807,51 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  // ── Seedance 2.5 wizard (prompt + up to 5 reference images, 480p) ──
+  if (data === 'mode_seedance') {
+    setSession(userId, {
+      mode: 'idle',
+      sdDuration: undefined,
+      sdRatio: undefined,
+      sdImageUrls: undefined,
+    });
+    return ctx.editMessageText(
+      '🌊 *Seedance 2.5 (ByteDance)*\n\nVideo 480p. Bisa pakai sampai 5 foto acuan.\n\n*Langkah 1:* Pilih durasi video:',
+      { parse_mode: 'Markdown', ...seedanceDurationKeyboard() }
+    );
+  }
+
+  if (data.startsWith('se_dur_')) {
+    const dur = parseInt(data.replace('se_dur_', ''), 10);
+    setSession(userId, { sdDuration: dur });
+    return ctx.editMessageText(
+      `🌊 *Seedance 2.5*\n\nDurasi: *${dur} detik*\n\n*Langkah 2:* Pilih rasio layar:`,
+      { parse_mode: 'Markdown', ...seedanceRatioKeyboard() }
+    );
+  }
+
+  if (data.startsWith('se_ratio_')) {
+    const ratio = SD_RATIO_MAP[data.replace('se_ratio_', '')] ?? '9:16';
+    setSession(userId, { sdRatio: ratio, mode: 'seedance_wait_image', sdImageUrls: [] });
+    return ctx.editMessageText(
+      `🌊 *Seedance 2.5*\n\nRasio: *${ratio}* · 480p\n\n*Langkah 3:* Kirim *foto acuan* (bisa sampai ${SEEDANCE_MAX_PHOTOS} foto), atau ketik prompt langsung kalau tak pakai foto.`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data === 'se_done') {
+    const session = getSession(userId);
+    if (session.mode !== 'seedance_wait_image') {
+      return ctx.answerCbQuery('Sesi sudah berubah.').catch(() => {});
+    }
+    setSession(userId, { mode: 'seedance_wait_prompt' });
+    await ctx.answerCbQuery().catch(() => {});
+    return ctx.editMessageText(
+      `🌊 *Seedance 2.5*\n\n✅ ${(session.sdImageUrls ?? []).length} foto acuan diterima.\n\n*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   // ── Nano Banana image wizard (SnapGen, text-to-image or image-to-image) ──
   if (data === 'mode_nbpro' || data === 'mode_nb2' || data === 'mode_nb2lite') {
     const cfg = IMG_MODELS[data];
@@ -2978,6 +3061,24 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
       '✅ Foto acuan diterima!\n\n' +
       '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
       { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'seedance_wait_image') {
+    const urls = [...(session.sdImageUrls ?? []), fileUrl].slice(0, SEEDANCE_MAX_PHOTOS);
+    if (urls.length >= SEEDANCE_MAX_PHOTOS) {
+      setSession(userId, { sdImageUrls: urls, mode: 'seedance_wait_prompt' });
+      return ctx.reply(
+        `✅ ${SEEDANCE_MAX_PHOTOS} foto acuan diterima (maksimal ${SEEDANCE_MAX_PHOTOS}).\n\n` +
+        '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+        { parse_mode: 'Markdown' }
+      );
+    }
+    setSession(userId, { sdImageUrls: urls });
+    return ctx.reply(
+      `✅ Foto acuan ke-${urls.length} diterima! (Rasio: ${session.sdRatio ?? '9:16'} · 480p)\n\n` +
+      `Kamu bisa kirim foto lagi (maksimal ${SEEDANCE_MAX_PHOTOS}) atau langsung lanjut ke prompt.`,
+      { parse_mode: 'Markdown', ...seedanceAddPhotoKeyboard(urls.length) }
     );
   }
 
@@ -3269,6 +3370,30 @@ bot.on('text', async (ctx) => {
     const statusMsg = await ctx.reply('⏳ Memproses Gemini Omni...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
     runGeminiOmni(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
       .catch(e => console.error(`[${userId}] Gemini Omni gen error:`, e.message));
+    return;
+  }
+
+  // ── Seedance 2.5 prompt (prompt + up to 5 reference images) ──
+  if (session.mode === 'seedance_wait_prompt' || session.mode === 'seedance_wait_image') {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    const opts = {
+      imageUrls: session.sdImageUrls ?? [],
+      duration: session.sdDuration ?? 15,
+      ratio: session.sdRatio ?? '9:16',
+    };
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Memproses Seedance 2.5...\nHasil dikirim otomatis (~5-15 menit).', { parse_mode: 'Markdown' });
+    runSeedance(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
+      .catch(e => console.error(`[${userId}] Seedance gen error:`, e.message));
     return;
   }
 
@@ -4464,6 +4589,108 @@ async function runGeminiOmni(
   } catch (err: any) {
     const msg = describeError(err);
     console.error(`[${userId}] Gemini Omni error: ${msg}`);
+    let friendly: string;
+    if (msg.includes('PICSART_TIMEOUT')) {
+      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
+    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
+      friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
+    } else {
+      friendly = '❌ Gagal memproses. Coba lagi nanti.';
+    }
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
+
+// ─── Background: Seedance 2.5 (prompt + up to 5 reference images) ─────────────
+
+async function runSeedance(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  opts: {
+    imageUrls: string[];
+    duration: number;
+    ratio: string;
+  }
+) {
+  console.log(`[${userId}] Seedance started — dur: ${opts.duration}s, ratio: ${opts.ratio}, refs: ${opts.imageUrls.length}`);
+
+  const PRICE = MODEL_PRICES.seedance;
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+
+  try {
+    const images: Array<{ buffer: Buffer; name?: string; mime?: string }> = [];
+    for (const url of opts.imageUrls.slice(0, picsart.SEEDANCE_MAX_REF_IMAGES)) {
+      const img = await downloadBuffer(url);
+      images.push({ buffer: img.buf, name: `reference.${img.ext}`, mime: img.mime });
+    }
+    if (images.length) {
+      console.log(`[${userId}] Seedance ref images — ${images.length} uploaded`);
+    }
+
+    let lastEdit = 0;
+    const result = await picsart.generateSeedance({
+      userId: dbUserId,
+      prompt,
+      images,
+      duration: opts.duration,
+      ratio: opts.ratio,
+      resolution: '480p',
+      onStatus: (stage) => {
+        const text = stage === 'upload'
+          ? '⏳ Seedance 2.5: mengunggah foto acuan ke server... (1/3)'
+          : stage === 'submit'
+            ? '⏳ Seedance 2.5: mengirim perintah ke server... (2/3)'
+            : '⏳ Seedance 2.5: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 5–15 menit. Jangan tutup chat ini.';
+        lastEdit = Date.now();
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+      },
+      onPoll: (elapsedSec) => {
+        if (Date.now() - lastEdit < 30_000) return;
+        lastEdit = Date.now();
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = elapsedSec % 60;
+        const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
+        bot.telegram.editMessageText(
+          chatId, statusMsgId, undefined,
+          `⏳ Seedance 2.5: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${timer} (biasanya 5–15 menit).\nJangan tutup chat ini, video dikirim otomatis.`
+        ).catch(() => {});
+      },
+    });
+
+    const delivered = await sendResult(
+      chatId,
+      result.url,
+      `🌊 Seedance 2.5 (${opts.duration}s · ${opts.ratio} · 480p)\n\n/menu untuk buat lagi`,
+      true
+    );
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] Seedance done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    }
+
+  } catch (err: any) {
+    const msg = describeError(err);
+    console.error(`[${userId}] Seedance error: ${msg}`);
     let friendly: string;
     if (msg.includes('PICSART_TIMEOUT')) {
       friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
