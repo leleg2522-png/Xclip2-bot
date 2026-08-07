@@ -569,21 +569,27 @@ export async function getCredits(
   };
 }
 
-// Derive a pool tag from an account's tier: tierCredits === 500 → 'p500'
-// (premium seller), anything else → 'p100' (low-tier seller). Tier is stable
-// across usage, unlike the remaining `credits` balance.
-export function poolFromTier(tierCredits: number | undefined | null): PicsartPool {
-  return tierCredits === 500 ? 'p500' : 'p100';
+// Credit threshold that separates the two pools. The two sellers deliver very
+// different amounts (~500 vs 5-100), so anything at/above this cutoff is the
+// premium 500 pool and anything below is the low 5-100 pool. An account that
+// arrives with only ~50 credits therefore lands in p100 as expected.
+export const POOL_500_MIN_CREDITS = 200;
+
+// Derive a pool tag from the account's CURRENT credit balance at add-time:
+// credits >= POOL_500_MIN_CREDITS → 'p500', else → 'p100'. This is captured
+// ONCE when the account is added and does not move afterward as credits deplete.
+export function poolFromCredits(credits: number | undefined | null): PicsartPool {
+  return (credits ?? 0) >= POOL_500_MIN_CREDITS ? 'p500' : 'p100';
 }
 
-// Admin add-time: fetch credits, derive the pool from tierCredits, persist both
-// the pool tag and tier on the account. Returns what was captured so the add
-// command can report it. Called only for NEW accounts.
+// Admin add-time: fetch credits, derive the pool from the credit balance AT ADD,
+// persist the pool tag (and tier for reference). Returns what was captured so
+// the add command can report it. Called only for NEW accounts.
 export async function categorizeAccount(
   credId: number
 ): Promise<{ credits: number; tierCredits?: number; pool: PicsartPool; renewDate?: string }> {
   const c = await getCredits(credId);
-  const pool = poolFromTier(c.tierCredits);
+  const pool = poolFromCredits(c.credits);
   await q(
     `UPDATE picsart_credentials SET pool = $1, tier_credits = $2, updated_at = NOW() WHERE id = $3`,
     [pool, c.tierCredits ?? null, credId]
