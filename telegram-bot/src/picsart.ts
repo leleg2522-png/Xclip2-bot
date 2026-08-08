@@ -372,10 +372,14 @@ async function runWithAccount<T>(
         );
         continue;
       }
+      if (msg === ERR_INSUFFICIENT_CREDITS || msg.includes(ERR_INSUFFICIENT_CREDITS)) {
+        // Pre-submit credit check failed — account alive but not enough credits
+        // for this model. Skip to the next account, never discard.
+        continue;
+      }
       if (msg.includes('PICSART_SUBMIT_FAILED') && isCreditError(msg)) {
-        // Check actual remaining credits before discarding. If the account
-        // still has credits (just not enough for this expensive model), skip
-        // it for this attempt only — don't delete it from the pool.
+        // Submit returned a credit error. Verify actual remaining credits before
+        // deciding whether to discard — don't throw away a partially-used account.
         await handleCreditError(credId);
         continue;
       }
@@ -1094,6 +1098,13 @@ export async function generateGeminiOmni(input: {
 //          ratio:"9:16"|"16:9"|..., duration:15|30, resolution:"480p", generate_audio, output_format:"mp4"}
 export const SEEDANCE_MODEL = 'seedance_2_5';
 export const SEEDANCE_MAX_REF_IMAGES = 5;
+// Minimum credits an account must have before we even attempt a Seedance submit.
+// Based on observed consumption: ~120 credits for 30s, ~60 for 15s. We add a
+// small buffer so the account still has credits left for other models afterward.
+export const SEEDANCE_MIN_CREDITS: Record<number, number> = { 15: 70, 30: 130 };
+// Sentinel error thrown when a pre-submit credit check shows insufficient credits.
+// runWithAccount catches this and skips to the next account WITHOUT discarding.
+export const ERR_INSUFFICIENT_CREDITS = 'PICSART_INSUFFICIENT_CREDITS';
 
 export async function submitSeedance(credId: number, input: {
   prompt: string;
@@ -1202,6 +1213,25 @@ export async function generateSeedance(input: {
 }): Promise<{ url: string; credits?: number }> {
   // Seedance: pool 500 kredit.
   return runWithAccount(input.userId, 'p500', async (credId) => {
+    // Pre-submit credit check: verify the account has enough credits BEFORE
+    // uploading images or submitting. This is more reliable than parsing the
+    // error message from a failed submit (which may vary by Picsart version).
+    const minRequired = SEEDANCE_MIN_CREDITS[input.duration] ?? SEEDANCE_MIN_CREDITS[30];
+    try {
+      const { credits } = await getCredits(credId);
+      if (credits < minRequired) {
+        console.log(`[picsart] Seedance pre-check: account #${credId} has ${credits} credits, need ${minRequired} — skipping`);
+        throw new Error(ERR_INSUFFICIENT_CREDITS);
+      }
+      console.log(`[picsart] Seedance pre-check: account #${credId} has ${credits} credits ✓`);
+    } catch (e: any) {
+      // Re-throw the sentinel as-is; for any other check error (network, auth),
+      // also skip so we don't burn upload time on a potentially dead account.
+      if (e.message === ERR_INSUFFICIENT_CREDITS) throw e;
+      console.warn(`[picsart] Seedance pre-check failed for #${credId}: ${e.message} — skipping`);
+      throw new Error(ERR_INSUFFICIENT_CREDITS);
+    }
+
     const imgs = (input.images || []).slice(0, SEEDANCE_MAX_REF_IMAGES);
     const imageUrls: string[] = [];
     for (const img of imgs) {
