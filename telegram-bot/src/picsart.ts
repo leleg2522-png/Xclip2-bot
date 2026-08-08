@@ -248,6 +248,11 @@ async function acquireAccount(
   exclude: number[] = []
 ): Promise<number | null> {
   const stickyKey = poolFilter ?? 'any';
+  // Wildcard (pool IS NULL = legacy accounts) match every pool request so that
+  // Seedance (p500) can still run even when no explicitly-tagged p500 account
+  // exists yet. The pre-submit credit check in generateSeedance will skip any
+  // wildcard account that doesn't have enough credits, so low-credit legacy
+  // accounts are filtered at runtime, not at selection time.
   const existing = await q(
     `SELECT a.credential_id AS id
        FROM picsart_user_accounts a

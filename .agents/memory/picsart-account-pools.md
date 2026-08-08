@@ -14,7 +14,9 @@ Accounts are split by their **current credit balance AT ADD-TIME** (owner's expl
 - **NULL pool = wildcard**: a legacy NULL account matches *every* pool request (`pool = $req OR pool IS NULL`). This is a deliberate backward-compat transition policy so routing never starves the ~259 pre-existing uncategorized accounts. Downside accepted: a legacy account that is actually tier-500 can still be consumed by p100 requests until it is (re)categorized.
 - New accounts are inserted with provisional `pool='p100'` (NOT null), so a NEW account whose categorization API call fails stays scoped to p100 instead of becoming an all-pools wildcard. The wildcard exception is for legacy rows only.
 
-**Model → pool routing** (in `runWithAccount(userId, poolFilter, fn)`): Kling Motion Control = `null` (any pool); Runway, Sora, Gemini Omni = `'p100'`.
+**Model → pool routing** (in `runWithAccount(userId, poolFilter, fn)`): Kling Motion Control = `null` (any pool); Runway, Sora, Gemini Omni = `'p100'`; Seedance 2.5 = `'p500'`.
+
+**p500 excludes legacy wildcards**: `acquireAccount` only picks `c.pool = 'p500'` accounts for p500 requests — legacy NULL-pool accounts are excluded. This prevents old ~50-credit accounts from being assigned to expensive models. NULL wildcards still apply for null and p100 pool requests.
 
 **Why:** user buys from two sellers delivering different credit tiers and wants to manage credit per generation-model.
 
