@@ -301,6 +301,34 @@ function isCreditError(msg: string): boolean {
   return /\b402\b|insufficient|not[_\s-]?enough|credit|quota|payment|balance|limit.?exceeded/i.test(msg);
 }
 
+// Minimum credits below which an account is truly considered exhausted and can
+// be discarded. Above this level the account still has value for cheaper models
+// so we skip it for the current (expensive) request without deleting it.
+const MIN_USABLE_CREDITS = 10;
+
+// Called when a submit returns a credit error. Checks how many credits actually
+// remain on the account and decides whether to discard it (truly empty) or just
+// skip it for this attempt so it can still serve cheaper models later.
+async function handleCreditError(credId: number): Promise<'discard' | 'skip'> {
+  try {
+    const { credits } = await getCredits(credId);
+    if (credits <= MIN_USABLE_CREDITS) {
+      await discardAccount(credId);
+      return 'discard';
+    }
+    // Account still has usable credits — just not enough for THIS model.
+    // Leave it alive; it will serve cheaper models or other users.
+    console.log(`[picsart] Credit error on #${credId} but still has ${credits} credits — skipping without discard`);
+    return 'skip';
+  } catch {
+    // Cannot verify credits (network error, transient auth issue, etc.) —
+    // skip for this attempt rather than discarding. We never throw away an
+    // account unless we have confirmed evidence it is truly empty.
+    console.log(`[picsart] Could not verify credits on #${credId} after credit error — skipping without discard`);
+    return 'skip';
+  }
+}
+
 // Run a generation for `userId` on its assigned account. If that account is
 // dead (token rejected) or out of credits, transparently move the user to
 // another available account and retry — so a single exhausted account never
@@ -345,7 +373,10 @@ async function runWithAccount<T>(
         continue;
       }
       if (msg.includes('PICSART_SUBMIT_FAILED') && isCreditError(msg)) {
-        await discardAccount(credId);
+        // Check actual remaining credits before discarding. If the account
+        // still has credits (just not enough for this expensive model), skip
+        // it for this attempt only — don't delete it from the pool.
+        await handleCreditError(credId);
         continue;
       }
       // Any other error (bad input, timeout, transient network) is not an
