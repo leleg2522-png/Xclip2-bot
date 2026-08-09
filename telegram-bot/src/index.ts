@@ -1308,7 +1308,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('⚡ Veo 3.1 Fast (Full HD)', 'mode_veofast')],
     [Markup.button.callback('🎞️ Veo 3.1 Lite (Full HD)', 'mode_veolite')],
     [Markup.button.callback('✨ Gemini Omni (Google)', 'mode_gomni')],
-    [Markup.button.callback('🌊 Seedance 2.5 (ByteDance)', 'mode_seedance')],
+    [Markup.button.callback('🌊 Seedance 2.5 (ByteDance) 🔥PROMO', 'mode_seedance')],
     // ── Chat AI ──
     [Markup.button.callback('── 💬 Chat AI ──', 'noop')],
     [Markup.button.callback('💬 Chat AI (Rp100/pesan)', 'mode_chat')],
@@ -1605,11 +1605,11 @@ function hargaText(): string {
     `• Veo 3.1 Fast (Full HD) — ${formatRupiah(MODEL_PRICES.veo_fast)}\n` +
     `• Veo 3.1 Lite (Full HD) — ${formatRupiah(MODEL_PRICES.veo_lite)}\n` +
     `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
-    `• Seedance 2.5 (480p) — 15 dtk ${formatRupiah(MODEL_PRICES.seedance_15)} · 30 dtk ${formatRupiah(MODEL_PRICES.seedance_30)}\n` +
+    `• Seedance 2.5 (480p) — 15 dtk ${formatRupiah(MODEL_PRICES.seedance_15)} 🔥PROMO · 30 dtk ${formatRupiah(MODEL_PRICES.seedance_30)} 🔥PROMO\n` +
     `• Chat AI — ${formatRupiah(MODEL_PRICES.chat)}/pesan\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
-    `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)}\n` +
-    `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)}\n\n` +
+    `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
+    `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n\n` +
     '🎨 *Gambar*\n' +
     `• Nano Banana Pro — ${formatRupiah(MODEL_PRICES.nb_pro)}\n` +
     `• Nano Banana 2 — ${formatRupiah(MODEL_PRICES.nb_2)}\n` +
@@ -2707,8 +2707,8 @@ bot.on('callback_query', async (ctx) => {
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('🕹️ Kling MC3.0 PRO', 'mode_kling')],
-          [Markup.button.callback('🎬 Kling MC V3 PRO P2', 'mode_klingp2')],
+          [Markup.button.callback('🕹️ Kling MC3.0 PRO 🔥PROMO', 'mode_kling')],
+          [Markup.button.callback('🎬 Kling MC V3 PRO P2 🔥PROMO', 'mode_klingp2')],
           [Markup.button.callback('⬅️ Kembali', 'back_main')],
         ]),
       }
