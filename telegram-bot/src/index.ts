@@ -3623,16 +3623,28 @@ bot.on('text', async (ctx) => {
     ].slice(-CHAT_MAX_HISTORY);
     setSession(userId, { chatHistory: newHistory });
 
-    // Kirim balasan dengan tombol akhiri sesi.
+    // Kirim balasan (dengan split otomatis kalau > 4000 karakter).
     const saldoLeft = await getSaldo(session.dbUserId!).catch(() => 0);
-    await ctx.reply(replyText, {
-      parse_mode: 'Markdown',
-      ...chatEndKeyboard(),
-    }).catch(() =>
-      // Fallback kalau Markdown parse error (konten AI kadang punya format aneh).
-      ctx.reply(replyText, { ...chatEndKeyboard() })
-    );
-    // Kirim info saldo sisa sekali setelah reply supaya tidak spam.
+    const TG_LIMIT = 4000;
+    const chunks: string[] = [];
+    for (let i = 0; i < replyText.length; i += TG_LIMIT) {
+      chunks.push(replyText.slice(i, i + TG_LIMIT));
+    }
+    for (let ci = 0; ci < chunks.length; ci++) {
+      const chunk = chunks[ci];
+      const isLast = ci === chunks.length - 1;
+      const extra = isLast ? chatEndKeyboard() : {};
+      try {
+        await ctx.reply(chunk, { parse_mode: 'Markdown', ...extra });
+      } catch {
+        try {
+          await ctx.reply(chunk, { ...extra });
+        } catch (e2: any) {
+          console.error(`[${userId}] Chat reply chunk ${ci} gagal:`, e2?.message ?? e2);
+        }
+      }
+    }
+    // Kirim info saldo sisa.
     await ctx.reply(`💰 Sisa saldo: *${formatRupiah(saldoLeft)}*`, { parse_mode: 'Markdown' }).catch(() => {});
     return;
   }
