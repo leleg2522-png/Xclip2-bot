@@ -22,14 +22,12 @@ const FREEPIK_BASE = 'https://api.freepik.com/v1';
 const LEONARDO_BASE = 'https://cloud.leonardo.ai/api/rest/v1';
 const SNAPGEN_API_KEY = process.env.SNAPGEN_API_KEY;
 const SNAPGEN_BASE = 'https://api.snapgen.ai/uapi/v1';
-const AUTOAPP_API_KEY = process.env.AUTOAPP_API_KEY;
 const AUTOAPP_BASE = 'https://autoapp.biz.id/v1';
 
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!DATABASE_URL) throw new Error('RAILWAY_DATABASE_URL is required');
 if (!RENDERFUL_API_KEY) console.warn('⚠️ RENDERFUL_API_KEY tidak diset — backend Renderful nonaktif (Kling Motion Control kini pakai Picsart).');
 if (!SNAPGEN_API_KEY) console.warn('⚠️ SNAPGEN_API_KEY tidak diset — backend SnapGen nonaktif (Veo 3.1 Fast/Lite).');
-if (!AUTOAPP_API_KEY) console.warn('⚠️ AUTOAPP_API_KEY tidak diset — fitur Chat AI nonaktif.');
 
 // Decodo rotating proxy — set DECODO_PROXY_URL=http://user:pass@gate.decodo.com:port
 const DECODO_PROXY_URL = process.env.DECODO_PROXY_URL;
@@ -216,6 +214,15 @@ async function ensureBalanceSchema(): Promise<void> {
     `CREATE TABLE IF NOT EXISTS bot_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`
   );
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by INTEGER`);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS autoapp_key_pool (
+      id         SERIAL PRIMARY KEY,
+      api_key    TEXT NOT NULL UNIQUE,
+      status     TEXT NOT NULL DEFAULT 'available',
+      dead_at    TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
   await db.query(`
     CREATE TABLE IF NOT EXISTS referral_bonuses (
       id          SERIAL PRIMARY KEY,
@@ -1447,6 +1454,44 @@ function gomniRatioKeyboard() {
   ]);
 }
 
+// ─── Chat AI key pool (autoapp.biz.id) ───────────────────────────────────────
+
+let autoappKeyRoundRobinIndex = 0;
+
+async function getNextAutoappKey(): Promise<string | null> {
+  const res = await db.query(
+    `SELECT api_key FROM autoapp_key_pool WHERE status = 'available' ORDER BY id`
+  );
+  if (res.rows.length === 0) return null;
+  const idx = autoappKeyRoundRobinIndex % res.rows.length;
+  autoappKeyRoundRobinIndex = (autoappKeyRoundRobinIndex + 1) % res.rows.length;
+  return res.rows[idx].api_key;
+}
+
+async function markAutoappKeyDead(apiKey: string): Promise<void> {
+  await db.query(
+    `UPDATE autoapp_key_pool SET status = 'dead', dead_at = NOW() WHERE api_key = $1`,
+    [apiKey]
+  );
+}
+
+async function addAutoappKeyToPool(apiKey: string): Promise<boolean> {
+  try {
+    await db.query(
+      `INSERT INTO autoapp_key_pool (api_key, status) VALUES ($1, 'available') ON CONFLICT (api_key) DO NOTHING`,
+      [apiKey]
+    );
+    return true;
+  } catch { return false; }
+}
+
+async function getAutoappPoolStats(): Promise<{ available: number; dead: number }> {
+  const res = await db.query(`SELECT status, COUNT(*) AS cnt FROM autoapp_key_pool GROUP BY status`);
+  const stats: any = { available: 0, dead: 0 };
+  for (const row of res.rows) stats[row.status] = parseInt(row.cnt);
+  return stats;
+}
+
 // ─── Chat AI models (autoapp.biz.id OpenAI-compatible) ───────────────────────
 const CHAT_MODELS: Array<{ id: string; label: string }> = [
   { id: 'auto',                        label: '🤖 Auto' },
@@ -2476,6 +2521,58 @@ bot.command('restoreleonardokey', async (ctx) => {
   return ctx.reply('✅ Key Leonardo AI berhasil dipulihkan ke status *available*.', { parse_mode: 'Markdown' });
 });
 
+// ─── Admin: Chat AI Key Pool (autoapp.biz.id) ────────────────────────────────
+
+bot.command('addchatkey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  const raw = ctx.message.text.replace(/^\/addchatkey\s*/i, '').trim();
+  if (!raw) return ctx.reply('📝 Format:\n/addchatkey sk-qwen-xxx\n\nAtau banyak sekaligus:\n/addchatkey key1,key2');
+  const keys = raw.split(',').map(k => k.trim()).filter(k => k.length > 0);
+  let added = 0, skipped = 0;
+  for (const key of keys) {
+    const ok = await addAutoappKeyToPool(key);
+    if (ok) added++; else skipped++;
+  }
+  const stats = await getAutoappPoolStats();
+  let msg = `✅ Selesai tambah key Chat AI!\n\n• Berhasil: ${added}\n`;
+  if (skipped > 0) msg += `• Sudah ada / gagal: ${skipped}\n`;
+  msg += `\n📊 Pool sekarang: Available ${stats.available} · Dead ${stats.dead}`;
+  return ctx.reply(msg);
+});
+
+bot.command('chatkeystatus', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  const stats = await getAutoappPoolStats();
+  return ctx.reply(
+    `📊 *Status Chat AI Key Pool*\n\n• ✅ Available: *${stats.available}*\n• ❌ Dead: *${stats.dead}*\n• 📦 Total: *${stats.available + stats.dead}*`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+bot.command('removechatkey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  const parts = ctx.message.text.trim().split(/\s+/);
+  if (parts.length < 2) return ctx.reply('📝 Format: `/removechatkey <api_key>`', { parse_mode: 'Markdown' });
+  const res = await db.query(
+    `UPDATE autoapp_key_pool SET status = 'dead', dead_at = NOW() WHERE api_key = $1 RETURNING id`,
+    [parts[1].trim()]
+  );
+  if (res.rows.length === 0) return ctx.reply('❌ Key tidak ditemukan.');
+  return ctx.reply('✅ Key Chat AI dinonaktifkan (dead).');
+});
+
+bot.command('restorechatkey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  const parts = ctx.message.text.trim().split(/\s+/);
+  if (parts.length < 2) return ctx.reply('📝 Format: `/restorechatkey <api_key>`', { parse_mode: 'Markdown' });
+  const res = await db.query(
+    `UPDATE autoapp_key_pool SET status = 'available', dead_at = NULL WHERE api_key = $1 RETURNING id`,
+    [parts[1].trim()]
+  );
+  if (res.rows.length === 0) return ctx.reply('❌ Key tidak ditemukan.');
+  return ctx.reply('✅ Key Chat AI dipulihkan ke *available*.', { parse_mode: 'Markdown' });
+});
+
 bot.command('clearleonardopool', async (ctx) => {
   if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
@@ -2897,7 +2994,8 @@ bot.on('callback_query', async (ctx) => {
 
   // ── Chat AI wizard (model picker) ──
   if (data === 'mode_chat') {
-    if (!AUTOAPP_API_KEY) {
+    const hasKey = (await getAutoappPoolStats()).available > 0;
+    if (!hasKey) {
       return ctx.editMessageText('❌ Fitur Chat AI belum dikonfigurasi. Hubungi admin.').catch(() => {});
     }
     setSession(userId, { mode: 'idle', chatModel: undefined, chatHistory: undefined });
@@ -3467,7 +3565,6 @@ bot.on('text', async (ctx) => {
   // ── Chat AI (multi-turn, Rp100/pesan) ──
   if (session.mode === 'chat_session') {
     if (!await requireLogin(ctx)) return;
-    if (!AUTOAPP_API_KEY) return ctx.reply('❌ Fitur Chat AI belum dikonfigurasi. Hubungi admin.');
     const userMsg = ctx.message.text.trim();
     if (!userMsg) return;
 
@@ -3486,6 +3583,11 @@ bot.on('text', async (ctx) => {
       { role: 'user', content: userMsg },
     ];
 
+    const apiKey = await getNextAutoappKey();
+    if (!apiKey) {
+      return ctx.reply('❌ Fitur Chat AI belum dikonfigurasi. Hubungi admin.');
+    }
+
     let replyText: string;
     try {
       const resp = await axios.post(
@@ -3493,7 +3595,7 @@ bot.on('text', async (ctx) => {
         { model: modelId, messages, stream: false },
         {
           headers: {
-            Authorization: `Bearer ${AUTOAPP_API_KEY}`,
+            Authorization: `Bearer ${apiKey}`,
             'Content-Type': 'application/json',
           },
           timeout: 60_000,
@@ -3501,8 +3603,9 @@ bot.on('text', async (ctx) => {
         }
       );
       if (resp.status !== 200) {
-        // Kembalikan saldo kalau API gagal.
         await addSaldo(session.dbUserId!, MODEL_PRICES.chat).catch(() => {});
+        // Tandai key dead kalau 401/403.
+        if (resp.status === 401 || resp.status === 403) await markAutoappKeyDead(apiKey).catch(() => {});
         console.error(`[${userId}] Chat AI error status ${resp.status}:`, JSON.stringify(resp.data).slice(0, 200));
         return ctx.reply('❌ AI tidak merespons. Saldo dikembalikan. Coba lagi.');
       }
