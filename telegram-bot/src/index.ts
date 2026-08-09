@@ -22,11 +22,14 @@ const FREEPIK_BASE = 'https://api.freepik.com/v1';
 const LEONARDO_BASE = 'https://cloud.leonardo.ai/api/rest/v1';
 const SNAPGEN_API_KEY = process.env.SNAPGEN_API_KEY;
 const SNAPGEN_BASE = 'https://api.snapgen.ai/uapi/v1';
+const AUTOAPP_API_KEY = process.env.AUTOAPP_API_KEY;
+const AUTOAPP_BASE = 'https://autoapp.biz.id/v1';
 
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!DATABASE_URL) throw new Error('RAILWAY_DATABASE_URL is required');
 if (!RENDERFUL_API_KEY) console.warn('⚠️ RENDERFUL_API_KEY tidak diset — backend Renderful nonaktif (Kling Motion Control kini pakai Picsart).');
 if (!SNAPGEN_API_KEY) console.warn('⚠️ SNAPGEN_API_KEY tidak diset — backend SnapGen nonaktif (Veo 3.1 Fast/Lite).');
+if (!AUTOAPP_API_KEY) console.warn('⚠️ AUTOAPP_API_KEY tidak diset — fitur Chat AI nonaktif.');
 
 // Decodo rotating proxy — set DECODO_PROXY_URL=http://user:pass@gate.decodo.com:port
 const DECODO_PROXY_URL = process.env.DECODO_PROXY_URL;
@@ -115,6 +118,7 @@ const MODEL_PRICES = {
   gemini_omni: 2500,
   seedance_15: 3500,   // Seedance 2.5 (ByteDance, 480p, 15 detik)
   seedance_30: 5000,   // Seedance 2.5 (ByteDance, 480p, 30 detik)
+  chat: 100,           // Chat AI per pesan
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
   kling_p2: 4200,      // Kling MC V3 PRO P2 (internal: edanbot)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
@@ -791,6 +795,7 @@ type Mode =
   | 'gomni_wait_prompt'
   | 'seedance_wait_image'
   | 'seedance_wait_prompt'
+  | 'chat_session'
   | 'img_wait_image'
   | 'img_wait_prompt'
   | 'topup_wait_custom';
@@ -842,6 +847,9 @@ interface Session {
   sdDuration?: number;
   sdRatio?: string;
   sdImageUrls?: string[];
+  // Chat AI wizard state (multi-turn conversation)
+  chatModel?: string;
+  chatHistory?: Array<{ role: string; content: string }>;
 }
 
 const sessions = new Map<number, Session>();
@@ -1294,6 +1302,9 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🎞️ Veo 3.1 Lite (Full HD)', 'mode_veolite')],
     [Markup.button.callback('✨ Gemini Omni (Google)', 'mode_gomni')],
     [Markup.button.callback('🌊 Seedance 2.5 (ByteDance)', 'mode_seedance')],
+    // ── Chat AI ──
+    [Markup.button.callback('── 💬 Chat AI ──', 'noop')],
+    [Markup.button.callback('💬 Chat AI (Rp100/pesan)', 'mode_chat')],
     // ── Generate Gambar ──
     [Markup.button.callback('── 🎨 Generate Gambar ──', 'noop')],
     [Markup.button.callback('🍌 Nano Banana Pro', 'mode_nbpro')],
@@ -1436,6 +1447,35 @@ function gomniRatioKeyboard() {
   ]);
 }
 
+// ─── Chat AI models (autoapp.biz.id OpenAI-compatible) ───────────────────────
+const CHAT_MODELS: Array<{ id: string; label: string }> = [
+  { id: 'auto',                        label: '🤖 Auto' },
+  { id: 'gpt-5.6',                     label: '💡 GPT-5.6' },
+  { id: 'claude-sonnet-4.5',           label: '🧠 Claude Sonnet 4.5' },
+  { id: 'claude-sonnet-4.5-thinking',  label: '🤔 Claude Sonnet 4.5 Thinking' },
+  { id: 'deepseek-v4-flash',           label: '⚡ DeepSeek V4 Flash' },
+  { id: 'deepseek-v4-pro',             label: '🔬 DeepSeek V4 Pro' },
+  { id: 'grok-4.3-b',                  label: '🌌 Grok 4.3' },
+  { id: 'hy3',                         label: '✨ HY3' },
+  { id: 'kimi-k2.7-code',              label: '💻 Kimi K2.7 Code' },
+  { id: 'mimo-v2.5-pro',               label: '🎯 Mimo V2.5 Pro' },
+];
+const CHAT_MAX_HISTORY = 20; // max messages stored per session (10 turns)
+
+function chatModelKeyboard() {
+  const rows = CHAT_MODELS.map((m, i) =>
+    [Markup.button.callback(m.label, `cm_${i}`)]
+  );
+  rows.push([Markup.button.callback('« Kembali', 'back_main')]);
+  return Markup.inlineKeyboard(rows);
+}
+
+function chatEndKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🛑 Akhiri Chat', 'chat_end')],
+  ]);
+}
+
 // ─── Seedance 2.5 wizard keyboards (prompt + up to 5 reference images, 480p) ───
 const SEEDANCE_MAX_PHOTOS = 5;
 
@@ -1521,6 +1561,7 @@ function hargaText(): string {
     `• Veo 3.1 Lite (Full HD) — ${formatRupiah(MODEL_PRICES.veo_lite)}\n` +
     `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
     `• Seedance 2.5 (480p) — 15 dtk ${formatRupiah(MODEL_PRICES.seedance_15)} · 30 dtk ${formatRupiah(MODEL_PRICES.seedance_30)}\n` +
+    `• Chat AI — ${formatRupiah(MODEL_PRICES.chat)}/pesan\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)}\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)}\n\n` +
@@ -1736,6 +1777,20 @@ bot.command('saldo', async (ctx) => {
 bot.command('harga', async (ctx) => {
   if (!await requireLogin(ctx)) return;
   return ctx.reply(hargaText(), { parse_mode: 'Markdown' });
+});
+
+bot.command('endchat', async (ctx) => {
+  const userId = ctx.from.id;
+  const session = getSession(userId);
+  if (session.mode !== 'chat_session') {
+    return ctx.reply('ℹ️ Tidak ada sesi Chat AI yang aktif. Gunakan /menu untuk mulai.');
+  }
+  const turns = Math.floor((session.chatHistory?.length ?? 0) / 2);
+  setSession(userId, { mode: 'idle', chatHistory: undefined, chatModel: undefined });
+  return ctx.reply(
+    `✅ Sesi Chat AI diakhiri.\n\nTotal pesan: ${session.chatHistory?.length ?? 0} (${turns} bolak-balik).\n\n/menu untuk mulai lagi.`,
+    { parse_mode: 'Markdown' }
+  );
 });
 
 bot.command('referral', async (ctx) => {
@@ -2840,6 +2895,41 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  // ── Chat AI wizard (model picker) ──
+  if (data === 'mode_chat') {
+    if (!AUTOAPP_API_KEY) {
+      return ctx.editMessageText('❌ Fitur Chat AI belum dikonfigurasi. Hubungi admin.').catch(() => {});
+    }
+    setSession(userId, { mode: 'idle', chatModel: undefined, chatHistory: undefined });
+    return ctx.editMessageText(
+      `💬 *Chat AI*\n\nHarga: *${formatRupiah(MODEL_PRICES.chat)} per pesan*\nBot ingat konteks percakapan selama sesi berlangsung.\n\nPilih model:`,
+      { parse_mode: 'Markdown', ...chatModelKeyboard() }
+    );
+  }
+
+  if (data.startsWith('cm_')) {
+    const idx = parseInt(data.replace('cm_', ''), 10);
+    const model = CHAT_MODELS[idx];
+    if (!model) return ctx.answerCbQuery('Model tidak valid.').catch(() => {});
+    setSession(userId, { chatModel: model.id, chatHistory: [], mode: 'chat_session' });
+    await ctx.answerCbQuery().catch(() => {});
+    return ctx.editMessageText(
+      `💬 *Chat AI — ${model.label}*\n\nSesi dimulai! Ketik pesanmu dan bot akan membalas.\nSaldo dipotong *${formatRupiah(MODEL_PRICES.chat)}* per pesan.\n\nKetik /endchat atau tekan tombol di bawah untuk mengakhiri.`,
+      { parse_mode: 'Markdown', ...chatEndKeyboard() }
+    );
+  }
+
+  if (data === 'chat_end') {
+    const session = getSession(userId);
+    const turns = Math.floor((session.chatHistory?.length ?? 0) / 2);
+    setSession(userId, { mode: 'idle', chatHistory: undefined, chatModel: undefined });
+    await ctx.answerCbQuery('Sesi diakhiri.').catch(() => {});
+    return ctx.editMessageText(
+      `✅ Sesi Chat AI diakhiri.\n\nTotal pesan: ${session.chatHistory?.length ?? 0} (${turns} bolak-balik).\n\n/menu untuk mulai lagi.`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (data === 'se_done') {
     const session = getSession(userId);
     if (session.mode !== 'seedance_wait_image') {
@@ -3371,6 +3461,76 @@ bot.on('text', async (ctx) => {
     const statusMsg = await ctx.reply('⏳ Memproses Gemini Omni...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
     runGeminiOmni(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
       .catch(e => console.error(`[${userId}] Gemini Omni gen error:`, e.message));
+    return;
+  }
+
+  // ── Chat AI (multi-turn, Rp100/pesan) ──
+  if (session.mode === 'chat_session') {
+    if (!await requireLogin(ctx)) return;
+    if (!AUTOAPP_API_KEY) return ctx.reply('❌ Fitur Chat AI belum dikonfigurasi. Hubungi admin.');
+    const userMsg = ctx.message.text.trim();
+    if (!userMsg) return;
+
+    // Potong saldo dulu sebelum call API.
+    const ok = await deductSaldo(session.dbUserId!, MODEL_PRICES.chat);
+    if (!ok) {
+      return ctx.reply(
+        `❌ Saldo tidak cukup (butuh ${formatRupiah(MODEL_PRICES.chat)}).\n\nKetik /topup untuk isi saldo.`
+      );
+    }
+
+    const modelId = session.chatModel ?? 'auto';
+    const history = session.chatHistory ?? [];
+    const messages = [
+      ...history,
+      { role: 'user', content: userMsg },
+    ];
+
+    let replyText: string;
+    try {
+      const resp = await axios.post(
+        `${AUTOAPP_BASE}/chat/completions`,
+        { model: modelId, messages, stream: false },
+        {
+          headers: {
+            Authorization: `Bearer ${AUTOAPP_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 60_000,
+          validateStatus: () => true,
+        }
+      );
+      if (resp.status !== 200) {
+        // Kembalikan saldo kalau API gagal.
+        await addSaldo(session.dbUserId!, MODEL_PRICES.chat).catch(() => {});
+        console.error(`[${userId}] Chat AI error status ${resp.status}:`, JSON.stringify(resp.data).slice(0, 200));
+        return ctx.reply('❌ AI tidak merespons. Saldo dikembalikan. Coba lagi.');
+      }
+      replyText = resp.data?.choices?.[0]?.message?.content ?? '(Tidak ada balasan dari AI)';
+    } catch (e: any) {
+      await addSaldo(session.dbUserId!, MODEL_PRICES.chat).catch(() => {});
+      console.error(`[${userId}] Chat AI exception:`, e.message);
+      return ctx.reply('❌ Gagal menghubungi AI. Saldo dikembalikan. Coba lagi.');
+    }
+
+    // Update history (cap at CHAT_MAX_HISTORY).
+    const newHistory = [
+      ...messages,
+      { role: 'assistant', content: replyText },
+    ].slice(-CHAT_MAX_HISTORY);
+    setSession(userId, { chatHistory: newHistory });
+
+    // Kirim balasan dengan tombol akhiri sesi.
+    const saldoLeft = await getSaldo(session.dbUserId!).catch(() => 0);
+    await ctx.reply(replyText, {
+      parse_mode: 'Markdown',
+      ...chatEndKeyboard(),
+    }).catch(() =>
+      // Fallback kalau Markdown parse error (konten AI kadang punya format aneh).
+      ctx.reply(replyText, { ...chatEndKeyboard() })
+    );
+    // Kirim info saldo sisa sekali setelah reply supaya tidak spam.
+    await ctx.reply(`💰 Sisa saldo: *${formatRupiah(saldoLeft)}*`, { parse_mode: 'Markdown' }).catch(() => {});
     return;
   }
 
