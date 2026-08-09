@@ -1189,7 +1189,17 @@ export async function pollSeedanceResult(
       headers: commonHeaders({ authorization: `Bearer ${access}` }),
       validateStatus: () => true,
     });
-    if (!diag.note(r)) continue;
+    const ok = diag.note(r);
+    // 4xx dengan body error (misal 422 policy violation) — fail-fast, jangan tunggu timeout.
+    if (!ok) {
+      const topStatus = String((r.data as any)?.status ?? '').toLowerCase();
+      const reason    = String((r.data as any)?.reason ?? '');
+      const msg       = String((r.data as any)?.message ?? '');
+      if (r.status >= 400 && (topStatus === 'error' || reason || msg)) {
+        throw new Error(`PICSART_GEN_FAILED: ${r.status} ${reason || topStatus} — ${msg}`.slice(0, 300));
+      }
+      continue;
+    }
     const resp = r.data?.response;
     const status = String(resp?.status ?? '').toUpperCase();
     if (status === 'COMPLETED') {
