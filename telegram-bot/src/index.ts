@@ -114,11 +114,11 @@ async function checkActiveSubscription(userId: number): Promise<boolean> {
 const MODEL_PRICES = {
   sora: 2500,
   gemini_omni: 2500,
-  seedance_15: 3500,   // Seedance 2.5 (ByteDance, 480p, 15 detik)
-  seedance_30: 5000,   // Seedance 2.5 (ByteDance, 480p, 30 detik)
+  seedance_15: 2500,   // Seedance 2.5 (ByteDance, 480p, 15 detik)
+  seedance_30: 3500,   // Seedance 2.5 (ByteDance, 480p, 30 detik)
   chat: 100,           // Chat AI per pesan
-  kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
-  kling_p2: 4200,      // Kling MC V3 PRO P2 (internal: edanbot)
+  kling_mc: 2800,      // Kling MC3.0 PRO (Picsart motion control)
+  kling_p2: 3200,      // Kling MC V3 PRO P2 (internal: edanbot)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
   veo_fast: 1500,      // Veo 3.1 Fast Full HD (SnapGen)
   veo_lite: 1500,      // Veo 3.1 Lite Full HD (SnapGen, with audio)
