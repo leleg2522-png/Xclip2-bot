@@ -153,8 +153,8 @@ const MODEL_PRICES = {
   nb_pro: 500,         // Nano Banana Pro (SnapGen image)
   nb_2: 500,           // Nano Banana 2 (SnapGen image)
   nb_2lite: 500,       // Nano Banana 2 Lite (SnapGen image)
-  seedream: 1000,      // Seedream 2.7 4K (Picsart, image-to-image)
-  gpt_image: 1000,     // GPT Image 2 (Picsart openai-image-editing)
+  seedream: 500,       // Seedream 2.7 4K (Picsart, image-to-image)
+  gpt_image: 500,      // GPT Image 2 (Picsart openai-image-editing)
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
 
