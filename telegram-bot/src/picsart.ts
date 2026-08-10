@@ -1364,7 +1364,7 @@ export async function generateSeedream(input: {
   onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
-  return runWithAccount(input.userId, null, async (credId) => {
+  return runWithAccount(input.userId, 'p100', async (credId) => {
     const imageUrls: string[] = [];
     for (const img of (input.images ?? []).slice(0, 2)) {
       input.onStatus?.('upload');
@@ -1426,7 +1426,7 @@ export async function generateGptImage(input: {
   onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
-  return runWithAccount(input.userId, null, async (credId) => {
+  return runWithAccount(input.userId, 'p100', async (credId) => {
     const imageUrls: string[] = [];
     for (const img of (input.images ?? []).slice(0, 2)) {
       input.onStatus?.('upload');
