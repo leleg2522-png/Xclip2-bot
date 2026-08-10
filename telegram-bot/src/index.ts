@@ -97,6 +97,34 @@ db.on('error', (err: any) => {
 });
 console.log('✅ Database pool initialized');
 
+// Retry wrapper untuk db.query — sama dengan q() di picsart.ts.
+// Railway Postgres kadang drop koneksi idle (ECONNRESET / ETIMEDOUT).
+// Tanpa retry, tiap blip langsung error ke user. Dengan ini bot transparently
+// recover dalam beberapa detik tanpa user tahu ada gangguan.
+const DB_TRANSIENT =
+  /Connection terminated|stream has been aborted|connection is closed|ECONNRESET|ETIMEDOUT|EPIPE|terminating connection|server closed the connection|Client has encountered a connection error|timeout exceeded when trying to connect/i;
+const DBQ_MAX_RETRIES = 8;
+
+async function dbq<R extends import('pg').QueryResultRow = any>(
+  sql: string,
+  params?: unknown[]
+): Promise<import('pg').QueryResult<R>> {
+  for (let attempt = 0; attempt < DBQ_MAX_RETRIES; attempt++) {
+    try {
+      return await db.query<R>(sql, params as any);
+    } catch (e: any) {
+      if (attempt < DBQ_MAX_RETRIES - 1 && DB_TRANSIENT.test(e?.message ?? '')) {
+        const backoff = (attempt + 1) * 500;
+        console.warn(`[db] connection blip (attempt ${attempt + 1}/${DBQ_MAX_RETRIES}), retry in ${backoff}ms: ${e?.message ?? e}`);
+        await new Promise(r => setTimeout(r, backoff));
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw new Error('[db] unreachable');
+}
+
 async function checkActiveSubscription(userId: number): Promise<boolean> {
   const res = await db.query(
     `SELECT id FROM subscriptions 
@@ -158,7 +186,7 @@ function formatRupiah(n: number): string {
 }
 
 async function getSaldo(dbUserId: number): Promise<number> {
-  const res = await db.query('SELECT saldo FROM users WHERE id = $1', [dbUserId]);
+  const res = await dbq('SELECT saldo FROM users WHERE id = $1', [dbUserId]);
   return Number(res.rows[0]?.saldo ?? 0);
 }
 
@@ -166,7 +194,7 @@ async function getSaldo(dbUserId: number): Promise<number> {
 // kalau kurang. `WHERE saldo >= $2` mencegah balapan: dua generate barengan tak
 // bisa dua-duanya lolos kalau saldonya cuma cukup buat satu. Saldo tak akan minus.
 async function deductSaldo(dbUserId: number, amount: number): Promise<boolean> {
-  const res = await db.query(
+  const res = await dbq(
     'UPDATE users SET saldo = saldo - $2 WHERE id = $1 AND saldo >= $2 RETURNING saldo',
     [dbUserId, amount]
   );
@@ -179,7 +207,7 @@ const REFERRAL_RATE = 0.05;
 
 // Tambah/kembalikan saldo (top-up sukses ATAU refund saat generate gagal).
 async function addSaldo(dbUserId: number, amount: number): Promise<number> {
-  const res = await db.query(
+  const res = await dbq(
     'UPDATE users SET saldo = saldo + $2 WHERE id = $1 RETURNING saldo',
     [dbUserId, amount]
   );
@@ -953,7 +981,7 @@ async function handleDeadKey(userId: number, deadKey: string): Promise<void> {
 }
 
 async function findUserByTelegramId(tgId: number) {
-  const res = await db.query('SELECT * FROM users WHERE telegram_id = $1 LIMIT 1', [tgId]);
+  const res = await dbq('SELECT * FROM users WHERE telegram_id = $1 LIMIT 1', [tgId]);
   return res.rows[0] || null;
 }
 
@@ -972,7 +1000,7 @@ async function getOrCreateTelegramUser(ctx: any, refTgId?: number) {
   const uname = 'tg_' + tgId;
   const email = 'tg_' + tgId + '@telegram.local';
   try {
-    const res = await db.query(
+    const res = await dbq(
       `INSERT INTO users (username, email, password_hash, is_admin, saldo, telegram_id, referred_by)
        VALUES ($1, $2, '', false, 0, $3, $4) RETURNING *`,
       [uname, email, tgId, referredBy]
