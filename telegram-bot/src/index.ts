@@ -153,6 +153,8 @@ const MODEL_PRICES = {
   nb_pro: 500,         // Nano Banana Pro (SnapGen image)
   nb_2: 500,           // Nano Banana 2 (SnapGen image)
   nb_2lite: 500,       // Nano Banana 2 Lite (SnapGen image)
+  seedream: 1000,      // Seedream 2.7 4K (Picsart, image-to-image)
+  gpt_image: 1000,     // GPT Image 2 (Picsart openai-image-editing)
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
 
@@ -831,6 +833,8 @@ type Mode =
   | 'seedance_wait_image'
   | 'seedance_wait_prompt'
   | 'chat_session'
+  | 'gptimg_wait_image'
+  | 'gptimg_wait_prompt'
   | 'img_wait_image'
   | 'img_wait_prompt'
   | 'topup_wait_custom';
@@ -882,6 +886,12 @@ interface Session {
   sdDuration?: number;
   sdRatio?: string;
   sdImageUrls?: string[];
+  // Seedream 2.7 4K wizard state
+  seedreamRatio?: string;
+  seedreamImageUrls?: string[];
+  // GPT Image 2 wizard state
+  gptimgRatio?: string;
+  gptimgImageUrls?: string[];
   // Chat AI wizard state (multi-turn conversation)
   chatModel?: string;
   chatHistory?: Array<{ role: string; content: string }>;
@@ -1342,6 +1352,9 @@ function mainMenuKeyboard() {
     [Markup.button.callback('💬 Chat AI (Rp100/pesan)', 'mode_chat')],
     // ── Generate Gambar ──
     [Markup.button.callback('── 🎨 Generate Gambar ──', 'noop')],
+    [Markup.button.callback('── 🎨 Generate Gambar ──', 'noop')],
+    [Markup.button.callback('🌸 Seedream 2.7 4K 🔥PROMO', 'mode_seedream')],
+    [Markup.button.callback('🤖 GPT Image 2 🔥PROMO', 'mode_gptimg')],
     [Markup.button.callback('🍌 Nano Banana Pro', 'mode_nbpro')],
     [Markup.button.callback('🍌 Nano Banana 2', 'mode_nb2')],
     [Markup.button.callback('🍌 Nano Banana 2 Lite', 'mode_nb2lite')],
@@ -1605,6 +1618,44 @@ function imgInputKeyboard() {
   ]);
 }
 
+// ─── Seedream 2.7 4K & GPT Image 2 keyboards ─────────────────────────────────
+
+function seedreamRatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('🖥️ 16:9', 'sdm_ratio_169'),
+      Markup.button.callback('📱 9:16', 'sdm_ratio_916'),
+    ],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function seedreamAddPhotoKeyboard(count: number) {
+  const buttons = [];
+  if (count < 2) buttons.push([Markup.button.callback('➕ Tambah 1 Foto Lagi', 'sdm_add_photo')]);
+  buttons.push([Markup.button.callback('✅ Lanjut ke Prompt', 'sdm_done')]);
+  return Markup.inlineKeyboard(buttons);
+}
+
+function gptimgRatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('🖥️ 16:9', 'gi_ratio_169'),
+      Markup.button.callback('📱 9:16', 'gi_ratio_916'),
+    ],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function gptimgAddPhotoKeyboard(count: number) {
+  const buttons = [];
+  if (count < 2) buttons.push([Markup.button.callback('➕ Tambah 1 Foto Lagi', 'gi_add_photo')]);
+  buttons.push([Markup.button.callback('✅ Lanjut ke Prompt', 'gi_done')]);
+  return Markup.inlineKeyboard(buttons);
+}
+
+// ─── Peta callback model → { model API, price key, label + emoji } ────────────
+
 // Peta callback model → { model API, price key, label + emoji }
 const IMG_MODELS: Record<string, {
   model: 'nano-banana-pro' | 'nano-banana-2' | 'nano-banana-2-lite';
@@ -1639,6 +1690,8 @@ function hargaText(): string {
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n\n` +
     '🎨 *Gambar*\n' +
+    `• Seedream 2.7 4K — ${formatRupiah(MODEL_PRICES.seedream)} 🔥PROMO\n` +
+    `• GPT Image 2 — ${formatRupiah(MODEL_PRICES.gpt_image)} 🔥PROMO\n` +
     `• Nano Banana Pro — ${formatRupiah(MODEL_PRICES.nb_pro)}\n` +
     `• Nano Banana 2 — ${formatRupiah(MODEL_PRICES.nb_2)}\n` +
     `• Nano Banana 2 Lite — ${formatRupiah(MODEL_PRICES.nb_2lite)}\n\n` +
@@ -3141,6 +3194,76 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  // ── Seedream 2.7 4K wizard ──
+  if (data === 'mode_seedream') {
+    setSession(userId, { mode: 'idle', seedreamRatio: undefined, seedreamImageUrls: undefined });
+    return ctx.editMessageText(
+      `🌸 *Seedream 2.7 4K*\n\nHarga: *${formatRupiah(MODEL_PRICES.seedream)}* per gambar\nUpload 1–2 foto acuan + prompt.\n\nPilih rasio:`,
+      { parse_mode: 'Markdown', ...seedreamRatioKeyboard() }
+    );
+  }
+  if (data === 'sdm_ratio_169' || data === 'sdm_ratio_916') {
+    const ratio = data === 'sdm_ratio_169' ? '16:9' : '9:16';
+    setSession(userId, { seedreamRatio: ratio, seedreamImageUrls: [], mode: 'seedream_wait_image' });
+    await ctx.answerCbQuery().catch(() => {});
+    return ctx.editMessageText(
+      `🌸 *Seedream 2.7 4K* · Rasio ${ratio}\n\n*Langkah 1:* Kirim *foto acuan* (1–2 foto). Foto digunakan sebagai referensi gaya/konten.`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+  if (data === 'sdm_add_photo') {
+    const session = getSession(userId);
+    if (session.mode !== 'seedream_wait_image') return ctx.answerCbQuery('Sesi berubah, ulangi dari /menu.').catch(() => {});
+    await ctx.answerCbQuery().catch(() => {});
+    return ctx.editMessageText(`🌸 *Seedream 2.7 4K*\n\n📸 Kirim *foto acuan ke-2* kamu.`, { parse_mode: 'Markdown' });
+  }
+  if (data === 'sdm_done') {
+    const session = getSession(userId);
+    if (session.mode !== 'seedream_wait_image' || !session.seedreamImageUrls?.length)
+      return ctx.answerCbQuery('Kirim minimal 1 foto dulu ya.').catch(() => {});
+    setSession(userId, { mode: 'seedream_wait_prompt' });
+    await ctx.answerCbQuery().catch(() => {});
+    return ctx.editMessageText(
+      `🌸 *Seedream 2.7 4K* · ${session.seedreamImageUrls.length} foto diterima\n\n*Langkah terakhir:* Kirim *prompt teks* — deskripsikan perubahan/gaya yang kamu inginkan.`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  // ── GPT Image 2 wizard ──
+  if (data === 'mode_gptimg') {
+    setSession(userId, { mode: 'idle', gptimgRatio: undefined, gptimgImageUrls: undefined });
+    return ctx.editMessageText(
+      `🤖 *GPT Image 2*\n\nHarga: *${formatRupiah(MODEL_PRICES.gpt_image)}* per gambar\nUpload 1–2 foto acuan + prompt.\n\nPilih rasio:`,
+      { parse_mode: 'Markdown', ...gptimgRatioKeyboard() }
+    );
+  }
+  if (data === 'gi_ratio_169' || data === 'gi_ratio_916') {
+    const ratio = data === 'gi_ratio_169' ? '16:9' : '9:16';
+    setSession(userId, { gptimgRatio: ratio, gptimgImageUrls: [], mode: 'gptimg_wait_image' });
+    await ctx.answerCbQuery().catch(() => {});
+    return ctx.editMessageText(
+      `🤖 *GPT Image 2* · Rasio ${ratio}\n\n*Langkah 1:* Kirim *foto acuan* (1–2 foto). Foto digunakan sebagai referensi.`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+  if (data === 'gi_add_photo') {
+    const session = getSession(userId);
+    if (session.mode !== 'gptimg_wait_image') return ctx.answerCbQuery('Sesi berubah, ulangi dari /menu.').catch(() => {});
+    await ctx.answerCbQuery().catch(() => {});
+    return ctx.editMessageText(`🤖 *GPT Image 2*\n\n📸 Kirim *foto acuan ke-2* kamu.`, { parse_mode: 'Markdown' });
+  }
+  if (data === 'gi_done') {
+    const session = getSession(userId);
+    if (session.mode !== 'gptimg_wait_image' || !session.gptimgImageUrls?.length)
+      return ctx.answerCbQuery('Kirim minimal 1 foto dulu ya.').catch(() => {});
+    setSession(userId, { mode: 'gptimg_wait_prompt' });
+    await ctx.answerCbQuery().catch(() => {});
+    return ctx.editMessageText(
+      `🤖 *GPT Image 2* · ${session.gptimgImageUrls.length} foto diterima\n\n*Langkah terakhir:* Kirim *prompt teks* — deskripsikan perubahan/gaya yang kamu inginkan.`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (data === 'back_main') {
     setSession(userId, { mode: 'idle' });
     return ctx.editMessageText('Pilih mode generasi:', mainMenuKeyboard());
@@ -3278,6 +3401,38 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
       '✅ Foto acuan diterima!\n\n' +
       '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
       { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'seedream_wait_image') {
+    const urls = [...(session.seedreamImageUrls ?? []), fileUrl].slice(0, 2);
+    if (urls.length >= 2) {
+      setSession(userId, { seedreamImageUrls: urls, mode: 'seedream_wait_prompt' });
+      return ctx.reply(
+        `✅ 2 foto acuan diterima (maksimal 2).\n\n*Langkah terakhir:* Kirim *prompt teks* — deskripsikan perubahan/gaya yang kamu inginkan.`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+    setSession(userId, { seedreamImageUrls: urls });
+    return ctx.reply(
+      `✅ Foto acuan ke-1 diterima! (Rasio: ${session.seedreamRatio ?? '16:9'})\n\nKirim *1 foto lagi* atau langsung lanjut ke prompt.`,
+      { parse_mode: 'Markdown', ...seedreamAddPhotoKeyboard(urls.length) }
+    );
+  }
+
+  if (session.mode === 'gptimg_wait_image') {
+    const urls = [...(session.gptimgImageUrls ?? []), fileUrl].slice(0, 2);
+    if (urls.length >= 2) {
+      setSession(userId, { gptimgImageUrls: urls, mode: 'gptimg_wait_prompt' });
+      return ctx.reply(
+        `✅ 2 foto acuan diterima (maksimal 2).\n\n*Langkah terakhir:* Kirim *prompt teks* — deskripsikan perubahan/gaya yang kamu inginkan.`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+    setSession(userId, { gptimgImageUrls: urls });
+    return ctx.reply(
+      `✅ Foto acuan ke-1 diterima! (Rasio: ${session.gptimgRatio ?? '16:9'})\n\nKirim *1 foto lagi* atau langsung lanjut ke prompt.`,
+      { parse_mode: 'Markdown', ...gptimgAddPhotoKeyboard(urls.length) }
     );
   }
 
@@ -3701,6 +3856,48 @@ bot.on('text', async (ctx) => {
     return;
   }
 
+  // ── Seedream 2.7 4K prompt ──
+  if (session.mode === 'seedream_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) return ctx.reply('⚠️ Prompt tidak boleh kosong.');
+    if (!session.seedreamImageUrls?.length)
+      return ctx.reply('⚠️ Belum ada foto acuan. Mulai ulang dari /menu.');
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Lagi cooldown! Tunggu *${formatCooldown(cooldownMs)}* lagi.`, { parse_mode: 'Markdown' });
+    }
+    const imageUrls = session.seedreamImageUrls;
+    const ratio = session.seedreamRatio ?? '16:9';
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Memproses Seedream 2.7 4K...\nHasil dikirim otomatis (~1-3 menit).', { parse_mode: 'Markdown' });
+    runSeedream(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, { imageUrls, ratio })
+      .catch(e => console.error(`[${userId}] Seedream error:`, e.message));
+    return;
+  }
+
+  // ── GPT Image 2 prompt ──
+  if (session.mode === 'gptimg_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) return ctx.reply('⚠️ Prompt tidak boleh kosong.');
+    if (!session.gptimgImageUrls?.length)
+      return ctx.reply('⚠️ Belum ada foto acuan. Mulai ulang dari /menu.');
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Lagi cooldown! Tunggu *${formatCooldown(cooldownMs)}* lagi.`, { parse_mode: 'Markdown' });
+    }
+    const imageUrls = session.gptimgImageUrls;
+    const ratio = session.gptimgRatio ?? '16:9';
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ Memproses GPT Image 2...\nHasil dikirim otomatis (~1-3 menit).', { parse_mode: 'Markdown' });
+    runGptImage(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, { imageUrls, ratio })
+      .catch(e => console.error(`[${userId}] GPT Image error:`, e.message));
+    return;
+  }
+
   // ── Nano Banana image prompt (SnapGen) ──
   if (session.mode === 'img_wait_prompt') {
     if (!await requireLogin(ctx)) return;
@@ -3734,6 +3931,12 @@ bot.on('text', async (ctx) => {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
   if (session.mode === 'veofast_wait_image' || session.mode === 'veolite_wait_image') {
+    return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+  }
+  if (session.mode === 'seedream_wait_image') {
+    return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+  }
+  if (session.mode === 'gptimg_wait_image') {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
   if (session.mode === 'img_wait_image') {
@@ -5015,6 +5218,156 @@ async function runSeedance(
   }
 }
 
+
+// ─── Background: Seedream 2.7 4K (Picsart, image-to-image) ──────────────────
+
+async function runSeedream(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  opts: { imageUrls: string[]; ratio: string }
+) {
+  const PRICE = MODEL_PRICES.seedream;
+  console.log(`[${userId}] Seedream 4K started — ratio: ${opts.ratio}, refs: ${opts.imageUrls.length}`);
+
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+
+  try {
+    const images: Array<{ buffer: Buffer; name?: string; mime?: string }> = [];
+    for (let i = 0; i < opts.imageUrls.slice(0, 2).length; i++) {
+      const img = await downloadBuffer(opts.imageUrls[i]);
+      images.push({ buffer: img.buf, name: `reference-${i + 1}.${img.ext}`, mime: img.mime });
+    }
+
+    let lastEdit = 0;
+    const result = await picsart.generateSeedream({
+      userId: dbUserId,
+      prompt,
+      images,
+      ratio: opts.ratio,
+      onStatus: (stage) => {
+        const text = stage === 'upload'
+          ? '🌸 Seedream 4K: mengunggah foto acuan... (1/3)'
+          : stage === 'submit'
+            ? '🌸 Seedream 4K: mengirim perintah ke server... (2/3)'
+            : '🌸 Seedream 4K: sedang membuat gambar... (3/3)';
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+      },
+      onPoll: (elapsedSec) => {
+        if (Date.now() - lastEdit < 15_000) return;
+        lastEdit = Date.now();
+        const mins = Math.floor(elapsedSec / 60), secs = elapsedSec % 60;
+        const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+          `🌸 Seedream 4K: sedang membuat gambar...\n⏱️ Sudah berjalan ${timer}.`
+        ).catch(() => {});
+      },
+    });
+
+    const caption = `🌸 Seedream 2.7 4K (${opts.ratio})\n\n/menu untuk buat lagi`;
+    const delivered = await sendImageResult(chatId, result.url, caption);
+    if (delivered) {
+      refund = false;
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] Seedream 4K done (credits used: ${result.credits ?? '?'})`);
+    }
+  } catch (err: any) {
+    const msg = describeError(err);
+    console.error(`[${userId}] Seedream 4K error: ${msg}`);
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `❌ Gagal memproses Seedream 4K. Coba lagi nanti.\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `❌ Seedream 4K gagal.\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
+// ─── Background: GPT Image 2 (Picsart openai-image-editing) ──────────────────
+
+async function runGptImage(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  opts: { imageUrls: string[]; ratio: string }
+) {
+  const PRICE = MODEL_PRICES.gpt_image;
+  console.log(`[${userId}] GPT Image 2 started — ratio: ${opts.ratio}, refs: ${opts.imageUrls.length}`);
+
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+
+  try {
+    const images: Array<{ buffer: Buffer; name?: string; mime?: string }> = [];
+    for (let i = 0; i < opts.imageUrls.slice(0, 2).length; i++) {
+      const img = await downloadBuffer(opts.imageUrls[i]);
+      images.push({ buffer: img.buf, name: `reference-${i + 1}.${img.ext}`, mime: img.mime });
+    }
+
+    let lastEdit = 0;
+    const result = await picsart.generateGptImage({
+      userId: dbUserId,
+      prompt,
+      images,
+      ratio: opts.ratio,
+      onStatus: (stage) => {
+        const text = stage === 'upload'
+          ? '🤖 GPT Image 2: mengunggah foto acuan... (1/3)'
+          : stage === 'submit'
+            ? '🤖 GPT Image 2: mengirim perintah ke server... (2/3)'
+            : '🤖 GPT Image 2: sedang membuat gambar... (3/3)';
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+      },
+      onPoll: (elapsedSec) => {
+        if (Date.now() - lastEdit < 15_000) return;
+        lastEdit = Date.now();
+        const mins = Math.floor(elapsedSec / 60), secs = elapsedSec % 60;
+        const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+          `🤖 GPT Image 2: sedang membuat gambar...\n⏱️ Sudah berjalan ${timer}.`
+        ).catch(() => {});
+      },
+    });
+
+    const caption = `🤖 GPT Image 2 (${opts.ratio})\n\n/menu untuk buat lagi`;
+    const delivered = await sendImageResult(chatId, result.url, caption);
+    if (delivered) {
+      refund = false;
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] GPT Image 2 done (credits used: ${result.credits ?? '?'})`);
+    }
+  } catch (err: any) {
+    const msg = describeError(err);
+    console.error(`[${userId}] GPT Image 2 error: ${msg}`);
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `❌ Gagal memproses GPT Image 2. Coba lagi nanti.\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `❌ GPT Image 2 gagal.\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
 
 // ─── Background: Image generation ────────────────────────────────────────────
 

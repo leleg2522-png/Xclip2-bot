@@ -1275,3 +1275,173 @@ export async function generateSeedance(input: {
   });
 }
 
+// ─── Seedream 2.7 4K & GPT Image 2 (image generation via Picsart workflows) ──
+
+export const SEEDREAM_MODEL = 'seedream_4_7';
+export const GPT_IMAGE_MODEL = 'gpt-image-2';
+
+/** Generic poll for workflows that return result.urls[] (Seedream, GPT Image). */
+async function pollPicsartImageResult(
+  credId: number,
+  workflowPath: string, // e.g. 'seedream' or 'openai-image-editing'
+  id: string,
+  opts?: { maxAttempts?: number; intervalMs?: number; onTick?: (elapsedMs: number) => void }
+): Promise<{ url: string; credits?: number }> {
+  const maxAttempts = opts?.maxAttempts ?? 120; // ~10 min at 5s
+  const intervalMs = opts?.intervalMs ?? 5000;
+  const start = Date.now();
+  const diag = new PollDiag();
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((res) => setTimeout(res, intervalMs));
+    opts?.onTick?.(Date.now() - start);
+    const access = await getAccessToken(credId);
+    const r = await http.get(`${API_BASE}/workflows/${workflowPath}/${id}/result`, {
+      headers: commonHeaders({ authorization: `Bearer ${access}` }),
+      validateStatus: () => true,
+    });
+    const ok = diag.note(r);
+    if (!ok) {
+      const topStatus = String((r.data as any)?.status ?? '').toLowerCase();
+      const reason    = String((r.data as any)?.reason ?? '');
+      const msg       = String((r.data as any)?.message ?? '');
+      if (r.status >= 400 && (topStatus === 'error' || reason || msg)) {
+        throw new Error(`PICSART_GEN_FAILED: ${r.status} ${reason || topStatus} — ${msg}`.slice(0, 300));
+      }
+      continue;
+    }
+    const resp = r.data?.response;
+    const status = String(resp?.status ?? '').toUpperCase();
+    if (status === 'COMPLETED') {
+      const url = resp?.result?.urls?.[0];
+      if (!url) throw new Error('PICSART_NO_RESULT_URL');
+      return { url, credits: resp.usage?.credits };
+    }
+    if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
+      throw new Error(`PICSART_GEN_FAILED: ${JSON.stringify(resp).slice(0, 200)}`);
+    }
+  }
+  throw diag.timeoutError();
+}
+
+async function submitSeedream(
+  credId: number,
+  opts: { prompt: string; imageUrls: string[]; ratio: string; resolution?: string }
+): Promise<string> {
+  const access = await getAccessToken(credId);
+  const r = await http.post(
+    `${API_BASE}/workflows/seedream/submit`,
+    {
+      params: {
+        prompt: opts.prompt,
+        model: SEEDREAM_MODEL,
+        count: 1,
+        resolution: opts.resolution ?? '4K',
+        aspect_ratio: opts.ratio,
+        image: opts.imageUrls,
+        options: {
+          drive: {
+            name: `seedream-4k-${Date.now()}.jpeg`,
+            attributes: { model: 'seedream-4.7', appId: 'com.picsart.ai-playground', appType: 'miniapp' },
+            folder: { path: 'AI Playground' },
+          },
+        },
+      },
+    },
+    { headers: commonHeaders({ authorization: `Bearer ${access}` }), validateStatus: () => true }
+  );
+  if (r.status < 200 || r.status >= 300)
+    throw new Error(`PICSART_SUBMIT_FAILED: ${r.status} ${JSON.stringify(r.data).slice(0, 200)}`);
+  const id = r.data?.response?.id;
+  if (!id) throw new Error('PICSART_NO_JOB_ID');
+  return id;
+}
+
+export async function generateSeedream(input: {
+  userId: number;
+  prompt: string;
+  images: Array<{ buffer: Buffer; name?: string; mime?: string }>;
+  ratio: string;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  return runWithAccount(input.userId, null, async (credId) => {
+    const imageUrls: string[] = [];
+    for (const img of (input.images ?? []).slice(0, 2)) {
+      input.onStatus?.('upload');
+      const url = await uploadFile(credId, img.buffer, img.name || 'reference.jpg', img.mime || 'image/jpeg');
+      imageUrls.push(url);
+    }
+    input.onStatus?.('submit');
+    const id = await submitSeedream(credId, {
+      prompt: input.prompt,
+      imageUrls,
+      ratio: input.ratio,
+    });
+    input.onStatus?.('poll');
+    return pollPicsartImageResult(credId, 'seedream', id, {
+      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+    });
+  });
+}
+
+async function submitGptImage(
+  credId: number,
+  opts: { prompt: string; imageUrls: string[]; size?: string; quality?: string }
+): Promise<string> {
+  const access = await getAccessToken(credId);
+  const r = await http.post(
+    `${API_BASE}/workflows/openai-image-editing/submit`,
+    {
+      params: {
+        prompt: opts.prompt,
+        model: GPT_IMAGE_MODEL,
+        images: opts.imageUrls,
+        n: 1,
+        size: opts.size ?? 'auto',
+        quality: opts.quality ?? 'high',
+        output_format: 'png',
+        options: {
+          drive: {
+            name: `gpt-image-2-${Date.now()}.png`,
+            attributes: { model: 'gpt-image-2', appId: 'com.picsart.ai-playground', appType: 'miniapp' },
+            folder: { path: 'AI Playground' },
+          },
+        },
+      },
+    },
+    { headers: commonHeaders({ authorization: `Bearer ${access}` }), validateStatus: () => true }
+  );
+  if (r.status < 200 || r.status >= 300)
+    throw new Error(`PICSART_SUBMIT_FAILED: ${r.status} ${JSON.stringify(r.data).slice(0, 200)}`);
+  const id = r.data?.response?.id;
+  if (!id) throw new Error('PICSART_NO_JOB_ID');
+  return id;
+}
+
+export async function generateGptImage(input: {
+  userId: number;
+  prompt: string;
+  images: Array<{ buffer: Buffer; name?: string; mime?: string }>;
+  ratio: string; // used for display only; GPT Image uses size='auto'
+  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  return runWithAccount(input.userId, null, async (credId) => {
+    const imageUrls: string[] = [];
+    for (const img of (input.images ?? []).slice(0, 2)) {
+      input.onStatus?.('upload');
+      const url = await uploadFile(credId, img.buffer, img.name || 'reference.jpg', img.mime || 'image/jpeg');
+      imageUrls.push(url);
+    }
+    input.onStatus?.('submit');
+    const id = await submitGptImage(credId, {
+      prompt: input.prompt,
+      imageUrls,
+    });
+    input.onStatus?.('poll');
+    return pollPicsartImageResult(credId, 'openai-image-editing', id, {
+      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+    });
+  });
+}
+
