@@ -833,6 +833,8 @@ type Mode =
   | 'seedance_wait_image'
   | 'seedance_wait_prompt'
   | 'chat_session'
+  | 'seedream_wait_image'
+  | 'seedream_wait_prompt'
   | 'gptimg_wait_image'
   | 'gptimg_wait_prompt'
   | 'img_wait_image'
