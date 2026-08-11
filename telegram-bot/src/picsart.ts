@@ -309,7 +309,7 @@ function isCreditError(msg: string): boolean {
 // Minimum credits below which an account is truly considered exhausted and can
 // be discarded. Above this level the account still has value for cheaper models
 // so we skip it for the current (expensive) request without deleting it.
-const MIN_USABLE_CREDITS = 20;
+const MIN_USABLE_CREDITS = 25;
 
 // Called when a submit returns a credit error. Checks how many credits actually
 // remain on the account and decides whether to discard it (truly empty) or just
