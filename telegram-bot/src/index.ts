@@ -142,8 +142,8 @@ async function checkActiveSubscription(userId: number): Promise<boolean> {
 const MODEL_PRICES = {
   sora: 2500,
   gemini_omni: 2500,
-  seedance_15: 2500,   // Seedance 2.5 (ByteDance, 480p, 15 detik)
-  seedance_30: 3500,   // Seedance 2.5 (ByteDance, 480p, 30 detik)
+  seedance_15: 3500,   // Seedance 2.5 (ByteDance, 480p, 15 detik)
+  seedance_30: 5000,   // Seedance 2.5 (ByteDance, 480p, 30 detik)
   chat: 100,           // Chat AI per pesan
   kling_mc: 2800,      // Kling MC3.0 PRO (Picsart motion control)
   kling_p2: 3200,      // Kling MC V3 PRO P2 (internal: edanbot)
@@ -1686,7 +1686,7 @@ function hargaText(): string {
     `• Veo 3.1 Fast (Full HD) — ${formatRupiah(MODEL_PRICES.veo_fast)}\n` +
     `• Veo 3.1 Lite (Full HD) — ${formatRupiah(MODEL_PRICES.veo_lite)}\n` +
     `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
-    `• Seedance 2.5 (480p) — 15 dtk ${formatRupiah(MODEL_PRICES.seedance_15)} 🔥PROMO · 30 dtk ${formatRupiah(MODEL_PRICES.seedance_30)} 🔥PROMO\n` +
+    `• Seedance 2.5 (480p) — 15 dtk ${formatRupiah(MODEL_PRICES.seedance_15)} · 30 dtk ${formatRupiah(MODEL_PRICES.seedance_30)}\n` +
     `• Chat AI — ${formatRupiah(MODEL_PRICES.chat)}/pesan\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
