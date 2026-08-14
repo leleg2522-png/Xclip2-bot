@@ -4297,7 +4297,7 @@ async function runKlingP2(
 
     // Kick off generation.
     const genRes = await edanbotHttp.post(`${base}/api/generate`, {
-      model: 'kling-motion-26-pro',
+      model: 'kling-motion-26-pro--secondary',
       fields: {
         prompt,
         image_url: imageAsset,
