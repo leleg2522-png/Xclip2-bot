@@ -146,7 +146,7 @@ const MODEL_PRICES = {
   seedance_30: 5000,   // Seedance 2.5 (ByteDance, 480p, 30 detik)
   chat: 100,           // Chat AI per pesan
   kling_mc: 2800,      // Kling MC3.0 PRO (Picsart motion control)
-  kling_p2: 3200,      // Kling MC V3 PRO P2 (internal: edanbot)
+  kling_p2: 3500,      // Kling MC V3 PRO P2 (Picsart, 30s max)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
   veo_fast: 1500,      // Veo 3.1 Fast Full HD (SnapGen)
   veo_lite: 1500,      // Veo 3.1 Lite Full HD (SnapGen, with audio)
@@ -4188,7 +4188,7 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
   }
 }
 
-// ─── Background: Kling MC V3 PRO P2 (character + reference video → video) ──────
+// ─── Background: Kling MC V3 PRO P2 (Picsart, karakter + video referensi 30 dtk) ──
 
 async function runKlingP2(
   chatId: number,
@@ -4197,7 +4197,7 @@ async function runKlingP2(
   statusMsgId: number,
   characterUrl: string,
   videoFileId: string,
-  videoDuration: number | undefined,
+  _videoDuration: number | undefined,
   prompt: string = ''
 ) {
   const label = 'Kling MC V3 PRO P2';
@@ -4208,66 +4208,18 @@ async function runKlingP2(
     return;
   }
   let refund = true;
-  let cookiePoolIdRef = 0; // id cookie pool yang dipakai (untuk mark dead di catch)
-
-  const failGeneric = async (reason: string) => {
-    console.error(`[${userId}] ${label} error: ${reason}`);
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `❌ Gagal memproses. Coba lagi nanti.\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `❌ Gagal memproses. Coba lagi nanti.\n\n/menu untuk coba lagi`));
-  };
 
   try {
-    // Internal provider config — MUST stay hidden from the user.
-    const base = 'https://edanbot.digital';
-    // Ambil cookie dari pool DB (fallback: env). Validasi dulu; cookie mati
-    // (401/403) otomatis di-mark dead dan bot pakai cookie berikutnya.
-    let cookie = '';
-    {
-      const candidates = await getAvailableEdanbotCookies();
-      for (const cand of candidates) {
-        try {
-          const check = await edanbotHttp.get(`${base}/api/user/info`, {
-            headers: { cookie: cand.cookie, 'user-agent': 'Mozilla/5.0', referer: base + '/dashboard' },
-            timeout: 30_000,
-            validateStatus: () => true,
-          });
-          if (check.status === 200 && check.data && typeof check.data === 'object') {
-            cookie = cand.cookie;
-            cookiePoolIdRef = cand.id;
-            break;
-          }
-          if (check.status === 401 || check.status === 403) {
-            console.error(`[${userId}] ${label}: cookie #${cand.id} ditolak (${check.status}) → mark dead`);
-            await markEdanbotCookieDead(cand.id);
-          } else {
-            console.error(`[${userId}] ${label}: cookie #${cand.id} cek gagal (HTTP ${check.status}) — skip tanpa mark dead`);
-          }
-        } catch (e: any) {
-          console.error(`[${userId}] ${label}: cookie #${cand.id} cek error: ${e?.message}`);
-        }
-      }
-    }
-    if (!cookie) {
-      // Fail gracefully without leaking the provider; log the real reason.
-      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-        `⚠️ Layanan sedang tidak tersedia. Coba lagi nanti ya.\n\n/menu untuk coba lagi`
-      ).catch(() => bot.telegram.sendMessage(chatId, `⚠️ Layanan sedang tidak tersedia. Coba lagi nanti ya.\n\n/menu untuk coba lagi`));
-      console.error(`[${userId}] ${label} error: tidak ada cookie edanbot yang valid (pool kosong/semua dead)`);
-      return; // refund handled in finally
-    }
-    const headers = { cookie, 'user-agent': 'Mozilla/5.0', referer: base + '/dashboard', origin: base };
-
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `⏳ ${label} sedang diproses...\nBiasanya 5–10 menit.`
-    ).catch(() => {});
-
-    // Resolve the reference video URL (fileId → fresh Telegram link).
     const videoUrl = videoFileId.startsWith('http://') || videoFileId.startsWith('https://')
       ? videoFileId
       : (await bot.telegram.getFileLink(videoFileId)).href;
 
-    // Download both media (Telegram reachable directly, no proxy).
+    console.log(`[${userId}] ${label} (Picsart) started — img: ${characterUrl}, vid: ${videoUrl}, prompt: "${prompt}"`);
+
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `⏳ ${label} sedang diproses...\nBiasanya 5–8 menit.`
+    ).catch(() => {});
+
     const [img, vid] = await Promise.all([
       downloadBuffer(characterUrl),
       downloadBuffer(videoUrl),
@@ -4275,80 +4227,45 @@ async function runKlingP2(
     const vidType = detectVideoType(vid.buf, videoUrl);
     console.log(`[${userId}] ${label} media — img: ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB, vid: ${vidType.mime} ${(vid.buf.length / 1024).toFixed(1)}KB`);
 
-    // Upload the character photo.
-    const imgForm = new FormData();
-    imgForm.append('file', img.buf, { filename: `character.${img.ext}`, contentType: img.mime });
-    const imgUpRes = await edanbotHttp.post(`${base}/api/uploads`, imgForm, {
-      headers: { ...headers, ...imgForm.getHeaders() },
-      timeout: 120_000,
-    });
-    const imageAsset = imgUpRes.data?.asset;
-    if (!imageAsset) throw new Error('upload image gagal (asset kosong)');
-
-    // Upload the reference video.
-    const vidForm = new FormData();
-    vidForm.append('file', vid.buf, { filename: `driver.${vidType.ext}`, contentType: vidType.mime });
-    const vidUpRes = await edanbotHttp.post(`${base}/api/uploads`, vidForm, {
-      headers: { ...headers, ...vidForm.getHeaders() },
-      timeout: 120_000,
-    });
-    const videoAsset = vidUpRes.data?.asset;
-    if (!videoAsset) throw new Error('upload video gagal (asset kosong)');
-
-    // Kick off generation.
-    const genRes = await edanbotHttp.post(`${base}/api/generate`, {
-      model: 'kling-motion-26-pro--secondary',
-      fields: {
-        prompt,
-        image_url: imageAsset,
-        video_url: videoAsset,
-        reference_video_duration: videoDuration ?? 5,
-        character_orientation: 'video',
-        keep_original_sound: true,
+    const result = await picsart.generateKlingMotionControl({
+      userId: dbUserId,
+      imageBuffer: img.buf, imageName: `character.${img.ext}`, imageMime: img.mime,
+      videoBuffer: vid.buf, videoName: `driver.${vidType.ext}`, videoMime: vidType.mime,
+      prompt,
+      model: 'v26',
+      onStatus: (stage) => {
+        const text = stage === 'upload'
+          ? `⏳ ${label}: mengunggah media ke server...`
+          : stage === 'submit'
+            ? `⏳ ${label}: mengirim job ke server...`
+            : `⏳ ${label} sedang diproses...\nBiasanya 5–8 menit.`;
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
       },
-    }, { headers: { ...headers, 'content-type': 'application/json' }, timeout: 120_000 });
-    const jobId = genRes.data?.job_id;
-    if (!jobId) throw new Error('generate gagal (job_id kosong)');
+    });
 
-    // Poll for completion — every 10s up to 15 min.
-    let resultUrl = '';
-    for (let i = 0; i < 90; i++) {
-      await sleep(10_000);
-      const jobRes = await edanbotHttp.get(`${base}/api/jobs/${jobId}`, { headers, timeout: 60_000 });
-      const status = jobRes.data?.status;
-      const jobErr = jobRes.data?.error;
-      console.log(`[${userId}] ${label} poll ${i + 1}: ${status}`);
-      if (status === 'completed') {
-        resultUrl = jobRes.data?.result_url || (Array.isArray(jobRes.data?.result_urls) ? jobRes.data.result_urls[0] : '');
-        if (!resultUrl) throw new Error('completed tapi result_url kosong');
-        break;
-      }
-      if (status === 'failed' || (jobErr && String(jobErr).length > 0)) {
-        throw new Error(`job gagal: ${jobErr || status}`);
-      }
-    }
-    if (!resultUrl) throw new Error('timeout: proses terlalu lama (>15 menit)');
-
-    // Deliver — sendResult downloads the bytes server-side and re-uploads them,
-    // so the internal result URL is NEVER exposed to the user.
-    const delivered = await sendResult(chatId, resultUrl, `🎬 Kling MC V3 PRO P2 selesai!\n\n/menu untuk buat lagi`, true);
+    const delivered = await sendResult(chatId, result.url, `🎬 Kling MC V3 PRO P2 selesai!\n\n/menu untuk buat lagi`, true);
     if (delivered) {
       refund = false;
       const newCount = await incrementKlingUsage(dbUserId);
       markGenSuccess(userId);
       await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-      console.log(`[${userId}] ${label} done (usage: ${newCount})`);
+      console.log(`[${userId}] ${label} done via Picsart (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
     }
 
   } catch (err: any) {
-    // Cookie ditolak di tengah proses (mis. logout saat upload/generate/poll):
-    // mark dead supaya request berikutnya langsung pakai cookie lain.
-    const httpStatus = (err as any)?.response?.status;
-    if ((httpStatus === 401 || httpStatus === 403) && cookiePoolIdRef > 0) {
-      await markEdanbotCookieDead(cookiePoolIdRef).catch(() => {});
-      console.error(`[${userId}] ${label}: cookie #${cookiePoolIdRef} mati di tengah proses → mark dead`);
+    const msg = describeError(err);
+    console.error(`[${userId}] ${label} Picsart error: ${msg}`);
+    let friendly: string;
+    if (msg.includes('PICSART_TIMEOUT')) {
+      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
+    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
+      friendly = '❌ Media tidak bisa diproses. Coba file lain.';
+    } else {
+      friendly = '❌ Gagal memproses. Coba lagi nanti.';
     }
-    await failGeneric(describeError(err));
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
