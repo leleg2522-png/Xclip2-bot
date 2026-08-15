@@ -64,6 +64,10 @@ const freepikHttp = axios.create({
 // Leonardo AI HTTP client — untuk Kling 2.1 Pro dan Kling 2.6 Pro
 const leonardoHttp = axios.create({ timeout: 120_000 });
 
+// Flora AI HTTP client — untuk Topaz 4K Video Upscaler
+const FLORA_BASE = 'https://app.flora.ai/api/v1';
+const floraHttp = axios.create({ timeout: 180_000 });
+
 // Direct HTTP client for Telegram downloads — tidak pakai proxy
 const telegramHttp = axios.create({ timeout: 60_000 });
 
@@ -155,6 +159,7 @@ const MODEL_PRICES = {
   nb_2lite: 500,       // Nano Banana 2 Lite (SnapGen image)
   seedream: 500,       // Seedream 2.7 4K (Picsart, image-to-image)
   gpt_image: 500,      // GPT Image 2 (Picsart openai-image-editing)
+  topaz: 8000,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 4× 60fps)
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
 
@@ -655,6 +660,135 @@ function isLeonardoKeyExhaustedError(raw: string): boolean {
     || lower.includes('forbidden') || lower.includes('403') || lower.includes('token limit');
 }
 
+// ─── Flora AI Key Pool (Topaz 4K Video Upscaler) ─────────────────────────────
+
+// In-memory cache: api_key → workspace_id (fetched once per key per process lifetime)
+const floraWorkspaceCache = new Map<string, string>();
+
+let floraKeyRoundRobinIndex = 0;
+
+async function getNextFloraKey(skipKeys?: Set<string>): Promise<string | null> {
+  const res = await dbq(`SELECT id, api_key FROM flora_key_pool WHERE status = 'available' ORDER BY id`);
+  if (res.rows.length === 0) return null;
+  const available = (skipKeys && skipKeys.size > 0)
+    ? res.rows.filter((r: any) => !skipKeys.has(r.api_key))
+    : res.rows;
+  if (available.length === 0) return null;
+  const idx = floraKeyRoundRobinIndex % available.length;
+  floraKeyRoundRobinIndex = (floraKeyRoundRobinIndex + 1) % available.length;
+  return available[idx].api_key;
+}
+
+async function markFloraKeyDead(apiKey: string): Promise<void> {
+  floraWorkspaceCache.delete(apiKey);
+  await dbq(`UPDATE flora_key_pool SET status = 'dead', dead_at = NOW() WHERE api_key = $1`, [apiKey]);
+}
+
+async function addFloraKeyToPool(apiKey: string): Promise<boolean> {
+  try {
+    await dbq(
+      `INSERT INTO flora_key_pool (api_key, status) VALUES ($1, 'available') ON CONFLICT (api_key) DO NOTHING`,
+      [apiKey]
+    );
+    return true;
+  } catch { return false; }
+}
+
+async function getFloraPoolStats(): Promise<{ available: number; dead: number }> {
+  const res = await dbq(`SELECT status, COUNT(*) AS cnt FROM flora_key_pool GROUP BY status`);
+  const stats: any = { available: 0, dead: 0 };
+  for (const row of res.rows) stats[row.status] = parseInt(row.cnt);
+  return stats;
+}
+
+function isFloraKeyExhaustedError(raw: string): boolean {
+  const lower = raw.toLowerCase();
+  return lower.includes('401') || lower.includes('unauthorized') || lower.includes('invalid api key')
+    || lower.includes('quota') || lower.includes('exhausted') || lower.includes('limit exceeded')
+    || lower.includes('insufficient') || lower.includes('402') || lower.includes('payment required')
+    || lower.includes('forbidden') || lower.includes('403') || lower.includes('invalid_credentials')
+    || lower.includes('billing');
+}
+
+async function floraGetWorkspaceId(apiKey: string): Promise<string> {
+  if (floraWorkspaceCache.has(apiKey)) return floraWorkspaceCache.get(apiKey)!;
+  const res = await floraHttp.get(`${FLORA_BASE}/workspaces`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  const wsId: string = res.data.workspaces?.[0]?.workspace_id;
+  if (!wsId) throw new Error('FLORA_NO_WORKSPACE: tidak ada workspace ditemukan untuk key ini');
+  floraWorkspaceCache.set(apiKey, wsId);
+  return wsId;
+}
+
+async function floraUploadVideo(apiKey: string, workspaceId: string, buf: Buffer, name: string): Promise<string> {
+  // 1. Create asset → get GCS signed URL
+  const createRes = await floraHttp.post(`${FLORA_BASE}/assets`, {
+    source: 'signed-url',
+    workspace_id: workspaceId,
+    name,
+    content_type: 'video/mp4',
+  }, { headers: { Authorization: `Bearer ${apiKey}` } });
+
+  const { asset_id, url: assetUrl, upload } = createRes.data;
+
+  // 2. Multipart upload to GCS
+  const form = new FormData();
+  for (const [k, v] of Object.entries(upload.form_fields as Record<string, string>)) {
+    form.append(k, v);
+  }
+  form.append(upload.file_field || 'file', buf, { filename: name, contentType: 'video/mp4' });
+
+  await axios.post(upload.url, form, {
+    headers: { ...form.getHeaders() },
+    timeout: 180_000,
+    maxContentLength: Infinity,
+    maxBodyLength: Infinity,
+  });
+
+  // 3. Complete upload
+  await floraHttp.post(`${FLORA_BASE}/assets/${asset_id}/complete`, {}, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+
+  return assetUrl;
+}
+
+async function floraGenerate(apiKey: string, workspaceId: string, modelId: string, params: Record<string, any>): Promise<string> {
+  const res = await floraHttp.post(`${FLORA_BASE}/generate`, {
+    model_id: modelId,
+    workspace_id: workspaceId,
+    params,
+  }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
+
+  const runId: string = res.data?.run_id || res.data?.id;
+  if (!runId) throw new Error(`FLORA_SUBMIT_FAILED: no run_id — ${JSON.stringify(res.data).slice(0, 200)}`);
+  return runId;
+}
+
+async function floraPollRun(apiKey: string, runId: string, maxMs = 600_000): Promise<string> {
+  const deadline = Date.now() + maxMs;
+  let lastStatus = '';
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 10_000));
+    const res = await floraHttp.get(`${FLORA_BASE}/runs/${runId}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    const { status, output, error } = res.data;
+    if (status !== lastStatus) { lastStatus = status; console.log(`[Flora] run ${runId}: ${status}`); }
+    if (status === 'COMPLETED' || status === 'completed') {
+      const outUrl: string = output?.url || output?.video_url || res.data?.result?.url;
+      if (!outUrl) throw new Error(`FLORA_RUN_COMPLETED_NO_URL: ${JSON.stringify(res.data).slice(0, 300)}`);
+      return outUrl;
+    }
+    if (status === 'FAILED' || status === 'failed' || status === 'error') {
+      const errMsg = typeof error === 'string' ? error : JSON.stringify(error ?? res.data).slice(0, 300);
+      throw new Error(`FLORA_RUN_FAILED: ${errMsg}`);
+    }
+  }
+  throw new Error('FLORA_RUN_TIMEOUT: melewati batas waktu 10 menit');
+}
+
 // ─── Edanbot Cookie Pool (Kling MC V3 PRO P2) ────────────────────────────────
 // Cookies disimpan di DB (tabel edanbot_cookie_pool). Bot memakai cookie
 // 'available' pertama; kalau ditolak (401/403), cookie di-mark dead dan bot
@@ -837,6 +971,7 @@ type Mode =
   | 'seedream_wait_prompt'
   | 'gptimg_wait_image'
   | 'gptimg_wait_prompt'
+  | 'topaz_wait_video'
   | 'img_wait_image'
   | 'img_wait_prompt'
   | 'topup_wait_custom';
@@ -1349,6 +1484,8 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🎞️ Veo 3.1 Lite (Full HD)', 'mode_veolite')],
     [Markup.button.callback('✨ Gemini Omni (Google)', 'mode_gomni')],
     [Markup.button.callback('🌊 Seedance 2.5 (ByteDance) 🔥PROMO', 'mode_seedance')],
+    [Markup.button.callback('── 🔧 Video Tools ──', 'noop')],
+    [Markup.button.callback('🎞️ Topaz 4K Upscaler (60fps)', 'mode_topaz')],
     // ── Chat AI ──
     [Markup.button.callback('── 💬 Chat AI ──', 'noop')],
     [Markup.button.callback('💬 Chat AI (Rp100/pesan)', 'mode_chat')],
@@ -1690,7 +1827,8 @@ function hargaText(): string {
     `• Chat AI — ${formatRupiah(MODEL_PRICES.chat)}/pesan\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
-    `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n\n` +
+    `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +
+    `• Topaz 4K Upscaler (60fps) — ${formatRupiah(MODEL_PRICES.topaz)}\n\n` +
     '🎨 *Gambar*\n' +
     `• Seedream 2.7 4K — ${formatRupiah(MODEL_PRICES.seedream)} 🔥PROMO\n` +
     `• GPT Image 2 — ${formatRupiah(MODEL_PRICES.gpt_image)} 🔥PROMO\n` +
@@ -2665,6 +2803,44 @@ bot.command('clearleonardopool', async (ctx) => {
   return ctx.reply(`🗑️ Pool Leonardo AI dikosongkan — *${res.rows.length} key* dihapus.`, { parse_mode: 'Markdown' });
 });
 
+// ─── Admin: Flora AI Key Pool (Topaz 4K Upscaler) ────────────────────────────
+
+bot.command('addflorakey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  const raw = ctx.message.text.replace(/^\/addflorakey\s*/i, '').trim();
+  if (!raw) return ctx.reply('📝 Format:\n/addflorakey ak_xxx\n\nAtau banyak sekaligus:\n/addflorakey key1,key2');
+
+  const keys = raw.split(',').map(k => k.trim()).filter(k => k.length > 0);
+  let added = 0, skipped = 0;
+  for (const key of keys) {
+    const ok = await addFloraKeyToPool(key);
+    if (ok) added++; else skipped++;
+  }
+  const stats = await getFloraPoolStats();
+  let msg = `✅ Selesai tambah key Flora AI!\n\n• Berhasil: ${added}\n`;
+  if (skipped > 0) msg += `• Sudah ada / gagal: ${skipped}\n`;
+  msg += `\n📊 Pool sekarang:\n• ✅ Available: ${stats.available}\n• ❌ Dead: ${stats.dead}`;
+  return ctx.reply(msg);
+});
+
+bot.command('florapool', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  const stats = await getFloraPoolStats();
+  return ctx.reply(
+    `📊 *Flora AI Key Pool*\n\n• ✅ Available: *${stats.available}*\n• ❌ Dead: *${stats.dead}*\n• 📦 Total: *${stats.available + stats.dead}*`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+bot.command('removeflorakey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  const parts = ctx.message.text.trim().split(/\s+/);
+  if (parts.length < 2) return ctx.reply('📝 Format: `/removeflorakey <api_key>`', { parse_mode: 'Markdown' });
+  const res = await dbq(`UPDATE flora_key_pool SET status = 'dead', dead_at = NOW() WHERE api_key = $1 RETURNING id`, [parts[1].trim()]);
+  if (res.rows.length === 0) return ctx.reply('❌ Key tidak ditemukan.');
+  return ctx.reply('✅ Flora key dinonaktifkan (dead).');
+});
+
 bot.command('cancel', (ctx) => {
   setSession(ctx.from.id, { mode: 'idle' });
   return ctx.reply('✅ Dibatalkan.', mainMenuKeyboard());
@@ -3266,6 +3442,18 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  if (data === 'mode_topaz') {
+    setSession(userId, { mode: 'topaz_wait_video' });
+    await ctx.answerCbQuery().catch(() => {});
+    return ctx.editMessageText(
+      `🎞️ *Topaz 4K Upscaler*\n\nHarga: *${formatRupiah(MODEL_PRICES.topaz)}* per video\n\n` +
+      `Upscale video kamu menjadi *4K resolusi* dengan *60fps* menggunakan Topaz AI.\n\n` +
+      `📹 *Kirim videonya sekarang.*\n\n` +
+      `⚠️ Syarat:\n• Maksimal 19MB\n• Format MP4/video Telegram`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (data === 'back_main') {
     setSession(userId, { mode: 'idle' });
     return ctx.editMessageText('Pilih mode generasi:', mainMenuKeyboard());
@@ -3544,6 +3732,19 @@ bot.on('video', async (ctx) => {
       '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
       { parse_mode: 'Markdown' }
     );
+  }
+
+  if (session.mode === 'topaz_wait_video') {
+    if (!await requireLogin(ctx)) return;
+    const MAX_VIDEO_BYTES = 19 * 1024 * 1024;
+    if (vid.file_size && vid.file_size > MAX_VIDEO_BYTES) {
+      return ctx.reply(`❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
+    }
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ *Topaz 4K Upscaler* — memulai...', { parse_mode: 'Markdown' });
+    const dbUserId = session.dbUserId!;
+    runTopazVideo(ctx.chat.id, userId, dbUserId, statusMsg.message_id, vid.file_id);
+    return;
   }
 
   return ctx.reply('⚠️ Kirim foto karakter terlebih dahulu.', mainMenuKeyboard());
@@ -4043,6 +4244,18 @@ bot.on('document', async (ctx) => {
       'Atau ketik *-* untuk lewati (tanpa prompt).',
       { parse_mode: 'Markdown' }
     );
+  }
+
+  if (doc.mime_type?.startsWith('video/') && session.mode === 'topaz_wait_video') {
+    if (!await requireLogin(ctx)) return;
+    const MAX_VIDEO_BYTES = 19 * 1024 * 1024;
+    if (doc.file_size && doc.file_size > MAX_VIDEO_BYTES) {
+      return ctx.reply(`❌ Video terlalu besar (${(doc.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
+    }
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ *Topaz 4K Upscaler* — memulai...', { parse_mode: 'Markdown' });
+    runTopazVideo(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, doc.file_id);
+    return;
   }
 
   return ctx.reply('⚠️ Pilih mode terlebih dahulu:', mainMenuKeyboard());
@@ -5280,6 +5493,119 @@ async function runGptImage(
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `❌ Gagal memproses GPT Image 2. Coba lagi nanti.\n\n/menu untuk coba lagi`
     ).catch(() => bot.telegram.sendMessage(chatId, `❌ GPT Image 2 gagal.\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
+// ─── Background: Topaz 4K Video Upscaler (Flora AI) ──────────────────────────
+
+async function runTopazVideo(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  videoFileId: string
+) {
+  const PRICE = MODEL_PRICES.topaz;
+  console.log(`[${userId}] Topaz 4K started`);
+
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+
+  const skippedKeys = new Set<string>();
+
+  try {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const apiKey = await getNextFloraKey(skippedKeys);
+      if (!apiKey) {
+        await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+          '❌ Semua Flora API key habis. Hubungi admin untuk tambah key.\n\n/menu untuk kembali'
+        ).catch(() => {});
+        return;
+      }
+
+      try {
+        // Step 1: Download video from Telegram
+        await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+          '⏳ *Topaz 4K Upscaler* — mengunduh video dari Telegram...', { parse_mode: 'Markdown' }
+        ).catch(() => {});
+
+        const fileLink = await bot.telegram.getFileLink(videoFileId);
+        const dlRes = await telegramHttp.get(fileLink.href, { responseType: 'arraybuffer', timeout: 120_000 });
+        const videoBuf = Buffer.from(dlRes.data);
+
+        // Step 2: Get workspace ID
+        const workspaceId = await floraGetWorkspaceId(apiKey);
+
+        // Step 3: Upload video to Flora
+        await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+          '⏳ *Topaz 4K Upscaler* — mengunggah ke Flora AI...', { parse_mode: 'Markdown' }
+        ).catch(() => {});
+
+        const videoUrl = await floraUploadVideo(apiKey, workspaceId, videoBuf, `topaz-${Date.now()}.mp4`);
+
+        // Step 4: Submit generate job
+        await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+          '⏳ *Topaz 4K Upscaler* — memproses video (4K × 60fps)...\nBiasanya 3–5 menit, harap tunggu.', { parse_mode: 'Markdown' }
+        ).catch(() => {});
+
+        const runId = await floraGenerate(apiKey, workspaceId, 'video-upscaler-topaz', {
+          video_url: videoUrl,
+          upscale_factor: 4,
+          target_fps: 60,
+        });
+
+        // Step 5: Poll result
+        const resultUrl = await floraPollRun(apiKey, runId);
+
+        // Step 6: Deliver
+        const delivered = await sendResult(chatId, resultUrl, `🎞️ *Topaz 4K Upscaler* selesai!\n\n/menu untuk buat lagi`, true);
+        if (delivered) {
+          refund = false;
+          markGenSuccess(userId);
+          await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+          console.log(`[${userId}] Topaz 4K done — run ${runId}`);
+        }
+        return;
+
+      } catch (err: any) {
+        const desc = describeError(err);
+        console.error(`[${userId}] Topaz attempt ${attempt + 1} failed (key …${apiKey.slice(-8)}): ${desc}`);
+
+        if (isFloraKeyExhaustedError(desc)) {
+          await markFloraKeyDead(apiKey);
+          skippedKeys.add(apiKey);
+          continue; // try next key
+        }
+
+        // Non-key error → report and stop
+        await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+          `❌ Topaz 4K gagal.\n\n${desc.slice(0, 200)}\n\n/menu untuk coba lagi`
+        ).catch(() => bot.telegram.sendMessage(chatId, `❌ Topaz 4K gagal.\n\n/menu untuk coba lagi`));
+        return;
+      }
+    }
+
+    // Exhausted all key attempts
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      '❌ Semua Flora key habis atau gagal. Hubungi admin.\n\n/menu untuk kembali'
+    ).catch(() => {});
+
+  } catch (err: any) {
+    const msg = describeError(err);
+    console.error(`[${userId}] Topaz outer error: ${msg}`);
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `❌ Topaz 4K error tak terduga.\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `❌ Topaz error.\n\n/menu`));
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
