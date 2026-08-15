@@ -159,7 +159,7 @@ const MODEL_PRICES = {
   nb_2lite: 500,       // Nano Banana 2 Lite (SnapGen image)
   seedream: 500,       // Seedream 2.7 4K (Picsart, image-to-image)
   gpt_image: 500,      // GPT Image 2 (Picsart openai-image-editing)
-  topaz: 1000,         // Topaz Upscale 4K 60 FPS (Flora AI, video-upscaler-topaz, 4× 60fps)
+  topaz: 1000,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 4× 60fps)
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
 
@@ -1485,7 +1485,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('✨ Gemini Omni (Google)', 'mode_gomni')],
     [Markup.button.callback('🌊 Seedance 2.5 (ByteDance) 🔥PROMO', 'mode_seedance')],
     [Markup.button.callback('── 🔧 Video Tools ──', 'noop')],
-    [Markup.button.callback('🎞️ Topaz Upscale 4K 60 FPS', 'mode_topaz')],
+    [Markup.button.callback('🎞️ Topaz 4K Upscaler (60fps)', 'mode_topaz')],
     // ── Chat AI ──
     [Markup.button.callback('── 💬 Chat AI ──', 'noop')],
     [Markup.button.callback('💬 Chat AI (Rp100/pesan)', 'mode_chat')],
@@ -1828,7 +1828,7 @@ function hargaText(): string {
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +
-    `• Topaz Upscale 4K 60 FPS — ${formatRupiah(MODEL_PRICES.topaz)}\n\n` +
+    `• Topaz 4K Upscaler (60fps) — ${formatRupiah(MODEL_PRICES.topaz)}\n\n` +
     '🎨 *Gambar*\n' +
     `• Seedream 2.7 4K — ${formatRupiah(MODEL_PRICES.seedream)} 🔥PROMO\n` +
     `• GPT Image 2 — ${formatRupiah(MODEL_PRICES.gpt_image)} 🔥PROMO\n` +
@@ -2803,7 +2803,7 @@ bot.command('clearleonardopool', async (ctx) => {
   return ctx.reply(`🗑️ Pool Leonardo AI dikosongkan — *${res.rows.length} key* dihapus.`, { parse_mode: 'Markdown' });
 });
 
-// ─── Admin: Flora AI Key Pool (Topaz Upscale 4K 60 FPS) ────────────────────────────
+// ─── Admin: Flora AI Key Pool (Topaz 4K Upscaler) ────────────────────────────
 
 bot.command('addflorakey', async (ctx) => {
   if (!(await requireAdmin(ctx))) return;
@@ -3446,7 +3446,7 @@ bot.on('callback_query', async (ctx) => {
     setSession(userId, { mode: 'topaz_wait_video' });
     await ctx.answerCbQuery().catch(() => {});
     return ctx.editMessageText(
-      `🎞️ *Topaz Upscale 4K 60 FPS*\n\nHarga: *${formatRupiah(MODEL_PRICES.topaz)}* per video\n\n` +
+      `🎞️ *Topaz 4K Upscaler*\n\nHarga: *${formatRupiah(MODEL_PRICES.topaz)}* per video\n\n` +
       `Upscale video kamu menjadi *4K resolusi* dengan *60fps* menggunakan Topaz AI.\n\n` +
       `📹 *Kirim videonya sekarang.*\n\n` +
       `⚠️ Syarat:\n• Maksimal 19MB\n• Format MP4/video Telegram`,
@@ -3741,7 +3741,7 @@ bot.on('video', async (ctx) => {
       return ctx.reply(`❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
     }
     setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply('⏳ *Topaz Upscale 4K 60 FPS* — memulai...', { parse_mode: 'Markdown' });
+    const statusMsg = await ctx.reply('⏳ *Topaz 4K Upscaler* — memulai...', { parse_mode: 'Markdown' });
     const dbUserId = session.dbUserId!;
     runTopazVideo(ctx.chat.id, userId, dbUserId, statusMsg.message_id, vid.file_id);
     return;
@@ -4253,7 +4253,7 @@ bot.on('document', async (ctx) => {
       return ctx.reply(`❌ Video terlalu besar (${(doc.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
     }
     setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply('⏳ *Topaz Upscale 4K 60 FPS* — memulai...', { parse_mode: 'Markdown' });
+    const statusMsg = await ctx.reply('⏳ *Topaz 4K Upscaler* — memulai...', { parse_mode: 'Markdown' });
     runTopazVideo(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, doc.file_id);
     return;
   }
@@ -5536,7 +5536,7 @@ async function runTopazVideo(
       try {
         // Step 1: Download video from Telegram
         await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-          '⏳ *Topaz Upscale 4K 60 FPS* — mengunduh video dari Telegram...', { parse_mode: 'Markdown' }
+          '⏳ *Topaz 4K Upscaler* — mengunduh video dari Telegram...', { parse_mode: 'Markdown' }
         ).catch(() => {});
 
         const fileLink = await bot.telegram.getFileLink(videoFileId);
@@ -5548,14 +5548,14 @@ async function runTopazVideo(
 
         // Step 3: Upload video to Flora
         await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-          '⏳ *Topaz Upscale 4K 60 FPS* — mengunggah ke Flora AI...', { parse_mode: 'Markdown' }
+          '⏳ *Topaz 4K Upscaler* — mengunggah ke Flora AI...', { parse_mode: 'Markdown' }
         ).catch(() => {});
 
         const videoUrl = await floraUploadVideo(apiKey, workspaceId, videoBuf, `topaz-${Date.now()}.mp4`);
 
         // Step 4: Submit generate job
         await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-          '⏳ *Topaz Upscale 4K 60 FPS* — memproses video (4K × 60fps)...\nBiasanya 3–5 menit, harap tunggu.', { parse_mode: 'Markdown' }
+          '⏳ *Topaz 4K Upscaler* — memproses video (4K × 60fps)...\nBiasanya 3–5 menit, harap tunggu.', { parse_mode: 'Markdown' }
         ).catch(() => {});
 
         const runId = await floraGenerate(apiKey, workspaceId, 'video-upscaler-topaz', {
@@ -5568,7 +5568,7 @@ async function runTopazVideo(
         const resultUrl = await floraPollRun(apiKey, runId);
 
         // Step 6: Deliver
-        const delivered = await sendResult(chatId, resultUrl, `🎞️ *Topaz Upscale 4K 60 FPS* selesai!\n\n/menu untuk buat lagi`, true);
+        const delivered = await sendResult(chatId, resultUrl, `🎞️ *Topaz 4K Upscaler* selesai!\n\n/menu untuk buat lagi`, true);
         if (delivered) {
           refund = false;
           markGenSuccess(userId);
