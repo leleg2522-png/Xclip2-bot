@@ -4233,6 +4233,7 @@ async function runKlingP2(
       videoBuffer: vid.buf, videoName: `driver.${vidType.ext}`, videoMime: vidType.mime,
       prompt,
       model: 'v26',
+      pool: 'p500',
       onStatus: (stage) => {
         const text = stage === 'upload'
           ? `⏳ ${label}: mengunggah media ke server...`

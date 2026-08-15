@@ -747,10 +747,10 @@ export async function generateKlingMotionControl(input: {
   videoMime: string;
   prompt: string;
   model: KlingModelKey;
+  pool?: PicsartPool | null;
   onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
 }): Promise<{ url: string; credits?: number; duration?: string; usedModel: KlingModelKey }> {
-  // Kling: pool-agnostic — draws from either pool ('any').
-  return runWithAccount(input.userId, null, async (credId) => {
+  return runWithAccount(input.userId, input.pool ?? null, async (credId) => {
     input.onStatus?.('upload');
     const imageUrl = await uploadFile(credId, input.imageBuffer, input.imageName, input.imageMime);
     const videoUrl = await uploadFile(credId, input.videoBuffer, input.videoName, input.videoMime);
