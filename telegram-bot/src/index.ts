@@ -5528,7 +5528,7 @@ async function runTopazVideo(
       const apiKey = await getNextFloraKey(skippedKeys);
       if (!apiKey) {
         await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-          '❌ Semua Flora API key habis. Hubungi admin untuk tambah key.\n\n/menu untuk kembali'
+          '❌ Layanan upscaler sedang tidak tersedia. Hubungi admin.\n\n/menu untuk kembali'
         ).catch(() => {});
         return;
       }
@@ -5548,7 +5548,7 @@ async function runTopazVideo(
 
         // Step 3: Upload video to Flora
         await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-          '⏳ *Topaz 4K Upscaler* — mengunggah ke Flora AI...', { parse_mode: 'Markdown' }
+          '⏳ *Topaz 4K Upscaler* — mengunggah video...', { parse_mode: 'Markdown' }
         ).catch(() => {});
 
         const videoUrl = await floraUploadVideo(apiKey, workspaceId, videoBuf, `topaz-${Date.now()}.mp4`);
@@ -5589,7 +5589,7 @@ async function runTopazVideo(
 
         // Non-key error → report and stop
         await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-          `❌ Topaz 4K gagal.\n\n${desc.slice(0, 200)}\n\n/menu untuk coba lagi`
+          `❌ Topaz 4K gagal. Coba lagi nanti.\n\n/menu untuk coba lagi`
         ).catch(() => bot.telegram.sendMessage(chatId, `❌ Topaz 4K gagal.\n\n/menu untuk coba lagi`));
         return;
       }
@@ -5597,7 +5597,7 @@ async function runTopazVideo(
 
     // Exhausted all key attempts
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      '❌ Semua Flora key habis atau gagal. Hubungi admin.\n\n/menu untuk kembali'
+      '❌ Layanan upscaler sedang tidak tersedia. Hubungi admin.\n\n/menu untuk kembali'
     ).catch(() => {});
 
   } catch (err: any) {
