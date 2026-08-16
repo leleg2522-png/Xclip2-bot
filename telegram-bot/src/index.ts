@@ -1842,7 +1842,7 @@ const IMG_RATIO_MAP: Record<string, string> = {
 
 // ─── Top-up helpers ───────────────────────────────────────────────────────────
 
-const TOPUP_MIN = 5000;
+const TOPUP_MIN = 25000;
 const TOPUP_MAX = 2_000_000;
 
 function hargaText(): string {
