@@ -22,11 +22,23 @@ description: Working call format for Flora AI generate/upload, key-pool behavior
 ## Topaz 4K Video Upscaler
 - model_id: `video-upscaler-topaz` (provider: fal, type: video)
 - Params: `upscale_factor` (float 1–4, NOT `scale`), `target_fps` (int 16–60)
-- Estimated: 53 credits, ~165s (~3 menit)
+- Actual cost: $0.13/run (~75s proses, bukan 165s)
 - Asset upload: POST /assets → GCS signed URL multipart → POST /assets/{id}/complete → `url` field
-- `flora_key_pool` table: id, api_key, status, created_at, dead_at (same pattern as leonardo_key_pool)
-- Workspace_id fetched via GET /workspaces per key, cached in-memory (floraWorkspaceCache Map)
 - Auth key format: `ak_xxx` (not `sk_live_xxx`)
+
+### /generate required fields (verified Aug 2026)
+- `model_id`, `workspace_id`, `project_id` (must start with `prj_`), `type` ("video"), `prompt` (min 1 char), `params`
+- `project_id` TIDAK sama dengan `workspace_id` — fetch via GET /projects?workspace_id=xxx → projects[0].project_id
+- `prompt` tidak boleh kosong — pakai "upscale to 4K 60fps" sebagai default
+
+### Poll response format
+- Result ada di `outputs[]` (array), BUKAN `output` (object singular)
+- Field: `outputs[0].url` (type: "videoUrl")
+
+### floraGetWorkspace cache
+- Cache key: api_key → `{ workspaceId, projectId }`
+- Urutan fetch: GET /workspaces → workspace_id, lalu GET /projects?workspace_id → project_id
+- `flora_key_pool` table: id, api_key, status, created_at, dead_at (same pattern as leonardo_key_pool)
 
 ## Perilaku key/akun
 - **Klaim "1 API key = 1 task" TERBUKTI SALAH**: 1 key free menerima 4 task ($0.471 flat/video), termasuk 2 berjalan paralel — semuanya sukses.
