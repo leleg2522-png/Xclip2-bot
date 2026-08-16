@@ -662,9 +662,6 @@ function isLeonardoKeyExhaustedError(raw: string): boolean {
 
 // ─── Flora AI Key Pool (Topaz 4K Video Upscaler) ─────────────────────────────
 
-// In-memory cache: api_key → workspace_id (fetched once per key per process lifetime)
-const floraWorkspaceCache = new Map<string, string>();
-
 let floraKeyRoundRobinIndex = 0;
 
 async function getNextFloraKey(skipKeys?: Set<string>): Promise<string | null> {
@@ -710,15 +707,26 @@ function isFloraKeyExhaustedError(raw: string): boolean {
     || lower.includes('billing');
 }
 
-async function floraGetWorkspaceId(apiKey: string): Promise<string> {
+interface FloraWorkspace { workspaceId: string; projectId: string; }
+const floraWorkspaceCache = new Map<string, FloraWorkspace>();
+
+async function floraGetWorkspace(apiKey: string): Promise<FloraWorkspace> {
   if (floraWorkspaceCache.has(apiKey)) return floraWorkspaceCache.get(apiKey)!;
   const res = await floraHttp.get(`${FLORA_BASE}/workspaces`, {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
-  const wsId: string = res.data.workspaces?.[0]?.workspace_id;
-  if (!wsId) throw new Error('FLORA_NO_WORKSPACE: tidak ada workspace ditemukan untuk key ini');
-  floraWorkspaceCache.set(apiKey, wsId);
-  return wsId;
+  console.log('[Flora] /workspaces raw:', JSON.stringify(res.data).slice(0, 500));
+  const ws = res.data.workspaces?.[0] ?? res.data?.[0];
+  if (!ws) throw new Error('FLORA_NO_WORKSPACE: tidak ada workspace ditemukan untuk key ini');
+
+  const workspaceId: string = ws.workspace_id ?? ws.id;
+  // project_id: coba dari workspace langsung, lalu dari nested projects array
+  const projectId: string = ws.project_id ?? ws.projects?.[0]?.project_id ?? ws.projects?.[0]?.id ?? workspaceId;
+  if (!workspaceId) throw new Error('FLORA_NO_WORKSPACE: workspace_id tidak ditemukan');
+
+  const result: FloraWorkspace = { workspaceId, projectId };
+  floraWorkspaceCache.set(apiKey, result);
+  return result;
 }
 
 async function floraUploadVideo(apiKey: string, workspaceId: string, buf: Buffer, name: string): Promise<string> {
@@ -754,12 +762,19 @@ async function floraUploadVideo(apiKey: string, workspaceId: string, buf: Buffer
   return assetUrl;
 }
 
-async function floraGenerate(apiKey: string, workspaceId: string, modelId: string, params: Record<string, any>): Promise<string> {
-  const res = await floraHttp.post(`${FLORA_BASE}/generate`, {
+async function floraGenerate(apiKey: string, ws: FloraWorkspace, modelId: string, params: Record<string, any>): Promise<string> {
+  const body: Record<string, any> = {
     model_id: modelId,
-    workspace_id: workspaceId,
+    workspace_id: ws.workspaceId,
+    project_id: ws.projectId,
+    type: 'video',
+    prompt: '',
     params,
-  }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
+  };
+  console.log('[Flora] /generate body:', JSON.stringify(body).slice(0, 400));
+  const res = await floraHttp.post(`${FLORA_BASE}/generate`, body,
+    { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } }
+  );
 
   const runId: string = res.data?.run_id || res.data?.id;
   if (!runId) throw new Error(`FLORA_SUBMIT_FAILED: no run_id — ${JSON.stringify(res.data).slice(0, 200)}`);
@@ -5543,22 +5558,22 @@ async function runTopazVideo(
         const dlRes = await telegramHttp.get(fileLink.href, { responseType: 'arraybuffer', timeout: 120_000 });
         const videoBuf = Buffer.from(dlRes.data);
 
-        // Step 2: Get workspace ID
-        const workspaceId = await floraGetWorkspaceId(apiKey);
+        // Step 2: Get workspace + project IDs
+        const ws = await floraGetWorkspace(apiKey);
 
         // Step 3: Upload video to Flora
         await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
           '⏳ *Topaz 4K Upscaler* — mengunggah video...', { parse_mode: 'Markdown' }
         ).catch(() => {});
 
-        const videoUrl = await floraUploadVideo(apiKey, workspaceId, videoBuf, `topaz-${Date.now()}.mp4`);
+        const videoUrl = await floraUploadVideo(apiKey, ws.workspaceId, videoBuf, `topaz-${Date.now()}.mp4`);
 
         // Step 4: Submit generate job
         await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
           '⏳ *Topaz 4K Upscaler* — memproses video (4K × 60fps)...\nBiasanya 3–5 menit, harap tunggu.', { parse_mode: 'Markdown' }
         ).catch(() => {});
 
-        const runId = await floraGenerate(apiKey, workspaceId, 'video-upscaler-topaz', {
+        const runId = await floraGenerate(apiKey, ws, 'video-upscaler-topaz', {
           video_url: videoUrl,
           upscale_factor: 4,
           target_fps: 60,
