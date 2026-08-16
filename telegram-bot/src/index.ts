@@ -5617,6 +5617,14 @@ async function runTopazVideo(
           continue; // try next key
         }
 
+        // Content moderation → beri tahu user videonya yang bermasalah
+        if (desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED')) {
+          await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+            `❌ Video tidak dapat diproses karena mengandung konten yang tidak diizinkan.\n\n/menu untuk coba lagi`
+          ).catch(() => bot.telegram.sendMessage(chatId, `❌ Video ditolak karena konten tidak diizinkan.\n\n/menu`));
+          return;
+        }
+
         // Non-key error → report and stop
         await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
           `❌ Topaz 4K gagal. Coba lagi nanti.\n\n/menu untuk coba lagi`
