@@ -802,10 +802,12 @@ async function floraPollRun(apiKey: string, runId: string, maxMs = 600_000): Pro
     const res = await floraHttp.get(`${FLORA_BASE}/runs/${runId}`, {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
-    const { status, output, error } = res.data;
+    const { status, output, outputs, error } = res.data;
     if (status !== lastStatus) { lastStatus = status; console.log(`[Flora] run ${runId}: ${status}`); }
     if (status === 'COMPLETED' || status === 'completed') {
-      const outUrl: string = output?.url || output?.video_url || res.data?.result?.url;
+      // outputs[] array (new format) or output object (old format)
+      const outUrl: string = outputs?.[0]?.url || outputs?.[0]?.video_url
+        || output?.url || output?.video_url || res.data?.result?.url;
       if (!outUrl) throw new Error(`FLORA_RUN_COMPLETED_NO_URL: ${JSON.stringify(res.data).slice(0, 300)}`);
       return outUrl;
     }
