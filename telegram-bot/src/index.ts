@@ -781,7 +781,7 @@ async function floraGenerate(apiKey: string, ws: FloraWorkspace, modelId: string
     workspace_id: ws.workspaceId,
     project_id: ws.projectId,
     type: 'video',
-    prompt: 'upscale',
+    prompt: 'upscale to 4K 60fps',
     params,
   };
   console.log('[Flora] /generate body:', JSON.stringify(body).slice(0, 400));
