@@ -712,17 +712,30 @@ const floraWorkspaceCache = new Map<string, FloraWorkspace>();
 
 async function floraGetWorkspace(apiKey: string): Promise<FloraWorkspace> {
   if (floraWorkspaceCache.has(apiKey)) return floraWorkspaceCache.get(apiKey)!;
-  const res = await floraHttp.get(`${FLORA_BASE}/workspaces`, {
+
+  // Step 1: get workspace_id
+  const wsRes = await floraHttp.get(`${FLORA_BASE}/workspaces`, {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
-  console.log('[Flora] /workspaces raw:', JSON.stringify(res.data).slice(0, 500));
-  const ws = res.data.workspaces?.[0] ?? res.data?.[0];
+  console.log('[Flora] /workspaces raw:', JSON.stringify(wsRes.data).slice(0, 500));
+  const ws = wsRes.data.workspaces?.[0] ?? wsRes.data?.[0];
   if (!ws) throw new Error('FLORA_NO_WORKSPACE: tidak ada workspace ditemukan untuk key ini');
-
   const workspaceId: string = ws.workspace_id ?? ws.id;
-  // project_id: coba dari workspace langsung, lalu dari nested projects array
-  const projectId: string = ws.project_id ?? ws.projects?.[0]?.project_id ?? ws.projects?.[0]?.id ?? workspaceId;
   if (!workspaceId) throw new Error('FLORA_NO_WORKSPACE: workspace_id tidak ditemukan');
+
+  // Step 2: get project_id (must start with prj_)
+  // Try nested in workspace first, then call /projects
+  let projectId: string = ws.project_id ?? ws.projects?.[0]?.project_id ?? ws.projects?.[0]?.id ?? '';
+  if (!projectId.startsWith('prj_')) {
+    const projRes = await floraHttp.get(`${FLORA_BASE}/projects`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      params: { workspace_id: workspaceId },
+    });
+    console.log('[Flora] /projects raw:', JSON.stringify(projRes.data).slice(0, 500));
+    const proj = projRes.data.projects?.[0] ?? projRes.data?.[0];
+    projectId = proj?.project_id ?? proj?.id ?? proj?.id ?? '';
+  }
+  if (!projectId) throw new Error('FLORA_NO_PROJECT: project_id tidak ditemukan');
 
   const result: FloraWorkspace = { workspaceId, projectId };
   floraWorkspaceCache.set(apiKey, result);
@@ -768,7 +781,7 @@ async function floraGenerate(apiKey: string, ws: FloraWorkspace, modelId: string
     workspace_id: ws.workspaceId,
     project_id: ws.projectId,
     type: 'video',
-    prompt: '',
+    prompt: 'upscale',
     params,
   };
   console.log('[Flora] /generate body:', JSON.stringify(body).slice(0, 400));
