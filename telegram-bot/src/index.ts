@@ -159,7 +159,7 @@ const MODEL_PRICES = {
   nb_2lite: 500,       // Nano Banana 2 Lite (SnapGen image)
   seedream: 500,       // Seedream 2.7 4K (Picsart, image-to-image)
   gpt_image: 500,      // GPT Image 2 (Picsart openai-image-editing)
-  topaz: 1000,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 4× 60fps)
+  topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 4× 60fps)
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
 
