@@ -3060,7 +3060,7 @@ bot.on('callback_query', async (ctx) => {
       '• Bukan close-up wajah\n' +
       '• Resolusi min. 300px, maks 10MB\n' +
       '• Format: JPG, PNG\n\n' +
-      `ℹ️ Nanti di langkah 2, video referensi gerakan *maksimal ${KLING_P3_MAX_REF_SECONDS} detik*.`,
+      `ℹ️ Nanti di langkah 2, video referensi gerakan *maksimal ${KLING_P3_MAX_REF_SECONDS} detik* dan *maksimal 15MB* (video pendek/TikTok-style).`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -3801,8 +3801,9 @@ bot.on('video', async (ctx) => {
   }
 
   if (session.mode === 'klingp3_wait_video' && session.characterUrlP3) {
-    if (vid.file_size && vid.file_size > MAX_VIDEO_BYTES) {
-      return ctx.reply(`❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
+    const P3_MAX_BYTES = 15 * 1024 * 1024;
+    if (vid.file_size && vid.file_size > P3_MAX_BYTES) {
+      return ctx.reply(`❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nUntuk P3 maksimal *15MB*. Potong/kompres videonya dulu ya.`, { parse_mode: 'Markdown' });
     }
     if (vid.duration && vid.duration > KLING_P3_MAX_REF_SECONDS) {
       return ctx.reply(
@@ -4394,9 +4395,9 @@ bot.on('document', async (ctx) => {
   }
 
   if (doc.mime_type?.startsWith('video/') && session.mode === 'klingp3_wait_video' && session.characterUrlP3) {
-    const MAX_VIDEO_BYTES = 19 * 1024 * 1024;
-    if (doc.file_size && doc.file_size > MAX_VIDEO_BYTES) {
-      return ctx.reply(`❌ Video terlalu besar (${(doc.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
+    const P3_MAX_BYTES = 15 * 1024 * 1024;
+    if (doc.file_size && doc.file_size > P3_MAX_BYTES) {
+      return ctx.reply(`❌ Video terlalu besar (${(doc.file_size / 1024 / 1024).toFixed(1)} MB).\nUntuk P3 maksimal *15MB*. Potong/kompres videonya dulu ya.`, { parse_mode: 'Markdown' });
     }
     setSession(userId, { klingP3VideoFileId: doc.file_id, klingP3VideoDuration: (doc as any).duration ?? undefined, mode: 'klingp3_wait_prompt' });
     return ctx.reply(
@@ -4776,6 +4777,16 @@ async function runKlingP3(
           await markEdanbotCookieDead(cookieId);
           lastErr = err;
           continue;
+        }
+        // ERXX99 = backend error (biasanya video terlalu besar/panjang)
+        if (desc.includes('ERXX99') || desc.includes('EDANBOT_JOB_FAILED')) {
+          await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+            `❌ Gagal generate.\n\n` +
+            `Kemungkinan video referensi terlalu besar atau terlalu panjang.\n` +
+            `Coba dengan video yang lebih pendek (< 10 detik, < 15MB).\n\n/menu untuk coba lagi`
+          ).catch(() => bot.telegram.sendMessage(chatId, `❌ Video referensi terlalu besar/panjang. Coba yang lebih pendek.\n\n/menu`));
+          refund = true;
+          return;
         }
         lastErr = err;
         break;
