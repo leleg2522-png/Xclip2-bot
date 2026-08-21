@@ -1506,7 +1506,14 @@ function mainMenuKeyboard() {
     // ── Generate Video ──
     [Markup.button.callback('── 🎬 Generate Video ──', 'noop')],
     [Markup.button.callback('🕹️ Kling Motion Control', 'menu_kling_list')],
-    [Markup.button.callback('🧩 Picsart I2V (8 Model)', 'menu_picsart_i2v')],
+    [Markup.button.callback('🌊 Seedance 2.0 Mini', 'mode_pi2v_seedance_2_mini')],
+    [Markup.button.callback('🌊 Seedance 2.0 Fast', 'mode_pi2v_seedance_2_fast')],
+    [Markup.button.callback('🌊 Seedance 2.0', 'mode_pi2v_seedance_2')],
+    [Markup.button.callback('🌌 Grok Imagine Video', 'mode_pi2v_grok_imagine')],
+    [Markup.button.callback('⚡ Kling v3 Turbo', 'mode_pi2v_kling_v3_turbo')],
+    [Markup.button.callback('🎭 Kling v2.6 Pro', 'mode_pi2v_kling_v26_pro')],
+    [Markup.button.callback('🎞️ Kling v3 Standard', 'mode_pi2v_kling_v3')],
+    [Markup.button.callback('🌀 Wan v2 Image-to-Video', 'mode_pi2v_wan_v2')],
     [Markup.button.callback('🚀 Runway Gen-4.5', 'mode_rw')],
     [Markup.button.callback('🎥 Sora 2 (OpenAI)', 'mode_sora')],
     [Markup.button.callback('⚡ Veo 3.1 Fast (Full HD)', 'mode_veofast')],
@@ -1532,20 +1539,6 @@ const SD_RATIO_MAP: Record<string, string> = {
   '916': '9:16', '169': '16:9', '11': '1:1',
   '34': '3:4', '43': '4:3', '23': '2:3', '32': '3:2', '219': '21:9',
 };
-
-function picsartI2vKeyboard() {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('🌊 Seedance 2.0 Mini', 'pi2v_seedance_2_mini')],
-    [Markup.button.callback('🌊 Seedance 2.0 Fast', 'pi2v_seedance_2_fast')],
-    [Markup.button.callback('🌊 Seedance 2.0', 'pi2v_seedance_2')],
-    [Markup.button.callback('🌌 Grok Imagine Video', 'pi2v_grok_imagine')],
-    [Markup.button.callback('⚡ Kling v3 Turbo', 'pi2v_kling_v3_turbo')],
-    [Markup.button.callback('🎭 Kling v2.6 Pro', 'pi2v_kling_v26_pro')],
-    [Markup.button.callback('🎞️ Kling v3 Standard', 'pi2v_kling_v3')],
-    [Markup.button.callback('🌀 Wan v2 Image-to-Video', 'pi2v_wan_v2')],
-    [Markup.button.callback('⬅️ Kembali', 'back_main')],
-  ]);
-}
 
 function isPicsartI2vModelKey(value: string): value is picsart.PicsartI2vModelKey {
   return Object.prototype.hasOwnProperty.call(picsart.PICSART_I2V_MODELS, value);
@@ -1842,7 +1835,14 @@ function hargaText(): string {
     `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
     `• Chat AI — ${formatRupiah(MODEL_PRICES.chat)}/pesan\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
-    `• Picsart I2V (Seedance, Grok, Kling, Wan) — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• Seedance 2.0 Mini — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• Seedance 2.0 Fast — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• Seedance 2.0 — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• Grok Imagine Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• Kling v3 Turbo — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• Kling v2.6 Pro — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• Kling v3 Standard — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• Wan v2 Image-to-Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
     `• Kling MC V3.0 PRO P3 — ${formatRupiah(MODEL_PRICES.kling_p3)} 🔥PROMO\n` +
     `• Topaz 4K Upscaler (60fps) — ${formatRupiah(MODEL_PRICES.topaz)}\n\n` +
@@ -2991,21 +2991,9 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
-  if (data === 'menu_picsart_i2v') {
+  if (data.startsWith('mode_pi2v_')) {
     if (!await requireLogin(ctx)) return;
-    setSession(userId, { mode: 'idle', picsartI2vModel: undefined, picsartI2vImageUrl: undefined });
-    return ctx.editMessageText(
-      `🧩 *Picsart Image-to-Video*\n\n` +
-      `Harga: *${formatRupiah(MODEL_PRICES.picsart_i2v)}* per video\n\n` +
-      'Pilih model. Semua model di bawah menggunakan *foto + prompt*.\n' +
-      'Parameter yang digunakan mengikuti request AI Playground yang terekam.',
-      { parse_mode: 'Markdown', ...picsartI2vKeyboard() }
-    );
-  }
-
-  if (data.startsWith('pi2v_')) {
-    if (!await requireLogin(ctx)) return;
-    const model = data.slice('pi2v_'.length);
+    const model = data.slice('mode_pi2v_'.length);
     if (!isPicsartI2vModelKey(model)) {
       return ctx.answerCbQuery('Model tidak dikenali. Buka menu lagi.').catch(() => {});
     }

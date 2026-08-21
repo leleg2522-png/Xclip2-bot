@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   PICSART_I2V_MODELS,
   buildPicsartI2vParams,
@@ -22,6 +23,15 @@ const expectedModels = [
 
 assert.deepEqual(Object.keys(PICSART_I2V_MODELS).sort(), [...expectedModels].sort());
 assert.equal('pika' in PICSART_I2V_MODELS, false);
+
+const botSource = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
+assert.equal(botSource.includes('menu_picsart_i2v'), false);
+assert.equal(botSource.includes('Picsart I2V (8 Model)'), false);
+assert.equal(botSource.includes("Markup.button.callback('🧩 Picsart"), false);
+assert.equal(botSource.includes('`🧩 *Picsart'), false);
+for (const model of expectedModels) {
+  assert.equal(botSource.includes(`mode_pi2v_${model}`), true);
+}
 
 const seedanceMini = buildPicsartI2vParams('seedance_2_mini', prompt, imageUrl);
 assert.deepEqual(seedanceMini, {
