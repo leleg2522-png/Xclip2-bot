@@ -159,6 +159,7 @@ const MODEL_PRICES = {
   gpt_image: 500,      // GPT Image 2 (Picsart openai-image-editing)
   topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 4× 60fps)
   picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
+  kling_21_pro: 3000,  // Kling 2.1 Pro, 10s image-to-video
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
 
@@ -741,13 +742,19 @@ async function floraGetWorkspace(apiKey: string): Promise<FloraWorkspace> {
   return result;
 }
 
-async function floraUploadVideo(apiKey: string, workspaceId: string, buf: Buffer, name: string): Promise<string> {
+async function floraUploadAsset(
+  apiKey: string,
+  workspaceId: string,
+  buf: Buffer,
+  name: string,
+  contentType: string
+): Promise<string> {
   // 1. Create asset → get GCS signed URL
   const createRes = await floraHttp.post(`${FLORA_BASE}/assets`, {
     source: 'signed-url',
     workspace_id: workspaceId,
     name,
-    content_type: 'video/mp4',
+    content_type: contentType,
   }, { headers: { Authorization: `Bearer ${apiKey}` } });
 
   const { asset_id, url: assetUrl, upload } = createRes.data;
@@ -757,7 +764,7 @@ async function floraUploadVideo(apiKey: string, workspaceId: string, buf: Buffer
   for (const [k, v] of Object.entries(upload.form_fields as Record<string, string>)) {
     form.append(k, v);
   }
-  form.append(upload.file_field || 'file', buf, { filename: name, contentType: 'video/mp4' });
+  form.append(upload.file_field || 'file', buf, { filename: name, contentType });
 
   await axios.post(upload.url, form, {
     headers: { ...form.getHeaders() },
@@ -774,13 +781,27 @@ async function floraUploadVideo(apiKey: string, workspaceId: string, buf: Buffer
   return assetUrl;
 }
 
-async function floraGenerate(apiKey: string, ws: FloraWorkspace, modelId: string, params: Record<string, any>): Promise<string> {
+async function floraUploadVideo(apiKey: string, workspaceId: string, buf: Buffer, name: string): Promise<string> {
+  return floraUploadAsset(apiKey, workspaceId, buf, name, 'video/mp4');
+}
+
+async function floraUploadImage(apiKey: string, workspaceId: string, buf: Buffer, name: string, contentType: string): Promise<string> {
+  return floraUploadAsset(apiKey, workspaceId, buf, name, contentType);
+}
+
+async function floraGenerate(
+  apiKey: string,
+  ws: FloraWorkspace,
+  modelId: string,
+  params: Record<string, any>,
+  prompt = 'upscale to 4K 60fps'
+): Promise<string> {
   const body: Record<string, any> = {
     model_id: modelId,
     workspace_id: ws.workspaceId,
     project_id: ws.projectId,
     type: 'video',
-    prompt: 'upscale to 4K 60fps',
+    prompt,
     params,
   };
   console.log('[Flora] /generate body:', JSON.stringify(body).slice(0, 400));
@@ -1000,6 +1021,8 @@ type Mode =
   | 'gptimg_wait_prompt'
   | 'picsart_i2v_wait_image'
   | 'picsart_i2v_wait_prompt'
+  | 'kling21_wait_image'
+  | 'kling21_wait_prompt'
   | 'topaz_wait_video'
   | 'img_wait_image'
   | 'img_wait_prompt'
@@ -1057,6 +1080,8 @@ interface Session {
   // Picsart image-to-video wizard state
   picsartI2vModel?: picsart.PicsartI2vModelKey;
   picsartI2vImageUrl?: string;
+  // Kling 2.1 Pro (10-second image-to-video) wizard state
+  kling21ImageUrl?: string;
   // Chat AI wizard state (multi-turn conversation)
   chatModel?: string;
   chatHistory?: Array<{ role: string; content: string }>;
@@ -1514,6 +1539,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🎭 Kling v2.6 Pro', 'mode_pi2v_kling_v26_pro')],
     [Markup.button.callback('🎞️ Kling v3 Standard', 'mode_pi2v_kling_v3')],
     [Markup.button.callback('🌀 Wan v2 Image-to-Video', 'mode_pi2v_wan_v2')],
+    [Markup.button.callback('🎬 Kling 2.1 Pro (10 detik)', 'mode_kling21')],
     [Markup.button.callback('🚀 Runway Gen-4.5', 'mode_rw')],
     [Markup.button.callback('🎥 Sora 2 (OpenAI)', 'mode_sora')],
     [Markup.button.callback('⚡ Veo 3.1 Fast (Full HD)', 'mode_veofast')],
@@ -1843,6 +1869,7 @@ function hargaText(): string {
     `• Kling v2.6 Pro — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v3 Standard — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Wan v2 Image-to-Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• Kling 2.1 Pro (10 detik) — ${formatRupiah(MODEL_PRICES.kling_21_pro)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
     `• Kling MC V3.0 PRO P3 — ${formatRupiah(MODEL_PRICES.kling_p3)} 🔥PROMO\n` +
     `• Topaz 4K Upscaler (60fps) — ${formatRupiah(MODEL_PRICES.topaz)}\n\n` +
@@ -2991,6 +3018,17 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  if (data === 'mode_kling21') {
+    if (!await requireLogin(ctx)) return;
+    setSession(userId, { mode: 'kling21_wait_image', kling21ImageUrl: undefined });
+    return ctx.editMessageText(
+      `🎬 *Kling 2.1 Pro (10 detik)*\n\n` +
+      `Harga: *${formatRupiah(MODEL_PRICES.kling_21_pro)}* per video\n\n` +
+      '*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (data.startsWith('mode_pi2v_')) {
     if (!await requireLogin(ctx)) return;
     const model = data.slice('mode_pi2v_'.length);
@@ -3540,6 +3578,15 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     );
   }
 
+  if (session.mode === 'kling21_wait_image') {
+    setSession(userId, { kling21ImageUrl: fileUrl, mode: 'kling21_wait_prompt' });
+    return ctx.reply(
+      '✅ Foto acuan diterima!\n\n' +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (session.mode === 'sora_wait_image') {
     setSession(userId, { soraImageUrl: fileUrl, mode: 'sora_wait_prompt' });
     return ctx.reply(
@@ -3836,6 +3883,32 @@ bot.on('text', async (ctx) => {
     );
     runPicsartI2v(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, { model, imageUrl })
       .catch(e => console.error(`[${userId}] ${cfg.label} error:`, e.message));
+    return;
+  }
+
+  // ── Kling 2.1 Pro (10-second image-to-video) prompt ──
+  if (session.mode === 'kling21_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
+    }
+    if (!session.kling21ImageUrl) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply('⚠️ Foto acuan tidak ditemukan. Mulai lagi dari /menu.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    const imageUrl = session.kling21ImageUrl;
+    setSession(userId, { mode: 'idle', kling21ImageUrl: undefined });
+    const statusMsg = await ctx.reply(
+      '⏳ Memproses Kling 2.1 Pro (10 detik)...\nHasil dikirim otomatis (biasanya 5–15 menit).'
+    );
+    runKling21Pro(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, imageUrl, prompt)
+      .catch(e => console.error(`[${userId}] Kling 2.1 Pro error:`, e.message));
     return;
   }
 
@@ -5559,6 +5632,129 @@ async function runGptImage(
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `❌ Gagal memproses GPT Image 2. Coba lagi nanti.\n\n/menu untuk coba lagi`
     ).catch(() => bot.telegram.sendMessage(chatId, `❌ GPT Image 2 gagal.\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
+// ─── Background: Kling 2.1 Pro (10-second image-to-video) ────────────────────
+
+async function runKling21Pro(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  imageUrl: string,
+  prompt: string
+) {
+  const label = 'Kling 2.1 Pro (10 detik)';
+  const PRICE = MODEL_PRICES.kling_21_pro;
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+
+  try {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `⏳ ${label}: mengunduh foto acuan...`
+    ).catch(() => {});
+    const image = await downloadBuffer(imageUrl);
+    const skippedKeys = new Set<string>();
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const apiKey = await getNextFloraKey(skippedKeys);
+      if (!apiKey) {
+        await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+          '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.\n\n/menu untuk kembali'
+        ).catch(() => {});
+        return;
+      }
+
+      let acceptedRunId: string | undefined;
+      try {
+        const ws = await floraGetWorkspace(apiKey);
+
+        await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+          `⏳ ${label}: mengunggah foto... (1/3)`
+        ).catch(() => {});
+        const assetUrl = await floraUploadImage(
+          apiKey,
+          ws.workspaceId,
+          image.buf,
+          `reference-${Date.now()}.${image.ext}`,
+          image.mime
+        );
+
+        await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+          `⏳ ${label}: membuat video 10 detik... (2/3)\n⏱️ Biasanya 5–15 menit. Jangan tutup chat ini.`
+        ).catch(() => {});
+        acceptedRunId = await floraGenerate(
+          apiKey,
+          ws,
+          'f2v-kling-2.1-pro',
+          { image_url: assetUrl, duration: '10' },
+          prompt
+        );
+
+        const resultUrl = await floraPollRun(apiKey, acceptedRunId, 20 * 60 * 1000);
+        const delivered = await sendResult(
+          chatId,
+          resultUrl,
+          `🎬 ${label} selesai!\n\n/menu untuk buat lagi`,
+          true
+        );
+        if (delivered) {
+          refund = false;
+          markGenSuccess(userId);
+          await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+          console.log(`[${userId}] ${label} done — run ${acceptedRunId}`);
+        }
+        return;
+      } catch (err: any) {
+        const desc = describeError(err);
+        console.error(`[${userId}] ${label} attempt ${attempt + 1} failed (key …${apiKey.slice(-8)}): ${desc}`);
+
+        // A paid job may already exist once Flora returns a run ID. Never replay
+        // upload+submit on another key after that point; refund instead.
+        if (acceptedRunId) {
+          if (isFloraKeyExhaustedError(desc)) {
+            await markFloraKeyDead(apiKey).catch(() => {});
+          }
+          const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
+          const friendly = contentRejected
+            ? '❌ Foto atau prompt tidak dapat diproses karena melanggar kebijakan konten.'
+            : '❌ Proses video tidak berhasil. Saldo akan dikembalikan.';
+          await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
+            .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+          return;
+        }
+
+        if (isFloraKeyExhaustedError(desc)) {
+          await markFloraKeyDead(apiKey);
+          skippedKeys.add(apiKey);
+          continue;
+        }
+
+        const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
+        const friendly = contentRejected
+          ? '❌ Foto atau prompt tidak dapat diproses karena melanggar kebijakan konten.'
+          : '❌ Gagal memproses video. Coba lagi nanti.';
+        await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
+          .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+        return;
+      }
+    }
+  } catch (err: any) {
+    console.error(`[${userId}] ${label} outer error: ${describeError(err)}`);
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      '❌ Gagal memproses video. Coba lagi nanti.\n\n/menu untuk coba lagi'
+    ).catch(() => bot.telegram.sendMessage(chatId, '❌ Gagal memproses video. Coba lagi nanti.\n\n/menu untuk coba lagi'));
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
