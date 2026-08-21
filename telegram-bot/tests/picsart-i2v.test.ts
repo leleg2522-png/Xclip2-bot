@@ -79,7 +79,7 @@ const grok = buildPicsartI2vParams('grok_imagine', prompt, imageUrl);
 assert.deepEqual(grok, {
   model: 'grok-imagine-video',
   prompt,
-  image: imageUrl,
+  image: { url: imageUrl },
   duration: 15,
   aspect_ratio: '9:16',
   options: {},

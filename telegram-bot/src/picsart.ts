@@ -1406,7 +1406,7 @@ export function buildPicsartI2vParams(
       return {
         model: 'grok-imagine-video',
         prompt,
-        image: imageUrl,
+        image: { url: imageUrl },
         duration: 15,
         aspect_ratio: '9:16',
         options: {},
