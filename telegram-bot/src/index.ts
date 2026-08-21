@@ -158,7 +158,7 @@ const MODEL_PRICES = {
   seedream: 500,       // Seedream 2.7 4K (Picsart, image-to-image)
   gpt_image: 500,      // GPT Image 2 (Picsart openai-image-editing)
   topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 4× 60fps)
-  picsart_i2v: 1500,   // Picsart I2V models captured from AI Playground HAR
+  picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
 
