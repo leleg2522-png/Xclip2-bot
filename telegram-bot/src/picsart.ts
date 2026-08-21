@@ -1275,6 +1275,325 @@ export async function generateSeedance(input: {
   });
 }
 
+// ─── Picsart Image-to-Video models captured from the AI Playground HAR ───────
+//
+// These are intentionally kept separate from the older Seedance 2.5 helper
+// above. The current bot UI exposes the exact I2V variants observed in the
+// captured browser traffic, and every variant has a different payload shape.
+export type PicsartI2vModelKey =
+  | 'seedance_2_mini'
+  | 'seedance_2_fast'
+  | 'seedance_2'
+  | 'grok_imagine'
+  | 'kling_v3_turbo'
+  | 'kling_v26_pro'
+  | 'kling_v3'
+  | 'wan_v2';
+
+type PicsartI2vModelConfig = {
+  label: string;
+  settingsLabel: string;
+  workflowPath: string;
+  pool: PicsartPool | null;
+  pollAttempts: number;
+};
+
+export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfig> = {
+  seedance_2_mini: {
+    label: 'Seedance 2.0 Mini',
+    settingsLabel: '9:16 · 15 detik · 720p · audio',
+    workflowPath: 'seedance',
+    pool: 'p500',
+    pollAttempts: 300,
+  },
+  seedance_2_fast: {
+    label: 'Seedance 2.0 Fast',
+    settingsLabel: '9:16 · 15 detik · 480p · audio',
+    workflowPath: 'seedance',
+    pool: 'p500',
+    pollAttempts: 300,
+  },
+  seedance_2: {
+    label: 'Seedance 2.0',
+    settingsLabel: '9:16 · 15 detik · 480p · audio',
+    workflowPath: 'seedance',
+    pool: 'p500',
+    pollAttempts: 300,
+  },
+  grok_imagine: {
+    label: 'Grok Imagine Video',
+    settingsLabel: '9:16 · 15 detik',
+    workflowPath: 'x-ai/v1/videos/generations',
+    pool: null,
+    pollAttempts: 180,
+  },
+  kling_v3_turbo: {
+    label: 'Kling v3 Turbo',
+    settingsLabel: '9:16 · 12 detik · 720p',
+    workflowPath: 'kling-image-to-video',
+    pool: null,
+    pollAttempts: 180,
+  },
+  kling_v26_pro: {
+    label: 'Kling v2.6 Pro',
+    settingsLabel: '9:16 · 10 detik · audio · Pro',
+    workflowPath: 'kling-image-to-video',
+    pool: null,
+    pollAttempts: 180,
+  },
+  kling_v3: {
+    label: 'Kling v3 Standard',
+    settingsLabel: '9:16 · 12 detik · audio · Standard',
+    workflowPath: 'kling-image-to-video',
+    pool: null,
+    pollAttempts: 180,
+  },
+  wan_v2: {
+    label: 'Wan v2 Image-to-Video',
+    settingsLabel: '15 detik · 720p · prompt extend',
+    workflowPath: 'wan/v2/image-to-video',
+    pool: null,
+    pollAttempts: 180,
+  },
+};
+
+export function buildPicsartI2vParams(
+  model: PicsartI2vModelKey,
+  prompt: string,
+  imageUrl: string
+): Record<string, unknown> {
+  switch (model) {
+    case 'seedance_2_mini':
+      return {
+        model: 'seedance_2_0_mini',
+        content: [
+          { type: 'image_url', image_url: { url: imageUrl }, role: 'reference_image' },
+          { type: 'text', text: prompt },
+        ],
+        ratio: '9:16',
+        duration: 15,
+        resolution: '720p',
+        generate_audio: true,
+        options: {},
+      };
+    case 'seedance_2_fast':
+      return {
+        model: 'seedance_2_0_fast',
+        content: [
+          { type: 'image_url', image_url: { url: imageUrl }, role: 'reference_image' },
+          { type: 'text', text: prompt },
+        ],
+        ratio: '9:16',
+        duration: 15,
+        resolution: '480p',
+        generate_audio: true,
+        options: {},
+      };
+    case 'seedance_2':
+      return {
+        model: 'seedance_2_0',
+        content: [
+          { type: 'image_url', image_url: { url: imageUrl }, role: 'reference_image' },
+          { type: 'text', text: prompt },
+        ],
+        ratio: '9:16',
+        duration: 15,
+        resolution: '480p',
+        generate_audio: true,
+        options: {},
+      };
+    case 'grok_imagine':
+      return {
+        model: 'grok-imagine-video',
+        prompt,
+        image: imageUrl,
+        duration: 15,
+        aspect_ratio: '9:16',
+        options: {},
+      };
+    case 'kling_v3_turbo':
+      return {
+        prompt,
+        aspect_ratio: '9:16',
+        duration: '12',
+        model_name: 'kling-v3-turbo',
+        resolution: '720p',
+        image: imageUrl,
+        options: {},
+      };
+    case 'kling_v26_pro':
+      return {
+        prompt,
+        aspect_ratio: '9:16',
+        duration: '10',
+        model_name: 'kling-v2-6',
+        image: imageUrl,
+        sound: 'on',
+        mode: 'pro',
+        cfg_scale: 0.5,
+        options: {},
+      };
+    case 'kling_v3':
+      return {
+        prompt,
+        aspect_ratio: '9:16',
+        duration: '12',
+        model_name: 'kling-v3',
+        image: imageUrl,
+        sound: 'on',
+        mode: 'std',
+        multi_shot: false,
+        shot_type: 'customize',
+        options: {},
+      };
+    case 'wan_v2':
+      return {
+        media: [{ type: 'first_frame', url: imageUrl }],
+        resolution: '720P',
+        duration: 15,
+        prompt_extend: true,
+        prompt,
+        options: {},
+      };
+  }
+}
+
+async function submitPicsartI2v(
+  credId: number,
+  model: PicsartI2vModelKey,
+  prompt: string,
+  imageUrl: string
+): Promise<string> {
+  const cfg = PICSART_I2V_MODELS[model];
+  const access = await getAccessToken(credId);
+  const r = await http.post(
+    `${API_BASE}/workflows/${cfg.workflowPath}/submit`,
+    { params: buildPicsartI2vParams(model, prompt, imageUrl) },
+    {
+      headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
+      validateStatus: () => true,
+    }
+  );
+  const id = r.data?.response?.id;
+  if (!ok2xx(r.status) || !id) {
+    throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+  }
+  return id;
+}
+
+export function extractPicsartVideoUrl(response: any): string | null {
+  const result = response?.result ?? response?.data ?? response;
+  const candidates = [
+    result?.video_url,
+    result?.videoUrl,
+    result?.url,
+    response?.video_url,
+    response?.videoUrl,
+    response?.url,
+    Array.isArray(result?.urls) ? result.urls[0] : undefined,
+    Array.isArray(result?.videos) ? result.videos[0]?.url ?? result.videos[0] : undefined,
+  ];
+  for (const value of candidates) {
+    if (typeof value === 'string' && value.startsWith('http')) return value;
+  }
+  return null;
+}
+
+export function isPicsartPostSubmitAuthFailure(error: unknown): boolean {
+  const message = String((error as any)?.message ?? error ?? '');
+  return message.includes('PICSART_AUTH_DEAD') || message.includes('PICSART_REFRESH_DEAD');
+}
+
+async function pollPicsartI2vResult(
+  credId: number,
+  model: PicsartI2vModelKey,
+  id: string,
+  opts?: { intervalMs?: number; onTick?: (elapsedMs: number) => void }
+): Promise<{ url: string; credits?: number }> {
+  const cfg = PICSART_I2V_MODELS[model];
+  const intervalMs = opts?.intervalMs ?? 5000;
+  const start = Date.now();
+  const diag = new PollDiag();
+  for (let i = 0; i < cfg.pollAttempts; i++) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    opts?.onTick?.(Date.now() - start);
+    const access = await getAccessToken(credId);
+    const r = await http.get(`${API_BASE}/workflows/${cfg.workflowPath}/${id}/result`, {
+      headers: commonHeaders({ authorization: `Bearer ${access}` }),
+      validateStatus: () => true,
+    });
+    const ok = diag.note(r);
+    if (!ok) {
+      const topStatus = String((r.data as any)?.status ?? '').toLowerCase();
+      const reason = String((r.data as any)?.reason ?? '');
+      const message = String((r.data as any)?.message ?? '');
+      if (r.status >= 400 && (topStatus === 'error' || reason || message)) {
+        throw new Error(`PICSART_GEN_FAILED: ${r.status} ${reason || topStatus} — ${message}`.slice(0, 300));
+      }
+      continue;
+    }
+    const response = r.data?.response ?? r.data;
+    const status = String(response?.status ?? '').toUpperCase();
+    if (status === 'COMPLETED' || status === 'SUCCESS') {
+      const url = extractPicsartVideoUrl(response);
+      if (!url) throw new Error(`PICSART_NO_RESULT_URL: ${JSON.stringify(response).slice(0, 250)}`);
+      return { url, credits: response?.usage?.credits };
+    }
+    if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
+      throw new Error(`PICSART_GEN_FAILED: ${JSON.stringify(response).slice(0, 250)}`);
+    }
+  }
+  throw diag.timeoutError();
+}
+
+export async function generatePicsartI2v(input: {
+  userId: number;
+  model: PicsartI2vModelKey;
+  prompt: string;
+  imageBuffer: Buffer;
+  imageName?: string;
+  imageMime?: string;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  const cfg = PICSART_I2V_MODELS[input.model];
+  return runWithAccount(input.userId, cfg.pool, async (credId) => {
+    input.onStatus?.('upload');
+    const imageUrl = await uploadFile(
+      credId,
+      input.imageBuffer,
+      input.imageName || 'reference.jpg',
+      input.imageMime || 'image/jpeg'
+    );
+    input.onStatus?.('submit');
+    const id = await submitPicsartI2v(credId, input.model, input.prompt, imageUrl);
+    input.onStatus?.('poll');
+    try {
+      return await pollPicsartI2vResult(credId, input.model, id, {
+        onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+      });
+    } catch (e: any) {
+      // An accepted provider job must never be replayed. runWithAccount normally
+      // fails over after PICSART_AUTH_DEAD, but at this point a second account
+      // would create a duplicate paid job. Mark the bad credential and surface a
+      // distinct error so the caller refunds without resubmitting.
+      if (isPicsartPostSubmitAuthFailure(e)) {
+        await q(
+          `UPDATE picsart_credentials SET status = 'dead', dead_at = NOW(), updated_at = NOW() WHERE id = $1`,
+          [credId]
+        );
+        notifyOwner(
+          `⚠️ Akun Picsart #${credId} ditolak saat polling job I2V ${id}. ` +
+          'Job tidak diulang agar tidak membuat generate ganda. Tambahkan token baru bila perlu:\n' +
+          '/addpicsartkey rt:...'
+        );
+        throw new Error(`PICSART_POST_SUBMIT_AUTH_LOST job=${id}`);
+      }
+      throw e;
+    }
+  });
+}
+
 // ─── Seedream 2.7 4K & GPT Image 2 (image generation via Picsart workflows) ──
 
 export const SEEDREAM_MODEL = 'seedream_4_7';

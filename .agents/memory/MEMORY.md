@@ -11,3 +11,4 @@
 - [Picsart account pools](picsart-account-pools.md) — split by CREDIT-at-add (>=200→p500 else p100), tag NEW accounts only, NULL=wildcard for legacy; per-(user,pool) sticky; model routing Kling=any, Runway/Sora/Gemini=p100, Seedance=p500
 - [Picsart Seedance 2.5 API](seedance-api.md) — submit /workflows/seedance/submit (model:"seedance_2_5", content[] ref_image+text); poll result.video_url (not .url/.videoUrl)
 - [edanbot Kling Motion](edanbot-kling-motion.md) — bot's "Kling MC V3 PRO P2" is really edanbot.digital→roboneo; auth = fragile Flask signed session= cookie (EDANBOT_COOKIE, needs prefix); job_id isolates users; never leak provider name
+- [Paid provider post-submit failover](paid-provider-post-submit-failover.md) — failover may retry only before an upstream paid job is accepted; post-submit auth loss must refund, not resubmit.

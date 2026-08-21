@@ -158,6 +158,7 @@ const MODEL_PRICES = {
   seedream: 500,       // Seedream 2.7 4K (Picsart, image-to-image)
   gpt_image: 500,      // GPT Image 2 (Picsart openai-image-editing)
   topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 4× 60fps)
+  picsart_i2v: 1500,   // Picsart I2V models captured from AI Playground HAR
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
 
@@ -997,6 +998,8 @@ type Mode =
   | 'seedream_wait_prompt'
   | 'gptimg_wait_image'
   | 'gptimg_wait_prompt'
+  | 'picsart_i2v_wait_image'
+  | 'picsart_i2v_wait_prompt'
   | 'topaz_wait_video'
   | 'img_wait_image'
   | 'img_wait_prompt'
@@ -1051,6 +1054,9 @@ interface Session {
   // GPT Image 2 wizard state
   gptimgRatio?: string;
   gptimgImageUrls?: string[];
+  // Picsart image-to-video wizard state
+  picsartI2vModel?: picsart.PicsartI2vModelKey;
+  picsartI2vImageUrl?: string;
   // Chat AI wizard state (multi-turn conversation)
   chatModel?: string;
   chatHistory?: Array<{ role: string; content: string }>;
@@ -1500,6 +1506,7 @@ function mainMenuKeyboard() {
     // ── Generate Video ──
     [Markup.button.callback('── 🎬 Generate Video ──', 'noop')],
     [Markup.button.callback('🕹️ Kling Motion Control', 'menu_kling_list')],
+    [Markup.button.callback('🧩 Picsart I2V (8 Model)', 'menu_picsart_i2v')],
     [Markup.button.callback('🚀 Runway Gen-4.5', 'mode_rw')],
     [Markup.button.callback('🎥 Sora 2 (OpenAI)', 'mode_sora')],
     [Markup.button.callback('⚡ Veo 3.1 Fast (Full HD)', 'mode_veofast')],
@@ -1525,6 +1532,24 @@ const SD_RATIO_MAP: Record<string, string> = {
   '916': '9:16', '169': '16:9', '11': '1:1',
   '34': '3:4', '43': '4:3', '23': '2:3', '32': '3:2', '219': '21:9',
 };
+
+function picsartI2vKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🌊 Seedance 2.0 Mini', 'pi2v_seedance_2_mini')],
+    [Markup.button.callback('🌊 Seedance 2.0 Fast', 'pi2v_seedance_2_fast')],
+    [Markup.button.callback('🌊 Seedance 2.0', 'pi2v_seedance_2')],
+    [Markup.button.callback('🌌 Grok Imagine Video', 'pi2v_grok_imagine')],
+    [Markup.button.callback('⚡ Kling v3 Turbo', 'pi2v_kling_v3_turbo')],
+    [Markup.button.callback('🎭 Kling v2.6 Pro', 'pi2v_kling_v26_pro')],
+    [Markup.button.callback('🎞️ Kling v3 Standard', 'pi2v_kling_v3')],
+    [Markup.button.callback('🌀 Wan v2 Image-to-Video', 'pi2v_wan_v2')],
+    [Markup.button.callback('⬅️ Kembali', 'back_main')],
+  ]);
+}
+
+function isPicsartI2vModelKey(value: string): value is picsart.PicsartI2vModelKey {
+  return Object.prototype.hasOwnProperty.call(picsart.PICSART_I2V_MODELS, value);
+}
 
 // ─── Runway Gen-4.5 wizard keyboards (image-to-video) ─────────────────────────
 
@@ -1817,6 +1842,7 @@ function hargaText(): string {
     `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
     `• Chat AI — ${formatRupiah(MODEL_PRICES.chat)}/pesan\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
+    `• Picsart I2V (Seedance, Grok, Kling, Wan) — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
     `• Kling MC V3.0 PRO P3 — ${formatRupiah(MODEL_PRICES.kling_p3)} 🔥PROMO\n` +
     `• Topaz 4K Upscaler (60fps) — ${formatRupiah(MODEL_PRICES.topaz)}\n\n` +
@@ -2965,6 +2991,39 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  if (data === 'menu_picsart_i2v') {
+    if (!await requireLogin(ctx)) return;
+    setSession(userId, { mode: 'idle', picsartI2vModel: undefined, picsartI2vImageUrl: undefined });
+    return ctx.editMessageText(
+      `🧩 *Picsart Image-to-Video*\n\n` +
+      `Harga: *${formatRupiah(MODEL_PRICES.picsart_i2v)}* per video\n\n` +
+      'Pilih model. Semua model di bawah menggunakan *foto + prompt*.\n' +
+      'Parameter yang digunakan mengikuti request AI Playground yang terekam.',
+      { parse_mode: 'Markdown', ...picsartI2vKeyboard() }
+    );
+  }
+
+  if (data.startsWith('pi2v_')) {
+    if (!await requireLogin(ctx)) return;
+    const model = data.slice('pi2v_'.length);
+    if (!isPicsartI2vModelKey(model)) {
+      return ctx.answerCbQuery('Model tidak dikenali. Buka menu lagi.').catch(() => {});
+    }
+    const cfg = picsart.PICSART_I2V_MODELS[model];
+    setSession(userId, {
+      mode: 'picsart_i2v_wait_image',
+      picsartI2vModel: model,
+      picsartI2vImageUrl: undefined,
+    });
+    return ctx.editMessageText(
+      `🧩 *${cfg.label}*\n\n` +
+      `Parameter: *${cfg.settingsLabel}*\n` +
+      `Harga: *${formatRupiah(MODEL_PRICES.picsart_i2v)}* per video\n\n` +
+      '*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (data === 'mode_kling') {
     if (!await requireLogin(ctx)) return;
     setSession(userId, { mode: 'kling_wait_image', characterUrl: undefined, klingCharacterFileId: undefined, klingVideoFileId: undefined });
@@ -3477,6 +3536,22 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     );
   }
 
+  if (session.mode === 'picsart_i2v_wait_image') {
+    const model = session.picsartI2vModel;
+    if (!model || !isPicsartI2vModelKey(model)) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply('⚠️ Model tidak ditemukan. Mulai lagi dari /menu.');
+    }
+    const cfg = picsart.PICSART_I2V_MODELS[model];
+    setSession(userId, { picsartI2vImageUrl: fileUrl, mode: 'picsart_i2v_wait_prompt' });
+    return ctx.reply(
+      `✅ Foto acuan untuk *${cfg.label}* diterima!\n\n` +
+      `Parameter: *${cfg.settingsLabel}*\n\n` +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (session.mode === 'sora_wait_image') {
     setSession(userId, { soraImageUrl: fileUrl, mode: 'sora_wait_prompt' });
     return ctx.reply(
@@ -3744,6 +3819,35 @@ bot.on('text', async (ctx) => {
     const statusMsg = await ctx.reply(`⏳ Memproses Kling MC V3.0 PRO P3...\nHasil dikirim otomatis (~5-10 menit).`);
     runKlingP3(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, characterUrlP3, videoFileIdP3, videoDurationP3, prompt)
       .catch(e => console.error(`[${userId}] KlingP3 gen error:`, e.message));
+    return;
+  }
+
+  // ── Picsart image-to-video prompt ──
+  if (session.mode === 'picsart_i2v_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
+    }
+    const model = session.picsartI2vModel;
+    if (!model || !isPicsartI2vModelKey(model) || !session.picsartI2vImageUrl) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply('⚠️ Sesi tidak lengkap. Mulai lagi dari /menu.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    const imageUrl = session.picsartI2vImageUrl;
+    const cfg = picsart.PICSART_I2V_MODELS[model];
+    setSession(userId, { mode: 'idle', picsartI2vImageUrl: undefined });
+    const statusMsg = await ctx.reply(
+      `⏳ Memproses ${cfg.label}...\nHasil dikirim otomatis (biasanya 3–10 menit).`,
+      { parse_mode: 'Markdown' }
+    );
+    runPicsartI2v(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, { model, imageUrl })
+      .catch(e => console.error(`[${userId}] ${cfg.label} error:`, e.message));
     return;
   }
 
@@ -4037,6 +4141,9 @@ bot.on('text', async (ctx) => {
 
   // ── Guard: modes that expect a photo/video, not text ──
   if (session.mode === 'sora_wait_image') {
+    return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+  }
+  if (session.mode === 'picsart_i2v_wait_image') {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
   if (session.mode === 'veofast_wait_image' || session.mode === 'veolite_wait_image') {
@@ -4459,6 +4566,100 @@ async function runKlingP3(
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `❌ Gagal memproses. Coba lagi nanti.\n\n/menu untuk coba lagi`
     ).catch(() => bot.telegram.sendMessage(chatId, `❌ Gagal memproses.\n\n/menu`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
+// ─── Background: Picsart Image-to-Video ───────────────────────────────────────
+
+async function runPicsartI2v(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  opts: {
+    model: picsart.PicsartI2vModelKey;
+    imageUrl: string;
+  }
+) {
+  const cfg = picsart.PICSART_I2V_MODELS[opts.model];
+  const label = cfg.label;
+  const PRICE = MODEL_PRICES.picsart_i2v;
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+
+  try {
+    const img = await downloadBuffer(opts.imageUrl);
+    console.log(`[${userId}] ${label} started — ${cfg.settingsLabel}, image ${(img.buf.length / 1024).toFixed(1)}KB`);
+
+    let lastEdit = 0;
+    const result = await picsart.generatePicsartI2v({
+      userId: dbUserId,
+      model: opts.model,
+      prompt,
+      imageBuffer: img.buf,
+      imageName: `reference.${img.ext}`,
+      imageMime: img.mime,
+      onStatus: (stage) => {
+        const text = stage === 'upload'
+          ? `⏳ ${label}: mengunggah foto ke server... (1/3)`
+          : stage === 'submit'
+            ? `⏳ ${label}: mengirim perintah ke server... (2/3)`
+            : `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Biasanya 3–10 menit. Jangan tutup chat ini.`;
+        lastEdit = Date.now();
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+      },
+      onPoll: (elapsedSec) => {
+        if (Date.now() - lastEdit < 30_000) return;
+        lastEdit = Date.now();
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = elapsedSec % 60;
+        const elapsed = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
+        bot.telegram.editMessageText(
+          chatId,
+          statusMsgId,
+          undefined,
+          `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${elapsed}. Video akan dikirim otomatis.`
+        ).catch(() => {});
+      },
+    });
+
+    const delivered = await sendResult(
+      chatId,
+      result.url,
+      `🧩 ${label} (${cfg.settingsLabel})\n\n/menu untuk buat lagi`,
+      true
+    );
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] ${label} done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    }
+  } catch (err: any) {
+    const msg = describeError(err);
+    console.error(`[${userId}] ${label} error: ${msg}`);
+    let friendly = '❌ Gagal memproses. Coba lagi nanti.';
+    if (msg.includes('PICSART_TIMEOUT')) {
+      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
+    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
+      friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
+    } else if (msg.includes('PICSART_NO_CREDENTIAL') || msg.includes('PICSART_INSUFFICIENT_CREDITS')) {
+      friendly = '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.';
+    }
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
+      .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
