@@ -159,7 +159,7 @@ const MODEL_PRICES = {
   gpt_image: 500,      // GPT Image 2 (Picsart openai-image-editing)
   topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 4× 60fps)
   picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
-  kling_21_pro: 3000,  // Kling 2.1 Pro, 10s image-to-video
+  kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
 

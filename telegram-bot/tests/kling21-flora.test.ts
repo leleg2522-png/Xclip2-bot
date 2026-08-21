@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 
-assert.match(source, /kling_21_pro:\s*3000/);
+assert.match(source, /kling_21_pro:\s*3500/);
 assert.match(source, /Markup\.button\.callback\('🎬 Kling 2\.1 Pro \(10 detik\)', 'mode_kling21'\)/);
 assert.match(source, /mode:\s*'kling21_wait_image'/);
 assert.match(source, /mode:\s*'kling21_wait_prompt'/);
