@@ -160,6 +160,7 @@ const MODEL_PRICES = {
   gpt_image: 500,      // GPT Image 2 (Picsart openai-image-editing)
   flora_image: 500,    // Semua model image generation service
   lipsync: 3000,       // Semua model lipsync
+  audio: 3000,         // Semua model audio generation/transcription
   topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 4× 60fps)
   picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
@@ -818,7 +819,12 @@ async function floraGenerate(
   return runId;
 }
 
-async function floraPollRun(apiKey: string, runId: string, maxMs = 600_000): Promise<string> {
+interface FloraPollResult {
+  url?: string;
+  text?: string;
+}
+
+async function floraPollRunResult(apiKey: string, runId: string, maxMs = 600_000): Promise<FloraPollResult> {
   const deadline = Date.now() + maxMs;
   let lastStatus = '';
   while (Date.now() < deadline) {
@@ -830,10 +836,19 @@ async function floraPollRun(apiKey: string, runId: string, maxMs = 600_000): Pro
     if (status !== lastStatus) { lastStatus = status; console.log(`[Flora] run ${runId}: ${status}`); }
     if (status === 'COMPLETED' || status === 'completed') {
       // outputs[] array (new format) or output object (old format)
-      const outUrl: string = outputs?.[0]?.url || outputs?.[0]?.video_url
-        || output?.url || output?.video_url || res.data?.result?.url;
-      if (!outUrl) throw new Error(`FLORA_RUN_COMPLETED_NO_URL: ${JSON.stringify(res.data).slice(0, 300)}`);
-      return outUrl;
+      const outUrl: string = outputs?.[0]?.url || outputs?.[0]?.audio_url || outputs?.[0]?.video_url
+        || output?.url || output?.audio_url || output?.video_url || res.data?.result?.url || res.data?.result?.audio_url;
+      if (outUrl) return { url: outUrl };
+
+      const firstOutput = outputs?.[0];
+      const outText = firstOutput?.text || firstOutput?.transcript || firstOutput?.transcription
+        || firstOutput?.content || firstOutput?.value
+        || output?.text || output?.transcript || output?.transcription || output?.content || output?.value
+        || res.data?.result?.text || res.data?.result?.transcript || res.data?.result?.content
+        || (typeof firstOutput === 'string' && !/^https?:\/\//i.test(firstOutput) ? firstOutput : undefined)
+        || (typeof output === 'string' && !/^https?:\/\//i.test(output) ? output : undefined);
+      if (typeof outText === 'string' && outText.trim()) return { text: outText };
+      throw new Error(`FLORA_RUN_COMPLETED_NO_OUTPUT: ${JSON.stringify(res.data).slice(0, 300)}`);
     }
     if (status === 'FAILED' || status === 'failed' || status === 'error') {
       const errMsg = typeof error === 'string' ? error : JSON.stringify(error ?? res.data).slice(0, 300);
@@ -841,6 +856,12 @@ async function floraPollRun(apiKey: string, runId: string, maxMs = 600_000): Pro
     }
   }
   throw new Error('FLORA_RUN_TIMEOUT: melewati batas waktu 10 menit');
+}
+
+async function floraPollRun(apiKey: string, runId: string, maxMs = 600_000): Promise<string> {
+  const result = await floraPollRunResult(apiKey, runId, maxMs);
+  if (!result.url) throw new Error('FLORA_RUN_COMPLETED_NO_URL: hasil bukan file media');
+  return result.url;
 }
 
 // Katalog image generation Flora. ID model diambil dari endpoint /models saat
@@ -952,6 +973,43 @@ async function floraListLipsyncModels(apiKey: string): Promise<FloraLipsyncModel
     const row = byName.get(normalizeFloraModelName(item.name));
     const id = typeof row?.model_id === 'string' ? row.model_id : '';
     if (id) models.push({ id, label: `${item.emoji} ${item.name}`, mediaType: item.mediaType });
+  }
+  return models;
+}
+
+const FLORA_AUDIO_CATALOG: Array<{ name: string; emoji: string; mode: 'generate' | 'transcribe' }> = [
+  { name: 'ElevenLabs Multilingual v2', emoji: '🗣️', mode: 'generate' },
+  { name: 'ElevenLabs Scribe v2', emoji: '📝', mode: 'transcribe' },
+  { name: 'Gemini 3.1 Flash TTS', emoji: '🎙️', mode: 'generate' },
+  { name: 'ElevenLabs Music v1', emoji: '🎵', mode: 'generate' },
+  { name: 'ElevenLabs Sound Effects', emoji: '🔊', mode: 'generate' },
+];
+
+interface FloraAudioModel {
+  id: string;
+  label: string;
+  mode: 'generate' | 'transcribe';
+}
+
+const floraAudioMenuCache = new Map<number, FloraAudioModel[]>();
+
+async function floraListAudioModels(apiKey: string): Promise<FloraAudioModel[]> {
+  const res = await floraHttp.get(`${FLORA_BASE}/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+    params: { type: 'audio' },
+  });
+  const rows = Array.isArray(res.data?.models) ? res.data.models : (Array.isArray(res.data) ? res.data : []);
+  const byName = new Map<string, any>();
+  for (const row of rows) {
+    const displayName = row?.name ?? row?.display_name ?? '';
+    if (displayName) byName.set(normalizeFloraModelName(String(displayName)), row);
+  }
+
+  const models: FloraAudioModel[] = [];
+  for (const item of FLORA_AUDIO_CATALOG) {
+    const row = byName.get(normalizeFloraModelName(item.name));
+    const id = typeof row?.model_id === 'string' ? row.model_id : '';
+    if (id) models.push({ id, label: `${item.emoji} ${item.name}`, mode: item.mode });
   }
   return models;
 }
@@ -1142,6 +1200,8 @@ type Mode =
   | 'floraimg_wait_prompt'
   | 'lipsync_wait_media'
   | 'lipsync_wait_audio'
+  | 'audio_wait_prompt'
+  | 'audio_wait_file'
   | 'picsart_i2v_wait_image'
   | 'picsart_i2v_wait_prompt'
   | 'kling21_wait_image'
@@ -1214,6 +1274,10 @@ interface Session {
   lipsyncMediaFileId?: string;
   lipsyncAudioFileId?: string;
   lipsyncAudioMime?: string;
+  // Audio generation/transcription wizard state
+  audioModelId?: string;
+  audioModelLabel?: string;
+  audioModelMode?: 'generate' | 'transcribe';
   // Picsart image-to-video wizard state
   picsartI2vModel?: picsart.PicsartI2vModelKey;
   picsartI2vImageUrl?: string;
@@ -1685,6 +1749,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('── 🔧 Video Tools ──', 'noop')],
     [Markup.button.callback('🎞️ Topaz 4K Upscaler (60fps)', 'mode_topaz')],
     [Markup.button.callback('🎙️ AI Lipsync (Rp3.000)', 'menu_lipsync')],
+    [Markup.button.callback('🎧 AI Audio (Rp3.000)', 'menu_audio')],
     // ── Chat AI ──
     [Markup.button.callback('── 💬 Chat AI ──', 'noop')],
     [Markup.button.callback('💬 Chat AI (Rp100/pesan)', 'mode_chat')],
@@ -1994,6 +2059,14 @@ function lipsyncMenuKeyboard(models: FloraLipsyncModel[]) {
   return Markup.inlineKeyboard(rows);
 }
 
+function audioMenuKeyboard(models: FloraAudioModel[]) {
+  const rows = models.map((model, index) => [
+    Markup.button.callback(model.label, `audio_select_${index}`),
+  ]);
+  rows.push([Markup.button.callback('« Kembali', 'back_main')]);
+  return Markup.inlineKeyboard(rows);
+}
+
 // ─── Peta callback model → { model API, price key, label + emoji } ────────────
 
 // Peta callback model → { model API, price key, label + emoji }
@@ -2040,6 +2113,7 @@ function hargaText(): string {
     `• Kling MC V3.0 PRO P3 — ${formatRupiah(MODEL_PRICES.kling_p3)} 🔥PROMO\n` +
     `• Topaz 4K Upscaler (60fps) — ${formatRupiah(MODEL_PRICES.topaz)}\n` +
     `• AI Lipsync (semua model) — ${formatRupiah(MODEL_PRICES.lipsync)}\n\n` +
+    `• AI Audio (semua model) — ${formatRupiah(MODEL_PRICES.audio)}\n\n` +
     '🎨 *Gambar*\n' +
     `• Seedream 2.7 4K — ${formatRupiah(MODEL_PRICES.seedream)} 🔥PROMO\n` +
     `• GPT Image 2 — ${formatRupiah(MODEL_PRICES.gpt_image)} 🔥PROMO\n` +
@@ -3648,6 +3722,58 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  // ── AI audio catalog ──
+  if (data === 'menu_audio') {
+    const apiKey = await getNextFloraKey();
+    if (!apiKey) {
+      return ctx.editMessageText('❌ Layanan AI Audio sedang tidak tersedia. Hubungi admin.\n\n/menu untuk kembali');
+    }
+    try {
+      const models = await floraListAudioModels(apiKey);
+      if (models.length === 0) {
+        return ctx.editMessageText('❌ Tidak ada model audio yang aktif untuk akun ini.\n\n/menu untuk kembali');
+      }
+      floraAudioMenuCache.set(userId, models);
+      setSession(userId, {
+        mode: 'idle',
+        audioModelId: undefined,
+        audioModelLabel: undefined,
+        audioModelMode: undefined,
+      });
+      return ctx.editMessageText(
+        `🎧 *AI Audio*\n\nPilih model audio. Harga semua model: *${formatRupiah(MODEL_PRICES.audio)}* per proses.\n\n` +
+        'Tersedia voice, musik, sound effect, dan transkripsi.',
+        { parse_mode: 'Markdown', ...audioMenuKeyboard(models) }
+      );
+    } catch (err: any) {
+      const desc = describeError(err);
+      if (isFloraKeyExhaustedError(desc)) await markFloraKeyDead(apiKey).catch(() => {});
+      console.error(`[${userId}] Audio catalog failed: ${desc}`);
+      return ctx.editMessageText('❌ Gagal memuat katalog audio. Coba lagi nanti.\n\n/menu untuk kembali');
+    }
+  }
+
+  if (data.startsWith('audio_select_')) {
+    const index = Number.parseInt(data.replace('audio_select_', ''), 10);
+    const model = floraAudioMenuCache.get(userId)?.[index];
+    if (!model || !Number.isFinite(index)) {
+      return ctx.editMessageText('Sesi model sudah berakhir. Tekan /menu lalu pilih AI Audio lagi.');
+    }
+    setSession(userId, {
+      mode: model.mode === 'transcribe' ? 'audio_wait_file' : 'audio_wait_prompt',
+      audioModelId: model.id,
+      audioModelLabel: model.label,
+      audioModelMode: model.mode,
+    });
+    const instruction = model.mode === 'transcribe'
+      ? 'Kirim *file audio* (MP3, M4A, WAV, atau voice note) yang ingin ditranskripsikan.'
+      : 'Kirim *prompt teks* untuk audio yang ingin dibuat.';
+    return ctx.editMessageText(
+      `${model.label}\n\nHarga: *${formatRupiah(MODEL_PRICES.audio)}* per proses.\n\n${instruction}`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   // ── Nano Banana image wizard (SnapGen, text-to-image or image-to-image) ──
   if (data === 'mode_nbpro' || data === 'mode_nb2' || data === 'mode_nb2lite') {
     const cfg = IMG_MODELS[data];
@@ -4222,14 +4348,61 @@ async function handleLipsyncAudio(ctx: any, fileId: string, mimeType?: string) {
   ).catch((err: any) => console.error(`[${userId}] Lipsync error:`, err.message));
 }
 
+async function handleAudioTranscriptionFile(ctx: any, fileId: string, mimeType?: string) {
+  const userId = ctx.from.id;
+  const session = getSession(userId);
+  if (session.mode !== 'audio_wait_file') {
+    return ctx.reply('⚠️ Pilih mode terlebih dahulu:', mainMenuKeyboard());
+  }
+  if (!session.audioModelId || !session.audioModelLabel || session.audioModelMode !== 'transcribe') {
+    setSession(userId, { mode: 'idle' });
+    return ctx.reply('⚠️ Sesi transkripsi tidak lengkap. Mulai lagi dari /menu ya.');
+  }
+
+  const cooldownMs = getCooldownRemainingMs(userId);
+  if (cooldownMs > 0) {
+    setSession(userId, { mode: 'idle' });
+    return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nTunggu *${formatCooldown(cooldownMs)}* sebelum proses berikutnya.`, { parse_mode: 'Markdown' });
+  }
+
+  const { audioModelId, audioModelLabel } = session;
+  setSession(userId, {
+    mode: 'idle',
+    audioModelId: undefined,
+    audioModelLabel: undefined,
+    audioModelMode: undefined,
+  });
+  const statusMsg = await ctx.reply(`⏳ *${audioModelLabel}* — memulai transkripsi...`, { parse_mode: 'Markdown' });
+  runFloraAudio(
+    ctx.chat.id,
+    userId,
+    session.dbUserId!,
+    statusMsg.message_id,
+    audioModelId,
+    audioModelLabel,
+    'transcribe',
+    '',
+    fileId,
+    mimeType ?? 'audio/mpeg'
+  ).catch((err: any) => console.error(`[${userId}] Audio transcription error:`, err.message));
+}
+
 bot.on('audio', async (ctx) => {
   if (!await requireLogin(ctx)) return;
-  return handleLipsyncAudio(ctx, ctx.message.audio.file_id, ctx.message.audio.mime_type);
+  const session = getSession(ctx.from.id);
+  if (session.mode === 'lipsync_wait_audio') {
+    return handleLipsyncAudio(ctx, ctx.message.audio.file_id, ctx.message.audio.mime_type);
+  }
+  return handleAudioTranscriptionFile(ctx, ctx.message.audio.file_id, ctx.message.audio.mime_type);
 });
 
 bot.on('voice', async (ctx) => {
   if (!await requireLogin(ctx)) return;
-  return handleLipsyncAudio(ctx, ctx.message.voice.file_id, ctx.message.voice.mime_type ?? 'audio/ogg');
+  const session = getSession(ctx.from.id);
+  if (session.mode === 'lipsync_wait_audio') {
+    return handleLipsyncAudio(ctx, ctx.message.voice.file_id, ctx.message.voice.mime_type ?? 'audio/ogg');
+  }
+  return handleAudioTranscriptionFile(ctx, ctx.message.voice.file_id, ctx.message.voice.mime_type ?? 'audio/ogg');
 });
 
 // ─── Text handler ─────────────────────────────────────────────────────────────
@@ -4663,6 +4836,34 @@ bot.on('text', async (ctx) => {
     return;
   }
 
+  // ── AI audio generation prompt ──
+  if (session.mode === 'audio_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim teks, deskripsi musik, atau deskripsi sound effect.');
+    }
+    if (!session.audioModelId || !session.audioModelLabel || session.audioModelMode !== 'generate') {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply('⚠️ Model AI Audio belum dipilih. Tekan /menu lalu pilih AI Audio lagi.');
+    }
+    if (session.audioModelLabel.includes('ElevenLabs Multilingual v2') && prompt.length > 450) {
+      return ctx.reply('⚠️ Teks untuk model ini maksimal *450 karakter*. Ringkas teksnya lalu kirim lagi.', { parse_mode: 'Markdown' });
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nTunggu *${formatCooldown(cooldownMs)}* sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    const modelId = session.audioModelId;
+    const label = session.audioModelLabel;
+    setSession(userId, { mode: 'idle', audioModelId: undefined, audioModelLabel: undefined, audioModelMode: undefined });
+    const statusMsg = await ctx.reply(`⏳ Memproses ${label}...\nHasil dikirim otomatis.`, { parse_mode: 'Markdown' });
+    runFloraAudio(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, modelId, label, 'generate', prompt)
+      .catch(e => console.error(`[${userId}] Audio generation error:`, e.message));
+    return;
+  }
+
   // ── Nano Banana image prompt (SnapGen) ──
   if (session.mode === 'img_wait_prompt') {
     if (!await requireLogin(ctx)) return;
@@ -4698,6 +4899,9 @@ bot.on('text', async (ctx) => {
   }
   if (session.mode === 'lipsync_wait_audio') {
     return ctx.reply('🎵 Kirim *file audio* (MP3, M4A, WAV, atau voice note) untuk lipsync, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+  }
+  if (session.mode === 'audio_wait_file') {
+    return ctx.reply('🎵 Kirim *file audio* (MP3, M4A, WAV, atau voice note) untuk ditranskripsikan, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
   if (session.mode === 'sora_wait_image') {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
@@ -4784,6 +4988,10 @@ bot.on('document', async (ctx) => {
 
   if (doc.mime_type?.startsWith('audio/') && session.mode === 'lipsync_wait_audio') {
     return handleLipsyncAudio(ctx, doc.file_id, doc.mime_type);
+  }
+
+  if (doc.mime_type?.startsWith('audio/') && session.mode === 'audio_wait_file') {
+    return handleAudioTranscriptionFile(ctx, doc.file_id, doc.mime_type);
   }
 
   if (doc.mime_type?.startsWith('video/') && session.mode === 'gomni_wait_video' && session.gomniImageUrl) {
@@ -6626,6 +6834,160 @@ async function runFloraLipsync(
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
+async function sendTranscriptionResult(chatId: number, label: string, transcription: string): Promise<void> {
+  const prefix = `📝 ${label} selesai!\n\n`;
+  const footer = '\n\n/menu untuk proses lagi';
+  const maxTextLength = 3800;
+  const chunks: string[] = [];
+  for (let start = 0; start < transcription.length; start += maxTextLength) {
+    chunks.push(transcription.slice(start, start + maxTextLength));
+  }
+  for (let index = 0; index < chunks.length; index++) {
+    const header = index === 0 ? prefix : '';
+    const suffix = index === chunks.length - 1 ? footer : '';
+    await bot.telegram.sendMessage(chatId, `${header}${chunks[index]}${suffix}`);
+  }
+}
+
+// ─── Background: AI audio generation and transcription ───────────────────────
+
+async function runFloraAudio(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  modelId: string,
+  label: string,
+  mode: 'generate' | 'transcribe',
+  prompt: string,
+  audioFileId?: string,
+  audioMime?: string
+) {
+  const PRICE = MODEL_PRICES.audio;
+  console.log(`[${userId}] ${label} audio ${mode} started — model ${modelId}`);
+
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+
+  let refund = true;
+  const skippedKeys = new Set<string>();
+  try {
+    let inputAudio: Buffer | undefined;
+    if (mode === 'transcribe') {
+      if (!audioFileId) throw new Error('AUDIO_TRANSCRIPTION_FILE_MISSING');
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `⏳ ${label}: mengunduh audio... (1/3)`).catch(() => {});
+      inputAudio = await downloadTelegramFileBuffer(audioFileId);
+    }
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const apiKey = await getNextFloraKey(skippedKeys);
+      if (!apiKey) {
+        await bot.telegram.editMessageText(
+          chatId,
+          statusMsgId,
+          undefined,
+          '❌ Layanan AI Audio sedang tidak tersedia. Hubungi admin.\n\n/menu untuk kembali'
+        ).catch(() => {});
+        return;
+      }
+
+      let acceptedRunId: string | undefined;
+      try {
+        const ws = await floraGetWorkspace(apiKey);
+        let params: Record<string, string> = {};
+        let generationPrompt = prompt;
+        if (mode === 'transcribe') {
+          await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `⏳ ${label}: mengunggah audio... (2/3)`).catch(() => {});
+          const audioUrl = await floraUploadAsset(
+            apiKey,
+            ws.workspaceId,
+            inputAudio!,
+            'transcription-input',
+            audioMime ?? 'audio/mpeg'
+          );
+          params = { audio_url: audioUrl };
+          generationPrompt = 'Transcribe the provided audio accurately.';
+        } else {
+          await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `⏳ ${label}: mengirim prompt... (1/2)`).catch(() => {});
+        }
+
+        acceptedRunId = await floraGenerate(apiKey, ws, modelId, params, generationPrompt, 'audio');
+        await bot.telegram.editMessageText(
+          chatId,
+          statusMsgId,
+          undefined,
+          mode === 'transcribe'
+            ? `⏳ ${label}: mentranskripsikan audio... (3/3)\nJangan tutup chat ini, hasil dikirim otomatis.`
+            : `⏳ ${label}: audio sedang dibuat... (2/2)\nJangan tutup chat ini, hasil dikirim otomatis.`
+        ).catch(() => {});
+
+        const result = await floraPollRunResult(apiKey, acceptedRunId, 20 * 60 * 1000);
+        if (mode === 'transcribe') {
+          if (!result.text) throw new Error('AUDIO_TRANSCRIPTION_NO_TEXT');
+          await sendTranscriptionResult(chatId, label, result.text);
+        } else {
+          if (!result.url) throw new Error('AUDIO_GENERATION_NO_URL');
+          await bot.telegram.sendAudio(chatId, result.url, {
+            caption: `🎧 ${label} selesai!\n\n/menu untuk buat lagi`,
+          });
+        }
+
+        refund = false;
+        markGenSuccess(userId);
+        await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+        console.log(`[${userId}] ${label} audio ${mode} done — run ${acceptedRunId}`);
+        return;
+      } catch (err: any) {
+        const desc = describeError(err);
+        console.error(`[${userId}] ${label} audio ${mode} attempt ${attempt + 1} failed (key …${apiKey.slice(-8)}): ${desc}`);
+
+        // Never re-submit a job once it is accepted upstream; refund instead.
+        if (acceptedRunId) {
+          if (isFloraKeyExhaustedError(desc)) await markFloraKeyDead(apiKey).catch(() => {});
+          const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
+          const friendly = contentRejected
+            ? '❌ Input tidak dapat diproses karena melanggar kebijakan konten.'
+            : '❌ Proses audio tidak berhasil. Saldo akan dikembalikan.';
+          await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
+            .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+          return;
+        }
+
+        if (isFloraKeyExhaustedError(desc)) {
+          await markFloraKeyDead(apiKey).catch(() => {});
+          skippedKeys.add(apiKey);
+          continue;
+        }
+
+        const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
+        const friendly = contentRejected
+          ? '❌ Input tidak dapat diproses karena melanggar kebijakan konten.'
+          : '❌ Gagal memproses audio. Coba lagi nanti.';
+        await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
+          .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+        return;
+      }
+    }
+  } catch (err: any) {
+    console.error(`[${userId}] ${label} audio ${mode} outer error: ${describeError(err)}`);
+    await bot.telegram.editMessageText(
+      chatId,
+      statusMsgId,
+      undefined,
+      '❌ Gagal memproses audio. Coba lagi nanti.\n\n/menu untuk coba lagi'
+    ).catch(() => bot.telegram.sendMessage(chatId, '❌ Gagal memproses audio. Coba lagi nanti.\n\n/menu untuk coba lagi'));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (proses tidak berhasil).`).catch(() => {});
     }
     releaseGenerating(dbUserId);
   }
