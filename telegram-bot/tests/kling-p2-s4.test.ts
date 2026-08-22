@@ -12,5 +12,7 @@ assert.match(source, /model:\s*'kling-motion-26-pro'/);
 assert.match(source, /const PRICE = variant\.price/);
 assert.match(source, /let submitted = false/);
 assert.match(source, /if \(submitted\)/);
+assert.match(source, /const EDANBOT_JOB_TIMEOUT_MS = 20 \* 60 \* 1000/);
+assert.match(source, /pollEdanbotJob\(cookie, jobId, EDANBOT_JOB_TIMEOUT_MS\)/);
 
 console.log('Kling MC V3 PRO P2 contract tests passed.');

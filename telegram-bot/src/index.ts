@@ -74,6 +74,7 @@ const telegramHttp = axios.create({ timeout: 60_000 });
 // Direct HTTP client untuk Kling MC V3.0 PRO P3 — TANPA proxy. Cookie session-nya
 // tidak terikat IP, dan lewat proxy Decodo malah kena 407 (proxy auth) di Railway.
 const edanbotHttp = axios.create({ timeout: 120_000 });
+const EDANBOT_JOB_TIMEOUT_MS = 20 * 60 * 1000;
 
 
 // ─── Database ─────────────────────────────────────────────────────────────────
@@ -4576,7 +4577,7 @@ bot.on('text', async (ctx) => {
     const videoFileIdP2 = session.klingP2VideoFileId;
     const videoDurationP2 = session.klingP2VideoDuration;
     setSession(userId, { mode: 'idle', klingP2VideoFileId: undefined });
-    const statusMsg = await ctx.reply(`⏳ Memproses Kling MC V3 PRO P2...\nHasil dikirim otomatis (~5-10 menit).`);
+    const statusMsg = await ctx.reply(`⏳ Memproses Kling MC V3 PRO P2...\nHasil dikirim otomatis (~5-20 menit).`);
     runKlingP2(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, characterUrlP2, videoFileIdP2, videoDurationP2, prompt)
       .catch(e => console.error(`[${userId}] KlingP2 gen error:`, e.message));
     return;
@@ -4600,7 +4601,7 @@ bot.on('text', async (ctx) => {
     const videoFileIdP3 = session.klingP3VideoFileId;
     const videoDurationP3 = session.klingP3VideoDuration;
     setSession(userId, { mode: 'idle', klingP3VideoFileId: undefined });
-    const statusMsg = await ctx.reply(`⏳ Memproses Kling MC V3.0 PRO P3...\nHasil dikirim otomatis (~5-10 menit).`);
+    const statusMsg = await ctx.reply(`⏳ Memproses Kling MC V3.0 PRO P3...\nHasil dikirim otomatis (~5-20 menit).`);
     runKlingP3(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, characterUrlP3, videoFileIdP3, videoDurationP3, prompt)
       .catch(e => console.error(`[${userId}] KlingP3 gen error:`, e.message));
     return;
@@ -5379,7 +5380,7 @@ async function pollEdanbotJob(cookie: string, jobId: string, maxMs = 600_000): P
     if (status === 'completed' && result_url) return result_url;
     if (status === 'failed') throw new Error(`EDANBOT_JOB_FAILED: ${error || 'unknown'}`);
   }
-  throw new Error('EDANBOT_JOB_TIMEOUT: melewati batas waktu 10 menit');
+  throw new Error(`EDANBOT_JOB_TIMEOUT: melewati batas waktu ${Math.ceil(maxMs / 60_000)} menit`);
 }
 
 async function runKlingEdanbot(
@@ -5469,7 +5470,7 @@ async function runKlingEdanbot(
           `⏳ ${label} sedang diproses...\nBiasanya 5–8 menit. Harap tunggu.`
         ).catch(() => {});
 
-        const resultUrl = await pollEdanbotJob(cookie, jobId);
+        const resultUrl = await pollEdanbotJob(cookie, jobId, EDANBOT_JOB_TIMEOUT_MS);
 
         const delivered = await sendResult(chatId, resultUrl, `🎭 ${label} selesai!\n\n/menu untuk buat lagi`, true);
         if (delivered) {
