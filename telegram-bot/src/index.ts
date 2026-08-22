@@ -149,7 +149,7 @@ const MODEL_PRICES = {
   chat: 100,           // Chat AI per pesan
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
   kling_p3: 3500,      // Kling MC V3.0 PRO P3 (Edanbot, kling-motion-26-pro)
-  kling_p2: 3500,      // Kling MC V3 PRO P2 S4 (Edanbot, kling-motion-26-pro--secondary)
+  kling_p2: 3500,      // Kling MC V3 PRO P2 (Edanbot, kling-motion-26-pro--secondary)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
   veo_fast: 1500,      // Veo 3.1 Fast Full HD (SnapGen)
   veo_lite: 1500,      // Veo 3.1 Lite Full HD (SnapGen, with audio)
@@ -1042,7 +1042,7 @@ interface Session {
   characterUrl?: string;
   klingCharacterFileId?: string;
   klingVideoFileId?: string;
-  // Kling MC V3 PRO P2 S4 wizard state (edanbot kling-motion-26-pro--secondary)
+  // Kling MC V3 PRO P2 wizard state (edanbot kling-motion-26-pro--secondary)
   characterUrlP2?: string;
   klingP2VideoFileId?: string;
   klingP2VideoDuration?: number;
@@ -3076,7 +3076,7 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
-  // ── Kling MC V3 PRO P2 S4 wizard ──
+  // ── Kling MC V3 PRO P2 wizard ──
   if (data === 'mode_klingp2') {
     if (!await requireLogin(ctx)) return;
     setSession(userId, {
@@ -3915,7 +3915,7 @@ bot.on('text', async (ctx) => {
     return;
   }
 
-  // ── Kling MC V3 PRO P2 S4 prompt ──
+  // ── Kling MC V3 PRO P2 prompt ──
   if (session.mode === 'klingp2_wait_prompt') {
     if (!await requireLogin(ctx)) return;
     if (!session.characterUrlP2 || !session.klingP2VideoFileId) {

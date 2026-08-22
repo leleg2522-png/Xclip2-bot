@@ -12,4 +12,4 @@ assert.match(source, /const PRICE = variant\.price/);
 assert.match(source, /let submitted = false/);
 assert.match(source, /if \(submitted\)/);
 
-console.log('Kling MC V3 PRO P2 S4 contract tests passed.');
+console.log('Kling MC V3 PRO P2 contract tests passed.');
