@@ -158,6 +158,7 @@ const MODEL_PRICES = {
   nb_2lite: 500,       // Nano Banana 2 Lite (SnapGen image)
   seedream: 500,       // Seedream 2.7 4K (Picsart, image-to-image)
   gpt_image: 500,      // GPT Image 2 (Picsart openai-image-editing)
+  flora_image: 500,    // Semua model image generation Flora AI
   topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 4× 60fps)
   picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
@@ -795,13 +796,14 @@ async function floraGenerate(
   ws: FloraWorkspace,
   modelId: string,
   params: Record<string, any>,
-  prompt = 'upscale to 4K 60fps'
+  prompt = 'upscale to 4K 60fps',
+  type: 'video' | 'image' | 'audio' | 'text' = 'video'
 ): Promise<string> {
   const body: Record<string, any> = {
     model_id: modelId,
     workspace_id: ws.workspaceId,
     project_id: ws.projectId,
-    type: 'video',
+    type,
     prompt,
     params,
   };
@@ -838,6 +840,83 @@ async function floraPollRun(apiKey: string, runId: string, maxMs = 600_000): Pro
     }
   }
   throw new Error('FLORA_RUN_TIMEOUT: melewati batas waktu 10 menit');
+}
+
+// Katalog image generation Flora. ID model diambil dari endpoint /models saat
+// menu dibuka, bukan ditebak dari display name, karena ID/availability dapat
+// berubah di Flora.
+const FLORA_IMAGE_GENERATION_CATALOG: Array<{ name: string; emoji: string }> = [
+  { name: 'Flux 2 Klein 4B', emoji: '⚡' },
+  { name: 'Flux 2 Klein 9B', emoji: '⚡' },
+  { name: 'Flux 2 Turbo', emoji: '⚡' },
+  { name: 'GPT Image', emoji: '🤖' },
+  { name: 'GPT Image 1.5', emoji: '🤖' },
+  { name: 'GPT Image 2', emoji: '🤖' },
+  { name: 'Grok Imagine', emoji: '🌌' },
+  { name: 'Grok Imagine Quality', emoji: '🌌' },
+  { name: 'Ideogram 3.0', emoji: '✍️' },
+  { name: 'Ideogram 4.0', emoji: '✍️' },
+  { name: 'Imagen 3', emoji: '🖼️' },
+  { name: 'Imagen 4', emoji: '🖼️' },
+  { name: 'Kling O1', emoji: '🎬' },
+  { name: 'Krea 2 Large', emoji: '🎨' },
+  { name: 'Krea 2 References Large', emoji: '🎨' },
+  { name: 'Krea 2 References Medium', emoji: '🎨' },
+  { name: 'Nano Banana', emoji: '🍌' },
+  { name: 'Nano Banana 2', emoji: '🍌' },
+  { name: 'Nano Banana 2 Lite', emoji: '🍌' },
+  { name: 'Nano Banana Pro', emoji: '🍌' },
+  { name: 'Qwen Image 2.0', emoji: '🧠' },
+  { name: 'Recraft V4', emoji: '🪄' },
+  { name: 'Recraft V4 Pro', emoji: '🪄' },
+  { name: 'Recraft V4.1', emoji: '🪄' },
+  { name: 'Recraft V4.1 Pro', emoji: '🪄' },
+  { name: 'Recraft V4.1 Utility', emoji: '🪄' },
+  { name: 'Reve 2.1', emoji: '✨' },
+  { name: 'Riverflow 2.0 Fast', emoji: '🌊' },
+  { name: 'Riverflow 2.0 Pro', emoji: '🌊' },
+  { name: 'Riverflow 2.5 Pro', emoji: '🌊' },
+  { name: 'Seedream 3.0', emoji: '🌸' },
+  { name: 'Seedream 4.0', emoji: '🌸' },
+  { name: 'Seedream 4.5', emoji: '🌸' },
+  { name: 'Seedream 5.0 Lite', emoji: '🌸' },
+  { name: 'Stable Diffusion 3.5', emoji: '🧩' },
+  { name: 'Uni-1', emoji: '🔷' },
+  { name: 'Uni-1 Max', emoji: '🔷' },
+  { name: 'Wan 2.2', emoji: '🌀' },
+  { name: 'Z-Image Turbo', emoji: '⚡' },
+];
+
+interface FloraImageModel {
+  id: string;
+  label: string;
+}
+
+const floraImageMenuCache = new Map<number, FloraImageModel[]>();
+
+function normalizeFloraModelName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+async function floraListImageGenerationModels(apiKey: string): Promise<FloraImageModel[]> {
+  const res = await floraHttp.get(`${FLORA_BASE}/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+    params: { type: 'image' },
+  });
+  const rows = Array.isArray(res.data?.models) ? res.data.models : (Array.isArray(res.data) ? res.data : []);
+  const byName = new Map<string, any>();
+  for (const row of rows) {
+    const displayName = row?.name ?? row?.display_name ?? '';
+    if (displayName) byName.set(normalizeFloraModelName(String(displayName)), row);
+  }
+
+  const models: FloraImageModel[] = [];
+  for (const item of FLORA_IMAGE_GENERATION_CATALOG) {
+    const row = byName.get(normalizeFloraModelName(item.name));
+    const id = typeof row?.model_id === 'string' ? row.model_id : '';
+    if (id) models.push({ id, label: `${item.emoji} ${item.name}` });
+  }
+  return models;
 }
 
 // ─── Edanbot Cookie Pool (Kling MC V3.0 PRO P3) ───────────────────────────────
@@ -1023,6 +1102,7 @@ type Mode =
   | 'seedream_wait_prompt'
   | 'gptimg_wait_image'
   | 'gptimg_wait_prompt'
+  | 'floraimg_wait_prompt'
   | 'picsart_i2v_wait_image'
   | 'picsart_i2v_wait_prompt'
   | 'kling21_wait_image'
@@ -1085,6 +1165,9 @@ interface Session {
   // GPT Image 2 wizard state
   gptimgRatio?: string;
   gptimgImageUrls?: string[];
+  // Flora image generation wizard state
+  floraImageModelId?: string;
+  floraImageModelLabel?: string;
   // Picsart image-to-video wizard state
   picsartI2vModel?: picsart.PicsartI2vModelKey;
   picsartI2vImageUrl?: string;
@@ -1560,7 +1643,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('💬 Chat AI (Rp100/pesan)', 'mode_chat')],
     // ── Generate Gambar ──
     [Markup.button.callback('── 🎨 Generate Gambar ──', 'noop')],
-    [Markup.button.callback('── 🎨 Generate Gambar ──', 'noop')],
+    [Markup.button.callback('🌿 Flora Image Generation (Rp500)', 'menu_flora_image')],
     [Markup.button.callback('🌸 Seedream 2.7 4K 🔥PROMO', 'mode_seedream')],
     [Markup.button.callback('🤖 GPT Image 2 🔥PROMO', 'mode_gptimg')],
     [Markup.button.callback('🍌 Nano Banana Pro', 'mode_nbpro')],
@@ -1837,6 +1920,25 @@ function gptimgAddPhotoKeyboard(count: number) {
   return Markup.inlineKeyboard(buttons);
 }
 
+const FLORA_IMAGE_PAGE_SIZE = 8;
+
+function floraImageMenuKeyboard(models: FloraImageModel[], page = 0) {
+  const pageCount = Math.max(1, Math.ceil(models.length / FLORA_IMAGE_PAGE_SIZE));
+  const currentPage = Math.min(Math.max(page, 0), pageCount - 1);
+  const start = currentPage * FLORA_IMAGE_PAGE_SIZE;
+  const pageModels = models.slice(start, start + FLORA_IMAGE_PAGE_SIZE);
+  const rows = pageModels.map((model, index) => [
+    Markup.button.callback(model.label, `floraimg_select_${currentPage}_${index}`),
+  ]);
+
+  const navigation = [];
+  if (currentPage > 0) navigation.push(Markup.button.callback('‹ Sebelumnya', `floraimg_page_${currentPage - 1}`));
+  if (currentPage < pageCount - 1) navigation.push(Markup.button.callback('Berikutnya ›', `floraimg_page_${currentPage + 1}`));
+  if (navigation.length) rows.push(navigation);
+  rows.push([Markup.button.callback('« Kembali', 'back_main')]);
+  return Markup.inlineKeyboard(rows);
+}
+
 // ─── Peta callback model → { model API, price key, label + emoji } ────────────
 
 // Peta callback model → { model API, price key, label + emoji }
@@ -1885,6 +1987,7 @@ function hargaText(): string {
     '🎨 *Gambar*\n' +
     `• Seedream 2.7 4K — ${formatRupiah(MODEL_PRICES.seedream)} 🔥PROMO\n` +
     `• GPT Image 2 — ${formatRupiah(MODEL_PRICES.gpt_image)} 🔥PROMO\n` +
+    `• Flora Image Generation (semua model) — ${formatRupiah(MODEL_PRICES.flora_image)}\n` +
     `• Nano Banana Pro — ${formatRupiah(MODEL_PRICES.nb_pro)}\n` +
     `• Nano Banana 2 — ${formatRupiah(MODEL_PRICES.nb_2)}\n` +
     `• Nano Banana 2 Lite — ${formatRupiah(MODEL_PRICES.nb_2lite)}\n\n` +
@@ -3365,6 +3468,71 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  // ── Flora image generation catalog ──
+  if (data === 'menu_flora_image') {
+    const apiKey = await getNextFloraKey();
+    if (!apiKey) {
+      return ctx.editMessageText('❌ Layanan Flora Image sedang tidak tersedia. Hubungi admin.\n\n/menu untuk kembali');
+    }
+    try {
+      const models = await floraListImageGenerationModels(apiKey);
+      if (models.length === 0) {
+        return ctx.editMessageText('❌ Tidak ada model image generation Flora yang aktif untuk akun ini.\n\n/menu untuk kembali');
+      }
+      floraImageMenuCache.set(userId, models);
+      setSession(userId, {
+        mode: 'idle',
+        floraImageModelId: undefined,
+        floraImageModelLabel: undefined,
+      });
+      return ctx.editMessageText(
+        `🌿 *Flora Image Generation*\n\nPilih model gambar. Harga semua model: *${formatRupiah(MODEL_PRICES.flora_image)}* per gambar.\n\n` +
+        `Tersedia ${models.length} model image generation dari katalog Flora:`,
+        { parse_mode: 'Markdown', ...floraImageMenuKeyboard(models) }
+      );
+    } catch (err: any) {
+      const desc = describeError(err);
+      if (isFloraKeyExhaustedError(desc)) await markFloraKeyDead(apiKey).catch(() => {});
+      console.error(`[${userId}] Flora image catalog failed: ${desc}`);
+      return ctx.editMessageText('❌ Gagal memuat katalog Flora. Coba lagi nanti.\n\n/menu untuk kembali');
+    }
+  }
+
+  if (data.startsWith('floraimg_page_')) {
+    const page = Number.parseInt(data.replace('floraimg_page_', ''), 10);
+    const models = floraImageMenuCache.get(userId);
+    if (!models?.length || !Number.isFinite(page)) {
+      return ctx.editMessageText('Sesi katalog sudah berakhir. Tekan /menu lalu pilih Flora Image lagi.');
+    }
+    return ctx.editMessageText(
+      `🌿 *Flora Image Generation*\n\nPilih model gambar. Harga semua model: *${formatRupiah(MODEL_PRICES.flora_image)}* per gambar.\n\n` +
+      `Tersedia ${models.length} model image generation dari katalog Flora:`,
+      { parse_mode: 'Markdown', ...floraImageMenuKeyboard(models, page) }
+    );
+  }
+
+  if (data.startsWith('floraimg_select_')) {
+    const parts = data.split('_');
+    const page = Number.parseInt(parts[2] ?? '', 10);
+    const index = Number.parseInt(parts[3] ?? '', 10);
+    const models = floraImageMenuCache.get(userId);
+    const model = models?.[page * FLORA_IMAGE_PAGE_SIZE + index];
+    if (!model || !Number.isFinite(page) || !Number.isFinite(index)) {
+      return ctx.editMessageText('Sesi model sudah berakhir. Tekan /menu lalu pilih Flora Image lagi.');
+    }
+    setSession(userId, {
+      mode: 'floraimg_wait_prompt',
+      floraImageModelId: model.id,
+      floraImageModelLabel: model.label,
+    });
+    return ctx.editMessageText(
+      `${model.label}\n\nHarga: *${formatRupiah(MODEL_PRICES.flora_image)}* per gambar.\n\n` +
+      'Kirim *prompt teks* untuk gambar yang ingin dibuat.\n\n' +
+      'Contoh: _foto produk parfum mewah di atas marmer hitam, pencahayaan studio, detail tinggi_',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   // ── Nano Banana image wizard (SnapGen, text-to-image or image-to-image) ──
   if (data === 'mode_nbpro' || data === 'mode_nb2' || data === 'mode_nb2lite') {
     const cfg = IMG_MODELS[data];
@@ -4275,6 +4443,31 @@ bot.on('text', async (ctx) => {
     const statusMsg = await ctx.reply('⏳ Memproses GPT Image 2...\nHasil dikirim otomatis (~1-3 menit).', { parse_mode: 'Markdown' });
     runGptImage(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, { imageUrls, ratio })
       .catch(e => console.error(`[${userId}] GPT Image error:`, e.message));
+    return;
+  }
+
+  // ── Flora image generation prompt ──
+  if (session.mode === 'floraimg_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi gambar yang kamu mau.');
+    }
+    if (!session.floraImageModelId || !session.floraImageModelLabel) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply('⚠️ Model Flora belum dipilih. Tekan /menu lalu pilih Flora Image lagi.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    const modelId = session.floraImageModelId;
+    const label = session.floraImageModelLabel;
+    setSession(userId, { mode: 'idle', floraImageModelId: undefined, floraImageModelLabel: undefined });
+    const statusMsg = await ctx.reply(`⏳ Memproses ${label}...\nHasil dikirim otomatis.`, { parse_mode: 'Markdown' });
+    runFloraImage(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, modelId, label, prompt)
+      .catch(e => console.error(`[${userId}] Flora image error:`, e.message));
     return;
   }
 
@@ -5959,6 +6152,116 @@ async function runKling21Pro(
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       '❌ Gagal memproses video. Coba lagi nanti.\n\n/menu untuk coba lagi'
     ).catch(() => bot.telegram.sendMessage(chatId, '❌ Gagal memproses video. Coba lagi nanti.\n\n/menu untuk coba lagi'));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
+// ─── Background: Flora image generation ─────────────────────────────────────
+
+async function runFloraImage(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  modelId: string,
+  label: string,
+  prompt: string
+) {
+  const PRICE = MODEL_PRICES.flora_image;
+  console.log(`[${userId}] ${label} Flora image started — model ${modelId}`);
+
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+  const skippedKeys = new Set<string>();
+
+  try {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const apiKey = await getNextFloraKey(skippedKeys);
+      if (!apiKey) {
+        await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+          '❌ Layanan Flora Image sedang tidak tersedia. Hubungi admin.\n\n/menu untuk kembali'
+        ).catch(() => {});
+        return;
+      }
+
+      let acceptedRunId: string | undefined;
+      try {
+        const ws = await floraGetWorkspace(apiKey);
+        await bot.telegram.editMessageText(
+          chatId,
+          statusMsgId,
+          undefined,
+          `⏳ ${label}: mengirim prompt... (1/2)`
+        ).catch(() => {});
+
+        acceptedRunId = await floraGenerate(apiKey, ws, modelId, {}, prompt, 'image');
+
+        await bot.telegram.editMessageText(
+          chatId,
+          statusMsgId,
+          undefined,
+          `⏳ ${label}: gambar sedang dibuat... (2/2)\nJangan tutup chat ini, hasil dikirim otomatis.`
+        ).catch(() => {});
+
+        const resultUrl = await floraPollRun(apiKey, acceptedRunId);
+        const delivered = await sendImageResult(
+          chatId,
+          resultUrl,
+          `🎨 ${label} selesai!\n\n/menu untuk buat lagi`
+        );
+        if (delivered) {
+          refund = false;
+          markGenSuccess(userId);
+          await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+          console.log(`[${userId}] ${label} Flora image done — run ${acceptedRunId}`);
+        }
+        return;
+      } catch (err: any) {
+        const desc = describeError(err);
+        console.error(`[${userId}] ${label} Flora image attempt ${attempt + 1} failed (key …${apiKey.slice(-8)}): ${desc}`);
+
+        // Setelah run ID diterima, Flora mungkin sudah menagih provider. Jangan
+        // pernah submit ulang ke key lain; cukup refund saldo pengguna.
+        if (acceptedRunId) {
+          if (isFloraKeyExhaustedError(desc)) await markFloraKeyDead(apiKey).catch(() => {});
+          const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
+          const friendly = contentRejected
+            ? '❌ Prompt tidak dapat diproses karena melanggar kebijakan konten.'
+            : '❌ Proses gambar tidak berhasil. Saldo akan dikembalikan.';
+          await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
+            .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+          return;
+        }
+
+        if (isFloraKeyExhaustedError(desc)) {
+          await markFloraKeyDead(apiKey).catch(() => {});
+          skippedKeys.add(apiKey);
+          continue;
+        }
+
+        const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
+        const friendly = contentRejected
+          ? '❌ Prompt tidak dapat diproses karena melanggar kebijakan konten.'
+          : '❌ Gagal memproses gambar. Coba lagi nanti.';
+        await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
+          .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+        return;
+      }
+    }
+  } catch (err: any) {
+    console.error(`[${userId}] ${label} Flora image outer error: ${describeError(err)}`);
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      '❌ Gagal memproses gambar. Coba lagi nanti.\n\n/menu untuk coba lagi'
+    ).catch(() => bot.telegram.sendMessage(chatId, '❌ Gagal memproses gambar. Coba lagi nanti.\n\n/menu untuk coba lagi'));
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});

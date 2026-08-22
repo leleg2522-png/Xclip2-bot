@@ -13,6 +13,11 @@ description: Working call format for Flora AI generate/upload, key-pool behavior
 - Kling 2.5 Turbo Pro i2v = `i2v-kling-2.5`, format params sama (image_url + duration '5'|'10') — submit+validasi terverifikasi jalan.
 - Kling 2.1 Pro i2v = model `f2v-kling-2.1-pro` (first-frame-to-video): `params: { image_url, duration: '5'|'10' }` — terverifikasi jalan, output 10.04s. TIDAK ada model `i2v-kling-2.1-pro`; `i2v-kling-2.1` = Master. Submit TANPA image_url tetap diterima (charged $0.45) lalu failed GENERATION_INPUT_VALIDATION saat run — validasi input baru terjadi di run, bukan submit.
 - `GET /models` (butuh Bearer key) = daftar lengkap model_id + params resmi — selalu cek ini dulu sebelum nebak model id.
+- Untuk katalog UI, ambil `/models?type=image` per akun lalu cocokkan nama tampilan katalog dengan respons live dan simpan `model_id` hasilnya di sesi; jangan bentuk ID dari nama tampilan.
+
+**Why:** model dan ID endpoint yang tersedia berubah mengikuti akun/subscription Flora, sedangkan dokumentasi model publik tidak selalu mencantumkan ID API.
+
+**How to apply:** menu model harus hanya menampilkan generator yang tersedia untuk key aktif; submit memakai `model_id` dari respons `/models`, bukan string yang di-hardcode dari label.
 - `POST /generate` inputs masuk lewat `params`, **bukan** array `inputs`:
   `params: { image_url, video_url, character_orientation: "video"|"image" }`.
   Pakai `inputs: [...]` → run failed `GENERATION_INPUT_VALIDATION: Field required (image_url)`.

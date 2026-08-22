@@ -9,6 +9,7 @@
     "test:picsart-i2v": "tsx tests/picsart-i2v.test.ts",
     "test:kling21": "tsx tests/kling21-flora.test.ts",
     "test:klingp2": "tsx tests/kling-p2-s4.test.ts",
+    "test:floraimage": "tsx tests/flora-image-generation.test.ts",
     "start": "node dist/index.js"
   },
   "dependencies": {
