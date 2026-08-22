@@ -985,13 +985,55 @@ const FLORA_AUDIO_CATALOG: Array<{ name: string; emoji: string; mode: 'generate'
   { name: 'ElevenLabs Sound Effects', emoji: '🔊', mode: 'generate' },
 ];
 
+interface FloraVoiceOption {
+  id: string;
+  label: string;
+}
+
 interface FloraAudioModel {
   id: string;
   label: string;
   mode: 'generate' | 'transcribe';
+  voiceOptions: FloraVoiceOption[];
 }
 
 const floraAudioMenuCache = new Map<number, FloraAudioModel[]>();
+
+function extractFloraVoiceOptions(row: any): FloraVoiceOption[] {
+  const parameterArrays = [row?.parameters, row?.params]
+    .filter(Array.isArray)
+    .flatMap((params: any[]) => params.filter((param) => /voice/i.test(String(param?.name ?? param?.key ?? param?.id ?? ''))));
+  const namedVoiceParams = [row?.parameters, row?.params, row?.input_schema?.properties, row?.schema?.properties]
+    .filter((container) => container && !Array.isArray(container))
+    .flatMap((container) => Object.entries(container).filter(([key]) => /voice/i.test(key)).map(([, value]) => value));
+  const candidates = [
+    row?.parameters?.voice?.options,
+    row?.parameters?.voice?.values,
+    row?.params?.voice?.options,
+    row?.params?.voice?.values,
+    row?.input_schema?.properties?.voice?.enum,
+    row?.schema?.properties?.voice?.enum,
+    row?.voice_options,
+    row?.voices,
+    ...parameterArrays.flatMap((param) => [param?.options, param?.values, param?.enum]),
+    ...namedVoiceParams.flatMap((param: any) => [param?.options, param?.values, param?.enum]),
+  ];
+  const rawOptions = candidates.find((candidate) => Array.isArray(candidate)) ?? [];
+  const seen = new Set<string>();
+  const options: FloraVoiceOption[] = [];
+  for (const option of rawOptions) {
+    const id = typeof option === 'string'
+      ? option
+      : String(option?.id ?? option?.value ?? option?.voice_id ?? option?.name ?? '');
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const label = typeof option === 'string'
+      ? option
+      : String(option?.label ?? option?.display_name ?? option?.name ?? id);
+    options.push({ id, label });
+  }
+  return options;
+}
 
 async function floraListAudioModels(apiKey: string): Promise<FloraAudioModel[]> {
   const res = await floraHttp.get(`${FLORA_BASE}/models`, {
@@ -1009,7 +1051,14 @@ async function floraListAudioModels(apiKey: string): Promise<FloraAudioModel[]> 
   for (const item of FLORA_AUDIO_CATALOG) {
     const row = byName.get(normalizeFloraModelName(item.name));
     const id = typeof row?.model_id === 'string' ? row.model_id : '';
-    if (id) models.push({ id, label: `${item.emoji} ${item.name}`, mode: item.mode });
+    if (id) {
+      models.push({
+        id,
+        label: `${item.emoji} ${item.name}`,
+        mode: item.mode,
+        voiceOptions: item.mode === 'generate' ? extractFloraVoiceOptions(row) : [],
+      });
+    }
   }
   return models;
 }
@@ -1201,6 +1250,7 @@ type Mode =
   | 'lipsync_wait_media'
   | 'lipsync_wait_audio'
   | 'audio_wait_prompt'
+  | 'audio_wait_voice'
   | 'audio_wait_file'
   | 'picsart_i2v_wait_image'
   | 'picsart_i2v_wait_prompt'
@@ -1278,6 +1328,9 @@ interface Session {
   audioModelId?: string;
   audioModelLabel?: string;
   audioModelMode?: 'generate' | 'transcribe';
+  audioModelIndex?: number;
+  audioVoiceId?: string;
+  audioVoiceLabel?: string;
   // Picsart image-to-video wizard state
   picsartI2vModel?: picsart.PicsartI2vModelKey;
   picsartI2vImageUrl?: string;
@@ -2064,6 +2117,15 @@ function audioMenuKeyboard(models: FloraAudioModel[]) {
     Markup.button.callback(model.label, `audio_select_${index}`),
   ]);
   rows.push([Markup.button.callback('« Kembali', 'back_main')]);
+  return Markup.inlineKeyboard(rows);
+}
+
+function audioVoiceKeyboard(modelIndex: number, model: FloraAudioModel) {
+  const options = [{ id: '', label: 'Default voice' }, ...model.voiceOptions];
+  const rows = options.map((voice, index) => [
+    Markup.button.callback(`🎙️ ${voice.label}`, `audio_voice_${modelIndex}_${index}`),
+  ]);
+  rows.push([Markup.button.callback('« Kembali', 'menu_audio')]);
   return Markup.inlineKeyboard(rows);
 }
 
@@ -3739,6 +3801,9 @@ bot.on('callback_query', async (ctx) => {
         audioModelId: undefined,
         audioModelLabel: undefined,
         audioModelMode: undefined,
+        audioModelIndex: undefined,
+        audioVoiceId: undefined,
+        audioVoiceLabel: undefined,
       });
       return ctx.editMessageText(
         `🎧 *AI Audio*\n\nPilih model audio. Harga semua model: *${formatRupiah(MODEL_PRICES.audio)}* per proses.\n\n` +
@@ -3759,17 +3824,59 @@ bot.on('callback_query', async (ctx) => {
     if (!model || !Number.isFinite(index)) {
       return ctx.editMessageText('Sesi model sudah berakhir. Tekan /menu lalu pilih AI Audio lagi.');
     }
+    const needsVoice = model.mode === 'generate' &&
+      (model.voiceOptions.length > 0 || model.label.includes('Multilingual v2') || model.label.includes('Flash TTS'));
     setSession(userId, {
-      mode: model.mode === 'transcribe' ? 'audio_wait_file' : 'audio_wait_prompt',
+      mode: model.mode === 'transcribe' ? 'audio_wait_file' : (needsVoice ? 'audio_wait_voice' : 'audio_wait_prompt'),
       audioModelId: model.id,
       audioModelLabel: model.label,
       audioModelMode: model.mode,
+      audioModelIndex: index,
+      audioVoiceId: undefined,
+      audioVoiceLabel: undefined,
     });
+    if (needsVoice) {
+      return ctx.editMessageText(
+        `${model.label}\n\nHarga: *${formatRupiah(MODEL_PRICES.audio)}* per proses.\n\nPilih karakter suara:`,
+        { parse_mode: 'Markdown', ...audioVoiceKeyboard(index, model) }
+      );
+    }
     const instruction = model.mode === 'transcribe'
       ? 'Kirim *file audio* (MP3, M4A, WAV, atau voice note) yang ingin ditranskripsikan.'
       : 'Kirim *prompt teks* untuk audio yang ingin dibuat.';
     return ctx.editMessageText(
       `${model.label}\n\nHarga: *${formatRupiah(MODEL_PRICES.audio)}* per proses.\n\n${instruction}`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data.startsWith('audio_voice_')) {
+    const parts = data.split('_');
+    const modelIndex = Number.parseInt(parts[2] ?? '', 10);
+    const voiceIndex = Number.parseInt(parts[3] ?? '', 10);
+    const session = getSession(userId);
+    const model = floraAudioMenuCache.get(userId)?.[modelIndex];
+    const options = model ? [{ id: '', label: 'Default voice' }, ...model.voiceOptions] : [];
+    const voice = options[voiceIndex];
+    if (
+      !model ||
+      model.mode !== 'generate' ||
+      session.mode !== 'audio_wait_voice' ||
+      session.audioModelId !== model.id ||
+      !voice ||
+      !Number.isFinite(modelIndex) ||
+      !Number.isFinite(voiceIndex)
+    ) {
+      return ctx.editMessageText('Sesi suara sudah berakhir. Tekan /menu lalu pilih AI Audio lagi.');
+    }
+    setSession(userId, {
+      mode: 'audio_wait_prompt',
+      audioModelIndex: modelIndex,
+      audioVoiceId: voice.id || undefined,
+      audioVoiceLabel: voice.label,
+    });
+    return ctx.editMessageText(
+      `${model.label}\n\nSuara: *${voice.label}*\n\nKirim *prompt teks* untuk voice over yang ingin dibuat.`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -4371,6 +4478,9 @@ async function handleAudioTranscriptionFile(ctx: any, fileId: string, mimeType?:
     audioModelId: undefined,
     audioModelLabel: undefined,
     audioModelMode: undefined,
+    audioModelIndex: undefined,
+    audioVoiceId: undefined,
+    audioVoiceLabel: undefined,
   });
   const statusMsg = await ctx.reply(`⏳ *${audioModelLabel}* — memulai transkripsi...`, { parse_mode: 'Markdown' });
   runFloraAudio(
@@ -4857,9 +4967,18 @@ bot.on('text', async (ctx) => {
     }
     const modelId = session.audioModelId;
     const label = session.audioModelLabel;
-    setSession(userId, { mode: 'idle', audioModelId: undefined, audioModelLabel: undefined, audioModelMode: undefined });
+    const voiceId = session.audioVoiceId;
+    setSession(userId, {
+      mode: 'idle',
+      audioModelId: undefined,
+      audioModelLabel: undefined,
+      audioModelMode: undefined,
+      audioModelIndex: undefined,
+      audioVoiceId: undefined,
+      audioVoiceLabel: undefined,
+    });
     const statusMsg = await ctx.reply(`⏳ Memproses ${label}...\nHasil dikirim otomatis.`, { parse_mode: 'Markdown' });
-    runFloraAudio(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, modelId, label, 'generate', prompt)
+    runFloraAudio(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, modelId, label, 'generate', prompt, undefined, undefined, voiceId)
       .catch(e => console.error(`[${userId}] Audio generation error:`, e.message));
     return;
   }
@@ -4902,6 +5021,9 @@ bot.on('text', async (ctx) => {
   }
   if (session.mode === 'audio_wait_file') {
     return ctx.reply('🎵 Kirim *file audio* (MP3, M4A, WAV, atau voice note) untuk ditranskripsikan, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+  }
+  if (session.mode === 'audio_wait_voice') {
+    return ctx.reply('🎙️ Pilih suara dari tombol di atas dulu, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
   if (session.mode === 'sora_wait_image') {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
@@ -6866,7 +6988,8 @@ async function runFloraAudio(
   mode: 'generate' | 'transcribe',
   prompt: string,
   audioFileId?: string,
-  audioMime?: string
+  audioMime?: string,
+  voiceId?: string
 ) {
   const PRICE = MODEL_PRICES.audio;
   console.log(`[${userId}] ${label} audio ${mode} started — model ${modelId}`);
@@ -6902,7 +7025,7 @@ async function runFloraAudio(
       let acceptedRunId: string | undefined;
       try {
         const ws = await floraGetWorkspace(apiKey);
-        let params: Record<string, string> = {};
+        let params: Record<string, string> = voiceId ? { voice: voiceId } : {};
         let generationPrompt = prompt;
         if (mode === 'transcribe') {
           await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `⏳ ${label}: mengunggah audio... (2/3)`).catch(() => {});
