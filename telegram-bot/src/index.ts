@@ -159,6 +159,7 @@ const MODEL_PRICES = {
   seedream: 500,       // Seedream 2.7 4K (Picsart, image-to-image)
   gpt_image: 500,      // GPT Image 2 (Picsart openai-image-editing)
   flora_image: 500,    // Semua model image generation service
+  lipsync: 3000,       // Semua model lipsync
   topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 4× 60fps)
   picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
@@ -919,6 +920,42 @@ async function floraListImageGenerationModels(apiKey: string): Promise<FloraImag
   return models;
 }
 
+const FLORA_LIPSYNC_CATALOG: Array<{ name: string; emoji: string; mediaType: 'image' | 'video' }> = [
+  { name: 'Lipsync 2 Pro', emoji: '🎙️', mediaType: 'video' },
+  { name: 'VEED Lipsync', emoji: '🎙️', mediaType: 'video' },
+  { name: 'Fabric 1.0', emoji: '🎭', mediaType: 'image' },
+  { name: 'Sync 3', emoji: '🎙️', mediaType: 'video' },
+];
+
+interface FloraLipsyncModel {
+  id: string;
+  label: string;
+  mediaType: 'image' | 'video';
+}
+
+const floraLipsyncMenuCache = new Map<number, FloraLipsyncModel[]>();
+
+async function floraListLipsyncModels(apiKey: string): Promise<FloraLipsyncModel[]> {
+  const res = await floraHttp.get(`${FLORA_BASE}/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+    params: { type: 'video' },
+  });
+  const rows = Array.isArray(res.data?.models) ? res.data.models : (Array.isArray(res.data) ? res.data : []);
+  const byName = new Map<string, any>();
+  for (const row of rows) {
+    const displayName = row?.name ?? row?.display_name ?? '';
+    if (displayName) byName.set(normalizeFloraModelName(String(displayName)), row);
+  }
+
+  const models: FloraLipsyncModel[] = [];
+  for (const item of FLORA_LIPSYNC_CATALOG) {
+    const row = byName.get(normalizeFloraModelName(item.name));
+    const id = typeof row?.model_id === 'string' ? row.model_id : '';
+    if (id) models.push({ id, label: `${item.emoji} ${item.name}`, mediaType: item.mediaType });
+  }
+  return models;
+}
+
 // ─── Edanbot Cookie Pool (Kling MC V3.0 PRO P3) ───────────────────────────────
 // Cookies disimpan di DB (tabel edanbot_cookie_pool). Bot memakai cookie
 // 'available' pertama; kalau ditolak (401/403), cookie di-mark dead dan bot
@@ -1103,6 +1140,8 @@ type Mode =
   | 'gptimg_wait_image'
   | 'gptimg_wait_prompt'
   | 'floraimg_wait_prompt'
+  | 'lipsync_wait_media'
+  | 'lipsync_wait_audio'
   | 'picsart_i2v_wait_image'
   | 'picsart_i2v_wait_prompt'
   | 'kling21_wait_image'
@@ -1168,6 +1207,13 @@ interface Session {
   // Flora image generation wizard state
   floraImageModelId?: string;
   floraImageModelLabel?: string;
+  // Lipsync wizard state
+  lipsyncModelId?: string;
+  lipsyncModelLabel?: string;
+  lipsyncMediaType?: 'image' | 'video';
+  lipsyncMediaFileId?: string;
+  lipsyncAudioFileId?: string;
+  lipsyncAudioMime?: string;
   // Picsart image-to-video wizard state
   picsartI2vModel?: picsart.PicsartI2vModelKey;
   picsartI2vImageUrl?: string;
@@ -1638,6 +1684,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('✨ Gemini Omni (Google)', 'mode_gomni')],
     [Markup.button.callback('── 🔧 Video Tools ──', 'noop')],
     [Markup.button.callback('🎞️ Topaz 4K Upscaler (60fps)', 'mode_topaz')],
+    [Markup.button.callback('🎙️ AI Lipsync (Rp3.000)', 'menu_lipsync')],
     // ── Chat AI ──
     [Markup.button.callback('── 💬 Chat AI ──', 'noop')],
     [Markup.button.callback('💬 Chat AI (Rp100/pesan)', 'mode_chat')],
@@ -1939,6 +1986,14 @@ function floraImageMenuKeyboard(models: FloraImageModel[], page = 0) {
   return Markup.inlineKeyboard(rows);
 }
 
+function lipsyncMenuKeyboard(models: FloraLipsyncModel[]) {
+  const rows = models.map((model, index) => [
+    Markup.button.callback(model.label, `lipsync_select_${index}`),
+  ]);
+  rows.push([Markup.button.callback('« Kembali', 'back_main')]);
+  return Markup.inlineKeyboard(rows);
+}
+
 // ─── Peta callback model → { model API, price key, label + emoji } ────────────
 
 // Peta callback model → { model API, price key, label + emoji }
@@ -1983,7 +2038,8 @@ function hargaText(): string {
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +
     `• Kling MC V3.0 PRO P3 — ${formatRupiah(MODEL_PRICES.kling_p3)} 🔥PROMO\n` +
-    `• Topaz 4K Upscaler (60fps) — ${formatRupiah(MODEL_PRICES.topaz)}\n\n` +
+    `• Topaz 4K Upscaler (60fps) — ${formatRupiah(MODEL_PRICES.topaz)}\n` +
+    `• AI Lipsync (semua model) — ${formatRupiah(MODEL_PRICES.lipsync)}\n\n` +
     '🎨 *Gambar*\n' +
     `• Seedream 2.7 4K — ${formatRupiah(MODEL_PRICES.seedream)} 🔥PROMO\n` +
     `• GPT Image 2 — ${formatRupiah(MODEL_PRICES.gpt_image)} 🔥PROMO\n` +
@@ -3494,7 +3550,7 @@ bot.on('callback_query', async (ctx) => {
       const desc = describeError(err);
       if (isFloraKeyExhaustedError(desc)) await markFloraKeyDead(apiKey).catch(() => {});
       console.error(`[${userId}] Flora image catalog failed: ${desc}`);
-      return ctx.editMessageText('❌ Gagal memuat katalog Flora. Coba lagi nanti.\n\n/menu untuk kembali');
+      return ctx.editMessageText('❌ Gagal memuat katalog gambar. Coba lagi nanti.\n\n/menu untuk kembali');
     }
   }
 
@@ -3529,6 +3585,65 @@ bot.on('callback_query', async (ctx) => {
       `${model.label}\n\nHarga: *${formatRupiah(MODEL_PRICES.flora_image)}* per gambar.\n\n` +
       'Kirim *prompt teks* untuk gambar yang ingin dibuat.\n\n' +
       'Contoh: _foto produk parfum mewah di atas marmer hitam, pencahayaan studio, detail tinggi_',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  // ── AI lipsync catalog ──
+  if (data === 'menu_lipsync') {
+    const apiKey = await getNextFloraKey();
+    if (!apiKey) {
+      return ctx.editMessageText('❌ Layanan AI Lipsync sedang tidak tersedia. Hubungi admin.\n\n/menu untuk kembali');
+    }
+    try {
+      const models = await floraListLipsyncModels(apiKey);
+      if (models.length === 0) {
+        return ctx.editMessageText('❌ Tidak ada model lipsync yang aktif untuk akun ini.\n\n/menu untuk kembali');
+      }
+      floraLipsyncMenuCache.set(userId, models);
+      setSession(userId, {
+        mode: 'idle',
+        lipsyncModelId: undefined,
+        lipsyncModelLabel: undefined,
+        lipsyncMediaType: undefined,
+        lipsyncMediaFileId: undefined,
+        lipsyncAudioFileId: undefined,
+        lipsyncAudioMime: undefined,
+      });
+      return ctx.editMessageText(
+        `🎙️ *AI Lipsync*\n\nPilih model lipsync. Harga semua model: *${formatRupiah(MODEL_PRICES.lipsync)}* per video.\n\n` +
+        'Setelah itu bot akan meminta video/foto dan file audio.',
+        { parse_mode: 'Markdown', ...lipsyncMenuKeyboard(models) }
+      );
+    } catch (err: any) {
+      const desc = describeError(err);
+      if (isFloraKeyExhaustedError(desc)) await markFloraKeyDead(apiKey).catch(() => {});
+      console.error(`[${userId}] Lipsync catalog failed: ${desc}`);
+      return ctx.editMessageText('❌ Gagal memuat katalog lipsync. Coba lagi nanti.\n\n/menu untuk kembali');
+    }
+  }
+
+  if (data.startsWith('lipsync_select_')) {
+    const index = Number.parseInt(data.replace('lipsync_select_', ''), 10);
+    const model = floraLipsyncMenuCache.get(userId)?.[index];
+    if (!model || !Number.isFinite(index)) {
+      return ctx.editMessageText('Sesi model sudah berakhir. Tekan /menu lalu pilih AI Lipsync lagi.');
+    }
+    setSession(userId, {
+      mode: 'lipsync_wait_media',
+      lipsyncModelId: model.id,
+      lipsyncModelLabel: model.label,
+      lipsyncMediaType: model.mediaType,
+      lipsyncMediaFileId: undefined,
+      lipsyncAudioFileId: undefined,
+      lipsyncAudioMime: undefined,
+    });
+    const mediaInstruction = model.mediaType === 'image'
+      ? 'Kirim *foto wajah/karakter* yang ingin dibuat berbicara.'
+      : 'Kirim *video* yang ingin disinkronkan bibirnya.';
+    return ctx.editMessageText(
+      `${model.label}\n\nHarga: *${formatRupiah(MODEL_PRICES.lipsync)}* per video.\n\n${mediaInstruction}\n\n` +
+      'Setelah media diterima, bot akan meminta file audio.',
       { parse_mode: 'Markdown' }
     );
   }
@@ -3713,6 +3828,17 @@ function imgLabelFor(userId: number): string {
 async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
   const userId = ctx.from.id;
   const session = getSession(userId);
+
+  if (session.mode === 'lipsync_wait_media') {
+    if (session.lipsyncMediaType !== 'image' || !fileId) {
+      return ctx.reply('⚠️ Model ini membutuhkan *video*. Kirim video, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+    }
+    setSession(userId, { lipsyncMediaFileId: fileId, mode: 'lipsync_wait_audio' });
+    return ctx.reply(
+      '✅ Foto diterima!\n\n*Langkah terakhir:* Kirim *file audio* (MP3, M4A, WAV, atau voice note) untuk sinkronisasi bibir.',
+      { parse_mode: 'Markdown' }
+    );
+  }
 
   if (session.mode === 'kling_wait_prompt') {
     return ctx.reply(
@@ -3925,6 +4051,20 @@ bot.on('video', async (ctx) => {
   const vid = ctx.message.video;
   const MAX_VIDEO_BYTES = 19 * 1024 * 1024; // 19MB — Telegram bot API limit is 20MB
 
+  if (session.mode === 'lipsync_wait_media') {
+    if (session.lipsyncMediaType !== 'video') {
+      return ctx.reply('⚠️ Model ini membutuhkan *foto*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+    }
+    if (vid.file_size && vid.file_size > MAX_VIDEO_BYTES) {
+      return ctx.reply(`❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
+    }
+    setSession(userId, { lipsyncMediaFileId: vid.file_id, mode: 'lipsync_wait_audio' });
+    return ctx.reply(
+      '✅ Video diterima!\n\n*Langkah terakhir:* Kirim *file audio* (MP3, M4A, WAV, atau voice note) untuk sinkronisasi bibir.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (session.mode === 'kling_wait_video' && session.characterUrl) {
     if (vid.file_size && vid.file_size > MAX_VIDEO_BYTES) {
       return ctx.reply(`❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
@@ -4038,6 +4178,58 @@ bot.on('video', async (ctx) => {
   }
 
   return ctx.reply('⚠️ Kirim foto karakter terlebih dahulu.', mainMenuKeyboard());
+});
+
+async function handleLipsyncAudio(ctx: any, fileId: string, mimeType?: string) {
+  const userId = ctx.from.id;
+  const session = getSession(userId);
+  if (session.mode !== 'lipsync_wait_audio') {
+    return ctx.reply('⚠️ Pilih mode terlebih dahulu:', mainMenuKeyboard());
+  }
+  if (!session.lipsyncModelId || !session.lipsyncModelLabel || !session.lipsyncMediaType || !session.lipsyncMediaFileId) {
+    setSession(userId, { mode: 'idle' });
+    return ctx.reply('⚠️ Sesi lipsync tidak lengkap. Mulai lagi dari /menu ya.');
+  }
+
+  const cooldownMs = getCooldownRemainingMs(userId);
+  if (cooldownMs > 0) {
+    setSession(userId, { mode: 'idle' });
+    return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nTunggu *${formatCooldown(cooldownMs)}* sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+  }
+
+  const { lipsyncModelId, lipsyncModelLabel, lipsyncMediaType, lipsyncMediaFileId } = session;
+  setSession(userId, {
+    mode: 'idle',
+    lipsyncModelId: undefined,
+    lipsyncModelLabel: undefined,
+    lipsyncMediaType: undefined,
+    lipsyncMediaFileId: undefined,
+    lipsyncAudioFileId: undefined,
+    lipsyncAudioMime: undefined,
+  });
+  const statusMsg = await ctx.reply(`⏳ *${lipsyncModelLabel}* — memulai lipsync...`, { parse_mode: 'Markdown' });
+  runFloraLipsync(
+    ctx.chat.id,
+    userId,
+    session.dbUserId!,
+    statusMsg.message_id,
+    lipsyncModelId,
+    lipsyncModelLabel,
+    lipsyncMediaType,
+    lipsyncMediaFileId,
+    fileId,
+    mimeType ?? 'audio/mpeg'
+  ).catch((err: any) => console.error(`[${userId}] Lipsync error:`, err.message));
+}
+
+bot.on('audio', async (ctx) => {
+  if (!await requireLogin(ctx)) return;
+  return handleLipsyncAudio(ctx, ctx.message.audio.file_id, ctx.message.audio.mime_type);
+});
+
+bot.on('voice', async (ctx) => {
+  if (!await requireLogin(ctx)) return;
+  return handleLipsyncAudio(ctx, ctx.message.voice.file_id, ctx.message.voice.mime_type ?? 'audio/ogg');
 });
 
 // ─── Text handler ─────────────────────────────────────────────────────────────
@@ -4500,6 +4692,13 @@ bot.on('text', async (ctx) => {
   }
 
   // ── Guard: modes that expect a photo/video, not text ──
+  if (session.mode === 'lipsync_wait_media') {
+    const expected = session.lipsyncMediaType === 'image' ? 'foto wajah/karakter' : 'video';
+    return ctx.reply(`🎙️ Kirim *${expected}* dulu untuk lipsync, atau /menu untuk batal.`, { parse_mode: 'Markdown' });
+  }
+  if (session.mode === 'lipsync_wait_audio') {
+    return ctx.reply('🎵 Kirim *file audio* (MP3, M4A, WAV, atau voice note) untuk lipsync, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+  }
   if (session.mode === 'sora_wait_image') {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
@@ -4566,6 +4765,25 @@ bot.on('document', async (ctx) => {
     const fileLink = await ctx.telegram.getFileLink(doc.file_id);
     await handleImageInput(ctx, fileLink.href, doc.file_id);
     return;
+  }
+
+  if (doc.mime_type?.startsWith('video/') && session.mode === 'lipsync_wait_media') {
+    if (session.lipsyncMediaType !== 'video') {
+      return ctx.reply('⚠️ Model ini membutuhkan *foto*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+    }
+    const MAX_VIDEO_BYTES = 19 * 1024 * 1024;
+    if (doc.file_size && doc.file_size > MAX_VIDEO_BYTES) {
+      return ctx.reply(`❌ Video terlalu besar (${(doc.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
+    }
+    setSession(userId, { lipsyncMediaFileId: doc.file_id, mode: 'lipsync_wait_audio' });
+    return ctx.reply(
+      '✅ Video diterima!\n\n*Langkah terakhir:* Kirim *file audio* (MP3, M4A, WAV, atau voice note) untuk sinkronisasi bibir.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (doc.mime_type?.startsWith('audio/') && session.mode === 'lipsync_wait_audio') {
+    return handleLipsyncAudio(ctx, doc.file_id, doc.mime_type);
   }
 
   if (doc.mime_type?.startsWith('video/') && session.mode === 'gomni_wait_video' && session.gomniImageUrl) {
@@ -6262,6 +6480,148 @@ async function runFloraImage(
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       '❌ Gagal memproses gambar. Coba lagi nanti.\n\n/menu untuk coba lagi'
     ).catch(() => bot.telegram.sendMessage(chatId, '❌ Gagal memproses gambar. Coba lagi nanti.\n\n/menu untuk coba lagi'));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
+async function downloadTelegramFileBuffer(fileId: string): Promise<Buffer> {
+  const fileLink = await bot.telegram.getFileLink(fileId);
+  const res = await telegramHttp.get(fileLink.href, { responseType: 'arraybuffer' });
+  return Buffer.from(res.data);
+}
+
+// ─── Background: AI lipsync ──────────────────────────────────────────────────
+
+async function runFloraLipsync(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  modelId: string,
+  label: string,
+  mediaType: 'image' | 'video',
+  mediaFileId: string,
+  audioFileId: string,
+  audioMime: string
+) {
+  const PRICE = MODEL_PRICES.lipsync;
+  console.log(`[${userId}] ${label} lipsync started — model ${modelId}`);
+
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+
+  let refund = true;
+  const skippedKeys = new Set<string>();
+  try {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `⏳ ${label}: mengunduh media... (1/3)`).catch(() => {});
+    const [mediaBuffer, audioBuffer] = await Promise.all([
+      downloadTelegramFileBuffer(mediaFileId),
+      downloadTelegramFileBuffer(audioFileId),
+    ]);
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const apiKey = await getNextFloraKey(skippedKeys);
+      if (!apiKey) {
+        await bot.telegram.editMessageText(
+          chatId,
+          statusMsgId,
+          undefined,
+          '❌ Layanan AI Lipsync sedang tidak tersedia. Hubungi admin.\n\n/menu untuk kembali'
+        ).catch(() => {});
+        return;
+      }
+
+      let acceptedRunId: string | undefined;
+      try {
+        const ws = await floraGetWorkspace(apiKey);
+        await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `⏳ ${label}: mengunggah media... (2/3)`).catch(() => {});
+        const [mediaUrl, audioUrl] = await Promise.all([
+          floraUploadAsset(
+            apiKey,
+            ws.workspaceId,
+            mediaBuffer,
+            mediaType === 'image' ? 'lipsync-image.jpg' : 'lipsync-video.mp4',
+            mediaType === 'image' ? 'image/jpeg' : 'video/mp4'
+          ),
+          floraUploadAsset(apiKey, ws.workspaceId, audioBuffer, 'lipsync-audio', audioMime),
+        ]);
+
+        const params = mediaType === 'image'
+          ? { image_url: mediaUrl, audio_url: audioUrl }
+          : { video_url: mediaUrl, audio_url: audioUrl };
+        acceptedRunId = await floraGenerate(
+          apiKey,
+          ws,
+          modelId,
+          params,
+          'Synchronize the mouth and facial motion with the provided audio.',
+          'video'
+        );
+
+        await bot.telegram.editMessageText(
+          chatId,
+          statusMsgId,
+          undefined,
+          `⏳ ${label}: video lipsync sedang dibuat... (3/3)\nJangan tutup chat ini, hasil dikirim otomatis.`
+        ).catch(() => {});
+
+        const resultUrl = await floraPollRun(apiKey, acceptedRunId, 20 * 60 * 1000);
+        const delivered = await sendResult(chatId, resultUrl, `🎙️ ${label} selesai!\n\n/menu untuk buat lagi`, true);
+        if (delivered) {
+          refund = false;
+          markGenSuccess(userId);
+          await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+          console.log(`[${userId}] ${label} lipsync done — run ${acceptedRunId}`);
+        }
+        return;
+      } catch (err: any) {
+        const desc = describeError(err);
+        console.error(`[${userId}] ${label} lipsync attempt ${attempt + 1} failed (key …${apiKey.slice(-8)}): ${desc}`);
+
+        // A accepted run may already be paid. Never submit the same user media
+        // again to another key; refund instead.
+        if (acceptedRunId) {
+          if (isFloraKeyExhaustedError(desc)) await markFloraKeyDead(apiKey).catch(() => {});
+          const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
+          const friendly = contentRejected
+            ? '❌ Media tidak dapat diproses karena melanggar kebijakan konten.'
+            : '❌ Proses lipsync tidak berhasil. Saldo akan dikembalikan.';
+          await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
+            .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+          return;
+        }
+
+        if (isFloraKeyExhaustedError(desc)) {
+          await markFloraKeyDead(apiKey).catch(() => {});
+          skippedKeys.add(apiKey);
+          continue;
+        }
+
+        const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
+        const friendly = contentRejected
+          ? '❌ Media tidak dapat diproses karena melanggar kebijakan konten.'
+          : '❌ Gagal memproses lipsync. Coba lagi nanti.';
+        await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
+          .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+        return;
+      }
+    }
+  } catch (err: any) {
+    console.error(`[${userId}] ${label} lipsync outer error: ${describeError(err)}`);
+    await bot.telegram.editMessageText(
+      chatId,
+      statusMsgId,
+      undefined,
+      '❌ Gagal memproses lipsync. Coba lagi nanti.\n\n/menu untuk coba lagi'
+    ).catch(() => bot.telegram.sendMessage(chatId, '❌ Gagal memproses lipsync. Coba lagi nanti.\n\n/menu untuk coba lagi'));
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
