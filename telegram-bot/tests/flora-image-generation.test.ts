@@ -53,6 +53,9 @@ assert.match(source, /params:\s*\{\s*type:\s*'image'\s*\}/);
 assert.match(source, /floraGenerate\(apiKey,\s*ws,\s*modelId,\s*\{\},\s*prompt,\s*'image'\)/);
 assert.match(source, /const PRICE = MODEL_PRICES\.flora_image/);
 assert.match(source, /if \(acceptedRunId\)/);
+assert.equal(source.includes("'🌿 Flora Image Generation"), false);
+assert.equal(source.includes('Layanan Flora Image'), false);
+assert.equal(source.includes('Model Flora belum'), false);
 
 for (const model of expectedModels) {
   assert.ok(source.includes(`name: '${model}'`), `missing Flora image model: ${model}`);

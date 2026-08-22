@@ -158,7 +158,7 @@ const MODEL_PRICES = {
   nb_2lite: 500,       // Nano Banana 2 Lite (SnapGen image)
   seedream: 500,       // Seedream 2.7 4K (Picsart, image-to-image)
   gpt_image: 500,      // GPT Image 2 (Picsart openai-image-editing)
-  flora_image: 500,    // Semua model image generation Flora AI
+  flora_image: 500,    // Semua model image generation service
   topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 4× 60fps)
   picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
@@ -1643,7 +1643,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('💬 Chat AI (Rp100/pesan)', 'mode_chat')],
     // ── Generate Gambar ──
     [Markup.button.callback('── 🎨 Generate Gambar ──', 'noop')],
-    [Markup.button.callback('🌿 Flora Image Generation (Rp500)', 'menu_flora_image')],
+    [Markup.button.callback('🌿 AI Image Generation (Rp500)', 'menu_flora_image')],
     [Markup.button.callback('🌸 Seedream 2.7 4K 🔥PROMO', 'mode_seedream')],
     [Markup.button.callback('🤖 GPT Image 2 🔥PROMO', 'mode_gptimg')],
     [Markup.button.callback('🍌 Nano Banana Pro', 'mode_nbpro')],
@@ -1987,7 +1987,7 @@ function hargaText(): string {
     '🎨 *Gambar*\n' +
     `• Seedream 2.7 4K — ${formatRupiah(MODEL_PRICES.seedream)} 🔥PROMO\n` +
     `• GPT Image 2 — ${formatRupiah(MODEL_PRICES.gpt_image)} 🔥PROMO\n` +
-    `• Flora Image Generation (semua model) — ${formatRupiah(MODEL_PRICES.flora_image)}\n` +
+    `• AI Image Generation (semua model) — ${formatRupiah(MODEL_PRICES.flora_image)}\n` +
     `• Nano Banana Pro — ${formatRupiah(MODEL_PRICES.nb_pro)}\n` +
     `• Nano Banana 2 — ${formatRupiah(MODEL_PRICES.nb_2)}\n` +
     `• Nano Banana 2 Lite — ${formatRupiah(MODEL_PRICES.nb_2lite)}\n\n` +
@@ -2973,7 +2973,7 @@ bot.command('addflorakey', async (ctx) => {
     if (ok) added++; else skipped++;
   }
   const stats = await getFloraPoolStats();
-  let msg = `✅ Selesai tambah key Flora AI!\n\n• Berhasil: ${added}\n`;
+  let msg = `✅ Selesai tambah key layanan gambar!\n\n• Berhasil: ${added}\n`;
   if (skipped > 0) msg += `• Sudah ada / gagal: ${skipped}\n`;
   msg += `\n📊 Pool sekarang:\n• ✅ Available: ${stats.available}\n• ❌ Dead: ${stats.dead}`;
   return ctx.reply(msg);
@@ -2983,7 +2983,7 @@ bot.command('florapool', async (ctx) => {
   if (!(await requireAdmin(ctx))) return;
   const stats = await getFloraPoolStats();
   return ctx.reply(
-    `📊 *Flora AI Key Pool*\n\n• ✅ Available: *${stats.available}*\n• ❌ Dead: *${stats.dead}*\n• 📦 Total: *${stats.available + stats.dead}*`,
+    `📊 *Image Service Key Pool*\n\n• ✅ Available: *${stats.available}*\n• ❌ Dead: *${stats.dead}*\n• 📦 Total: *${stats.available + stats.dead}*`,
     { parse_mode: 'Markdown' }
   );
 });
@@ -3468,16 +3468,16 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
-  // ── Flora image generation catalog ──
+  // ── AI image generation catalog ──
   if (data === 'menu_flora_image') {
     const apiKey = await getNextFloraKey();
     if (!apiKey) {
-      return ctx.editMessageText('❌ Layanan Flora Image sedang tidak tersedia. Hubungi admin.\n\n/menu untuk kembali');
+      return ctx.editMessageText('❌ Layanan AI Image sedang tidak tersedia. Hubungi admin.\n\n/menu untuk kembali');
     }
     try {
       const models = await floraListImageGenerationModels(apiKey);
       if (models.length === 0) {
-        return ctx.editMessageText('❌ Tidak ada model image generation Flora yang aktif untuk akun ini.\n\n/menu untuk kembali');
+        return ctx.editMessageText('❌ Tidak ada model AI Image yang aktif untuk akun ini.\n\n/menu untuk kembali');
       }
       floraImageMenuCache.set(userId, models);
       setSession(userId, {
@@ -3486,8 +3486,8 @@ bot.on('callback_query', async (ctx) => {
         floraImageModelLabel: undefined,
       });
       return ctx.editMessageText(
-        `🌿 *Flora Image Generation*\n\nPilih model gambar. Harga semua model: *${formatRupiah(MODEL_PRICES.flora_image)}* per gambar.\n\n` +
-        `Tersedia ${models.length} model image generation dari katalog Flora:`,
+        `🌿 *AI Image Generation*\n\nPilih model gambar. Harga semua model: *${formatRupiah(MODEL_PRICES.flora_image)}* per gambar.\n\n` +
+        `Tersedia ${models.length} model image generation:`,
         { parse_mode: 'Markdown', ...floraImageMenuKeyboard(models) }
       );
     } catch (err: any) {
@@ -3502,11 +3502,11 @@ bot.on('callback_query', async (ctx) => {
     const page = Number.parseInt(data.replace('floraimg_page_', ''), 10);
     const models = floraImageMenuCache.get(userId);
     if (!models?.length || !Number.isFinite(page)) {
-      return ctx.editMessageText('Sesi katalog sudah berakhir. Tekan /menu lalu pilih Flora Image lagi.');
+      return ctx.editMessageText('Sesi katalog sudah berakhir. Tekan /menu lalu pilih AI Image lagi.');
     }
     return ctx.editMessageText(
-      `🌿 *Flora Image Generation*\n\nPilih model gambar. Harga semua model: *${formatRupiah(MODEL_PRICES.flora_image)}* per gambar.\n\n` +
-      `Tersedia ${models.length} model image generation dari katalog Flora:`,
+      `🌿 *AI Image Generation*\n\nPilih model gambar. Harga semua model: *${formatRupiah(MODEL_PRICES.flora_image)}* per gambar.\n\n` +
+      `Tersedia ${models.length} model image generation:`,
       { parse_mode: 'Markdown', ...floraImageMenuKeyboard(models, page) }
     );
   }
@@ -3518,7 +3518,7 @@ bot.on('callback_query', async (ctx) => {
     const models = floraImageMenuCache.get(userId);
     const model = models?.[page * FLORA_IMAGE_PAGE_SIZE + index];
     if (!model || !Number.isFinite(page) || !Number.isFinite(index)) {
-      return ctx.editMessageText('Sesi model sudah berakhir. Tekan /menu lalu pilih Flora Image lagi.');
+      return ctx.editMessageText('Sesi model sudah berakhir. Tekan /menu lalu pilih AI Image lagi.');
     }
     setSession(userId, {
       mode: 'floraimg_wait_prompt',
@@ -4446,7 +4446,7 @@ bot.on('text', async (ctx) => {
     return;
   }
 
-  // ── Flora image generation prompt ──
+  // ── AI image generation prompt ──
   if (session.mode === 'floraimg_wait_prompt') {
     if (!await requireLogin(ctx)) return;
     const prompt = ctx.message.text.trim();
@@ -4455,7 +4455,7 @@ bot.on('text', async (ctx) => {
     }
     if (!session.floraImageModelId || !session.floraImageModelLabel) {
       setSession(userId, { mode: 'idle' });
-      return ctx.reply('⚠️ Model Flora belum dipilih. Tekan /menu lalu pilih Flora Image lagi.');
+      return ctx.reply('⚠️ Model AI belum dipilih. Tekan /menu lalu pilih AI Image lagi.');
     }
     const cooldownMs = getCooldownRemainingMs(userId);
     if (cooldownMs > 0) {
@@ -6188,7 +6188,7 @@ async function runFloraImage(
       const apiKey = await getNextFloraKey(skippedKeys);
       if (!apiKey) {
         await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-          '❌ Layanan Flora Image sedang tidak tersedia. Hubungi admin.\n\n/menu untuk kembali'
+          '❌ Layanan AI Image sedang tidak tersedia. Hubungi admin.\n\n/menu untuk kembali'
         ).catch(() => {});
         return;
       }
