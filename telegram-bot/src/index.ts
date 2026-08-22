@@ -3187,7 +3187,7 @@ bot.command('removeflorakey', async (ctx) => {
   if (parts.length < 2) return ctx.reply('📝 Format: `/removeflorakey <api_key>`', { parse_mode: 'Markdown' });
   const res = await dbq(`UPDATE flora_key_pool SET status = 'dead', dead_at = NOW() WHERE api_key = $1 RETURNING id`, [parts[1].trim()]);
   if (res.rows.length === 0) return ctx.reply('❌ Key tidak ditemukan.');
-  return ctx.reply('✅ Flora key dinonaktifkan (dead).');
+  return ctx.reply('✅ Service key dinonaktifkan (dead).');
 });
 
 bot.command('cancel', (ctx) => {
