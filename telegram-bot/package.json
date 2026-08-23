@@ -12,6 +12,7 @@
     "test:floraimage": "tsx tests/flora-image-generation.test.ts",
     "test:lipsync": "tsx tests/lipsync.test.ts",
     "test:audio": "tsx tests/audio-generation.test.ts",
+    "test:parallel": "tsx tests/parallel-generation-safety.test.ts",
     "start": "node dist/index.js"
   },
   "dependencies": {

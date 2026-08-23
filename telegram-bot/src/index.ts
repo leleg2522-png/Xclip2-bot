@@ -1262,8 +1262,32 @@ type Mode =
   | 'img_wait_prompt'
   | 'topup_wait_custom';
 
+type GenerationDraftKind =
+  | 'kling'
+  | 'klingp2'
+  | 'klingp3'
+  | 'kling21'
+  | 'picsart_i2v'
+  | 'runway'
+  | 'sora'
+  | 'veofast'
+  | 'veolite'
+  | 'gomni'
+  | 'image'
+  | 'seedream'
+  | 'gptimg'
+  | 'flora_image'
+  | 'lipsync'
+  | 'audio'
+  | 'topaz';
+
 interface Session {
   mode: Mode;
+  // Menandai wizard generate yang masih dikonfigurasi, termasuk langkah rasio/
+  // durasi sebelum mode berubah menjadi *_wait_*. Satu user hanya boleh
+  // mengisi satu draft agar media/prompt tidak bisa tertukar.
+  generationDraft?: boolean;
+  generationDraftKind?: GenerationDraftKind;
   dbUserId?: number;
   dbUsername?: string;
   dbIsAdmin?: boolean;
@@ -1344,9 +1368,11 @@ interface Session {
 
 const sessions = new Map<number, Session>();
 
+const MAX_PARALLEL_GENERATIONS_PER_USER = 3;
+
 // Jumlah generate yang sedang berjalan per dbUserId (anti balapan & double-charge).
-// Model Picsart boleh sampai 3 job bersamaan per user. Limit ditentukan per
-// pemanggilan beginCharge.
+// Semua model berbagi limit yang sama supaya user bisa mencampur model tanpa
+// melampaui saldo atau kapasitas akun.
 const generating = new Map<number, number>();
 
 function releaseGenerating(dbUserId: number): void {
@@ -1360,7 +1386,11 @@ type ChargeResult = { ok: true } | { ok: false; reason: 'busy' | 'insufficient' 
 // Kunci in-flight (SINKRON, sebelum await pertama → aman balapan) + potong saldo
 // atomik. WAJIB dipanggil paling awal di tiap run*. Kalau gagal, kunci dilepas.
 // `maxConcurrent` = berapa job bersamaan yang diizinkan untuk user ini (default 1).
-async function beginCharge(dbUserId: number, price: number, maxConcurrent = 1): Promise<ChargeResult> {
+async function beginCharge(
+  dbUserId: number,
+  price: number,
+  maxConcurrent = MAX_PARALLEL_GENERATIONS_PER_USER
+): Promise<ChargeResult> {
   if ((generating.get(dbUserId) ?? 0) >= maxConcurrent) return { ok: false, reason: 'busy' };
   generating.set(dbUserId, (generating.get(dbUserId) ?? 0) + 1); // sinkron sebelum await pertama
   try {
@@ -1375,7 +1405,7 @@ async function beginCharge(dbUserId: number, price: number, maxConcurrent = 1): 
 
 function chargeFailMsg(reason: 'busy' | 'insufficient' | 'error', price: number): string {
   return reason === 'busy'
-    ? '⏳ Masih ada proses generate yang berjalan. Tunggu yang ini selesai dulu ya.'
+    ? `⏳ Maksimal ${MAX_PARALLEL_GENERATIONS_PER_USER} proses generate aktif dalam waktu yang sama. Tunggu salah satu selesai dulu ya.`
     : reason === 'insufficient'
       ? `❌ Saldo kamu tidak cukup (butuh ${formatRupiah(price)}).\n\nKetik /topup untuk isi saldo, atau /saldo untuk cek.`
       : '⚠️ Gagal memproses saldo. Coba lagi sebentar ya.';
@@ -1387,7 +1417,103 @@ function getSession(userId: number): Session {
 }
 
 function setSession(userId: number, data: Partial<Session>) {
-  sessions.set(userId, { ...getSession(userId), ...data });
+  const current = getSession(userId);
+  const generationCompleted = data.mode === 'idle'
+    && current.generationDraft === true
+    && GENERATION_DRAFT_MODES.has(current.mode);
+  sessions.set(userId, {
+    ...current,
+    ...data,
+    ...(generationCompleted ? { generationDraft: false, generationDraftKind: undefined } : {}),
+  });
+}
+
+const GENERATION_DRAFT_MODES = new Set<Mode>([
+  'kling_wait_image', 'kling_wait_video', 'kling_wait_prompt',
+  'klingp2_wait_image', 'klingp2_wait_video', 'klingp2_wait_prompt',
+  'klingp3_wait_image', 'klingp3_wait_video', 'klingp3_wait_prompt',
+  'rw_wait_image', 'rw_wait_prompt', 'sora_wait_image', 'sora_wait_prompt',
+  'veofast_wait_image', 'veofast_wait_prompt', 'veolite_wait_image', 'veolite_wait_prompt',
+  'gomni_wait_image', 'gomni_wait_video', 'gomni_wait_prompt',
+  'seedream_wait_image', 'seedream_wait_prompt', 'gptimg_wait_image', 'gptimg_wait_prompt',
+  'floraimg_wait_prompt', 'lipsync_wait_media', 'lipsync_wait_audio',
+  'audio_wait_prompt', 'audio_wait_voice', 'audio_wait_file',
+  'picsart_i2v_wait_image', 'picsart_i2v_wait_prompt',
+  'kling21_wait_image', 'kling21_wait_prompt', 'topaz_wait_video',
+  'img_wait_image', 'img_wait_prompt',
+]);
+
+function generationDraftKindForStart(data: string): GenerationDraftKind | undefined {
+  if (data.startsWith('mode_pi2v_')) return 'picsart_i2v';
+  if (data.startsWith('floraimg_select_')) return 'flora_image';
+  if (data.startsWith('lipsync_select_')) return 'lipsync';
+  if (data.startsWith('audio_select_')) return 'audio';
+  const kinds: Record<string, GenerationDraftKind> = {
+    mode_kling: 'kling',
+    mode_klingp2: 'klingp2',
+    mode_klingp3: 'klingp3',
+    mode_kling21: 'kling21',
+    mode_rw: 'runway',
+    mode_sora: 'sora',
+    mode_veofast: 'veofast',
+    mode_veolite: 'veolite',
+    mode_gomni: 'gomni',
+    mode_nbpro: 'image',
+    mode_nb2: 'image',
+    mode_nb2lite: 'image',
+    mode_seedream: 'seedream',
+    mode_gptimg: 'gptimg',
+    mode_topaz: 'topaz',
+  };
+  return kinds[data];
+}
+
+function generationDraftKindForContinuation(data: string): GenerationDraftKind | undefined {
+  if (data.startsWith('rw_')) return 'runway';
+  if (data.startsWith('so_')) return 'sora';
+  if (data.startsWith('vf_')) return 'veofast';
+  if (data.startsWith('vl_')) return 'veolite';
+  if (data.startsWith('go_')) return 'gomni';
+  if (data.startsWith('img_')) return 'image';
+  if (data.startsWith('sdm_')) return 'seedream';
+  if (data.startsWith('gi_')) return 'gptimg';
+  if (data.startsWith('audio_voice_')) return 'audio';
+  return undefined;
+}
+
+function generationDraftBlockReason(userId: number): 'draft' | 'busy' | null {
+  const session = getSession(userId);
+  if (session.generationDraft === true || GENERATION_DRAFT_MODES.has(session.mode)) return 'draft';
+  if (session.dbUserId && (generating.get(session.dbUserId) ?? 0) >= MAX_PARALLEL_GENERATIONS_PER_USER) return 'busy';
+  return null;
+}
+
+function reserveGenerationDraft(userId: number, kind: GenerationDraftKind): 'draft' | 'busy' | null {
+  const reason = generationDraftBlockReason(userId);
+  if (reason) return reason;
+  // Synchronous reservation: two rapid callback updates cannot both start a wizard.
+  setSession(userId, { generationDraft: true, generationDraftKind: kind });
+  return null;
+}
+
+function isGenerationEntryCallback(data: string): boolean {
+  return generationDraftKindForStart(data) !== undefined
+    || ['menu_kling_list', 'menu_flora_image', 'menu_lipsync', 'menu_audio'].includes(data);
+}
+
+async function replyGenerationDraftBlock(ctx: any, reason: 'draft' | 'busy'): Promise<void> {
+  if (reason === 'draft') {
+    await ctx.reply(
+      '⚠️ Kamu masih mengisi satu generate yang belum dikirim. Selesaikan inputnya dulu, atau ketik /menu untuk membatalkannya.\n\n' +
+      'Setelah statusnya “diproses”, kamu bisa langsung mulai model lain secara paralel.'
+    ).catch(() => {});
+    return;
+  }
+  if (reason === 'busy') {
+    await ctx.reply(
+      `⏳ Kamu sudah memiliki ${MAX_PARALLEL_GENERATIONS_PER_USER} generate aktif. Tunggu salah satunya selesai dulu sebelum membuat job baru.`
+    ).catch(() => {});
+  }
 }
 
 function isLoggedIn(userId: number): boolean {
@@ -1846,7 +1972,7 @@ function rwRatioKeyboard() {
       Markup.button.callback('🖥️ 16:9', 'rw_ratio_169'),
       Markup.button.callback('⬛ 1:1', 'rw_ratio_11'),
     ],
-    [Markup.button.callback('« Kembali', 'mode_rw')],
+    [Markup.button.callback('« Kembali', 'back_main')],
   ]);
 }
 
@@ -1874,7 +2000,7 @@ function soraDurationKeyboard() {
       Markup.button.callback('8 detik', 'so_dur_8'),
       Markup.button.callback('12 detik', 'so_dur_12'),
     ],
-    [Markup.button.callback('« Kembali', 'mode_sora')],
+    [Markup.button.callback('« Kembali', 'back_main')],
   ]);
 }
 
@@ -2337,7 +2463,7 @@ async function pollPendingTopups(): Promise<void> {
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
 bot.start(async (ctx) => {
-  setSession(ctx.from.id, { mode: 'idle' });
+  setSession(ctx.from.id, { mode: 'idle', generationDraft: false, generationDraftKind: undefined });
   // Deteksi link referral: t.me/<bot>?start=ref_<telegramId>
   const refMatch = ((ctx.message as any)?.text ?? '').match(/^\/start\s+ref_(\d+)/i);
   const refTgId = refMatch ? Number(refMatch[1]) : undefined;
@@ -2357,7 +2483,7 @@ bot.start(async (ctx) => {
 
 bot.command('menu', async (ctx) => {
   if (!await requireLogin(ctx)) return;
-  setSession(ctx.from.id, { mode: 'idle' });
+  setSession(ctx.from.id, { mode: 'idle', generationDraft: false, generationDraftKind: undefined });
   return ctx.reply('Pilih mode generasi:', mainMenuKeyboard());
 });
 
@@ -3191,7 +3317,7 @@ bot.command('removeflorakey', async (ctx) => {
 });
 
 bot.command('cancel', (ctx) => {
-  setSession(ctx.from.id, { mode: 'idle' });
+  setSession(ctx.from.id, { mode: 'idle', generationDraft: false, generationDraftKind: undefined });
   return ctx.reply('✅ Dibatalkan.', mainMenuKeyboard());
 });
 
@@ -3224,11 +3350,35 @@ bot.on('callback_query', async (ctx) => {
     if (!await requireLogin(ctx)) return;
   }
 
+  const startKind = generationDraftKindForStart(data);
+  if (startKind) {
+    const blocked = reserveGenerationDraft(userId, startKind);
+    if (blocked) {
+      await replyGenerationDraftBlock(ctx, blocked);
+      return;
+    }
+  } else if (isGenerationEntryCallback(data)) {
+    const blocked = generationDraftBlockReason(userId);
+    if (blocked) {
+      await replyGenerationDraftBlock(ctx, blocked);
+      return;
+    }
+  }
+
+  const continuationKind = generationDraftKindForContinuation(data);
+  if (continuationKind) {
+    const session = getSession(userId);
+    if (session.generationDraft !== true || session.generationDraftKind !== continuationKind) {
+      await ctx.reply('⚠️ Tombol ini berasal dari proses yang sudah tidak aktif. Gunakan menu atau draft yang sedang berjalan.').catch(() => {});
+      return;
+    }
+  }
+
   if (data === 'menu_topup') {
     if (!klikqris.klikqrisConfigured()) {
       return ctx.reply('⚠️ Top-up sedang tidak tersedia. Hubungi admin.');
     }
-    setSession(userId, { mode: 'idle' });
+    setSession(userId, { mode: 'idle', generationDraft: false, generationDraftKind: undefined });
     return ctx.reply(
       '💳 *Isi Saldo (QRIS)*\n\nPilih nominal top-up:',
       { parse_mode: 'Markdown', ...topupNominalKeyboard() }
@@ -3339,6 +3489,7 @@ bot.on('callback_query', async (ctx) => {
     if (!await requireLogin(ctx)) return;
     const model = data.slice('mode_pi2v_'.length);
     if (!isPicsartI2vModelKey(model)) {
+      setSession(userId, { generationDraft: false, generationDraftKind: undefined });
       return ctx.answerCbQuery('Model tidak dikenali. Buka menu lagi.').catch(() => {});
     }
     const cfg = picsart.PICSART_I2V_MODELS[model];
@@ -3711,6 +3862,7 @@ bot.on('callback_query', async (ctx) => {
     const models = floraImageMenuCache.get(userId);
     const model = models?.[page * FLORA_IMAGE_PAGE_SIZE + index];
     if (!model || !Number.isFinite(page) || !Number.isFinite(index)) {
+      setSession(userId, { generationDraft: false, generationDraftKind: undefined });
       return ctx.editMessageText('Sesi model sudah berakhir. Tekan /menu lalu pilih AI Image lagi.');
     }
     setSession(userId, {
@@ -3764,6 +3916,7 @@ bot.on('callback_query', async (ctx) => {
     const index = Number.parseInt(data.replace('lipsync_select_', ''), 10);
     const model = floraLipsyncMenuCache.get(userId)?.[index];
     if (!model || !Number.isFinite(index)) {
+      setSession(userId, { generationDraft: false, generationDraftKind: undefined });
       return ctx.editMessageText('Sesi model sudah berakhir. Tekan /menu lalu pilih AI Lipsync lagi.');
     }
     setSession(userId, {
@@ -3823,6 +3976,7 @@ bot.on('callback_query', async (ctx) => {
     const index = Number.parseInt(data.replace('audio_select_', ''), 10);
     const model = floraAudioMenuCache.get(userId)?.[index];
     if (!model || !Number.isFinite(index)) {
+      setSession(userId, { generationDraft: false, generationDraftKind: undefined });
       return ctx.editMessageText('Sesi model sudah berakhir. Tekan /menu lalu pilih AI Audio lagi.');
     }
     const needsVoice = model.mode === 'generate' &&
@@ -4037,7 +4191,7 @@ bot.on('callback_query', async (ctx) => {
   }
 
   if (data === 'back_main') {
-    setSession(userId, { mode: 'idle' });
+    setSession(userId, { mode: 'idle', generationDraft: false, generationDraftKind: undefined });
     return ctx.editMessageText('Pilih mode generasi:', mainMenuKeyboard());
   }
 });
