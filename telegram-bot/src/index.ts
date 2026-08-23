@@ -1376,23 +1376,6 @@ function freebeatSessionFingerprint(credentials: freebeat.FreebeatWebCredentials
     .digest('hex');
 }
 
-function readFreebeatPoolSeeds(): freebeat.FreebeatWebCredentials[] {
-  const raw = process.env.FREEBEAT_POOL_SEED?.trim();
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) throw new Error('must be a JSON array');
-    return parsed.flatMap((item): freebeat.FreebeatWebCredentials[] => {
-      const token = typeof item?.token === 'string' ? item.token.trim() : '';
-      const udt = typeof item?.udt === 'string' ? item.udt.trim() : '';
-      return token && udt ? [{ token, udt }] : [];
-    });
-  } catch (error: any) {
-    console.warn(`⚠️ FREEBEAT_POOL_SEED diabaikan: ${error?.message ?? 'format JSON tidak valid'}`);
-    return [];
-  }
-}
-
 async function ensureFreebeatPool(): Promise<void> {
   await dbq(`
     CREATE TABLE IF NOT EXISTS freebeat_session_pool (
@@ -1416,15 +1399,6 @@ async function ensureFreebeatPool(): Promise<void> {
   await dbq(`ALTER TABLE freebeat_session_pool ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ`);
   await dbq(`ALTER TABLE freebeat_session_pool ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ`);
   await dbq(`CREATE INDEX IF NOT EXISTS freebeat_session_pool_pick_idx ON freebeat_session_pool (status, active_jobs, last_used_at, id)`);
-
-  for (const credentials of readFreebeatPoolSeeds()) {
-    await dbq(
-      `INSERT INTO freebeat_session_pool (credential_hash, token, udt, status)
-       VALUES ($1, $2, $3, 'available')
-       ON CONFLICT (credential_hash) DO NOTHING`,
-      [freebeatSessionFingerprint(credentials), credentials.token, credentials.udt]
-    );
-  }
 }
 
 async function claimFreebeatSession(): Promise<FreebeatPoolSession | null> {
