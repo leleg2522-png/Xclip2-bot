@@ -21,28 +21,23 @@ export type FreebeatSubmission = {
   providerRef: string;
 };
 
+export type FreebeatWebCredentials = {
+  token: string;
+  udt: string;
+};
+
 type FreebeatEnvelope<T> = {
   code?: number;
   msg?: string;
   data?: T;
 };
 
-function webSession(): { token: string; udt: string } | null {
-  const token = process.env.FREEBEAT_WEB_TOKEN?.trim();
-  const udt = process.env.FREEBEAT_WEB_UDT?.trim();
-  return token && udt ? { token, udt } : null;
-}
-
-export function isFreebeatConfigured(): boolean {
-  return Boolean(webSession());
-}
-
 function errorCode(prefix: string, message?: string): Error {
   const detail = String(message || '').replace(/[\r\n]+/g, ' ').slice(0, 300);
   return new Error(detail ? `${prefix}: ${detail}` : prefix);
 }
 
-function webHeaders(session: { token: string; udt: string }): Record<string, string> {
+function webHeaders(session: FreebeatWebCredentials): Record<string, string> {
   return {
     token: session.token,
     udt: session.udt,
@@ -55,7 +50,7 @@ function webHeaders(session: { token: string; udt: string }): Record<string, str
   };
 }
 
-async function postWeb<T>(path: string, body: unknown, session: { token: string; udt: string }): Promise<T> {
+async function postWeb<T>(path: string, body: unknown, session: FreebeatWebCredentials): Promise<T> {
   const response = await http.post<FreebeatEnvelope<T>>(`${FREEBEAT_WEB_BASE}${path}`, body, {
     headers: webHeaders(session),
   });
@@ -111,10 +106,7 @@ export async function uploadFreebeatImage(input: {
 export async function submitFreebeatMinimaxH3(input: {
   prompt: string;
   imageUrl: string;
-}): Promise<FreebeatSubmission> {
-  const session = webSession();
-  if (!session) throw new Error('FREEBEAT_NO_WEB_SESSION');
-
+}, session: FreebeatWebCredentials): Promise<FreebeatSubmission> {
   const providerRef = await postWeb<string>(
     '/aiVideo/createAiVideo',
     {
@@ -139,15 +131,13 @@ export async function submitFreebeatMinimaxH3(input: {
 
 export async function pollFreebeatVideo(
   submission: FreebeatSubmission,
-  onPoll?: (elapsedSeconds: number) => void
+  session: FreebeatWebCredentials,
+  onPoll?: (elapsedSeconds: number) => void | Promise<void>
 ): Promise<{ url: string; credits?: number }> {
-  const session = webSession();
-  if (!session) throw new Error('FREEBEAT_NO_WEB_SESSION');
-
   const startedAt = Date.now();
   for (let attempt = 0; attempt < 240; attempt++) {
     await new Promise(resolve => setTimeout(resolve, 15_000));
-    onPoll?.(Math.round((Date.now() - startedAt) / 1000));
+    await onPoll?.(Math.round((Date.now() - startedAt) / 1000));
 
     const result = await postWeb<{
       list?: Array<{
@@ -178,4 +168,14 @@ export async function pollFreebeatVideo(
     }
   }
   throw new Error('FREEBEAT_TIMEOUT');
+}
+
+export function isFreebeatAuthFailure(error: unknown): boolean {
+  const message = String((error as Error)?.message || error || '').toLowerCase();
+  return message.includes('unauthorized')
+    || message.includes('forbidden')
+    || message.includes('invalid token')
+    || message.includes('expired')
+    || message.includes('login')
+    || message.includes('invalid uid');
 }

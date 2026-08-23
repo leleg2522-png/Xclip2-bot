@@ -1360,6 +1360,166 @@ async function hasAvailableOneOverSession(): Promise<boolean> {
   return result.rows.length > 0;
 }
 
+// ─── Freebeat Web Session Pool (MiniMax H3 I2V) ────────────────────────────────
+// Browser sessions live in Railway PostgreSQL so many Freebeat accounts can be
+// rotated safely. One session is pinned to one job until polling completes.
+type FreebeatPoolSession = {
+  id: number;
+  claimToken: string;
+  credentials: freebeat.FreebeatWebCredentials;
+};
+const FREEBEAT_SESSION_LEASE_MINUTES = 20;
+
+function freebeatSessionFingerprint(credentials: freebeat.FreebeatWebCredentials): string {
+  return crypto.createHash('sha256')
+    .update(`${credentials.token}\u0000${credentials.udt}`)
+    .digest('hex');
+}
+
+function readFreebeatPoolSeeds(): freebeat.FreebeatWebCredentials[] {
+  const raw = process.env.FREEBEAT_POOL_SEED?.trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('must be a JSON array');
+    return parsed.flatMap((item): freebeat.FreebeatWebCredentials[] => {
+      const token = typeof item?.token === 'string' ? item.token.trim() : '';
+      const udt = typeof item?.udt === 'string' ? item.udt.trim() : '';
+      return token && udt ? [{ token, udt }] : [];
+    });
+  } catch (error: any) {
+    console.warn(`⚠️ FREEBEAT_POOL_SEED diabaikan: ${error?.message ?? 'format JSON tidak valid'}`);
+    return [];
+  }
+}
+
+async function ensureFreebeatPool(): Promise<void> {
+  await dbq(`
+    CREATE TABLE IF NOT EXISTS freebeat_session_pool (
+      id                  SERIAL PRIMARY KEY,
+      credential_hash     TEXT UNIQUE NOT NULL,
+      token               TEXT NOT NULL,
+      udt                 TEXT NOT NULL,
+      status              TEXT NOT NULL DEFAULT 'available',
+      active_jobs         INTEGER NOT NULL DEFAULT 0,
+      claim_token         TEXT,
+      claimed_at          TIMESTAMPTZ,
+      lease_expires_at    TIMESTAMPTZ,
+      last_used_at        TIMESTAMPTZ,
+      dead_at             TIMESTAMPTZ,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (status IN ('available', 'dead')),
+      CHECK (active_jobs >= 0)
+    )
+  `);
+  await dbq(`ALTER TABLE freebeat_session_pool ADD COLUMN IF NOT EXISTS claim_token TEXT`);
+  await dbq(`ALTER TABLE freebeat_session_pool ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ`);
+  await dbq(`ALTER TABLE freebeat_session_pool ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ`);
+  await dbq(`CREATE INDEX IF NOT EXISTS freebeat_session_pool_pick_idx ON freebeat_session_pool (status, active_jobs, last_used_at, id)`);
+
+  for (const credentials of readFreebeatPoolSeeds()) {
+    await dbq(
+      `INSERT INTO freebeat_session_pool (credential_hash, token, udt, status)
+       VALUES ($1, $2, $3, 'available')
+       ON CONFLICT (credential_hash) DO NOTHING`,
+      [freebeatSessionFingerprint(credentials), credentials.token, credentials.udt]
+    );
+  }
+}
+
+async function claimFreebeatSession(): Promise<FreebeatPoolSession | null> {
+  await ensureFreebeatPool();
+  const claimToken = crypto.randomUUID();
+  // Do not retry this non-idempotent claim after an ambiguous DB response.
+  // The lease will release it later without assigning a second session.
+  const result = await db.query(`
+    WITH candidate AS (
+      SELECT id
+      FROM freebeat_session_pool
+      WHERE status = 'available'
+        AND (claim_token IS NULL OR lease_expires_at <= NOW())
+      ORDER BY last_used_at NULLS FIRST, id
+      FOR UPDATE SKIP LOCKED
+      LIMIT 1
+    )
+    UPDATE freebeat_session_pool AS pool
+    SET active_jobs = 1,
+        claim_token = $1,
+        claimed_at = NOW(),
+        lease_expires_at = NOW() + INTERVAL '${FREEBEAT_SESSION_LEASE_MINUTES} minutes',
+        last_used_at = NOW()
+    FROM candidate
+    WHERE pool.id = candidate.id
+    RETURNING pool.id, pool.token, pool.udt
+  `, [claimToken]);
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    claimToken,
+    credentials: { token: String(row.token), udt: String(row.udt) },
+  };
+}
+
+async function renewFreebeatSessionLease(session: FreebeatPoolSession): Promise<boolean> {
+  const result = await db.query(
+    `UPDATE freebeat_session_pool
+     SET lease_expires_at = NOW() + INTERVAL '${FREEBEAT_SESSION_LEASE_MINUTES} minutes'
+     WHERE id = $1 AND claim_token = $2 AND status = 'available'
+     RETURNING id`,
+    [session.id, session.claimToken]
+  );
+  return result.rows.length === 1;
+}
+
+async function releaseFreebeatSession(session: FreebeatPoolSession): Promise<void> {
+  await db.query(
+    `UPDATE freebeat_session_pool
+     SET active_jobs = 0, claim_token = NULL, claimed_at = NULL, lease_expires_at = NULL
+     WHERE id = $1 AND claim_token = $2`,
+    [session.id, session.claimToken]
+  );
+}
+
+async function markFreebeatSessionDead(session: FreebeatPoolSession): Promise<void> {
+  await db.query(
+    `UPDATE freebeat_session_pool
+     SET status = 'dead', dead_at = NOW(), active_jobs = 0,
+         claim_token = NULL, claimed_at = NULL, lease_expires_at = NULL
+     WHERE id = $1 AND claim_token = $2`,
+    [session.id, session.claimToken]
+  );
+}
+
+async function getFreebeatPoolStats(): Promise<{ available: number; busy: number; dead: number }> {
+  await ensureFreebeatPool();
+  const result = await dbq(`
+    SELECT status,
+           COUNT(*) AS count,
+           COUNT(*) FILTER (WHERE claim_token IS NOT NULL AND lease_expires_at > NOW()) AS active_jobs
+    FROM freebeat_session_pool
+    GROUP BY status
+  `);
+  const stats = { available: 0, busy: 0, dead: 0 };
+  for (const row of result.rows) {
+    if (row.status === 'available') stats.available = Number(row.count);
+    if (row.status === 'dead') stats.dead = Number(row.count);
+    stats.busy += Number(row.active_jobs);
+  }
+  return stats;
+}
+
+async function hasAvailableFreebeatSession(): Promise<boolean> {
+  await ensureFreebeatPool();
+  const result = await dbq(
+    `SELECT 1 FROM freebeat_session_pool
+     WHERE status = 'available'
+       AND (claim_token IS NULL OR lease_expires_at <= NOW())
+     LIMIT 1`
+  );
+  return result.rows.length > 0;
+}
+
 // ─── Generate Cooldown ────────────────────────────────────────────────────────
 
 const GEN_COOLDOWN_MS = 0; // cooldown dinonaktifkan
@@ -2995,6 +3155,28 @@ bot.command('oneoverpool', async (ctx) => {
   );
 });
 
+bot.command('freebeatpool', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  const stats = await getFreebeatPoolStats();
+  const result = await dbq(
+    `SELECT id, status, active_jobs FROM freebeat_session_pool ORDER BY id`
+  );
+  const rows = result.rows.map((row: any) => {
+    const status = row.status === 'available' ? '✅ tersedia' : '❌ nonaktif';
+    const usage = row.status === 'available' && Number(row.active_jobs) > 0
+      ? ` • ${row.active_jobs} job`
+      : '';
+    return `• #${row.id} ${status}${usage}`;
+  });
+  return ctx.reply(
+    `📊 Pool Freebeat H3\n\n` +
+    `• Tersedia: ${stats.available}\n` +
+    `• Sedang dipakai: ${stats.busy}\n` +
+    `• Nonaktif: ${stats.dead}\n\n` +
+    (rows.length ? rows.join('\n') : 'Belum ada sesi di pool Railway.')
+  );
+});
+
 bot.command('poolstatus', async (ctx) => {
   if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
@@ -3780,7 +3962,7 @@ bot.on('callback_query', async (ctx) => {
 
   if (data === 'mode_freebeat_h3') {
     if (!await requireLogin(ctx)) return;
-    if (!freebeat.isFreebeatConfigured()) {
+    if (!await hasAvailableFreebeatSession()) {
       setSession(userId, { mode: 'idle', generationDraft: false, generationDraftKind: undefined });
       return ctx.editMessageText('⚠️ Model ini sedang tidak tersedia. Hubungi admin.').catch(() => {});
     }
@@ -6237,8 +6419,19 @@ async function runFreebeatMinimaxH3(
 ) {
   const label = freebeat.FREEBEAT_MINIMAX_H3.label;
   const PRICE = MODEL_PRICES.freebeat_minimax_h3;
+  const poolSession = await claimFreebeatSession();
+  if (!poolSession) {
+    await bot.telegram.editMessageText(
+      chatId,
+      statusMsgId,
+      undefined,
+      '⚠️ Semua akun Freebeat sedang dipakai atau belum tersedia. Coba lagi sebentar.'
+    ).catch(() => {});
+    return;
+  }
   const charge = await beginCharge(dbUserId, PRICE, MAX_PARALLEL_GENERATIONS_PER_USER);
   if (!charge.ok) {
+    await releaseFreebeatSession(poolSession).catch(() => {});
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
     return;
   }
@@ -6255,11 +6448,20 @@ async function runFreebeatMinimaxH3(
     });
 
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `⏳ ${label}: mengirim perintah ke server... (2/3)`).catch(() => {});
-    const submission = await freebeat.submitFreebeatMinimaxH3({ prompt, imageUrl: uploadedImageUrl });
+    const submission = await freebeat.submitFreebeatMinimaxH3(
+      { prompt, imageUrl: uploadedImageUrl },
+      poolSession.credentials
+    );
     providerAccepted = true;
 
     let lastEdit = 0;
-    const result = await freebeat.pollFreebeatVideo(submission, elapsedSeconds => {
+    let lastLeaseRenewal = Date.now();
+    const result = await freebeat.pollFreebeatVideo(submission, poolSession.credentials, async elapsedSeconds => {
+      if (Date.now() - lastLeaseRenewal >= 60_000) {
+        lastLeaseRenewal = Date.now();
+        const renewed = await renewFreebeatSessionLease(poolSession);
+        if (!renewed) throw new Error('FREEBEAT_LEASE_LOST');
+      }
       if (Date.now() - lastEdit < 30_000) return;
       lastEdit = Date.now();
       const minutes = Math.floor(elapsedSeconds / 60);
@@ -6289,7 +6491,10 @@ async function runFreebeatMinimaxH3(
   } catch (err: any) {
     const msg = describeError(err);
     console.error(`[${userId}] ${label} error: ${msg}`);
-    const friendly = msg.includes('FREEBEAT_NO_WEB_SESSION')
+    if (freebeat.isFreebeatAuthFailure(err)) {
+      await markFreebeatSessionDead(poolSession).catch(() => {});
+    }
+    const friendly = msg.includes('FREEBEAT_POOL_UNAVAILABLE')
       ? '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.'
       : msg.includes('FREEBEAT_UPLOAD')
         ? '❌ Foto tidak bisa diproses. Coba foto JPG atau PNG lain.'
@@ -6305,6 +6510,7 @@ async function runFreebeatMinimaxH3(
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
     }
+    await releaseFreebeatSession(poolSession).catch(() => {});
     releaseGenerating(dbUserId);
   }
 }
