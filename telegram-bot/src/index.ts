@@ -5968,7 +5968,7 @@ async function runOneOverSeedance25(
   } catch (err: any) {
     const msg = describeError(err);
     console.error(`[${userId}] ${label} error: ${msg}`);
-    const friendly = msg.includes('ONEOVER_NO_CREDENTIAL')
+    const friendly = msg.includes('ONEOVER_NO_CREDENTIAL') || msg.includes('ONEOVER_NO_SESSION')
       ? '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.'
       : msg.includes('ONEOVER_INVALID_IMAGE')
         ? '❌ Foto tidak bisa diproses. Coba foto JPG atau PNG lain.'

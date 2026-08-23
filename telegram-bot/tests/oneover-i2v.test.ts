@@ -15,7 +15,9 @@ assert.match(provider, /video-poll/);
 assert.match(provider, /prediction_url: submission\.predictionUrl/);
 assert.match(provider, /maxAttempts = 300/);
 assert.match(provider, /ONEOVER_API_KEY/);
+assert.match(provider, /ONEOVER_AUTHORIZATION/);
 assert.match(provider, /ONEOVER_COOKIE/);
+assert.match(provider, /ONEOVER_NO_SESSION/);
 
 assert.match(bot, /oneover_seedance_25: 6000/);
 assert.match(bot, /Seedance 2\.5 I2V 🔥PROMO/);

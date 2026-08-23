@@ -3,6 +3,7 @@ import axios from 'axios';
 const ONEOVER_BASE_URL = (process.env.ONEOVER_BASE_URL || 'https://mjuwtqkfhtpgavwjrual.supabase.co/functions/v1')
   .replace(/\/+$/, '');
 const ONEOVER_API_KEY = process.env.ONEOVER_API_KEY?.trim();
+const ONEOVER_AUTHORIZATION = process.env.ONEOVER_AUTHORIZATION?.trim();
 const ONEOVER_COOKIE = process.env.ONEOVER_COOKIE?.trim();
 
 export const ONEOVER_SEEDANCE_25 = {
@@ -27,9 +28,13 @@ type OneOverSubmission = {
 
 function headers(): Record<string, string> {
   if (!ONEOVER_API_KEY) throw new Error('ONEOVER_NO_CREDENTIAL');
+  if (!ONEOVER_AUTHORIZATION && !ONEOVER_COOKIE) throw new Error('ONEOVER_NO_SESSION');
   return {
     apikey: ONEOVER_API_KEY,
     'content-type': 'application/json',
+    ...(ONEOVER_AUTHORIZATION
+      ? { authorization: ONEOVER_AUTHORIZATION.startsWith('Bearer ') ? ONEOVER_AUTHORIZATION : `Bearer ${ONEOVER_AUTHORIZATION}` }
+      : {}),
     ...(ONEOVER_COOKIE ? { cookie: ONEOVER_COOKIE } : {}),
   };
 }
@@ -44,7 +49,7 @@ function safeError(prefix: string, status: number, data: unknown): Error {
 }
 
 export function oneoverConfigured(): boolean {
-  return Boolean(ONEOVER_API_KEY);
+  return Boolean(ONEOVER_API_KEY && (ONEOVER_AUTHORIZATION || ONEOVER_COOKIE));
 }
 
 export async function submitOneOverSeedanceI2v(input: {
