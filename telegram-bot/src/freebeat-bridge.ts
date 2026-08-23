@@ -39,6 +39,14 @@ function hash(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
+function createHumanEnrollmentCode(): string {
+  // Avoid 0/O and 1/I so the code can be typed reliably from a Telegram screen.
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = randomBytes(8);
+  const characters = Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
+  return `${characters.slice(0, 4)}-${characters.slice(4)}`;
+}
+
 function secureEqual(left: string, right: string): boolean {
   const a = Buffer.from(left);
   const b = Buffer.from(right);
@@ -115,7 +123,7 @@ export class FreebeatBridgeQueue {
   }
 
   async createEnrollmentCode(): Promise<string> {
-    const code = randomBytes(18).toString('base64url');
+    const code = createHumanEnrollmentCode();
     await this.db.query(
       `INSERT INTO freebeat_bridge_enrollments (code_hash, expires_at)
        VALUES ($1, NOW() + INTERVAL '15 minutes')`,
