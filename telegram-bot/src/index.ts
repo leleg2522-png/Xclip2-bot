@@ -5152,10 +5152,14 @@ bot.on('text', async (ctx) => {
 
   // ── Freebeat MiniMax H3 image-to-video prompt ──
   if (session.mode === 'freebeat_wait_prompt') {
-    if (!await requireLogin(ctx)) return;
     const prompt = ctx.message.text.trim();
     if (!prompt) return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
-    if (!session.freebeatImageUrl) {
+    if (!session.dbUserId && !await requireLogin(ctx)) return;
+    // Re-read then claim the draft synchronously: a duplicate Telegram update
+    // must see idle and never submit a second paid provider job.
+    const activeDraft = getSession(userId);
+    if (activeDraft.mode !== 'freebeat_wait_prompt') return;
+    if (!activeDraft.dbUserId || !activeDraft.freebeatImageUrl) {
       setSession(userId, { mode: 'idle' });
       return ctx.reply('⚠️ Foto acuan tidak ditemukan. Mulai lagi dari /menu.');
     }
@@ -5164,13 +5168,14 @@ bot.on('text', async (ctx) => {
       setSession(userId, { mode: 'idle' });
       return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
     }
-    const imageUrl = session.freebeatImageUrl;
+    const imageUrl = activeDraft.freebeatImageUrl;
+    const dbUserId = activeDraft.dbUserId;
     setSession(userId, { mode: 'idle', freebeatImageUrl: undefined });
     const statusMsg = await ctx.reply(
       '⏳ Memproses MiniMax H3...\nHasil dikirim otomatis (biasanya beberapa menit).',
       { parse_mode: 'Markdown' }
     );
-    runFreebeatMinimaxH3(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, imageUrl)
+    runFreebeatMinimaxH3(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, imageUrl)
       .catch(e => console.error(`[${userId}] Freebeat MiniMax H3 error:`, e.message));
     return;
   }

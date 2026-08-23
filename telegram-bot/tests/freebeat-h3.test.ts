@@ -16,6 +16,7 @@ assert.match(provider, /\/v1\/ai\/cli\/queryBatch/);
 assert.match(provider, /Authorization: key/);
 assert.match(provider, /accepted/);
 assert.match(provider, /videoUrl/);
+assert.match(provider, /FREEBEAT_NO_RESULT_URL/);
 
 assert.match(bot, /mode_freebeat_h3/);
 assert.match(bot, /freebeat_wait_image/);
@@ -25,5 +26,7 @@ assert.match(bot, /freebeat_minimax_h3: 6000/);
 assert.match(bot, /MiniMax H3 I2V \(Freebeat\)/);
 assert.match(bot, /FREEBEAT_NO_API_KEY/);
 assert.match(bot, /Saldo .*dikembalikan/);
+assert.match(bot, /activeDraft\.mode !== 'freebeat_wait_prompt'/);
+assert.match(bot, /duplicate Telegram update/);
 
 console.log('Freebeat MiniMax H3 I2V contract tests passed.');

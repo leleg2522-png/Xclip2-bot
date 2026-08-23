@@ -85,7 +85,13 @@ export async function uploadFreebeatImage(input: {
     validateStatus: () => true,
     headers: {
       'Content-Type': input.mimeType || 'image/jpeg',
-      'x-amz-acl': 'public-read',
+      ...(new URL(target.signURL).searchParams
+        .get('X-Amz-SignedHeaders')
+        ?.split(';')
+        .map(header => header.trim().toLowerCase())
+        .includes('x-amz-acl')
+        ? { 'x-amz-acl': 'public-read' }
+        : {}),
     },
   });
   if (upload.status < 200 || upload.status >= 300) {
@@ -176,6 +182,10 @@ export async function pollFreebeatVideo(
     const status = String(item.status || '').toLowerCase();
     if (['failed', 'error', 'rejected', 'cancelled', 'canceled'].includes(status)) {
       throw errorCode('FREEBEAT_GENERATION_FAILED', item.errorMessage || String(item.errorCode || status));
+    }
+    if (typeof item.status === 'number' && item.status >= 100) {
+      if (item.status === 100) throw new Error('FREEBEAT_NO_RESULT_URL');
+      throw errorCode('FREEBEAT_GENERATION_FAILED', item.errorMessage || String(item.errorCode || item.status));
     }
   }
   throw new Error('FREEBEAT_TIMEOUT');
