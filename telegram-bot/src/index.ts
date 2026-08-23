@@ -12,7 +12,6 @@ import crypto from 'crypto';
 import * as picsart from './picsart';
 import * as klikqris from './klikqris';
 import * as oneover from './oneover';
-import * as freebeat from './freebeat';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -167,7 +166,6 @@ const MODEL_PRICES = {
   topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 4× 60fps)
   picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
   oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
-  freebeat_minimax_h3: 6000, // MiniMax H3 I2V (Freebeat), 15s 768p
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
@@ -1360,135 +1358,6 @@ async function hasAvailableOneOverSession(): Promise<boolean> {
   return result.rows.length > 0;
 }
 
-// ─── Freebeat Web Session Pool (MiniMax H3 I2V) ────────────────────────────────
-// Browser sessions live in Railway PostgreSQL so many Freebeat accounts can be
-// rotated safely. One session is pinned to one job until polling completes.
-type FreebeatPoolSession = {
-  id: number;
-  claimToken: string;
-  credentials: freebeat.FreebeatWebCredentials;
-};
-const FREEBEAT_SESSION_LEASE_MINUTES = 20;
-
-async function ensureFreebeatPool(): Promise<void> {
-  await dbq(`
-    CREATE TABLE IF NOT EXISTS freebeat_session_pool (
-      id                  SERIAL PRIMARY KEY,
-      credential_hash     TEXT UNIQUE NOT NULL DEFAULT md5(random()::text || clock_timestamp()::text),
-      token               TEXT NOT NULL,
-      udt                 TEXT NOT NULL,
-      status              TEXT NOT NULL DEFAULT 'available',
-      active_jobs         INTEGER NOT NULL DEFAULT 0,
-      claim_token         TEXT,
-      claimed_at          TIMESTAMPTZ,
-      lease_expires_at    TIMESTAMPTZ,
-      last_used_at        TIMESTAMPTZ,
-      dead_at             TIMESTAMPTZ,
-      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      CHECK (status IN ('available', 'dead')),
-      CHECK (active_jobs >= 0)
-    )
-  `);
-  await dbq(`ALTER TABLE freebeat_session_pool ALTER COLUMN credential_hash SET DEFAULT md5(random()::text || clock_timestamp()::text)`);
-  await dbq(`ALTER TABLE freebeat_session_pool ADD COLUMN IF NOT EXISTS claim_token TEXT`);
-  await dbq(`ALTER TABLE freebeat_session_pool ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ`);
-  await dbq(`ALTER TABLE freebeat_session_pool ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ`);
-  await dbq(`CREATE INDEX IF NOT EXISTS freebeat_session_pool_pick_idx ON freebeat_session_pool (status, active_jobs, last_used_at, id)`);
-}
-
-async function claimFreebeatSession(): Promise<FreebeatPoolSession | null> {
-  await ensureFreebeatPool();
-  const claimToken = crypto.randomUUID();
-  // Do not retry this non-idempotent claim after an ambiguous DB response.
-  // The lease will release it later without assigning a second session.
-  const result = await db.query(`
-    WITH candidate AS (
-      SELECT id
-      FROM freebeat_session_pool
-      WHERE status = 'available'
-        AND (claim_token IS NULL OR lease_expires_at <= NOW())
-      ORDER BY last_used_at NULLS FIRST, id
-      FOR UPDATE SKIP LOCKED
-      LIMIT 1
-    )
-    UPDATE freebeat_session_pool AS pool
-    SET active_jobs = 1,
-        claim_token = $1,
-        claimed_at = NOW(),
-        lease_expires_at = NOW() + INTERVAL '${FREEBEAT_SESSION_LEASE_MINUTES} minutes',
-        last_used_at = NOW()
-    FROM candidate
-    WHERE pool.id = candidate.id
-    RETURNING pool.id, pool.token, pool.udt
-  `, [claimToken]);
-  const row = result.rows[0];
-  if (!row) return null;
-  return {
-    id: Number(row.id),
-    claimToken,
-    credentials: { token: String(row.token), udt: String(row.udt) },
-  };
-}
-
-async function renewFreebeatSessionLease(session: FreebeatPoolSession): Promise<boolean> {
-  const result = await db.query(
-    `UPDATE freebeat_session_pool
-     SET lease_expires_at = NOW() + INTERVAL '${FREEBEAT_SESSION_LEASE_MINUTES} minutes'
-     WHERE id = $1 AND claim_token = $2 AND status = 'available'
-     RETURNING id`,
-    [session.id, session.claimToken]
-  );
-  return result.rows.length === 1;
-}
-
-async function releaseFreebeatSession(session: FreebeatPoolSession): Promise<void> {
-  await db.query(
-    `UPDATE freebeat_session_pool
-     SET active_jobs = 0, claim_token = NULL, claimed_at = NULL, lease_expires_at = NULL
-     WHERE id = $1 AND claim_token = $2`,
-    [session.id, session.claimToken]
-  );
-}
-
-async function markFreebeatSessionDead(session: FreebeatPoolSession): Promise<void> {
-  await db.query(
-    `UPDATE freebeat_session_pool
-     SET status = 'dead', dead_at = NOW(), active_jobs = 0,
-         claim_token = NULL, claimed_at = NULL, lease_expires_at = NULL
-     WHERE id = $1 AND claim_token = $2`,
-    [session.id, session.claimToken]
-  );
-}
-
-async function getFreebeatPoolStats(): Promise<{ available: number; busy: number; dead: number }> {
-  await ensureFreebeatPool();
-  const result = await dbq(`
-    SELECT status,
-           COUNT(*) AS count,
-           COUNT(*) FILTER (WHERE claim_token IS NOT NULL AND lease_expires_at > NOW()) AS active_jobs
-    FROM freebeat_session_pool
-    GROUP BY status
-  `);
-  const stats = { available: 0, busy: 0, dead: 0 };
-  for (const row of result.rows) {
-    if (row.status === 'available') stats.available = Number(row.count);
-    if (row.status === 'dead') stats.dead = Number(row.count);
-    stats.busy += Number(row.active_jobs);
-  }
-  return stats;
-}
-
-async function hasAvailableFreebeatSession(): Promise<boolean> {
-  await ensureFreebeatPool();
-  const result = await dbq(
-    `SELECT 1 FROM freebeat_session_pool
-     WHERE status = 'available'
-       AND (claim_token IS NULL OR lease_expires_at <= NOW())
-     LIMIT 1`
-  );
-  return result.rows.length > 0;
-}
-
 // ─── Generate Cooldown ────────────────────────────────────────────────────────
 
 const GEN_COOLDOWN_MS = 0; // cooldown dinonaktifkan
@@ -1623,8 +1492,6 @@ type Mode =
   | 'picsart_i2v_wait_prompt'
   | 'oneover_wait_image'
   | 'oneover_wait_prompt'
-  | 'freebeat_wait_image'
-  | 'freebeat_wait_prompt'
   | 'kling21_wait_image'
   | 'kling21_wait_prompt'
   | 'topaz_wait_video'
@@ -1639,7 +1506,6 @@ type GenerationDraftKind =
   | 'kling21'
   | 'picsart_i2v'
   | 'oneover'
-  | 'freebeat'
   | 'runway'
   | 'sora'
   | 'veofast'
@@ -1732,8 +1598,6 @@ interface Session {
   picsartI2vModel?: picsart.PicsartI2vModelKey;
   picsartI2vImageUrl?: string;
   oneoverImageUrl?: string;
-  // Freebeat MiniMax H3 image-to-video wizard state
-  freebeatImageUrl?: string;
   // Kling 2.1 Pro (10-second image-to-video) wizard state
   kling21ImageUrl?: string;
   // Chat AI wizard state (multi-turn conversation)
@@ -1815,7 +1679,6 @@ const GENERATION_DRAFT_MODES = new Set<Mode>([
   'audio_wait_prompt', 'audio_wait_voice', 'audio_wait_file',
   'picsart_i2v_wait_image', 'picsart_i2v_wait_prompt',
   'oneover_wait_image', 'oneover_wait_prompt',
-  'freebeat_wait_image', 'freebeat_wait_prompt',
   'kling21_wait_image', 'kling21_wait_prompt', 'topaz_wait_video',
   'img_wait_image', 'img_wait_prompt',
 ]);
@@ -1831,7 +1694,6 @@ function generationDraftKindForStart(data: string): GenerationDraftKind | undefi
     mode_klingp3: 'klingp3',
     mode_kling21: 'kling21',
     mode_oneover_seedance25: 'oneover',
-    mode_freebeat_h3: 'freebeat',
     mode_rw: 'runway',
     mode_sora: 'sora',
     mode_veofast: 'veofast',
@@ -2295,7 +2157,6 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🌊 Seedance 2.0 Fast', 'mode_pi2v_seedance_2_fast')],
     [Markup.button.callback('🌊 Seedance 2.0', 'mode_pi2v_seedance_2')],
     [Markup.button.callback('🌊 Seedance 2.5 I2V 🔥PROMO', 'mode_oneover_seedance25')],
-    [Markup.button.callback('🎬 MiniMax H3 I2V (Freebeat)', 'mode_freebeat_h3')],
     [Markup.button.callback('🌌 Grok Imagine Video', 'mode_pi2v_grok_imagine')],
     [Markup.button.callback('⚡ Kling v3 Turbo', 'mode_pi2v_kling_v3_turbo')],
     [Markup.button.callback('🎭 Kling v2.6 Pro', 'mode_pi2v_kling_v26_pro')],
@@ -2673,7 +2534,6 @@ function hargaText(): string {
     `• Seedance 2.0 Fast — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Seedance 2.0 — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Seedance 2.5 I2V — ${formatRupiah(MODEL_PRICES.oneover_seedance_25)} 🔥PROMO\n` +
-    `• MiniMax H3 I2V (Freebeat) — ${formatRupiah(MODEL_PRICES.freebeat_minimax_h3)}\n` +
     `• Grok Imagine Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v3 Turbo — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v2.6 Pro — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
@@ -3121,28 +2981,6 @@ bot.command('oneoverpool', async (ctx) => {
     `• Sedang dipakai: ${stats.busy}\n` +
     `• Nonaktif: ${stats.dead}\n\n` +
     (rows.length ? rows.join('\n') : 'Belum ada sesi di pool.')
-  );
-});
-
-bot.command('freebeatpool', async (ctx) => {
-  if (!(await requireAdmin(ctx))) return;
-  const stats = await getFreebeatPoolStats();
-  const result = await dbq(
-    `SELECT id, status, active_jobs FROM freebeat_session_pool ORDER BY id`
-  );
-  const rows = result.rows.map((row: any) => {
-    const status = row.status === 'available' ? '✅ tersedia' : '❌ nonaktif';
-    const usage = row.status === 'available' && Number(row.active_jobs) > 0
-      ? ` • ${row.active_jobs} job`
-      : '';
-    return `• #${row.id} ${status}${usage}`;
-  });
-  return ctx.reply(
-    `📊 Pool Freebeat H3\n\n` +
-    `• Tersedia: ${stats.available}\n` +
-    `• Sedang dipakai: ${stats.busy}\n` +
-    `• Nonaktif: ${stats.dead}\n\n` +
-    (rows.length ? rows.join('\n') : 'Belum ada sesi di pool Railway.')
   );
 });
 
@@ -3924,22 +3762,6 @@ bot.on('callback_query', async (ctx) => {
       `🌊 *Seedance 2.5 I2V 🔥PROMO*\n\n` +
       `Durasi: *30 detik* • Resolusi: *480p* • Audio: *aktif*\n` +
       `Harga promo: *${formatRupiah(MODEL_PRICES.oneover_seedance_25)}* per video\n\n` +
-      '*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
-      { parse_mode: 'Markdown' }
-    );
-  }
-
-  if (data === 'mode_freebeat_h3') {
-    if (!await requireLogin(ctx)) return;
-    if (!await hasAvailableFreebeatSession()) {
-      setSession(userId, { mode: 'idle', generationDraft: false, generationDraftKind: undefined });
-      return ctx.editMessageText('⚠️ Model ini sedang tidak tersedia. Hubungi admin.').catch(() => {});
-    }
-    setSession(userId, { mode: 'freebeat_wait_image', freebeatImageUrl: undefined });
-    return ctx.editMessageText(
-      `🎬 *MiniMax H3 I2V*\n\n` +
-      `Provider: *Freebeat* • Durasi: *15 detik* • Resolusi: *768p* • Rasio: *16:9*\n` +
-      `Harga: *${formatRupiah(MODEL_PRICES.freebeat_minimax_h3)}* per video\n\n` +
       '*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
       { parse_mode: 'Markdown' }
     );
@@ -4782,15 +4604,6 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     );
   }
 
-  if (session.mode === 'freebeat_wait_image') {
-    setSession(userId, { freebeatImageUrl: fileUrl, mode: 'freebeat_wait_prompt' });
-    return ctx.reply(
-      '✅ Foto acuan diterima!\n\n' +
-      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
-      { parse_mode: 'Markdown' }
-    );
-  }
-
   if (session.mode === 'kling21_wait_image') {
     setSession(userId, { kling21ImageUrl: fileUrl, mode: 'kling21_wait_prompt' });
     return ctx.reply(
@@ -5301,36 +5114,6 @@ bot.on('text', async (ctx) => {
     return;
   }
 
-  // ── Freebeat MiniMax H3 image-to-video prompt ──
-  if (session.mode === 'freebeat_wait_prompt') {
-    const prompt = ctx.message.text.trim();
-    if (!prompt) return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
-    if (!session.dbUserId && !await requireLogin(ctx)) return;
-    // Re-read then claim the draft synchronously: a duplicate Telegram update
-    // must see idle and never submit a second paid provider job.
-    const activeDraft = getSession(userId);
-    if (activeDraft.mode !== 'freebeat_wait_prompt') return;
-    if (!activeDraft.dbUserId || !activeDraft.freebeatImageUrl) {
-      setSession(userId, { mode: 'idle' });
-      return ctx.reply('⚠️ Foto acuan tidak ditemukan. Mulai lagi dari /menu.');
-    }
-    const cooldownMs = getCooldownRemainingMs(userId);
-    if (cooldownMs > 0) {
-      setSession(userId, { mode: 'idle' });
-      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
-    }
-    const imageUrl = activeDraft.freebeatImageUrl;
-    const dbUserId = activeDraft.dbUserId;
-    setSession(userId, { mode: 'idle', freebeatImageUrl: undefined });
-    const statusMsg = await ctx.reply(
-      '⏳ Memproses MiniMax H3...\nHasil dikirim otomatis (biasanya beberapa menit).',
-      { parse_mode: 'Markdown' }
-    );
-    runFreebeatMinimaxH3(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, imageUrl)
-      .catch(e => console.error(`[${userId}] Freebeat MiniMax H3 error:`, e.message));
-    return;
-  }
-
   // ── Kling 2.1 Pro (10-second image-to-video) prompt ──
   if (session.mode === 'kling21_wait_prompt') {
     if (!await requireLogin(ctx)) return;
@@ -5728,9 +5511,6 @@ bot.on('text', async (ctx) => {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
   if (session.mode === 'oneover_wait_image') {
-    return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
-  }
-  if (session.mode === 'freebeat_wait_image') {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
   if (session.mode === 'veofast_wait_image' || session.mode === 'veolite_wait_image') {
@@ -6373,113 +6153,6 @@ async function runPicsartI2v(
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
     }
-    releaseGenerating(dbUserId);
-  }
-}
-
-// ─── Background: Freebeat MiniMax H3 image-to-video ────────────────────────────
-async function runFreebeatMinimaxH3(
-  chatId: number,
-  userId: number,
-  dbUserId: number,
-  statusMsgId: number,
-  prompt: string,
-  imageUrl: string
-) {
-  const label = freebeat.FREEBEAT_MINIMAX_H3.label;
-  const PRICE = MODEL_PRICES.freebeat_minimax_h3;
-  const poolSession = await claimFreebeatSession();
-  if (!poolSession) {
-    await bot.telegram.editMessageText(
-      chatId,
-      statusMsgId,
-      undefined,
-      '⚠️ Semua akun Freebeat sedang dipakai atau belum tersedia. Coba lagi sebentar.'
-    ).catch(() => {});
-    return;
-  }
-  const charge = await beginCharge(dbUserId, PRICE, MAX_PARALLEL_GENERATIONS_PER_USER);
-  if (!charge.ok) {
-    await releaseFreebeatSession(poolSession).catch(() => {});
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
-    return;
-  }
-
-  let refund = true;
-  let providerAccepted = false;
-  try {
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `⏳ ${label}: mengunggah foto... (1/3)`).catch(() => {});
-    const image = await downloadBuffer(imageUrl);
-    const uploadedImageUrl = await freebeat.uploadFreebeatImage({
-      buffer: image.buf,
-      filename: `reference.${image.ext}`,
-      mimeType: image.mime,
-    });
-
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `⏳ ${label}: mengirim perintah ke server... (2/3)`).catch(() => {});
-    const submission = await freebeat.submitFreebeatMinimaxH3(
-      { prompt, imageUrl: uploadedImageUrl },
-      poolSession.credentials
-    );
-    providerAccepted = true;
-
-    let lastEdit = 0;
-    let lastLeaseRenewal = Date.now();
-    const result = await freebeat.pollFreebeatVideo(submission, poolSession.credentials, async elapsedSeconds => {
-      if (Date.now() - lastLeaseRenewal >= 60_000) {
-        lastLeaseRenewal = Date.now();
-        const renewed = await renewFreebeatSessionLease(poolSession);
-        if (!renewed) throw new Error('FREEBEAT_LEASE_LOST');
-      }
-      if (Date.now() - lastEdit < 30_000) return;
-      lastEdit = Date.now();
-      const minutes = Math.floor(elapsedSeconds / 60);
-      const seconds = elapsedSeconds % 60;
-      const elapsed = minutes > 0 ? `${minutes} menit ${seconds} detik` : `${seconds} detik`;
-      void bot.telegram.editMessageText(
-        chatId,
-        statusMsgId,
-        undefined,
-        `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${elapsed}. Video akan dikirim otomatis.`
-      ).catch(() => {});
-    });
-
-    const delivered = await sendResult(
-      chatId,
-      result.url,
-      `🎬 ${label} • 15 detik • 768p\n\n/menu untuk buat lagi`,
-      true
-    );
-    if (delivered) {
-      refund = false;
-      const newCount = await incrementKlingUsage(dbUserId);
-      markGenSuccess(userId);
-      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-      console.log(`[${userId}] ${label} done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
-    }
-  } catch (err: any) {
-    const msg = describeError(err);
-    console.error(`[${userId}] ${label} error: ${msg}`);
-    if (freebeat.isFreebeatAuthFailure(err)) {
-      await markFreebeatSessionDead(poolSession).catch(() => {});
-    }
-    const friendly = msg.includes('FREEBEAT_POOL_UNAVAILABLE')
-      ? '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.'
-      : msg.includes('FREEBEAT_UPLOAD')
-        ? '❌ Foto tidak bisa diproses. Coba foto JPG atau PNG lain.'
-        : msg.includes('FREEBEAT_TIMEOUT')
-          ? '❌ Proses terlalu lama. Saldo kamu akan dikembalikan.'
-          : providerAccepted
-            ? '❌ Video gagal diproses. Saldo kamu akan dikembalikan.'
-            : '❌ Permintaan tidak diterima server. Saldo kamu akan dikembalikan.';
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
-      .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
-  } finally {
-    if (refund) {
-      await addSaldo(dbUserId, PRICE).catch(() => {});
-      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
-    }
-    await releaseFreebeatSession(poolSession).catch(() => {});
     releaseGenerating(dbUserId);
   }
 }
