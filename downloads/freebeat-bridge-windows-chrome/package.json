@@ -1,0 +1,14 @@
+{
+  "name": "picsart-local-runner",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local Windows automation runner for Picsart invite flow (runs through Surfshark VPN on your own PC).",
+  "scripts": {
+    "proof": "node proof-login.js"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  }
+}

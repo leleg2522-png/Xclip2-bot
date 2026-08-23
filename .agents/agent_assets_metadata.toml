@@ -347,3 +347,17 @@ mtime_ms = 1787521577175
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:7f88cd25-517f-45aa-aa1c-e5ef0c7301ea/0d7cd56f-d831-4258-b51e-7c3cccf546f0/5efbb506-e965-4f28-8679-c84a32285cbf"
 storage_version_token = "1787521585721379"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "Cww23dVsp61KcvBiBTTkj"
+uri = "file://downloads/freebeat-bridge-windows-chrome.zip"
+type = "unspecified"
+title = "Freebeat Bridge Windows — Google Chrome"
+description = "Versi pengganti yang membuka Google Chrome asli, bukan Chromium Playwright."
+logical_id = "478ce205-7714-40f4-bf0d-53c27bf9fd36"
+content_hash = "sha256:537ee41901d34febc137904de5bd2d06a34ed2ba7b3c7260b701961556a80c75"
+size = 5462
+mtime_ms = 1787523538070
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:7f88cd25-517f-45aa-aa1c-e5ef0c7301ea/478ce205-7714-40f4-bf0d-53c27bf9fd36/fd996f07-b9df-4312-8892-07a6e3521e0b"
+storage_version_token = "1787523547608902"
+content_type = "application/octet-stream"
