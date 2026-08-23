@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { isOneOverAuthFailure, resolveOneOverAccountId } from '../src/oneover';
+import { isOneOverAuthFailure, oneOverTokenNeedsRefresh, resolveOneOverAccountId } from '../src/oneover';
 
 const provider = readFileSync(new URL('../src/oneover.ts', import.meta.url), 'utf8');
 const bot = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
@@ -37,6 +37,13 @@ assert.equal(
   'account-42'
 );
 assert.equal(resolveOneOverAccountId({ apiKey: 'test', authorization: 'opaque-token' }), null);
+assert.equal(
+  oneOverTokenNeedsRefresh(
+    { apiKey: 'test', authorization: 'Bearer eyJhbGciOiJub25lIn0.eyJleHAiOjIwMDB9.signature' },
+    2000 * 1000
+  ),
+  true
+);
 
 assert.match(bot, /oneover_seedance_25: 6000/);
 assert.match(bot, /Seedance 2\.5 I2V 🔥PROMO/);
@@ -55,6 +62,10 @@ assert.match(bot, /const dbUserId = activeDraft\.dbUserId;/);
 assert.match(bot, /setSession\(userId, \{ mode: 'idle', oneoverImageUrl: undefined \}\);\s+const statusMsg = await ctx\.reply/s);
 assert.match(bot, /CREATE TABLE IF NOT EXISTS oneover_session_pool/);
 assert.match(bot, /provider_user_id\s+TEXT UNIQUE NOT NULL/);
+assert.match(bot, /refresh_token\s+TEXT/);
+assert.match(bot, /ONEOVER_POOL_REFRESH_SEED/);
+assert.match(provider, /refreshOneOverCredentials/);
+assert.match(provider, /grant_type=refresh_token/);
 assert.match(bot, /ON CONFLICT \(provider_user_id\) DO UPDATE/);
 assert.match(bot, /FOR UPDATE SKIP LOCKED/);
 assert.match(bot, /FOR UPDATE SKIP LOCKED/);

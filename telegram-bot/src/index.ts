@@ -1173,7 +1173,7 @@ const ONEOVER_SESSION_LEASE_MINUTES = 20;
 
 function oneOverSessionFingerprint(credentials: oneover.OneOverCredentials): string {
   return crypto.createHash('sha256')
-    .update(`${credentials.apiKey}\u0000${credentials.authorization ?? ''}\u0000${credentials.cookie ?? ''}`)
+    .update(`${credentials.apiKey}\u0000${credentials.authorization ?? ''}\u0000${credentials.cookie ?? ''}\u0000${credentials.refreshToken ?? ''}`)
     .digest('hex');
 }
 
@@ -1185,26 +1185,29 @@ function readOneOverPoolSeeds(): oneover.OneOverCredentials[] {
     if (userId) seeds.push({ ...environmentSession, userId });
   }
 
-  const raw = process.env.ONEOVER_POOL_SEED?.trim();
-  if (!raw) return seeds;
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) throw new Error('must be a JSON array');
-    for (const item of parsed) {
-      const apiKey = typeof item?.apiKey === 'string' ? item.apiKey.trim()
-        : typeof item?.api_key === 'string' ? item.api_key.trim() : '';
-      const authorization = typeof item?.authorization === 'string' ? item.authorization.trim() : undefined;
-      const cookie = typeof item?.cookie === 'string' ? item.cookie.trim() : undefined;
-      const userId = typeof item?.userId === 'string' ? item.userId.trim()
-        : typeof item?.user_id === 'string' ? item.user_id.trim() : undefined;
-      const credentials = { apiKey, authorization, cookie, userId };
-      const accountId = oneover.resolveOneOverAccountId(credentials);
-      if (apiKey && (authorization || cookie) && accountId) {
-        seeds.push({ ...credentials, userId: accountId });
+  for (const raw of [process.env.ONEOVER_POOL_SEED?.trim(), process.env.ONEOVER_POOL_REFRESH_SEED?.trim()]) {
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw new Error('must be a JSON array');
+      for (const item of parsed) {
+        const apiKey = typeof item?.apiKey === 'string' ? item.apiKey.trim()
+          : typeof item?.api_key === 'string' ? item.api_key.trim() : '';
+        const authorization = typeof item?.authorization === 'string' ? item.authorization.trim() : undefined;
+        const cookie = typeof item?.cookie === 'string' ? item.cookie.trim() : undefined;
+        const refreshToken = typeof item?.refreshToken === 'string' ? item.refreshToken.trim()
+          : typeof item?.refresh_token === 'string' ? item.refresh_token.trim() : undefined;
+        const userId = typeof item?.userId === 'string' ? item.userId.trim()
+          : typeof item?.user_id === 'string' ? item.user_id.trim() : undefined;
+        const credentials = { apiKey, authorization, cookie, refreshToken, userId };
+        const accountId = oneover.resolveOneOverAccountId(credentials);
+        if (apiKey && (authorization || cookie) && accountId) {
+          seeds.push({ ...credentials, userId: accountId });
+        }
       }
+    } catch (error: any) {
+      console.warn(`⚠️ Seed OneOver diabaikan: ${error?.message ?? 'format JSON tidak valid'}`);
     }
-  } catch (error: any) {
-    console.warn(`⚠️ ONEOVER_POOL_SEED diabaikan: ${error?.message ?? 'format JSON tidak valid'}`);
   }
   return seeds;
 }
@@ -1217,6 +1220,7 @@ async function ensureOneOverPool(): Promise<void> {
       api_key             TEXT NOT NULL,
       auth_header         TEXT,
       cookie              TEXT,
+       refresh_token       TEXT,
       provider_user_id    TEXT UNIQUE NOT NULL,
       status              TEXT NOT NULL DEFAULT 'available',
       active_jobs         INTEGER NOT NULL DEFAULT 0,
@@ -1234,19 +1238,24 @@ async function ensureOneOverPool(): Promise<void> {
   await dbq(`ALTER TABLE oneover_session_pool ADD COLUMN IF NOT EXISTS claim_token TEXT`);
   await dbq(`ALTER TABLE oneover_session_pool ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ`);
   await dbq(`ALTER TABLE oneover_session_pool ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ`);
+  await dbq(`ALTER TABLE oneover_session_pool ADD COLUMN IF NOT EXISTS refresh_token TEXT`);
   await dbq(`CREATE UNIQUE INDEX IF NOT EXISTS oneover_session_pool_provider_user_id_uq ON oneover_session_pool (provider_user_id)`);
   await dbq(`CREATE INDEX IF NOT EXISTS oneover_session_pool_pick_idx ON oneover_session_pool (status, active_jobs, last_used_at, id)`);
 
   for (const credentials of readOneOverPoolSeeds()) {
     await dbq(
       `INSERT INTO oneover_session_pool
-        (credential_hash, api_key, auth_header, cookie, provider_user_id, status)
-       VALUES ($1, $2, $3, $4, $5, 'available')
+        (credential_hash, api_key, auth_header, cookie, refresh_token, provider_user_id, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'available')
        ON CONFLICT (provider_user_id) DO UPDATE
-       SET credential_hash = EXCLUDED.credential_hash,
+       SET credential_hash = CASE WHEN oneover_session_pool.refresh_token IS NULL
+                                  THEN EXCLUDED.credential_hash ELSE oneover_session_pool.credential_hash END,
            api_key = EXCLUDED.api_key,
-           auth_header = EXCLUDED.auth_header,
-           cookie = EXCLUDED.cookie,
+           auth_header = CASE WHEN oneover_session_pool.refresh_token IS NULL
+                              THEN EXCLUDED.auth_header ELSE oneover_session_pool.auth_header END,
+           cookie = CASE WHEN oneover_session_pool.refresh_token IS NULL
+                         THEN EXCLUDED.cookie ELSE oneover_session_pool.cookie END,
+           refresh_token = COALESCE(EXCLUDED.refresh_token, oneover_session_pool.refresh_token),
            status = CASE WHEN oneover_session_pool.active_jobs = 0 THEN 'available' ELSE oneover_session_pool.status END,
            dead_at = CASE WHEN oneover_session_pool.active_jobs = 0 THEN NULL ELSE oneover_session_pool.dead_at END`,
       [
@@ -1254,6 +1263,7 @@ async function ensureOneOverPool(): Promise<void> {
         credentials.apiKey,
         credentials.authorization ?? null,
         credentials.cookie ?? null,
+        credentials.refreshToken ?? null,
         credentials.userId ?? null,
       ]
     );
@@ -1284,20 +1294,37 @@ async function claimOneOverSession(): Promise<OneOverPoolSession | null> {
         last_used_at = NOW()
     FROM candidate
     WHERE pool.id = candidate.id
-    RETURNING pool.id, pool.api_key, pool.auth_header, pool.cookie, pool.provider_user_id
+    RETURNING pool.id, pool.api_key, pool.auth_header, pool.cookie, pool.refresh_token, pool.provider_user_id
   `, [claimToken]);
   const row = result.rows[0];
   if (!row) return null;
-  return {
+  const session: OneOverPoolSession = {
     id: Number(row.id),
     claimToken,
     credentials: {
       apiKey: String(row.api_key),
       authorization: row.auth_header ? String(row.auth_header) : undefined,
       cookie: row.cookie ? String(row.cookie) : undefined,
+      refreshToken: row.refresh_token ? String(row.refresh_token) : undefined,
       userId: row.provider_user_id ? String(row.provider_user_id) : undefined,
     },
   };
+  if (!oneover.oneOverTokenNeedsRefresh(session.credentials)) return session;
+  try {
+    const refreshed = await oneover.refreshOneOverCredentials(session.credentials);
+    const updated = await db.query(
+      `UPDATE oneover_session_pool
+       SET credential_hash = $1, auth_header = $2, refresh_token = $3
+       WHERE id = $4 AND claim_token = $5`,
+      [oneOverSessionFingerprint(refreshed), refreshed.authorization ?? null, refreshed.refreshToken ?? null, session.id, session.claimToken]
+    );
+    if (updated.rowCount !== 1) throw new Error('ONEOVER_REFRESH_LEASE_LOST');
+    session.credentials = refreshed;
+    return session;
+  } catch (error: any) {
+    await markOneOverSessionDead(session).catch(() => {});
+    throw new Error(`ONEOVER_REFRESH_UNAVAILABLE: ${error?.message ?? 'unknown'}`);
+  }
 }
 
 async function renewOneOverSessionLease(session: OneOverPoolSession): Promise<void> {
