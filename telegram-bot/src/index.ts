@@ -1117,6 +1117,40 @@ async function addEdanbotCookieToPool(cookie: string): Promise<boolean> {
   return res.rows.length > 0;
 }
 
+// Secret ini dipakai untuk rotasi eksplisit dari panel Secrets. Jangan pernah
+// mencetak nilainya: pada startup, sesi yang sedang available dinonaktifkan lalu
+// satu cookie pengganti dijadikan satu-satunya sesi aktif.
+async function applyEdanbotPoolReplacement(): Promise<boolean> {
+  const raw = process.env.EDANBOT_POOL_REPLACEMENT_COOKIE?.trim().replace(/^session=/, '');
+  if (!raw) return false;
+
+  await ensureEdanbotPoolTable();
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const inserted = await client.query(
+      `INSERT INTO edanbot_cookie_pool (cookie, status, dead_at)
+       VALUES ($1, 'available', NULL)
+       ON CONFLICT (cookie) DO UPDATE SET status = 'available', dead_at = NULL
+       RETURNING id`,
+      [raw]
+    );
+    await client.query(
+      `UPDATE edanbot_cookie_pool
+       SET status = 'replaced', dead_at = NOW()
+       WHERE status = 'available' AND id <> $1`,
+      [inserted.rows[0].id]
+    );
+    await client.query('COMMIT');
+    return true;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function getEdanbotPoolStats(): Promise<{ available: number; dead: number }> {
   await ensureEdanbotPoolTable();
   const res = await db.query(`SELECT status, COUNT(*) AS cnt FROM edanbot_cookie_pool GROUP BY status`);
@@ -7857,6 +7891,9 @@ app.listen(PORT, () => {
     console.log('✅ Picsart schema siap');
     await ensureBalanceSchema();
     console.log('✅ Saldo schema siap');
+    if (await applyEdanbotPoolReplacement()) {
+      console.log('✅ Sesi Edanbot aktif di pool sudah diganti');
+    }
     await ensureOneOverPool();
     console.log('✅ Pool Seedance 2.5 siap');
     // Keep the refresh token alive forever on a dedicated account (seed once).
