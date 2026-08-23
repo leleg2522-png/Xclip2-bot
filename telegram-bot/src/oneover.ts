@@ -5,8 +5,6 @@ const ONEOVER_BASE_URL = (process.env.ONEOVER_BASE_URL || 'https://mjuwtqkfhtpga
 const ONEOVER_API_KEY = process.env.ONEOVER_API_KEY?.trim();
 const ONEOVER_AUTHORIZATION = process.env.ONEOVER_AUTHORIZATION?.trim();
 const ONEOVER_COOKIE = process.env.ONEOVER_COOKIE?.trim();
-const ONEOVER_REFRESH_TOKEN = process.env.ONEOVER_REFRESH_TOKEN?.trim();
-const ONEOVER_AUTH_BASE_URL = ONEOVER_BASE_URL.replace(/\/functions\/v1$/, '');
 
 export const ONEOVER_SEEDANCE_25 = {
   model: 'seedance-2.5',
@@ -41,7 +39,6 @@ export type OneOverCredentials = {
   apiKey: string;
   authorization?: string;
   cookie?: string;
-  refreshToken?: string;
   userId?: string;
 };
 
@@ -60,7 +57,6 @@ export function getEnvironmentCredentials(): OneOverCredentials | null {
     apiKey: ONEOVER_API_KEY,
     authorization: ONEOVER_AUTHORIZATION,
     cookie: ONEOVER_COOKIE,
-    refreshToken: ONEOVER_REFRESH_TOKEN,
     userId: process.env.ONEOVER_USER_ID?.trim() || undefined,
   };
 }
@@ -79,77 +75,12 @@ export function resolveOneOverAccountId(credentials: OneOverCredentials): string
   }
 }
 
-export function oneOverAccessTokenExpiresAt(credentials: OneOverCredentials): number | null {
-  const raw = credentials.authorization?.trim().replace(/^Bearer\s+/i, '');
-  const payload = raw?.split('.')[1];
-  if (!payload) return null;
-  try {
-    const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
-    return typeof parsed?.exp === 'number' ? parsed.exp * 1000 : null;
-  } catch {
-    return null;
-  }
-}
-
-export function oneOverTokenNeedsRefresh(credentials: OneOverCredentials, now = Date.now()): boolean {
-  const expiresAt = oneOverAccessTokenExpiresAt(credentials);
-  return expiresAt !== null && expiresAt <= now + 5 * 60_000;
-}
-
-export async function refreshOneOverCredentials(credentials: OneOverCredentials): Promise<OneOverCredentials> {
-  if (!credentials.refreshToken?.trim()) throw new Error('ONEOVER_NO_REFRESH_TOKEN');
-  let response;
-  try {
-    response = await axios.post(
-      `${ONEOVER_AUTH_BASE_URL}/auth/v1/token?grant_type=refresh_token`,
-      { refresh_token: credentials.refreshToken.trim() },
-      {
-        timeout: 30_000,
-        validateStatus: () => true,
-        headers: {
-          apikey: credentials.apiKey,
-          'content-type': 'application/json',
-          ...browserContextHeaders,
-        },
-      }
-    );
-  } catch (error: any) {
-    throw new Error(error?.code === 'ECONNABORTED' ? 'ONEOVER_REFRESH_TIMEOUT' : 'ONEOVER_REFRESH_FAILED');
-  }
-  const body = response.data as any;
-  if (response.status < 200 || response.status >= 300 || typeof body?.access_token !== 'string') {
-    throw new Error(`ONEOVER_REFRESH_FAILED ${response.status}`);
-  }
-  const refreshed: OneOverCredentials = {
-    ...credentials,
-    authorization: `Bearer ${body.access_token}`,
-    refreshToken: typeof body.refresh_token === 'string' && body.refresh_token.trim()
-      ? body.refresh_token
-      : credentials.refreshToken,
-  };
-  const originalUser = resolveOneOverAccountId(credentials);
-  const refreshedUser = resolveOneOverAccountId(refreshed);
-  if (originalUser && refreshedUser && originalUser !== refreshedUser) {
-    throw new Error('ONEOVER_REFRESH_ACCOUNT_MISMATCH');
-  }
-  return refreshed;
-}
-
 function headers(credentials: OneOverCredentials): Record<string, string> {
   if (!credentials.apiKey?.trim()) throw new Error('ONEOVER_NO_CREDENTIAL');
-  if (!credentials.authorization?.trim() && !credentials.cookie?.trim()) throw new Error('ONEOVER_NO_SESSION');
   return {
     ...browserContextHeaders,
     apikey: credentials.apiKey.trim(),
     'content-type': 'application/json',
-    ...(credentials.authorization?.trim()
-      ? {
-        authorization: credentials.authorization.trim().startsWith('Bearer ')
-          ? credentials.authorization.trim()
-          : `Bearer ${credentials.authorization.trim()}`,
-      }
-      : {}),
-    ...(credentials.cookie?.trim() ? { cookie: credentials.cookie.trim() } : {}),
   };
 }
 
