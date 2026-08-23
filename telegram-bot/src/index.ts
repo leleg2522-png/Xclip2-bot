@@ -2162,7 +2162,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🌊 Seedance 2.0 Mini', 'mode_pi2v_seedance_2_mini')],
     [Markup.button.callback('🌊 Seedance 2.0 Fast', 'mode_pi2v_seedance_2_fast')],
     [Markup.button.callback('🌊 Seedance 2.0', 'mode_pi2v_seedance_2')],
-    [Markup.button.callback('🌊 Seedance 2.5 I2V • Bridge', 'mode_oneover_seedance25')],
+    [Markup.button.callback('🌊 Seedance 2.5 I2V', 'mode_oneover_seedance25')],
     [Markup.button.callback('🌌 Grok Imagine Video', 'mode_pi2v_grok_imagine')],
     [Markup.button.callback('⚡ Kling v3 Turbo', 'mode_pi2v_kling_v3_turbo')],
     [Markup.button.callback('🎭 Kling v2.6 Pro', 'mode_pi2v_kling_v26_pro')],
@@ -2539,7 +2539,7 @@ function hargaText(): string {
     `• Seedance 2.0 Mini — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Seedance 2.0 Fast — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Seedance 2.0 — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
-    `• Seedance 2.5 I2V (Bridge) — ${formatRupiah(MODEL_PRICES.oneover_seedance_25)}\n` +
+    `• Seedance 2.5 I2V — ${formatRupiah(MODEL_PRICES.oneover_seedance_25)}\n` +
     `• Grok Imagine Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v3 Turbo — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v2.6 Pro — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
@@ -3778,9 +3778,8 @@ bot.on('callback_query', async (ctx) => {
     setSession(userId, { mode: 'oneover_wait_image', oneoverImageUrl: undefined });
     return ctx.editMessageText(
       `🌊 *Seedance 2.5 I2V*\n\n` +
-      `Provider: *Freebeat Bridge* • Durasi: *30 detik* • Resolusi: *480p*\n` +
+      `Durasi: *30 detik* • Resolusi: *480p*\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.oneover_seedance_25)}* per video\n\n` +
-      `⚠️ PC Bridge Freebeat harus online agar order diproses.\n\n` +
       '*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
       { parse_mode: 'Markdown' }
     );
@@ -6206,8 +6205,8 @@ async function queueFreebeatBridgeSeedance25(
       chatId,
       statusMsgId,
       undefined,
-      `⏳ Seedance 2.5 masuk antrean Bridge.\n\n` +
-      `PC Freebeat akan mengambil order ini otomatis. Hasil dikirim saat selesai.`
+      `⏳ Seedance 2.5 sedang diproses.\n\n` +
+      `Hasil video akan dikirim otomatis saat selesai.`
     ).catch(() => {});
     console.log(`[${userId}] Seedance 2.5 Bridge queued: ${job.id}`);
   } catch (error: any) {
@@ -6216,7 +6215,7 @@ async function queueFreebeatBridgeSeedance25(
       chatId,
       statusMsgId,
       undefined,
-      '❌ Gagal memasukkan order ke Bridge. Saldo kamu sudah dikembalikan.'
+      '❌ Gagal memproses order. Saldo kamu sudah dikembalikan.'
     ).catch(() => {});
     console.error(`[${userId}] Seedance 2.5 Bridge queue error:`, error?.message ?? error);
   } finally {
@@ -7960,7 +7959,7 @@ async function refundExpiredBridgeJobs(): Promise<void> {
       job.chatId,
       job.statusMessageId,
       undefined,
-      `❌ Bridge tidak menyelesaikan Seedance 2.5 tepat waktu.\nSaldo ${formatRupiah(job.price)} sudah dikembalikan.`
+      `❌ Order Seedance 2.5 tidak selesai tepat waktu.\nSaldo ${formatRupiah(job.price)} sudah dikembalikan.`
     ).catch(() => {});
     await bot.telegram.sendMessage(
       job.chatId,
@@ -8071,7 +8070,7 @@ app.post('/bridge/jobs/:id/complete', async (req, res) => {
     const delivered = await sendResult(
       job.chatId,
       job.outputUrl!,
-      '🎬 Seedance 2.5 I2V • Freebeat Bridge\n\n/menu untuk buat lagi',
+      '🎬 Seedance 2.5 I2V\n\n/menu untuk buat lagi',
       true
     );
     if (!delivered) {

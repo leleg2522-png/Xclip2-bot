@@ -14,3 +14,4 @@
 - [Paid provider post-submit failover](paid-provider-post-submit-failover.md) — failover may retry only before an upstream paid job is accepted; post-submit auth loss must refund, not resubmit.
 - [OneOver submit timeouts](oneover-submit-timeouts.md) — Railway submit can exceed two minutes; wait longer and never retry an ambiguous submit response.
 - [Freebeat Windows Bridge](freebeat-windows-bridge.md) — keep Freebeat browser sessions on the logged-in Windows PC; Railway owns durable jobs, saldo, and result delivery.
+- [Public provider labels](public-provider-labels.md) — customer Telegram copy is model-led; provider and bridge names stay internal.

@@ -41,7 +41,11 @@ assert.equal(resolveOneOverAccountId({ apiKey: 'test', authorization: 'opaque-to
 
 assert.match(bot, /oneover_seedance_25: 6000/);
 assert.match(bot, /Seedance 2\.5 I2V/);
-assert.match(bot, /Provider: \*Freebeat Bridge\*/);
+assert.doesNotMatch(bot, /Provider: \*Freebeat Bridge\*/);
+assert.doesNotMatch(bot, /Seedance 2\.5 I2V • Bridge/);
+assert.doesNotMatch(bot, /Freebeat Bridge\\n\\n\/menu/);
+assert.doesNotMatch(bot, /PC Freebeat/);
+assert.doesNotMatch(bot, /Bridge tidak menyelesaikan Seedance/);
 assert.match(bot, /mode_oneover_seedance25/);
 assert.match(bot, /oneover_wait_image/);
 assert.match(bot, /oneover_wait_prompt/);
