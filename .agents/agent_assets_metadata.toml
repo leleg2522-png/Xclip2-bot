@@ -6,246 +6,287 @@ id = "cHGkafcRNA9GEfS7QzxcY"
 uri = "file://test_input1.jpg"
 type = "image"
 title = "Input 1 — Orang (main image)"
+logical_id = "f7b06811-6211-4468-bb9f-4a1fc3afed1d"
 
 [[outputs]]
 id = "UfEXTDR8JoYuR4rk8SSR3"
 uri = "file://test_input2_ref.jpg"
 type = "image"
 title = "Input 2 — Jaket (reference image)"
+logical_id = "ad5d15b3-9aa8-483f-baad-9787a168d157"
 
 [[outputs]]
 id = "KSZKzhfO4mBPNsFL1deev"
 uri = "file://test_result.jpg"
 type = "image"
 title = "Hasil Output — nano-banana-2"
+logical_id = "e3ef4814-402a-42a5-af9b-9e6e29f3fef2"
 
 [[outputs]]
 id = "0qngTW14UenENBaThLx-D"
 uri = "file://test_result_user.jpg"
 type = "image"
 title = "Hasil — nano-banana-pro (baju pink di karakter kamu)"
+logical_id = "286df74d-a577-4565-b631-8c25a1031edc"
 
 [[outputs]]
 id = "y0zX_UY7tVrQFeduPNJt5"
 uri = "file://test_gpt2_result.jpg"
 type = "image"
 title = "Hasil — gpt-image-2"
+logical_id = "5f4d1b62-ac20-4c89-9f41-0db00545de1a"
 
 [[outputs]]
 id = "M6a-nrLcZeNu8mx0TUCFT"
 uri = "file://seedream_result.jpg"
 type = "image"
 title = "Hasil — Seedream 5 Lite (karakter kamu + baju pink)"
+logical_id = "6ff75198-70f8-4693-89b3-8089e902e27e"
 
 [[outputs]]
 id = "T1eiATc5ijwPhEoPeomTg"
 uri = "file://sd_A_ref_image_url.jpg"
 type = "image"
 title = "A — image_url + reference_image_url (cara sekarang)"
+logical_id = "e970de6b-70e2-4e91-a75a-074291ab9f3c"
 
 [[outputs]]
 id = "ODGcoCROphtuehXxyuMHh"
 uri = "file://sd_C_no_ref.jpg"
 type = "image"
 title = "C — image_url only (tanpa referensi)"
+logical_id = "46ace002-f01d-4a9b-b73b-f2df3759873c"
 
 [[outputs]]
 id = "PxG_D_cGXQOVO_3srDNa8"
 uri = "file://sd_D_style_image.jpg"
 type = "image"
 title = "D — image_url + style_image"
+logical_id = "de7fb6a6-a69c-4b26-8f88-b70a082668aa"
 
 [[outputs]]
 id = "9u6diF4AETLsd1W0NS5zL"
 uri = "file://gpt2_user_result.jpg"
 type = "image"
 title = "Hasil — GPT Image 2 (karakter kamu + baju pink)"
+logical_id = "89d0e414-6b36-41db-a27f-1b25621bef34"
 
 [[outputs]]
 id = "OurYzuh0HFRe2a66MiNzo"
 uri = "file://gpt2_subject_ref.jpg"
 type = "image"
 title = "GPT Image 2 — subject_reference field"
+logical_id = "11200ad2-9bc2-4ada-9ab1-995b45383e2c"
 
 [[outputs]]
 id = "g6f6i7ij3VOVennUhsGGV"
 uri = "file://seedream_subject_ref.jpg"
 type = "image"
 title = "Seedream 5 Lite — subject_reference field"
+logical_id = "1e29d1e3-828d-4d11-9e0b-12c99dd6931c"
 
 [[outputs]]
 id = "Ak93cfCo3_CcG9XI5E8nU"
 uri = "file://result_nano_banana_pro.jpg"
 type = "image"
 title = "🍌 Nano Banana Pro"
+logical_id = "54130d34-fad8-45f6-9348-6baeb14fcee4"
 
 [[outputs]]
 id = "4wDGDl_T1ybdXGb6fVR0V"
 uri = "file://result_gpt_image_2.jpg"
 type = "image"
 title = "🤖 GPT Image 2"
+logical_id = "31902e17-e796-44f3-b11f-44ef363ce555"
 
 [[outputs]]
 id = "Q1X94ZESk9u3qChLEFlMT"
 uri = "file://result_seedream.jpg"
 type = "image"
 title = "🌱 Seedream 5 Lite"
+logical_id = "67725603-8bcf-4101-937d-af43ab59c388"
 
 [[outputs]]
 id = "DQXDSsRLfxmCJfNAy9r96"
 uri = "file://result_nbpro_SWAPPED.jpg"
 type = "image"
 title = "🍌 Banana Pro — urutan SWAP (outfit jadi image_url)"
+logical_id = "6f315202-283c-4fbb-8cbd-91f5f9e70683"
 
 [[outputs]]
 id = "bLTeOw-rrryMKUKIlKPaM"
 uri = "file://result_nbpro_NORMAL_v2.jpg"
 type = "image"
 title = "🍌 Banana Pro — normal + prompt spesifik"
+logical_id = "5950961e-beff-4c32-9e59-501e4c930444"
 
 [[outputs]]
 id = "-ZQYFSLiMeDLZOIfvHOO5"
 uri = "file://result_seed_SWAPPED.jpg"
 type = "image"
 title = "🌱 Seedream — urutan SWAP"
+logical_id = "1cf62abb-2aaf-4ce2-b053-65e648643675"
 
 [[outputs]]
 id = "mg83mfK2QtQAUjQIDhTdL"
 uri = "file://res_nano_banana_pro.jpg"
 type = "image"
 title = "🍌 Nano Banana Pro"
+logical_id = "0afe21e5-b816-4453-bdf3-28d8268f90f1"
 
 [[outputs]]
 id = "-foIlPvsgOm1DEuIIsBVK"
 uri = "file://res_gpt_image_2.jpg"
 type = "image"
 title = "🤖 GPT Image 2"
+logical_id = "f23865e1-cad5-4341-9add-f192156514ec"
 
 [[outputs]]
 id = "ilMtw4MJcsDliyTgQnWuJ"
 uri = "file://res_seedream.jpg"
 type = "image"
 title = "🌱 Seedream 5 Lite"
+logical_id = "e3c78a6e-2367-42e5-b2e0-2ce1a078a05a"
 
 [[outputs]]
 id = "MjjTTgZqXOyZdCe8iLZ4e"
 uri = "file://jacket_nano_banana_pro.jpg"
 type = "image"
 title = "🍌 Nano Banana Pro"
+logical_id = "c64c6d1c-552d-4883-b1df-cee215d45006"
 
 [[outputs]]
 id = "g_F-MXe_2SZYQPI32qMgU"
 uri = "file://jacket_gpt_image_2.jpg"
 type = "image"
 title = "🤖 GPT Image 2"
+logical_id = "343d1c76-0a21-4405-800d-192592645786"
 
 [[outputs]]
 id = "1oeUDmZGRYjIcK0gfHSvk"
 uri = "file://jacket_seedream.jpg"
 type = "image"
 title = "🌱 Seedream 5 Lite"
+logical_id = "606e3372-4a8a-4e56-8321-700cf6ae2e9d"
 
 [[outputs]]
 id = "OH4VKjwOPDJQXVYVPI_oz"
 uri = "file://v2_nano_banana_pro.jpg"
 type = "image"
 title = "🍌 Nano Banana Pro"
+logical_id = "d3d9172c-8728-4a2c-ad72-83e730cb1936"
 
 [[outputs]]
 id = "lo1tzH8gPnenFqpfcoNSS"
 uri = "file://v2_gpt_image_2.jpg"
 type = "image"
 title = "🤖 GPT Image 2"
+logical_id = "bc8ad580-972c-4032-bc3d-514c0c0797aa"
 
 [[outputs]]
 id = "g-SkUPftlVKK5X3WFTHrw"
 uri = "file://v2_seedream.jpg"
 type = "image"
 title = "🌱 Seedream 5 Lite"
+logical_id = "84f1d39a-b714-45d5-bbec-17e836e46789"
 
 [[outputs]]
 id = "LXS8vOaBNU9UH69bddPM1"
 uri = "file://gpt2_newkey.jpg"
 type = "image"
 title = "🤖 GPT Image 2 — key baru"
+logical_id = "832492c7-199d-4323-8f21-2f15eaf45a5e"
 
 [[outputs]]
 id = "D8C7ZDy8hbrJfbIiQ5k20"
 uri = "file://proxy_final.jpg"
 type = "image"
 title = "🍌 Nano Banana Pro — via Decodo Proxy"
+logical_id = "22d57846-1db5-4d9a-884f-52e7a082bcd9"
 
 [[outputs]]
 id = "2BWdKu8k5hfYqtUzg_oEB"
 uri = "file://seedance_result.mp4"
 type = "video"
 title = "Hasil Seedance 2 — Image to Video (480p, 5 detik)"
+logical_id = "5e5381ae-1f75-4e82-8d93-081f035b3828"
 
 [[outputs]]
 id = "NkVE0WZyzD4be8T65_uho"
 uri = "file://sora2_result.mp4"
 type = "video"
 title = "Hasil Sora 2 — Image to Video (8 detik, ~2.75 menit)"
+logical_id = "c9cb8e63-e4e8-4f44-82d0-91db3402308f"
 
 [[outputs]]
 id = "A0gd7P-aOZ-1KjiX3cx-L"
 uri = "file://test_results/nano_banana_2_tryon.jpg"
 type = "image"
 title = "Nano Banana 2 — Virtual Try-On (baju hitam dipakaikan ke karakter)"
+logical_id = "02d1ec2c-a6eb-4546-b312-82eed37a2bc8"
 
 [[outputs]]
 id = "5kB3SJdfuAGS2vgHuF093"
 uri = "file://test_results/gpt_square_1024x1024.png"
 type = "image"
 title = "GPT Image 2 — Square 1024x1024"
+logical_id = "70922f1f-f68e-4494-bc05-f217467d63ee"
 
 [[outputs]]
 id = "5HkwxCKelPLxYtUbqR7oP"
 uri = "file://test_results/gpt_portrait_1024x1792.png"
 type = "image"
 title = "GPT Image 2 — Portrait 1024x1792"
+logical_id = "25b10286-230d-49b5-aef3-6901e79fef50"
 
 [[outputs]]
 id = "a3Rndy0Deqof9o8ab9vLn"
 uri = "file://test_results/gpt_landscape_1792x1024.png"
 type = "image"
 title = "GPT Image 2 — Landscape 1792x1024"
+logical_id = "7dd1f170-247d-4503-9b9e-9209278fa990"
 
 [[outputs]]
 id = "RiBNgLXI_nfW6-m3u1taC"
 uri = "file://test_results/nb2_original.jpg"
 type = "image"
 title = "Nano Banana 2 — Baju asli (prompt: preserve face)"
+logical_id = "9f3bd971-fd88-4323-9c09-8619760acd8a"
 
 [[outputs]]
 id = "LKFFqTyqMe840rgM52V8e"
 uri = "file://test_results/nb2_cropped.jpg"
 type = "image"
 title = "Nano Banana 2 — Baju di-crop (hapus kepala model baju)"
+logical_id = "7dfbe95e-6e0f-4360-9d5b-cc98127b94ff"
 
 [[outputs]]
 id = "CNqJ6YEYFMNqLYpOZrS-U"
 uri = "file://test_results/gpt_person_only.png"
 type = "image"
 title = "GPT Image 2 — Hanya foto karakter + deskripsi baju di prompt"
+logical_id = "9cd979ee-05a9-4cff-b2f1-2b357d4afe3d"
 
 [[outputs]]
 id = "pRi3j3RgmcqJmV25iqKFL"
 uri = "file://picsart-local-runner.zip"
 type = "unspecified"
 title = "picsart-local-runner FULL (run.bat auto-update) — pakai yang ini"
+logical_id = "5a44785a-dc84-446a-8650-bcd9c350ab8f"
 
 [[outputs]]
 id = "338MMTh9ipu4RoB9722W-"
 uri = "file://proof-login-baru.zip"
 type = "unspecified"
 title = "proof-login.js v4 (login manual + ambil token)"
+logical_id = "3c9c6b79-5a09-4d54-af98-3e3553e4d4af"
 
 [[outputs]]
 id = "dy7Dz0eTbWPanV6a7D0s8"
 uri = "file://exports/kling26_motion_test.mp4"
 type = "video"
 title = "Hasil Tes Kling 2.6 Pro Motion Control (Flora AI)"
+logical_id = "669378d9-5b42-4247-8a91-46ad4e2d2dce"
 
 [[outputs]]
 id = "i7k2vH3igR1HngFOT1iFm"
@@ -253,6 +294,7 @@ uri = "file://test_results/veo_fast_test.mp4"
 type = "video"
 title = "Tes Veo 3.1 Fast (Full HD)"
 description = "Hasil tes generate SnapGen veo-3.1-fast, 1080p, 8 detik, 16:9."
+logical_id = "18352a25-5037-48cb-985d-29699398540d"
 
 [[outputs]]
 id = "zyrGCIXjkXZRL8RFv3stU"
@@ -260,6 +302,7 @@ uri = "file://test_results/veo_fast_i2v_test.mp4"
 type = "video"
 title = "Tes Veo 3.1 Fast — Image-to-Video"
 description = "Foto referensi jacket_seedream.jpg dianimasikan jadi video 1080p 8 detik (mode frame)."
+logical_id = "06cba080-d0c3-4107-ae39-882b1e0e59c9"
 
 [[outputs]]
 id = "fHqvcF-9ZgyujboBkYyBo"
@@ -267,6 +310,7 @@ uri = "file://test_results/nb2_i2i_test.png"
 type = "image"
 title = "Tes Nano Banana 2 — Image-to-Image"
 description = "Foto jaket diedit via prompt 'ubah warna jaket jadi merah' — nano-banana-2, 2K, rasio 3:4."
+logical_id = "43a6c700-f7e7-4f2c-8c31-cbf15a4c7843"
 
 [[outputs]]
 id = "zpqX98fyh3s11KWf5VZGe"
@@ -274,3 +318,18 @@ uri = "file://test_results/edanbot_kling_motion_test.mp4"
 type = "video"
 title = "Tes Kling Motion 2.6 Pro via edanbot"
 description = "Generate lewat akun edanbot kamu: foto jaket + video referensi 8 detik → Kling Motion 2.6 Pro. Kredit terpotong 200."
+logical_id = "61d34db7-f444-472f-bef4-da5b8fa6ae1d"
+
+[[outputs]]
+id = "BpaBTMelZfMwq2QRK9DKt"
+uri = "file://downloads/freebeat-bridge-windows.zip"
+type = "unspecified"
+title = "Freebeat Bridge untuk Windows"
+description = "Download, extract di PC Windows, lalu jalankan freebeat-bridge.bat."
+logical_id = "3ee8978b-4a62-493e-9f83-8da2583e8030"
+content_hash = "sha256:3dec9d8c1ca46d4ada2a5057ec8c80ed7be812dd7990b50d2ad7761c54c9b399"
+size = 5248
+mtime_ms = 1787521075551
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:7f88cd25-517f-45aa-aa1c-e5ef0c7301ea/3ee8978b-4a62-493e-9f83-8da2583e8030/7b80cc39-0793-41ce-84c6-4579e37a9b06"
+storage_version_token = "1787521082730659"
+content_type = "application/octet-stream"
