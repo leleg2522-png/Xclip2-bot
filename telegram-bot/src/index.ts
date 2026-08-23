@@ -6284,12 +6284,12 @@ async function runFreebeatMinimaxH3(
       const newCount = await incrementKlingUsage(dbUserId);
       markGenSuccess(userId);
       await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-      console.log(`[${userId}] ${label} done (usage: ${newCount}, credits used: ${result.credits ?? submission.credits ?? '?'})`);
+      console.log(`[${userId}] ${label} done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
     }
   } catch (err: any) {
     const msg = describeError(err);
     console.error(`[${userId}] ${label} error: ${msg}`);
-    const friendly = msg.includes('FREEBEAT_NO_API_KEY')
+    const friendly = msg.includes('FREEBEAT_NO_WEB_SESSION')
       ? '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.'
       : msg.includes('FREEBEAT_UPLOAD')
         ? '❌ Foto tidak bisa diproses. Coba foto JPG atau PNG lain.'
