@@ -361,3 +361,17 @@ mtime_ms = 1787523538070
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:7f88cd25-517f-45aa-aa1c-e5ef0c7301ea/478ce205-7714-40f4-bf0d-53c27bf9fd36/fd996f07-b9df-4312-8892-07a6e3521e0b"
 storage_version_token = "1787523547608902"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "ZzrdBlUKQIzEcNXNKctGO"
+uri = "file://downloads/freebeat-seedance-chrome-extension.zip"
+type = "unspecified"
+title = "Ekstensi Chrome Freebeat Seedance"
+description = "Extract ZIP ini, lalu muat foldernya dari chrome://extensions memakai tombol Load unpacked."
+logical_id = "12d5f12e-201d-4160-b6b0-970da90a5e56"
+content_hash = "sha256:c7f362cd9f533b2fb5d71f38288664e648efbfb722d5d773ba195a965617b1ee"
+size = 8386
+mtime_ms = 1787524497502
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:7f88cd25-517f-45aa-aa1c-e5ef0c7301ea/12d5f12e-201d-4160-b6b0-970da90a5e56/eb84fb2b-c3bb-48ff-9693-23fffe8f0502"
+storage_version_token = "1787524539758997"
+content_type = "application/octet-stream"

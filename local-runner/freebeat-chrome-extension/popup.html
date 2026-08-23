@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Freebeat Bridge</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Freebeat Bridge</h1>
+      <p class="hint">Login Freebeat di tab Chrome biasa, lalu ekstensi memproses antrean Seedance otomatis.</p>
+
+      <section id="status" class="status">
+        <strong id="status-title">Memeriksa koneksi…</strong>
+        <span id="status-detail"></span>
+      </section>
+
+      <form id="setup-form">
+        <label>
+          URL bot Railway
+          <input id="api-url" type="url" placeholder="https://bot-kamu.up.railway.app" required />
+        </label>
+        <label>
+          Kode dari /bridgecode
+          <input id="enrollment-code" type="text" placeholder="ABCD-2345" autocomplete="off" />
+        </label>
+        <button id="connect-button" type="submit">Sambungkan Bridge</button>
+      </form>
+
+      <button id="open-freebeat" class="secondary" type="button">Buka Freebeat</button>
+      <p id="message" class="message" aria-live="polite"></p>
+      <p class="footnote">Chrome akan meminta izin koneksi ke bot. Upload hanya menggunakan host Freebeat yang diperlukan. Biarkan tab Freebeat tetap terbuka dan login agar order bisa diproses.</p>
+    </main>
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>

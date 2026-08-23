@@ -254,7 +254,13 @@ export class FreebeatBridgeQueue {
        RETURNING id`,
       [jobId, agent.id, providerRef?.slice(0, 200) ?? '']
     );
-    return result.rowCount === 1;
+    if (result.rowCount === 1) return true;
+    const existing = await this.db.query(
+      `SELECT id FROM freebeat_bridge_jobs
+       WHERE id = $1 AND agent_id = $2 AND state = 'accepted'`,
+      [jobId, agent.id]
+    );
+    return existing.rowCount === 1;
   }
 
   async complete(agent: BridgeAgent, jobId: string, videoUrl: string): Promise<BridgeJob | null> {

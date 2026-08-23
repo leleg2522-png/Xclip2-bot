@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Freebeat Seedance Bridge",
+  "version": "1.0.0",
+  "description": "Memproses antrean Seedance 2.5 dari Telegram bot melalui tab Freebeat yang login.",
+  "permissions": [
+    "alarms",
+    "storage",
+    "tabs",
+    "scripting",
+    "webRequest"
+  ],
+  "host_permissions": [
+    "https://freebeat.ai/*",
+    "https://api.freebeatfit.com/*",
+    "https://*.freebeatfit.com/*",
+    "https://freebeat-static.s3.us-east-2.amazonaws.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Freebeat Seedance Bridge",
+    "default_popup": "popup.html"
+  }
+}

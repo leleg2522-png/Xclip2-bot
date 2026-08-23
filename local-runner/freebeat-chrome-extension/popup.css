@@ -1,0 +1,51 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background: #111318;
+  color: #f5f7fb;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 330px; }
+main { padding: 18px; }
+h1 { font-size: 19px; margin: 0 0 7px; }
+.hint, .footnote { color: #aeb7c5; font-size: 12px; line-height: 1.45; }
+.hint { margin: 0 0 15px; }
+.footnote { margin: 14px 0 0; }
+.status {
+  display: grid;
+  gap: 4px;
+  padding: 11px;
+  border: 1px solid #283244;
+  border-radius: 10px;
+  background: #171d27;
+  margin-bottom: 14px;
+  font-size: 12px;
+}
+.status strong { color: #8fe5ad; }
+.status[data-state="warning"] strong { color: #ffd37a; }
+.status[data-state="error"] strong { color: #ff9c9c; }
+.status span { color: #b8c2d2; }
+form { display: grid; gap: 11px; }
+label { display: grid; gap: 5px; font-size: 12px; color: #cbd4e2; }
+input {
+  width: 100%;
+  border: 1px solid #354155;
+  border-radius: 8px;
+  background: #0e1117;
+  color: #fff;
+  padding: 9px 10px;
+}
+button {
+  border: 0;
+  border-radius: 8px;
+  background: #5a67f2;
+  color: #fff;
+  padding: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+button:disabled { opacity: .55; cursor: wait; }
+.secondary { width: 100%; margin-top: 10px; background: #273248; }
+.message { min-height: 17px; margin: 10px 0 0; color: #ffcf7a; font-size: 12px; }
+.message.success { color: #8fe5ad; }
