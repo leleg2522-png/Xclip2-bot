@@ -333,3 +333,17 @@ mtime_ms = 1787521075551
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:7f88cd25-517f-45aa-aa1c-e5ef0c7301ea/3ee8978b-4a62-493e-9f83-8da2583e8030/7b80cc39-0793-41ce-84c6-4579e37a9b06"
 storage_version_token = "1787521082730659"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "IiPUeTKrfQzI77W9VEsD8"
+uri = "file://downloads/freebeat-bridge-windows-fixed.zip"
+type = "unspecified"
+title = "Freebeat Bridge Windows — perbaikan launcher"
+description = "Versi pengganti: launcher Windows sudah diperbaiki dari error tanda kurung."
+logical_id = "0d7cd56f-d831-4258-b51e-7c3cccf546f0"
+content_hash = "sha256:9cf14c1e66552333dd0da650ff3b8757b54b5d1644074754e7757864f719e83f"
+size = 5280
+mtime_ms = 1787521577175
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:7f88cd25-517f-45aa-aa1c-e5ef0c7301ea/0d7cd56f-d831-4258-b51e-7c3cccf546f0/5efbb506-e965-4f28-8679-c84a32285cbf"
+storage_version_token = "1787521585721379"
+content_type = "application/octet-stream"
