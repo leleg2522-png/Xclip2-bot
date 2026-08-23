@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { isOneOverAuthFailure } from '../src/oneover';
 
 const provider = readFileSync(new URL('../src/oneover.ts', import.meta.url), 'utf8');
 const bot = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
@@ -18,6 +19,11 @@ assert.match(provider, /ONEOVER_API_KEY/);
 assert.match(provider, /ONEOVER_AUTHORIZATION/);
 assert.match(provider, /ONEOVER_COOKIE/);
 assert.match(provider, /ONEOVER_NO_SESSION/);
+assert.match(provider, /credentials: OneOverCredentials/);
+assert.match(provider, /isOneOverAuthFailure/);
+assert.equal(isOneOverAuthFailure(new Error('ONEOVER_SUBMIT_FAILED 401: expired')), true);
+assert.equal(isOneOverAuthFailure(new Error('ONEOVER_POLL_FAILED 403: forbidden')), true);
+assert.equal(isOneOverAuthFailure(new Error('ONEOVER_TIMEOUT')), false);
 
 assert.match(bot, /oneover_seedance_25: 6000/);
 assert.match(bot, /Seedance 2\.5 I2V 🔥PROMO/);
@@ -33,5 +39,16 @@ assert.match(bot, /const activeDraft = getSession\(userId\);/);
 assert.match(bot, /if \(activeDraft\.mode !== 'oneover_wait_prompt'\) return;/);
 assert.match(bot, /const dbUserId = activeDraft\.dbUserId;/);
 assert.match(bot, /setSession\(userId, \{ mode: 'idle', oneoverImageUrl: undefined \}\);\s+const statusMsg = await ctx\.reply/s);
+assert.match(bot, /CREATE TABLE IF NOT EXISTS oneover_session_pool/);
+assert.match(bot, /FOR UPDATE SKIP LOCKED/);
+assert.match(bot, /FOR UPDATE SKIP LOCKED/);
+assert.match(bot, /claim_token = \$1/);
+assert.match(bot, /lease_expires_at = NOW\(\) \+ INTERVAL/);
+assert.match(bot, /renewOneOverSessionLease/);
+assert.match(bot, /await markOneOverSessionDead\(poolSession\)/);
+assert.match(bot, /while \(!submission\)/);
+assert.match(bot, /if \(providerAccepted && oneover\.isOneOverAuthFailure\(err\)\)/);
+assert.match(bot, /pollOneOverSeedanceI2v\(submission, prompt, pollingSession\.credentials/);
+assert.match(bot, /bot\.command\('oneoverpool'/);
 
 console.log('OneOver Seedance 2.5 I2V contract tests passed.');

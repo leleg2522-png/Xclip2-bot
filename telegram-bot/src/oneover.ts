@@ -17,7 +17,14 @@ export const ONEOVER_SEEDANCE_25 = {
 
 const http = axios.create({ timeout: 120_000, validateStatus: () => true });
 
-type OneOverSubmission = {
+export type OneOverCredentials = {
+  apiKey: string;
+  authorization?: string;
+  cookie?: string;
+  userId?: string;
+};
+
+export type OneOverSubmission = {
   predictionUrl: string;
   videoProvider: string;
   videoModel: string;
@@ -26,16 +33,30 @@ type OneOverSubmission = {
   source?: string;
 };
 
-function headers(): Record<string, string> {
-  if (!ONEOVER_API_KEY) throw new Error('ONEOVER_NO_CREDENTIAL');
-  if (!ONEOVER_AUTHORIZATION && !ONEOVER_COOKIE) throw new Error('ONEOVER_NO_SESSION');
+export function getEnvironmentCredentials(): OneOverCredentials | null {
+  if (!ONEOVER_API_KEY || (!ONEOVER_AUTHORIZATION && !ONEOVER_COOKIE)) return null;
   return {
-    apikey: ONEOVER_API_KEY,
+    apiKey: ONEOVER_API_KEY,
+    authorization: ONEOVER_AUTHORIZATION,
+    cookie: ONEOVER_COOKIE,
+    userId: process.env.ONEOVER_USER_ID?.trim() || undefined,
+  };
+}
+
+function headers(credentials: OneOverCredentials): Record<string, string> {
+  if (!credentials.apiKey?.trim()) throw new Error('ONEOVER_NO_CREDENTIAL');
+  if (!credentials.authorization?.trim() && !credentials.cookie?.trim()) throw new Error('ONEOVER_NO_SESSION');
+  return {
+    apikey: credentials.apiKey.trim(),
     'content-type': 'application/json',
-    ...(ONEOVER_AUTHORIZATION
-      ? { authorization: ONEOVER_AUTHORIZATION.startsWith('Bearer ') ? ONEOVER_AUTHORIZATION : `Bearer ${ONEOVER_AUTHORIZATION}` }
+    ...(credentials.authorization?.trim()
+      ? {
+        authorization: credentials.authorization.trim().startsWith('Bearer ')
+          ? credentials.authorization.trim()
+          : `Bearer ${credentials.authorization.trim()}`,
+      }
       : {}),
-    ...(ONEOVER_COOKIE ? { cookie: ONEOVER_COOKIE } : {}),
+    ...(credentials.cookie?.trim() ? { cookie: credentials.cookie.trim() } : {}),
   };
 }
 
@@ -49,12 +70,18 @@ function safeError(prefix: string, status: number, data: unknown): Error {
 }
 
 export function oneoverConfigured(): boolean {
-  return Boolean(ONEOVER_API_KEY && (ONEOVER_AUTHORIZATION || ONEOVER_COOKIE));
+  return getEnvironmentCredentials() !== null;
+}
+
+export function isOneOverAuthFailure(error: unknown): boolean {
+  const message = String((error as any)?.message ?? error ?? '');
+  return /ONEOVER_(SUBMIT|POLL)_FAILED (401|403)|invalid.*token|token.*expired|unauthori[sz]ed|forbidden|authentication/i.test(message);
 }
 
 export async function submitOneOverSeedanceI2v(input: {
   prompt: string;
   referenceImage: string;
+  credentials: OneOverCredentials;
 }): Promise<OneOverSubmission> {
   if (!input.referenceImage.startsWith('data:image/')) throw new Error('ONEOVER_INVALID_IMAGE');
   const r = await http.post(`${ONEOVER_BASE_URL}/video-generate`, {
@@ -67,7 +94,7 @@ export async function submitOneOverSeedanceI2v(input: {
     video_draft: false,
     reference_image: input.referenceImage,
     auto_prompt: true,
-  }, { headers: headers() });
+  }, { headers: headers(input.credentials) });
 
   const body = r.data as any;
   if (r.status < 200 || r.status >= 300 || typeof body?.prediction_url !== 'string') {
@@ -86,6 +113,7 @@ export async function submitOneOverSeedanceI2v(input: {
 export async function pollOneOverSeedanceI2v(
   submission: OneOverSubmission,
   prompt: string,
+  credentials: OneOverCredentials,
   onPoll?: (elapsedSeconds: number) => void
 ): Promise<{ url: string; credits?: number }> {
   const startedAt = Date.now();
@@ -108,7 +136,7 @@ export async function pollOneOverSeedanceI2v(
       source: submission.source,
       project_id: submission.projectId,
       request_id: submission.requestId,
-    }, { headers: headers() });
+    }, { headers: headers(credentials) });
 
     const body = r.data as any;
     if (r.status < 200 || r.status >= 300) throw safeError('ONEOVER_POLL_FAILED', r.status, body);

@@ -1125,6 +1125,197 @@ async function getEdanbotPoolStats(): Promise<{ available: number; dead: number 
   return stats;
 }
 
+// ─── OneOver Session Pool (Seedance 2.5 I2V) ───────────────────────────────────
+// Setiap akun browser adalah satu sesi pool. Sesi diklaim atomik untuk satu job,
+// lalu sesi yang sama dipakai sampai polling selesai agar job tidak berpindah akun.
+// Kredensial tidak pernah dikirim ke Telegram atau dicetak di log.
+
+type OneOverPoolSession = {
+  id: number;
+  claimToken: string;
+  credentials: oneover.OneOverCredentials;
+};
+const ONEOVER_SESSION_LEASE_MINUTES = 20;
+
+function oneOverSessionFingerprint(credentials: oneover.OneOverCredentials): string {
+  return crypto.createHash('sha256')
+    .update(`${credentials.apiKey}\u0000${credentials.authorization ?? ''}\u0000${credentials.cookie ?? ''}`)
+    .digest('hex');
+}
+
+function readOneOverPoolSeeds(): oneover.OneOverCredentials[] {
+  const seeds: oneover.OneOverCredentials[] = [];
+  const environmentSession = oneover.getEnvironmentCredentials();
+  if (environmentSession?.userId) seeds.push(environmentSession);
+
+  const raw = process.env.ONEOVER_POOL_SEED?.trim();
+  if (!raw) return seeds;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('must be a JSON array');
+    for (const item of parsed) {
+      const apiKey = typeof item?.apiKey === 'string' ? item.apiKey.trim()
+        : typeof item?.api_key === 'string' ? item.api_key.trim() : '';
+      const authorization = typeof item?.authorization === 'string' ? item.authorization.trim() : undefined;
+      const cookie = typeof item?.cookie === 'string' ? item.cookie.trim() : undefined;
+      const userId = typeof item?.userId === 'string' ? item.userId.trim()
+        : typeof item?.user_id === 'string' ? item.user_id.trim() : undefined;
+      if (apiKey && (authorization || cookie) && userId) seeds.push({ apiKey, authorization, cookie, userId });
+    }
+  } catch (error: any) {
+    console.warn(`⚠️ ONEOVER_POOL_SEED diabaikan: ${error?.message ?? 'format JSON tidak valid'}`);
+  }
+  return seeds;
+}
+
+async function ensureOneOverPool(): Promise<void> {
+  await dbq(`
+    CREATE TABLE IF NOT EXISTS oneover_session_pool (
+      id                  SERIAL PRIMARY KEY,
+      credential_hash     TEXT UNIQUE NOT NULL,
+      api_key             TEXT NOT NULL,
+      auth_header         TEXT,
+      cookie              TEXT,
+      provider_user_id    TEXT UNIQUE NOT NULL,
+      status              TEXT NOT NULL DEFAULT 'available',
+      active_jobs         INTEGER NOT NULL DEFAULT 0,
+      claim_token         TEXT,
+      claimed_at          TIMESTAMPTZ,
+      lease_expires_at    TIMESTAMPTZ,
+      last_used_at        TIMESTAMPTZ,
+      dead_at             TIMESTAMPTZ,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (status IN ('available', 'dead')),
+      CHECK (active_jobs >= 0)
+    )
+  `);
+  // Compatible with a table that was created before lease-backed claims existed.
+  await dbq(`ALTER TABLE oneover_session_pool ADD COLUMN IF NOT EXISTS claim_token TEXT`);
+  await dbq(`ALTER TABLE oneover_session_pool ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ`);
+  await dbq(`ALTER TABLE oneover_session_pool ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ`);
+  await dbq(`CREATE UNIQUE INDEX IF NOT EXISTS oneover_session_pool_provider_user_id_uq ON oneover_session_pool (provider_user_id)`);
+  await dbq(`CREATE INDEX IF NOT EXISTS oneover_session_pool_pick_idx ON oneover_session_pool (status, active_jobs, last_used_at, id)`);
+
+  for (const credentials of readOneOverPoolSeeds()) {
+    await dbq(
+      `INSERT INTO oneover_session_pool
+        (credential_hash, api_key, auth_header, cookie, provider_user_id, status)
+       VALUES ($1, $2, $3, $4, $5, 'available')
+       ON CONFLICT (provider_user_id) DO UPDATE
+       SET credential_hash = EXCLUDED.credential_hash,
+           api_key = EXCLUDED.api_key,
+           auth_header = EXCLUDED.auth_header,
+           cookie = EXCLUDED.cookie,
+           status = CASE WHEN oneover_session_pool.active_jobs = 0 THEN 'available' ELSE oneover_session_pool.status END,
+           dead_at = CASE WHEN oneover_session_pool.active_jobs = 0 THEN NULL ELSE oneover_session_pool.dead_at END`,
+      [
+        oneOverSessionFingerprint(credentials),
+        credentials.apiKey,
+        credentials.authorization ?? null,
+        credentials.cookie ?? null,
+        credentials.userId ?? null,
+      ]
+    );
+  }
+}
+
+async function claimOneOverSession(): Promise<OneOverPoolSession | null> {
+  await ensureOneOverPool();
+  const claimToken = crypto.randomUUID();
+  // Do not use dbq here. A lost response after COMMIT is ambiguous; retrying this
+  // non-idempotent claim could reserve two sessions for one job. The lease makes
+  // an ambiguous claim recoverable without assigning another session.
+  const result = await db.query(`
+    WITH candidate AS (
+      SELECT id
+      FROM oneover_session_pool
+      WHERE status = 'available' AND provider_user_id IS NOT NULL
+        AND (claim_token IS NULL OR lease_expires_at <= NOW())
+      ORDER BY last_used_at NULLS FIRST, id
+      FOR UPDATE SKIP LOCKED
+      LIMIT 1
+    )
+    UPDATE oneover_session_pool AS pool
+    SET active_jobs = 1,
+        claim_token = $1,
+        claimed_at = NOW(),
+        lease_expires_at = NOW() + INTERVAL '${ONEOVER_SESSION_LEASE_MINUTES} minutes',
+        last_used_at = NOW()
+    FROM candidate
+    WHERE pool.id = candidate.id
+    RETURNING pool.id, pool.api_key, pool.auth_header, pool.cookie, pool.provider_user_id
+  `, [claimToken]);
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    claimToken,
+    credentials: {
+      apiKey: String(row.api_key),
+      authorization: row.auth_header ? String(row.auth_header) : undefined,
+      cookie: row.cookie ? String(row.cookie) : undefined,
+      userId: row.provider_user_id ? String(row.provider_user_id) : undefined,
+    },
+  };
+}
+
+async function renewOneOverSessionLease(session: OneOverPoolSession): Promise<void> {
+  await db.query(
+    `UPDATE oneover_session_pool
+     SET lease_expires_at = NOW() + INTERVAL '${ONEOVER_SESSION_LEASE_MINUTES} minutes'
+     WHERE id = $1 AND claim_token = $2 AND status = 'available'`,
+    [session.id, session.claimToken]
+  );
+}
+
+async function releaseOneOverSession(session: OneOverPoolSession): Promise<void> {
+  await db.query(
+    `UPDATE oneover_session_pool
+     SET active_jobs = 0, claim_token = NULL, claimed_at = NULL, lease_expires_at = NULL
+     WHERE id = $1 AND claim_token = $2`,
+    [session.id, session.claimToken]
+  );
+}
+
+async function markOneOverSessionDead(session: OneOverPoolSession): Promise<void> {
+  await db.query(
+    `UPDATE oneover_session_pool
+     SET status = 'dead', dead_at = NOW(), active_jobs = 0,
+       claim_token = NULL, claimed_at = NULL, lease_expires_at = NULL
+     WHERE id = $1 AND claim_token = $2`,
+    [session.id, session.claimToken]
+  );
+}
+
+async function getOneOverPoolStats(): Promise<{ available: number; busy: number; dead: number }> {
+  await ensureOneOverPool();
+  const result = await dbq(`
+    SELECT status,
+           COUNT(*) AS count,
+           COUNT(*) FILTER (WHERE claim_token IS NOT NULL AND lease_expires_at > NOW()) AS active_jobs
+    FROM oneover_session_pool
+    GROUP BY status
+  `);
+  const stats = { available: 0, busy: 0, dead: 0 };
+  for (const row of result.rows) {
+    if (row.status === 'available') stats.available = Number(row.count);
+    if (row.status === 'dead') stats.dead = Number(row.count);
+    stats.busy += Number(row.active_jobs);
+  }
+  return stats;
+}
+
+async function hasAvailableOneOverSession(): Promise<boolean> {
+  await ensureOneOverPool();
+  const result = await dbq(
+    `SELECT 1 FROM oneover_session_pool
+     WHERE status = 'available' AND provider_user_id IS NOT NULL
+       AND (claim_token IS NULL OR lease_expires_at <= NOW())
+     LIMIT 1`
+  );
+  return result.rows.length > 0;
+}
+
 // ─── Generate Cooldown ────────────────────────────────────────────────────────
 
 const GEN_COOLDOWN_MS = 0; // cooldown dinonaktifkan
@@ -2727,6 +2918,30 @@ bot.command('edanpool', async (ctx) => {
   );
 });
 
+bot.command('oneoverpool', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  const stats = await getOneOverPoolStats();
+  const result = await dbq(
+    `SELECT id, status, active_jobs
+     FROM oneover_session_pool
+     ORDER BY id`
+  );
+  const rows = result.rows.map((row: any) => {
+    const status = row.status === 'available' ? '✅ tersedia' : '❌ nonaktif';
+    const usage = row.status === 'available' && Number(row.active_jobs) > 0
+      ? ` • ${row.active_jobs} job`
+      : '';
+    return `• #${row.id} ${status}${usage}`;
+  });
+  return ctx.reply(
+    `📊 Pool Seedance 2.5\n\n` +
+    `• Tersedia: ${stats.available}\n` +
+    `• Sedang dipakai: ${stats.busy}\n` +
+    `• Nonaktif: ${stats.dead}\n\n` +
+    (rows.length ? rows.join('\n') : 'Belum ada sesi di pool.')
+  );
+});
+
 bot.command('poolstatus', async (ctx) => {
   if (!(await requireAdmin(ctx))) return;
   const session = getSession(ctx.from.id);
@@ -3496,7 +3711,7 @@ bot.on('callback_query', async (ctx) => {
   }
 
   if (data === 'mode_oneover_seedance25') {
-    if (!oneover.oneoverConfigured()) {
+    if (!await hasAvailableOneOverSession()) {
       setSession(userId, { mode: 'idle', generationDraft: false, generationDraftKind: undefined });
       return ctx.editMessageText('⚠️ Model ini sedang tidak tersedia. Hubungi admin.');
     }
@@ -5911,8 +6126,19 @@ async function runOneOverSeedance25(
 ) {
   const label = oneover.ONEOVER_SEEDANCE_25.label;
   const PRICE = MODEL_PRICES.oneover_seedance_25;
+  let poolSession = await claimOneOverSession();
+  if (!poolSession) {
+    await bot.telegram.editMessageText(
+      chatId,
+      statusMsgId,
+      undefined,
+      '⚠️ Model ini sedang tidak tersedia. Coba lagi beberapa saat lagi.'
+    ).catch(() => {});
+    return;
+  }
   const charge = await beginCharge(dbUserId, PRICE, MAX_PARALLEL_GENERATIONS_PER_USER);
   if (!charge.ok) {
+    await releaseOneOverSession(poolSession).catch(() => {});
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
     return;
   }
@@ -5920,6 +6146,7 @@ async function runOneOverSeedance25(
   // Once the provider accepts the job, never call submit again. Any later
   // polling/delivery failure is refunded instead of creating a second paid video.
   let refund = true;
+  let providerAccepted = false;
   try {
     await bot.telegram.editMessageText(
       chatId,
@@ -5935,10 +6162,36 @@ async function runOneOverSeedance25(
       undefined,
       `⏳ ${label}: mengirim perintah ke server... (2/3)`
     ).catch(() => {});
-    const submission = await oneover.submitOneOverSeedanceI2v({ prompt, referenceImage });
 
+    // Only an authentication/session failure before the upstream accepts a job
+    // may move to another account. Once accepted, this exact session is pinned
+    // for polling and any failure is refunded instead of resubmitting.
+    let submission: oneover.OneOverSubmission | undefined;
+    while (!submission) {
+      try {
+        submission = await oneover.submitOneOverSeedanceI2v({
+          prompt,
+          referenceImage,
+          credentials: poolSession.credentials,
+        });
+        providerAccepted = true;
+      } catch (error) {
+        if (!oneover.isOneOverAuthFailure(error)) throw error;
+        await markOneOverSessionDead(poolSession).catch(() => {});
+        const replacement = await claimOneOverSession();
+        if (!replacement) throw new Error('ONEOVER_POOL_UNAVAILABLE');
+        poolSession = replacement;
+      }
+    }
+
+    const pollingSession = poolSession;
     let lastEdit = 0;
-    const result = await oneover.pollOneOverSeedanceI2v(submission, prompt, (elapsedSec) => {
+    let lastLeaseRenewal = Date.now();
+    const result = await oneover.pollOneOverSeedanceI2v(submission, prompt, pollingSession.credentials, (elapsedSec) => {
+      if (Date.now() - lastLeaseRenewal >= 60_000) {
+        lastLeaseRenewal = Date.now();
+        void renewOneOverSessionLease(pollingSession).catch(() => {});
+      }
       if (Date.now() - lastEdit < 30_000) return;
       lastEdit = Date.now();
       const mins = Math.floor(elapsedSec / 60);
@@ -5968,7 +6221,10 @@ async function runOneOverSeedance25(
   } catch (err: any) {
     const msg = describeError(err);
     console.error(`[${userId}] ${label} error: ${msg}`);
-    const friendly = msg.includes('ONEOVER_NO_CREDENTIAL') || msg.includes('ONEOVER_NO_SESSION')
+    if (providerAccepted && oneover.isOneOverAuthFailure(err)) {
+      await markOneOverSessionDead(poolSession).catch(() => {});
+    }
+    const friendly = msg.includes('ONEOVER_NO_CREDENTIAL') || msg.includes('ONEOVER_NO_SESSION') || msg.includes('ONEOVER_POOL_UNAVAILABLE')
       ? '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.'
       : msg.includes('ONEOVER_INVALID_IMAGE')
         ? '❌ Foto tidak bisa diproses. Coba foto JPG atau PNG lain.'
@@ -5982,6 +6238,7 @@ async function runOneOverSeedance25(
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
     }
+    await releaseOneOverSession(poolSession).catch(() => {});
     releaseGenerating(dbUserId);
   }
 }
@@ -7593,6 +7850,8 @@ app.listen(PORT, () => {
     console.log('✅ Picsart schema siap');
     await ensureBalanceSchema();
     console.log('✅ Saldo schema siap');
+    await ensureOneOverPool();
+    console.log('✅ Pool Seedance 2.5 siap');
     // Keep the refresh token alive forever on a dedicated account (seed once).
     picsart.startPicsartKeepalive();
     console.log('✅ Picsart keepalive aktif (refresh tiap 3 hari)');
