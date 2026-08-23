@@ -11,6 +11,7 @@ import path from 'path';
 import crypto from 'crypto';
 import * as picsart from './picsart';
 import * as klikqris from './klikqris';
+import * as oneover from './oneover';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -164,6 +165,7 @@ const MODEL_PRICES = {
   audio: 3000,         // Semua model audio generation/transcription
   topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 4× 60fps)
   picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
+  oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
@@ -1255,6 +1257,8 @@ type Mode =
   | 'audio_wait_file'
   | 'picsart_i2v_wait_image'
   | 'picsart_i2v_wait_prompt'
+  | 'oneover_wait_image'
+  | 'oneover_wait_prompt'
   | 'kling21_wait_image'
   | 'kling21_wait_prompt'
   | 'topaz_wait_video'
@@ -1268,6 +1272,7 @@ type GenerationDraftKind =
   | 'klingp3'
   | 'kling21'
   | 'picsart_i2v'
+  | 'oneover'
   | 'runway'
   | 'sora'
   | 'veofast'
@@ -1359,6 +1364,7 @@ interface Session {
   // Picsart image-to-video wizard state
   picsartI2vModel?: picsart.PicsartI2vModelKey;
   picsartI2vImageUrl?: string;
+  oneoverImageUrl?: string;
   // Kling 2.1 Pro (10-second image-to-video) wizard state
   kling21ImageUrl?: string;
   // Chat AI wizard state (multi-turn conversation)
@@ -1439,6 +1445,7 @@ const GENERATION_DRAFT_MODES = new Set<Mode>([
   'floraimg_wait_prompt', 'lipsync_wait_media', 'lipsync_wait_audio',
   'audio_wait_prompt', 'audio_wait_voice', 'audio_wait_file',
   'picsart_i2v_wait_image', 'picsart_i2v_wait_prompt',
+  'oneover_wait_image', 'oneover_wait_prompt',
   'kling21_wait_image', 'kling21_wait_prompt', 'topaz_wait_video',
   'img_wait_image', 'img_wait_prompt',
 ]);
@@ -1453,6 +1460,7 @@ function generationDraftKindForStart(data: string): GenerationDraftKind | undefi
     mode_klingp2: 'klingp2',
     mode_klingp3: 'klingp3',
     mode_kling21: 'kling21',
+    mode_oneover_seedance25: 'oneover',
     mode_rw: 'runway',
     mode_sora: 'sora',
     mode_veofast: 'veofast',
@@ -1915,6 +1923,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🌊 Seedance 2.0 Mini', 'mode_pi2v_seedance_2_mini')],
     [Markup.button.callback('🌊 Seedance 2.0 Fast', 'mode_pi2v_seedance_2_fast')],
     [Markup.button.callback('🌊 Seedance 2.0', 'mode_pi2v_seedance_2')],
+    [Markup.button.callback('🌊 Seedance 2.5 I2V 🔥PROMO', 'mode_oneover_seedance25')],
     [Markup.button.callback('🌌 Grok Imagine Video', 'mode_pi2v_grok_imagine')],
     [Markup.button.callback('⚡ Kling v3 Turbo', 'mode_pi2v_kling_v3_turbo')],
     [Markup.button.callback('🎭 Kling v2.6 Pro', 'mode_pi2v_kling_v26_pro')],
@@ -2291,6 +2300,7 @@ function hargaText(): string {
     `• Seedance 2.0 Mini — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Seedance 2.0 Fast — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Seedance 2.0 — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• Seedance 2.5 I2V — ${formatRupiah(MODEL_PRICES.oneover_seedance_25)} 🔥PROMO\n` +
     `• Grok Imagine Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v3 Turbo — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v2.6 Pro — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
@@ -3485,6 +3495,21 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  if (data === 'mode_oneover_seedance25') {
+    if (!oneover.oneoverConfigured()) {
+      setSession(userId, { mode: 'idle', generationDraft: false, generationDraftKind: undefined });
+      return ctx.editMessageText('⚠️ Model ini sedang tidak tersedia. Hubungi admin.');
+    }
+    setSession(userId, { mode: 'oneover_wait_image', oneoverImageUrl: undefined });
+    return ctx.editMessageText(
+      `🌊 *Seedance 2.5 I2V 🔥PROMO*\n\n` +
+      `Durasi: *30 detik* • Resolusi: *480p* • Audio: *aktif*\n` +
+      `Harga promo: *${formatRupiah(MODEL_PRICES.oneover_seedance_25)}* per video\n\n` +
+      '*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (data.startsWith('mode_pi2v_')) {
     if (!await requireLogin(ctx)) return;
     const model = data.slice('mode_pi2v_'.length);
@@ -4313,6 +4338,15 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     );
   }
 
+  if (session.mode === 'oneover_wait_image') {
+    setSession(userId, { oneoverImageUrl: fileUrl, mode: 'oneover_wait_prompt' });
+    return ctx.reply(
+      '✅ Foto acuan diterima!\n\n' +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (session.mode === 'kling21_wait_image') {
     setSession(userId, { kling21ImageUrl: fileUrl, mode: 'kling21_wait_prompt' });
     return ctx.reply(
@@ -4790,6 +4824,39 @@ bot.on('text', async (ctx) => {
     return;
   }
 
+  // ── OneOver Seedance 2.5 image-to-video prompt ──
+  if (session.mode === 'oneover_wait_prompt') {
+    const prompt = ctx.message.text.trim();
+    if (!prompt) return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
+
+    // A logged-in session never needs an await here. If a stale/unauthed session
+    // somehow reaches this branch, re-read state after login before consuming it.
+    if (!session.dbUserId && !await requireLogin(ctx)) return;
+    const activeDraft = getSession(userId);
+    if (activeDraft.mode !== 'oneover_wait_prompt') return;
+    if (!activeDraft.dbUserId || !activeDraft.oneoverImageUrl) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply('⚠️ Foto acuan tidak ditemukan. Mulai lagi dari /menu.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    // This synchronous state transition is the claim for this input. A duplicate
+    // Telegram update now sees idle and cannot create a second paid provider job.
+    const imageUrl = activeDraft.oneoverImageUrl;
+    const dbUserId = activeDraft.dbUserId;
+    setSession(userId, { mode: 'idle', oneoverImageUrl: undefined });
+    const statusMsg = await ctx.reply(
+      '⏳ Memproses Seedance 2.5 I2V...\nHasil dikirim otomatis (biasanya 5–12 menit).',
+      { parse_mode: 'Markdown' }
+    );
+    runOneOverSeedance25(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, imageUrl)
+      .catch(e => console.error(`[${userId}] Seedance 2.5 I2V error:`, e.message));
+    return;
+  }
+
   // ── Kling 2.1 Pro (10-second image-to-video) prompt ──
   if (session.mode === 'kling21_wait_prompt') {
     if (!await requireLogin(ctx)) return;
@@ -5184,6 +5251,9 @@ bot.on('text', async (ctx) => {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
   if (session.mode === 'picsart_i2v_wait_image') {
+    return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+  }
+  if (session.mode === 'oneover_wait_image') {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
   if (session.mode === 'veofast_wait_image' || session.mode === 'veolite_wait_image') {
@@ -5821,6 +5891,92 @@ async function runPicsartI2v(
     }
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
       .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
+// ─── Background: Seedance 2.5 image-to-video ───────────────────────────────────
+async function runOneOverSeedance25(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  imageUrl: string
+) {
+  const label = oneover.ONEOVER_SEEDANCE_25.label;
+  const PRICE = MODEL_PRICES.oneover_seedance_25;
+  const charge = await beginCharge(dbUserId, PRICE, MAX_PARALLEL_GENERATIONS_PER_USER);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+
+  // Once the provider accepts the job, never call submit again. Any later
+  // polling/delivery failure is refunded instead of creating a second paid video.
+  let refund = true;
+  try {
+    await bot.telegram.editMessageText(
+      chatId,
+      statusMsgId,
+      undefined,
+      `⏳ ${label}: menyiapkan foto... (1/3)`
+    ).catch(() => {});
+    const referenceImage = await toDataUri(imageUrl);
+
+    await bot.telegram.editMessageText(
+      chatId,
+      statusMsgId,
+      undefined,
+      `⏳ ${label}: mengirim perintah ke server... (2/3)`
+    ).catch(() => {});
+    const submission = await oneover.submitOneOverSeedanceI2v({ prompt, referenceImage });
+
+    let lastEdit = 0;
+    const result = await oneover.pollOneOverSeedanceI2v(submission, prompt, (elapsedSec) => {
+      if (Date.now() - lastEdit < 30_000) return;
+      lastEdit = Date.now();
+      const mins = Math.floor(elapsedSec / 60);
+      const secs = elapsedSec % 60;
+      const elapsed = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
+      bot.telegram.editMessageText(
+        chatId,
+        statusMsgId,
+        undefined,
+        `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${elapsed}. Video akan dikirim otomatis.`
+      ).catch(() => {});
+    });
+
+    const delivered = await sendResult(
+      chatId,
+      result.url,
+      `🌊 ${label} • 30 detik • 🔥PROMO\n\n/menu untuk buat lagi`,
+      true
+    );
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] ${label} done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    }
+  } catch (err: any) {
+    const msg = describeError(err);
+    console.error(`[${userId}] ${label} error: ${msg}`);
+    const friendly = msg.includes('ONEOVER_NO_CREDENTIAL')
+      ? '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.'
+      : msg.includes('ONEOVER_INVALID_IMAGE')
+        ? '❌ Foto tidak bisa diproses. Coba foto JPG atau PNG lain.'
+        : msg.includes('ONEOVER_TIMEOUT')
+          ? '❌ Proses terlalu lama. Saldo kamu akan dikembalikan.'
+          : '❌ Gagal memproses video. Saldo kamu akan dikembalikan.';
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
+      .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu`));
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
