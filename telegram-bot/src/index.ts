@@ -1370,17 +1370,11 @@ type FreebeatPoolSession = {
 };
 const FREEBEAT_SESSION_LEASE_MINUTES = 20;
 
-function freebeatSessionFingerprint(credentials: freebeat.FreebeatWebCredentials): string {
-  return crypto.createHash('sha256')
-    .update(`${credentials.token}\u0000${credentials.udt}`)
-    .digest('hex');
-}
-
 async function ensureFreebeatPool(): Promise<void> {
   await dbq(`
     CREATE TABLE IF NOT EXISTS freebeat_session_pool (
       id                  SERIAL PRIMARY KEY,
-      credential_hash     TEXT UNIQUE NOT NULL,
+      credential_hash     TEXT UNIQUE NOT NULL DEFAULT md5(random()::text || clock_timestamp()::text),
       token               TEXT NOT NULL,
       udt                 TEXT NOT NULL,
       status              TEXT NOT NULL DEFAULT 'available',
@@ -1395,6 +1389,7 @@ async function ensureFreebeatPool(): Promise<void> {
       CHECK (active_jobs >= 0)
     )
   `);
+  await dbq(`ALTER TABLE freebeat_session_pool ALTER COLUMN credential_hash SET DEFAULT md5(random()::text || clock_timestamp()::text)`);
   await dbq(`ALTER TABLE freebeat_session_pool ADD COLUMN IF NOT EXISTS claim_token TEXT`);
   await dbq(`ALTER TABLE freebeat_session_pool ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ`);
   await dbq(`ALTER TABLE freebeat_session_pool ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ`);
