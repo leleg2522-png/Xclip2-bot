@@ -6209,6 +6209,17 @@ async function runOneOverSeedance25(
     // for polling and any failure is refunded instead of resubmitting.
     let submission: oneover.OneOverSubmission | undefined;
     while (!submission) {
+      const submitStartedAt = Date.now();
+      const submitProgressTimer = setInterval(() => {
+        const elapsed = Math.round((Date.now() - submitStartedAt) / 1000);
+        void bot.telegram.editMessageText(
+          chatId,
+          statusMsgId,
+          undefined,
+          `⏳ ${label}: server masih menyiapkan permintaan... (2/3)\n` +
+          `⏱️ Sudah menunggu ${elapsed} detik. Jangan kirim ulang—saldo tetap aman.`
+        ).catch(() => {});
+      }, 30_000);
       try {
         submission = await oneover.submitOneOverSeedanceI2v({
           prompt,
@@ -6222,6 +6233,8 @@ async function runOneOverSeedance25(
         const replacement = await claimOneOverSession();
         if (!replacement) throw new Error('ONEOVER_POOL_UNAVAILABLE');
         poolSession = replacement;
+      } finally {
+        clearInterval(submitProgressTimer);
       }
     }
 
@@ -6269,6 +6282,8 @@ async function runOneOverSeedance25(
       ? '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.'
       : msg.includes('ONEOVER_INVALID_IMAGE')
         ? '❌ Foto tidak bisa diproses. Coba foto JPG atau PNG lain.'
+        : msg.includes('ONEOVER_SUBMIT_TIMEOUT')
+          ? '❌ Server terlalu lama menerima permintaan. Saldo kamu akan dikembalikan.'
         : msg.includes('ONEOVER_TIMEOUT')
           ? '❌ Proses terlalu lama. Saldo kamu akan dikembalikan.'
           : '❌ Gagal memproses video. Saldo kamu akan dikembalikan.';

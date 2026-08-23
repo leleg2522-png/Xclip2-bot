@@ -16,6 +16,24 @@ export const ONEOVER_SEEDANCE_25 = {
 } as const;
 
 const http = axios.create({ timeout: 120_000, validateStatus: () => true });
+// Submit bisa lebih lambat daripada polling, khususnya ketika upstream sedang
+// menyiapkan model. Jangan menyamakan batasnya: timeout submit yang terlalu
+// pendek membuat job yang mungkin sedang diterima terlihat gagal.
+const configuredSubmitTimeout = Number(process.env.ONEOVER_SUBMIT_TIMEOUT_MS);
+export const ONEOVER_SUBMIT_TIMEOUT_MS = Number.isFinite(configuredSubmitTimeout)
+  ? Math.min(600_000, Math.max(120_000, configuredSubmitTimeout))
+  : 300_000;
+const submitHttp = axios.create({ timeout: ONEOVER_SUBMIT_TIMEOUT_MS, validateStatus: () => true });
+// This endpoint is consumed by the web app and the captured successful browser
+// request carries these non-secret context headers. Railway's bare Node request
+// can otherwise be held at the edge until it times out.
+const browserContextHeaders = {
+  accept: '*/*',
+  'accept-language': 'id,en-US;q=0.9,en;q=0.8,pt;q=0.7',
+  origin: 'https://oneover.com',
+  referer: 'https://oneover.com/',
+  'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36',
+} as const;
 
 export type OneOverCredentials = {
   apiKey: string;
@@ -61,6 +79,7 @@ function headers(credentials: OneOverCredentials): Record<string, string> {
   if (!credentials.apiKey?.trim()) throw new Error('ONEOVER_NO_CREDENTIAL');
   if (!credentials.authorization?.trim() && !credentials.cookie?.trim()) throw new Error('ONEOVER_NO_SESSION');
   return {
+    ...browserContextHeaders,
     apikey: credentials.apiKey.trim(),
     'content-type': 'application/json',
     ...(credentials.authorization?.trim()
@@ -98,17 +117,23 @@ export async function submitOneOverSeedanceI2v(input: {
   credentials: OneOverCredentials;
 }): Promise<OneOverSubmission> {
   if (!input.referenceImage.startsWith('data:image/')) throw new Error('ONEOVER_INVALID_IMAGE');
-  const r = await http.post(`${ONEOVER_BASE_URL}/video-generate`, {
-    prompt: input.prompt,
-    model: ONEOVER_SEEDANCE_25.model,
-    duration: ONEOVER_SEEDANCE_25.duration,
-    resolution: ONEOVER_SEEDANCE_25.resolution,
-    aspect_ratio: ONEOVER_SEEDANCE_25.aspectRatio,
-    generate_audio: ONEOVER_SEEDANCE_25.generateAudio,
-    video_draft: false,
-    reference_image: input.referenceImage,
-    auto_prompt: true,
-  }, { headers: headers(input.credentials) });
+  let r;
+  try {
+    r = await submitHttp.post(`${ONEOVER_BASE_URL}/video-generate`, {
+      prompt: input.prompt,
+      model: ONEOVER_SEEDANCE_25.model,
+      duration: ONEOVER_SEEDANCE_25.duration,
+      resolution: ONEOVER_SEEDANCE_25.resolution,
+      aspect_ratio: ONEOVER_SEEDANCE_25.aspectRatio,
+      generate_audio: ONEOVER_SEEDANCE_25.generateAudio,
+      video_draft: false,
+      reference_image: input.referenceImage,
+      auto_prompt: true,
+    }, { headers: headers(input.credentials) });
+  } catch (error: any) {
+    if (error?.code === 'ECONNABORTED') throw new Error('ONEOVER_SUBMIT_TIMEOUT');
+    throw error;
+  }
 
   const body = r.data as any;
   if (r.status < 200 || r.status >= 300 || typeof body?.prediction_url !== 'string') {

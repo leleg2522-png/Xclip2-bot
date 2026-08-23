@@ -12,3 +12,4 @@
 - [Picsart Seedance 2.5 API](seedance-api.md) — submit /workflows/seedance/submit (model:"seedance_2_5", content[] ref_image+text); poll result.video_url (not .url/.videoUrl)
 - [edanbot Kling Motion](edanbot-kling-motion.md) — bot's "Kling MC V3 PRO P2" is really edanbot.digital→roboneo; auth = fragile Flask signed session= cookie (EDANBOT_COOKIE, needs prefix); job_id isolates users; never leak provider name
 - [Paid provider post-submit failover](paid-provider-post-submit-failover.md) — failover may retry only before an upstream paid job is accepted; post-submit auth loss must refund, not resubmit.
+- [OneOver submit timeouts](oneover-submit-timeouts.md) — Railway submit can exceed two minutes; wait longer and never retry an ambiguous submit response.
