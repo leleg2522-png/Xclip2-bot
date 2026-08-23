@@ -12,6 +12,7 @@ import crypto from 'crypto';
 import * as picsart from './picsart';
 import * as klikqris from './klikqris';
 import * as oneover from './oneover';
+import { FreebeatBridgeQueue, type BridgeAgent, type BridgeJob } from './freebeat-bridge';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -24,6 +25,9 @@ const LEONARDO_BASE = 'https://cloud.leonardo.ai/api/rest/v1';
 const SNAPGEN_API_KEY = process.env.SNAPGEN_API_KEY;
 const SNAPGEN_BASE = 'https://api.snapgen.ai/uapi/v1';
 const AUTOAPP_BASE = 'https://autoapp.biz.id/v1';
+const BRIDGE_PUBLIC_URL = (process.env.BRIDGE_PUBLIC_URL
+  || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '')
+).replace(/\/+$/, '');
 
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!DATABASE_URL) throw new Error('RAILWAY_DATABASE_URL is required');
@@ -93,6 +97,7 @@ const db = new Pool({
   // can try again quickly, instead of one poll cycle stalling for minutes.
   connectionTimeoutMillis: 10_000,
 });
+const freebeatBridge = new FreebeatBridgeQueue(db);
 // CRITICAL: a pooled client can error while idle (server closed the socket).
 // The pg Pool emits 'error' for that; with NO listener Node treats it as an
 // unhandled 'error' event and CRASHES the process — which wipes every
@@ -1597,6 +1602,7 @@ interface Session {
   // Picsart image-to-video wizard state
   picsartI2vModel?: picsart.PicsartI2vModelKey;
   picsartI2vImageUrl?: string;
+  // Seedance 2.5 Bridge stores the Telegram file ID, not a bot-token download URL.
   oneoverImageUrl?: string;
   // Kling 2.1 Pro (10-second image-to-video) wizard state
   kling21ImageUrl?: string;
@@ -2156,7 +2162,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🌊 Seedance 2.0 Mini', 'mode_pi2v_seedance_2_mini')],
     [Markup.button.callback('🌊 Seedance 2.0 Fast', 'mode_pi2v_seedance_2_fast')],
     [Markup.button.callback('🌊 Seedance 2.0', 'mode_pi2v_seedance_2')],
-    [Markup.button.callback('🌊 Seedance 2.5 I2V 🔥PROMO', 'mode_oneover_seedance25')],
+    [Markup.button.callback('🌊 Seedance 2.5 I2V • Bridge', 'mode_oneover_seedance25')],
     [Markup.button.callback('🌌 Grok Imagine Video', 'mode_pi2v_grok_imagine')],
     [Markup.button.callback('⚡ Kling v3 Turbo', 'mode_pi2v_kling_v3_turbo')],
     [Markup.button.callback('🎭 Kling v2.6 Pro', 'mode_pi2v_kling_v26_pro')],
@@ -2533,7 +2539,7 @@ function hargaText(): string {
     `• Seedance 2.0 Mini — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Seedance 2.0 Fast — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Seedance 2.0 — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
-    `• Seedance 2.5 I2V — ${formatRupiah(MODEL_PRICES.oneover_seedance_25)} 🔥PROMO\n` +
+    `• Seedance 2.5 I2V (Bridge) — ${formatRupiah(MODEL_PRICES.oneover_seedance_25)}\n` +
     `• Grok Imagine Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v3 Turbo — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v2.6 Pro — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
@@ -2997,6 +3003,22 @@ bot.command('poolstatus', async (ctx) => {
     `• ❌ Dead: *${stats.dead}*\n` +
     `• 📦 Total: *${total}*\n\n` +
     `_Kapasitas user aktif: ~${Math.floor(stats.available / 2)} user baru_`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+bot.command('bridgecode', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  if (!BRIDGE_PUBLIC_URL) {
+    return ctx.reply('⚠️ BRIDGE_PUBLIC_URL belum diset di Railway. Isi dengan domain publik bot terlebih dahulu.');
+  }
+  const code = await freebeatBridge.createEnrollmentCode();
+  return ctx.reply(
+    `🖥️ *Setup Freebeat Bridge*\n\n` +
+    `1. Jalankan freebeat-bridge.bat di PC Windows.\n` +
+    `2. Saat diminta, masukkan URL ini:\n${BRIDGE_PUBLIC_URL}\n` +
+    `3. Masukkan kode satu kali ini:\n${code}\n\n` +
+    `Kode berlaku 15 menit dan hanya dapat dipakai satu PC.`,
     { parse_mode: 'Markdown' }
   );
 });
@@ -3753,15 +3775,12 @@ bot.on('callback_query', async (ctx) => {
   }
 
   if (data === 'mode_oneover_seedance25') {
-    if (!await hasAvailableOneOverSession()) {
-      setSession(userId, { mode: 'idle', generationDraft: false, generationDraftKind: undefined });
-      return ctx.editMessageText('⚠️ Model ini sedang tidak tersedia. Hubungi admin.');
-    }
     setSession(userId, { mode: 'oneover_wait_image', oneoverImageUrl: undefined });
     return ctx.editMessageText(
-      `🌊 *Seedance 2.5 I2V 🔥PROMO*\n\n` +
-      `Durasi: *30 detik* • Resolusi: *480p* • Audio: *aktif*\n` +
-      `Harga promo: *${formatRupiah(MODEL_PRICES.oneover_seedance_25)}* per video\n\n` +
+      `🌊 *Seedance 2.5 I2V*\n\n` +
+      `Provider: *Freebeat Bridge* • Durasi: *30 detik* • Resolusi: *480p*\n` +
+      `Harga: *${formatRupiah(MODEL_PRICES.oneover_seedance_25)}* per video\n\n` +
+      `⚠️ PC Bridge Freebeat harus online agar order diproses.\n\n` +
       '*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
       { parse_mode: 'Markdown' }
     );
@@ -4596,7 +4615,8 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
   }
 
   if (session.mode === 'oneover_wait_image') {
-    setSession(userId, { oneoverImageUrl: fileUrl, mode: 'oneover_wait_prompt' });
+    if (!fileId) return ctx.reply('⚠️ Foto tidak bisa dibaca. Kirim ulang foto JPG atau PNG.');
+    setSession(userId, { oneoverImageUrl: fileId, mode: 'oneover_wait_prompt' });
     return ctx.reply(
       '✅ Foto acuan diterima!\n\n' +
       '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
@@ -5109,8 +5129,8 @@ bot.on('text', async (ctx) => {
       '⏳ Memproses Seedance 2.5 I2V...\nHasil dikirim otomatis (biasanya 5–12 menit).',
       { parse_mode: 'Markdown' }
     );
-    runOneOverSeedance25(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, imageUrl)
-      .catch(e => console.error(`[${userId}] Seedance 2.5 I2V error:`, e.message));
+    queueFreebeatBridgeSeedance25(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, imageUrl)
+      .catch(e => console.error(`[${userId}] Seedance 2.5 Bridge error:`, e.message));
     return;
   }
 
@@ -6157,7 +6177,54 @@ async function runPicsartI2v(
   }
 }
 
-// ─── Background: Seedance 2.5 image-to-video ───────────────────────────────────
+// ─── Freebeat Bridge: Seedance 2.5 image-to-video ──────────────────────────────
+async function queueFreebeatBridgeSeedance25(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  telegramFileId: string
+) {
+  const price = MODEL_PRICES.oneover_seedance_25;
+  const charge = await beginCharge(dbUserId, price, MAX_PARALLEL_GENERATIONS_PER_USER);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, price)).catch(() => {});
+    return;
+  }
+  try {
+    const job = await freebeatBridge.enqueue({
+      dbUserId,
+      telegramUserId: userId,
+      chatId,
+      statusMessageId: statusMsgId,
+      prompt,
+      telegramFileId,
+      price,
+    });
+    await bot.telegram.editMessageText(
+      chatId,
+      statusMsgId,
+      undefined,
+      `⏳ Seedance 2.5 masuk antrean Bridge.\n\n` +
+      `PC Freebeat akan mengambil order ini otomatis. Hasil dikirim saat selesai.`
+    ).catch(() => {});
+    console.log(`[${userId}] Seedance 2.5 Bridge queued: ${job.id}`);
+  } catch (error: any) {
+    await addSaldo(dbUserId, price).catch(() => {});
+    await bot.telegram.editMessageText(
+      chatId,
+      statusMsgId,
+      undefined,
+      '❌ Gagal memasukkan order ke Bridge. Saldo kamu sudah dikembalikan.'
+    ).catch(() => {});
+    console.error(`[${userId}] Seedance 2.5 Bridge queue error:`, error?.message ?? error);
+  } finally {
+    releaseGenerating(dbUserId);
+  }
+}
+
+// ─── Background: Seedance 2.5 image-to-video (OneOver legacy fallback) ─────────
 async function runOneOverSeedance25(
   chatId: number,
   userId: number,
@@ -7871,13 +7938,172 @@ async function downloadBuffer(url: string): Promise<{ buf: Buffer; mime: string;
   return { buf, mime, ext };
 }
 
+async function refundBridgeJob(job: BridgeJob, reason: string): Promise<void> {
+  const refunded = await freebeatBridge.refund(job.id);
+  if (!refunded) return;
+  await bot.telegram.editMessageText(
+    refunded.chatId,
+    refunded.statusMessageId,
+    undefined,
+    `❌ Seedance 2.5 tidak berhasil diproses.\nSaldo ${formatRupiah(refunded.price)} sudah dikembalikan.`
+  ).catch(() => {});
+  await bot.telegram.sendMessage(
+    refunded.chatId,
+    `↩️ Saldo ${formatRupiah(refunded.price)} dikembalikan (${reason}).`
+  ).catch(() => {});
+}
+
+async function refundExpiredBridgeJobs(): Promise<void> {
+  const expired = await freebeatBridge.refundExpired();
+  for (const job of expired) {
+    await bot.telegram.editMessageText(
+      job.chatId,
+      job.statusMessageId,
+      undefined,
+      `❌ Bridge tidak menyelesaikan Seedance 2.5 tepat waktu.\nSaldo ${formatRupiah(job.price)} sudah dikembalikan.`
+    ).catch(() => {});
+    await bot.telegram.sendMessage(
+      job.chatId,
+      `↩️ Saldo ${formatRupiah(job.price)} dikembalikan karena Bridge tidak aktif.`
+    ).catch(() => {});
+  }
+}
+
 // ─── Launch ───────────────────────────────────────────────────────────────────
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+app.use(express.json({ limit: '32kb' }));
 
 app.get('/', (_req, res) => res.send('OK'));
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+
+async function getBridgeAgent(req: any): Promise<BridgeAgent | null> {
+  const agentId = String(req.get('x-bridge-agent') || '');
+  const authorization = String(req.get('authorization') || '');
+  const secret = authorization.startsWith('Bearer ') ? authorization.slice('Bearer '.length).trim() : '';
+  if (!agentId || !secret) return null;
+  return freebeatBridge.authenticate(agentId, secret);
+}
+
+function isSafeRemoteUrl(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length > 2_000) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+app.post('/bridge/enroll', async (req, res) => {
+  try {
+    const code = typeof req.body?.code === 'string' ? req.body.code : '';
+    const name = typeof req.body?.name === 'string' ? req.body.name : '';
+    const enrollment = await freebeatBridge.enroll(code, name);
+    if (!enrollment) return res.status(401).json({ error: 'Kode setup tidak valid atau sudah kedaluwarsa.' });
+    return res.status(201).json(enrollment);
+  } catch (error: any) {
+    console.error('Bridge enrollment error:', error?.message ?? error);
+    return res.status(500).json({ error: 'Gagal menghubungkan Bridge.' });
+  }
+});
+
+app.post('/bridge/jobs/claim', async (req, res) => {
+  const agent = await getBridgeAgent(req);
+  if (!agent) return res.status(401).json({ error: 'Bridge tidak terdaftar.' });
+  try {
+    const job = await freebeatBridge.claim(agent);
+    if (!job) return res.json({ job: null });
+    return res.json({
+      job: {
+        id: job.id,
+        model: 'seedance-2.5',
+        prompt: job.prompt,
+        imagePath: `/bridge/jobs/${job.id}/image`,
+      },
+    });
+  } catch (error: any) {
+    console.error('Bridge claim error:', error?.message ?? error);
+    return res.status(500).json({ error: 'Gagal mengambil antrean.' });
+  }
+});
+
+app.post('/bridge/jobs/:id/heartbeat', async (req, res) => {
+  const agent = await getBridgeAgent(req);
+  if (!agent) return res.status(401).json({ error: 'Bridge tidak terdaftar.' });
+  const active = await freebeatBridge.renewLease(agent, req.params.id);
+  return res.status(active ? 200 : 409).json({ active });
+});
+
+app.get('/bridge/jobs/:id/image', async (req, res) => {
+  const agent = await getBridgeAgent(req);
+  if (!agent) return res.status(401).json({ error: 'Bridge tidak terdaftar.' });
+  try {
+    const fileId = await freebeatBridge.getImageFileId(agent, req.params.id);
+    if (!fileId) return res.status(404).json({ error: 'Foto order tidak ditemukan.' });
+    const fileLink = await bot.telegram.getFileLink(fileId);
+    const image = await telegramHttp.get(fileLink.href, { responseType: 'arraybuffer', timeout: 120_000 });
+    res.setHeader('Content-Type', String(image.headers['content-type'] || 'application/octet-stream'));
+    res.setHeader('Cache-Control', 'no-store');
+    return res.send(Buffer.from(image.data));
+  } catch (error: any) {
+    console.error('Bridge image error:', error?.message ?? error);
+    return res.status(502).json({ error: 'Gagal mengambil foto Telegram.' });
+  }
+});
+
+app.post('/bridge/jobs/:id/accepted', async (req, res) => {
+  const agent = await getBridgeAgent(req);
+  if (!agent) return res.status(401).json({ error: 'Bridge tidak terdaftar.' });
+  const providerRef = typeof req.body?.providerRef === 'string' ? req.body.providerRef : null;
+  const accepted = await freebeatBridge.markAccepted(agent, req.params.id, providerRef);
+  return res.status(accepted ? 200 : 409).json({ accepted });
+});
+
+app.post('/bridge/jobs/:id/complete', async (req, res) => {
+  const agent = await getBridgeAgent(req);
+  if (!agent) return res.status(401).json({ error: 'Bridge tidak terdaftar.' });
+  if (!isSafeRemoteUrl(req.body?.videoUrl)) return res.status(400).json({ error: 'URL video tidak valid.' });
+  try {
+    const job = await freebeatBridge.complete(agent, req.params.id, req.body.videoUrl);
+    if (!job) return res.status(409).json({ error: 'Order tidak dapat diselesaikan.' });
+    const delivered = await sendResult(
+      job.chatId,
+      job.outputUrl!,
+      '🎬 Seedance 2.5 I2V • Freebeat Bridge\n\n/menu untuk buat lagi',
+      true
+    );
+    if (!delivered) {
+      const failed = await freebeatBridge.failCompletedDelivery(job.id, 'Pengiriman hasil Telegram gagal');
+      if (failed) await refundBridgeJob(failed, 'hasil video tidak bisa dikirim');
+      return res.status(502).json({ error: 'Video selesai tetapi gagal dikirim ke Telegram.' });
+    }
+    await incrementKlingUsage(job.dbUserId).catch(() => {});
+    markGenSuccess(job.telegramUserId);
+    await freebeatBridge.markDelivered(job.id);
+    await bot.telegram.deleteMessage(job.chatId, job.statusMessageId).catch(() => {});
+    return res.json({ completed: true });
+  } catch (error: any) {
+    console.error('Bridge completion error:', error?.message ?? error);
+    return res.status(500).json({ error: 'Gagal menyelesaikan order.' });
+  }
+});
+
+app.post('/bridge/jobs/:id/fail', async (req, res) => {
+  const agent = await getBridgeAgent(req);
+  if (!agent) return res.status(401).json({ error: 'Bridge tidak terdaftar.' });
+  const message = typeof req.body?.message === 'string' ? req.body.message : 'Bridge gagal memproses order';
+  try {
+    const job = await freebeatBridge.fail(agent, req.params.id, message);
+    if (!job) return res.status(409).json({ error: 'Order tidak dapat diubah.' });
+    await refundBridgeJob(job, 'generate tidak berhasil');
+    return res.json({ refunded: true });
+  } catch (error: any) {
+    console.error('Bridge failure error:', error?.message ?? error);
+    return res.status(500).json({ error: 'Gagal memproses refund Bridge.' });
+  }
+});
 
 // Serve self-hosted result files. The token is an unguessable random id mapped to
 // a file we wrote ourselves — it is never used to build a path, so there's no way
@@ -7912,6 +8138,8 @@ app.listen(PORT, () => {
     }
     await ensureOneOverPool();
     console.log('✅ Pool Seedance 2.5 siap');
+    await freebeatBridge.ensureSchema();
+    console.log('✅ Antrean Freebeat Bridge siap');
     // Keep the refresh token alive forever on a dedicated account (seed once).
     picsart.startPicsartKeepalive();
     console.log('✅ Picsart keepalive aktif (refresh tiap 3 hari)');
@@ -7920,6 +8148,8 @@ app.listen(PORT, () => {
   }
   bot.launch({ allowedUpdates: ['message', 'callback_query'] });
   console.log('✅ Bot berjalan...');
+  await refundExpiredBridgeJobs();
+  setInterval(() => { void refundExpiredBridgeJobs().catch((e: any) => console.error('Bridge refund recovery error:', e?.message ?? e)); }, 60_000);
 
   // Poller top-up QRIS (mode polling, tanpa webhook). Cek order PENDING tiap 15s.
   if (klikqris.klikqrisConfigured()) {

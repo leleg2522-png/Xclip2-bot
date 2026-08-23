@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { isOneOverAuthFailure, resolveOneOverAccountId } from '../src/oneover';
 
 const provider = readFileSync(new URL('../src/oneover.ts', import.meta.url), 'utf8');
+const bridge = readFileSync(new URL('../src/freebeat-bridge.ts', import.meta.url), 'utf8');
 const bot = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 
 assert.match(provider, /model: 'seedance-2\.5'/);
@@ -39,10 +40,18 @@ assert.equal(
 assert.equal(resolveOneOverAccountId({ apiKey: 'test', authorization: 'opaque-token' }), null);
 
 assert.match(bot, /oneover_seedance_25: 6000/);
-assert.match(bot, /Seedance 2\.5 I2V 🔥PROMO/);
+assert.match(bot, /Seedance 2\.5 I2V/);
+assert.match(bot, /Provider: \*Freebeat Bridge\*/);
 assert.match(bot, /mode_oneover_seedance25/);
 assert.match(bot, /oneover_wait_image/);
 assert.match(bot, /oneover_wait_prompt/);
+assert.match(bot, /queueFreebeatBridgeSeedance25/);
+assert.match(bot, /freebeatBridge\.claim/);
+assert.doesNotMatch(bot, /runOneOverSeedance25\(ctx\.chat/);
+assert.match(bridge, /CREATE TABLE IF NOT EXISTS freebeat_bridge_jobs/);
+assert.match(bridge, /FOR UPDATE SKIP LOCKED/);
+assert.match(bridge, /state = 'accepted'/);
+assert.match(bridge, /delivered_at/);
 assert.match(bot, /runOneOverSeedance25/);
 assert.match(bot, /beginCharge\(dbUserId, PRICE, MAX_PARALLEL_GENERATIONS_PER_USER\)/);
 assert.match(bot, /submitOneOverSeedanceI2v/);
