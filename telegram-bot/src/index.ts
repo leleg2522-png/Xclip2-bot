@@ -1146,7 +1146,10 @@ function oneOverSessionFingerprint(credentials: oneover.OneOverCredentials): str
 function readOneOverPoolSeeds(): oneover.OneOverCredentials[] {
   const seeds: oneover.OneOverCredentials[] = [];
   const environmentSession = oneover.getEnvironmentCredentials();
-  if (environmentSession?.userId) seeds.push(environmentSession);
+  if (environmentSession) {
+    const userId = oneover.resolveOneOverAccountId(environmentSession);
+    if (userId) seeds.push({ ...environmentSession, userId });
+  }
 
   const raw = process.env.ONEOVER_POOL_SEED?.trim();
   if (!raw) return seeds;
@@ -1160,7 +1163,11 @@ function readOneOverPoolSeeds(): oneover.OneOverCredentials[] {
       const cookie = typeof item?.cookie === 'string' ? item.cookie.trim() : undefined;
       const userId = typeof item?.userId === 'string' ? item.userId.trim()
         : typeof item?.user_id === 'string' ? item.user_id.trim() : undefined;
-      if (apiKey && (authorization || cookie) && userId) seeds.push({ apiKey, authorization, cookie, userId });
+      const credentials = { apiKey, authorization, cookie, userId };
+      const accountId = oneover.resolveOneOverAccountId(credentials);
+      if (apiKey && (authorization || cookie) && accountId) {
+        seeds.push({ ...credentials, userId: accountId });
+      }
     }
   } catch (error: any) {
     console.warn(`⚠️ ONEOVER_POOL_SEED diabaikan: ${error?.message ?? 'format JSON tidak valid'}`);

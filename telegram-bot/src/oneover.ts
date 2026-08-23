@@ -43,6 +43,20 @@ export function getEnvironmentCredentials(): OneOverCredentials | null {
   };
 }
 
+export function resolveOneOverAccountId(credentials: OneOverCredentials): string | null {
+  if (credentials.userId?.trim()) return credentials.userId.trim();
+  const rawAuthorization = credentials.authorization?.trim().replace(/^Bearer\s+/i, '');
+  if (!rawAuthorization) return null;
+  const parts = rawAuthorization.split('.');
+  if (parts.length < 2) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    return typeof payload?.sub === 'string' && payload.sub.trim() ? payload.sub.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 function headers(credentials: OneOverCredentials): Record<string, string> {
   if (!credentials.apiKey?.trim()) throw new Error('ONEOVER_NO_CREDENTIAL');
   if (!credentials.authorization?.trim() && !credentials.cookie?.trim()) throw new Error('ONEOVER_NO_SESSION');

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { isOneOverAuthFailure } from '../src/oneover';
+import { isOneOverAuthFailure, resolveOneOverAccountId } from '../src/oneover';
 
 const provider = readFileSync(new URL('../src/oneover.ts', import.meta.url), 'utf8');
 const bot = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
@@ -24,6 +24,14 @@ assert.match(provider, /isOneOverAuthFailure/);
 assert.equal(isOneOverAuthFailure(new Error('ONEOVER_SUBMIT_FAILED 401: expired')), true);
 assert.equal(isOneOverAuthFailure(new Error('ONEOVER_POLL_FAILED 403: forbidden')), true);
 assert.equal(isOneOverAuthFailure(new Error('ONEOVER_TIMEOUT')), false);
+assert.equal(
+  resolveOneOverAccountId({
+    apiKey: 'test',
+    authorization: 'Bearer eyJhbGciOiJub25lIn0.eyJzdWIiOiJhY2NvdW50LTQyIn0.signature',
+  }),
+  'account-42'
+);
+assert.equal(resolveOneOverAccountId({ apiKey: 'test', authorization: 'opaque-token' }), null);
 
 assert.match(bot, /oneover_seedance_25: 6000/);
 assert.match(bot, /Seedance 2\.5 I2V 🔥PROMO/);
@@ -40,6 +48,8 @@ assert.match(bot, /if \(activeDraft\.mode !== 'oneover_wait_prompt'\) return;/);
 assert.match(bot, /const dbUserId = activeDraft\.dbUserId;/);
 assert.match(bot, /setSession\(userId, \{ mode: 'idle', oneoverImageUrl: undefined \}\);\s+const statusMsg = await ctx\.reply/s);
 assert.match(bot, /CREATE TABLE IF NOT EXISTS oneover_session_pool/);
+assert.match(bot, /provider_user_id\s+TEXT UNIQUE NOT NULL/);
+assert.match(bot, /ON CONFLICT \(provider_user_id\) DO UPDATE/);
 assert.match(bot, /FOR UPDATE SKIP LOCKED/);
 assert.match(bot, /FOR UPDATE SKIP LOCKED/);
 assert.match(bot, /claim_token = \$1/);
