@@ -42,11 +42,15 @@ function webHeaders(session: FreebeatWebCredentials): Record<string, string> {
     token: session.token,
     udt: session.udt,
     'Content-Type': 'application/json',
-    Accept: 'application/json',
+    Accept: '*/*',
+    'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Cache-Control': 'no-cache',
+    Pragma: 'no-cache',
     'fb-language': 'en',
     'x-platform-type': 'WEB',
     Origin: 'https://freebeat.ai',
     Referer: 'https://freebeat.ai/ai-video-generator',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36',
   };
 }
 
