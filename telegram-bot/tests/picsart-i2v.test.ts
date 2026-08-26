@@ -4,7 +4,7 @@ import {
   PICSART_I2V_MODELS,
   buildPicsartI2vParams,
   extractPicsartVideoUrl,
-  getWanV3ExportSize,
+  getPicsartI2vExportSize,
   isPicsartPostSubmitAuthFailure,
 } from '../src/picsart';
 
@@ -44,7 +44,7 @@ assert.deepEqual(seedanceMini, {
   ],
   ratio: '9:16',
   duration: 15,
-  resolution: '720p',
+  resolution: '480p',
   generate_audio: true,
   options: {},
 });
@@ -148,8 +148,8 @@ assert.deepEqual(wan3Portrait, {
 
 const wan3Landscape = buildPicsartI2vParams('wan_v3', prompt, imageUrl, { ratio: '16:9' });
 assert.equal(wan3Landscape.ratio, '16:9');
-const portraitExport = getWanV3ExportSize('9:16');
-const landscapeExport = getWanV3ExportSize('16:9');
+const portraitExport = getPicsartI2vExportSize('9:16');
+const landscapeExport = getPicsartI2vExportSize('16:9');
 assert.deepEqual(portraitExport, { width: 1080, height: 1920 });
 assert.deepEqual(landscapeExport, { width: 1920, height: 1080 });
 assert.equal(portraitExport.width * 16, portraitExport.height * 9, 'portrait export must remain exact 9:16');

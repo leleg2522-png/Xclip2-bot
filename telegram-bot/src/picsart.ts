@@ -1304,21 +1304,21 @@ type PicsartI2vModelConfig = {
 export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfig> = {
   seedance_2_mini: {
     label: 'Seedance 2.0 Mini',
-    settingsLabel: '9:16 · 15 detik · 720p · audio',
+    settingsLabel: '9:16 · 15 detik · generate 480p → output 1080p · audio',
     workflowPath: 'seedance',
     pool: 'p500',
     pollAttempts: 300,
   },
   seedance_2_fast: {
     label: 'Seedance 2.0 Fast',
-    settingsLabel: '9:16 · 15 detik · 480p · audio',
+    settingsLabel: '9:16 · 15 detik · generate 480p → output 1080p · audio',
     workflowPath: 'seedance',
     pool: 'p500',
     pollAttempts: 300,
   },
   seedance_2: {
     label: 'Seedance 2.0',
-    settingsLabel: '9:16 · 15 detik · 480p · audio',
+    settingsLabel: '9:16 · 15 detik · generate 480p → output 1080p · audio',
     workflowPath: 'seedance',
     pool: 'p500',
     pollAttempts: 300,
@@ -1383,7 +1383,7 @@ export function buildPicsartI2vParams(
         ],
         ratio: '9:16',
         duration: 15,
-        resolution: '720p',
+        resolution: '480p',
         generate_audio: true,
         options: {},
       };
@@ -1503,13 +1503,20 @@ async function submitPicsartI2v(
   return id;
 }
 
-export function getWanV3ExportSize(ratio: WanV3AspectRatio): { width: number; height: number } {
+export function getPicsartI2vExportSize(ratio: WanV3AspectRatio): { width: number; height: number } {
   return ratio === '16:9'
     ? { width: 1920, height: 1080 }
     : { width: 1080, height: 1920 };
 }
 
-async function submitWanV3Export(
+function shouldExportPicsartI2v(model: PicsartI2vModelKey): boolean {
+  return model === 'seedance_2_mini'
+    || model === 'seedance_2_fast'
+    || model === 'seedance_2'
+    || model === 'wan_v3';
+}
+
+async function submitPicsartI2vExport(
   credId: number,
   rawVideoUrl: string,
   ratio: WanV3AspectRatio
@@ -1521,7 +1528,7 @@ async function submitWanV3Export(
       params: {
         params: {
           video_url: rawVideoUrl,
-          resize: getWanV3ExportSize(ratio),
+          resize: getPicsartI2vExportSize(ratio),
         },
         export_config: { mediaType: 'mp4' },
       },
@@ -1533,12 +1540,12 @@ async function submitWanV3Export(
   );
   const id = r.data?.response?.id;
   if (!ok2xx(r.status) || !id) {
-    throw new Error(`PICSART_WAN3_EXPORT_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+    throw new Error(`PICSART_I2V_EXPORT_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
   }
   return id;
 }
 
-async function pollWanV3ExportResult(
+async function pollPicsartI2vExportResult(
   credId: number,
   id: string,
   opts?: { intervalMs?: number; onTick?: (elapsedMs: number) => void }
@@ -1560,11 +1567,11 @@ async function pollWanV3ExportResult(
     const status = String(response?.status ?? '').toUpperCase();
     if (status === 'COMPLETED' || status === 'SUCCESS') {
       const url = extractPicsartVideoUrl(response);
-      if (!url) throw new Error(`PICSART_WAN3_EXPORT_NO_RESULT_URL: ${JSON.stringify(response).slice(0, 250)}`);
+      if (!url) throw new Error(`PICSART_I2V_EXPORT_NO_RESULT_URL: ${JSON.stringify(response).slice(0, 250)}`);
       return { url };
     }
     if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
-      throw new Error(`PICSART_WAN3_EXPORT_FAILED: ${JSON.stringify(response).slice(0, 250)}`);
+      throw new Error(`PICSART_I2V_EXPORT_FAILED: ${JSON.stringify(response).slice(0, 250)}`);
     }
   }
   throw diag.timeoutError();
@@ -1662,10 +1669,10 @@ export async function generatePicsartI2v(input: {
       const rawResult = await pollPicsartI2vResult(credId, input.model, id, {
         onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
       });
-      if (input.model !== 'wan_v3') return rawResult;
+      if (!shouldExportPicsartI2v(input.model)) return rawResult;
       input.onStatus?.('export');
-      const exportId = await submitWanV3Export(credId, rawResult.url, input.ratio ?? '9:16');
-      const exported = await pollWanV3ExportResult(credId, exportId, {
+      const exportId = await submitPicsartI2vExport(credId, rawResult.url, input.ratio ?? '9:16');
+      const exported = await pollPicsartI2vExportResult(credId, exportId, {
         onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
       });
       return { ...rawResult, url: exported.url };
