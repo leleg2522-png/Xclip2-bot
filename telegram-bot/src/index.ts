@@ -170,10 +170,15 @@ const MODEL_PRICES = {
   audio: 3000,         // Semua model audio generation/transcription
   topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 4× 60fps)
   picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
+  picsart_wan_v3: 6000, // Wan 3.0 30s, delivered as 1080p
   oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
+
+function getPicsartI2vPrice(model: picsart.PicsartI2vModelKey): number {
+  return model === 'wan_v3' ? MODEL_PRICES.picsart_wan_v3 : MODEL_PRICES.picsart_i2v;
+}
 
 // Batas durasi video referensi Kling Motion Control (detik).
 const KLING_MAX_REF_SECONDS = 16;
@@ -2162,9 +2167,9 @@ function mainMenuKeyboard() {
     // ── Generate Video ──
     [Markup.button.callback('── 🎬 Generate Video ──', 'noop')],
     [Markup.button.callback('🕹️ Kling Motion Control', 'menu_kling_list')],
-    [Markup.button.callback('🌊 Seedance 2.0 Mini', 'mode_pi2v_seedance_2_mini')],
-    [Markup.button.callback('🌊 Seedance 2.0 Fast', 'mode_pi2v_seedance_2_fast')],
-    [Markup.button.callback('🌊 Seedance 2.0', 'mode_pi2v_seedance_2')],
+    [Markup.button.callback('🌊 Seedance 2.0 Mini 1080p', 'mode_pi2v_seedance_2_mini')],
+    [Markup.button.callback('🌊 Seedance 2.0 Fast 1080p', 'mode_pi2v_seedance_2_fast')],
+    [Markup.button.callback('🌊 Seedance 2.0 1080p', 'mode_pi2v_seedance_2')],
     [Markup.button.callback('🌊 Seedance 2.5 I2V', 'mode_oneover_seedance25')],
     [Markup.button.callback('🌌 Grok Imagine Video', 'mode_pi2v_grok_imagine')],
     [Markup.button.callback('🎨 PixVerse v6 • 15 detik • 1080p', 'mode_pi2v_pixverse_v6')],
@@ -2172,7 +2177,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🎭 Kling v2.6 Pro', 'mode_pi2v_kling_v26_pro')],
     [Markup.button.callback('🎞️ Kling v3 Standard', 'mode_pi2v_kling_v3')],
     [Markup.button.callback('🌀 Wan v2 Image-to-Video', 'mode_pi2v_wan_v2')],
-    [Markup.button.callback('🌀 Wan 3.0 • 30 detik • 1080p', 'mode_pi2v_wan_v3')],
+    [Markup.button.callback('🌀 Wan 3.0 1080p • 30 detik', 'mode_pi2v_wan_v3')],
     [Markup.button.callback('🎬 Kling 2.1 Pro (10 detik)', 'mode_kling21')],
     [Markup.button.callback('🚀 Runway Gen-4.5', 'mode_rw')],
     [Markup.button.callback('🎥 Sora 2 (OpenAI)', 'mode_sora')],
@@ -2551,16 +2556,16 @@ function hargaText(): string {
     `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
     `• Chat AI — ${formatRupiah(MODEL_PRICES.chat)}/pesan\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
-    `• Seedance 2.0 Mini — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
-    `• Seedance 2.0 Fast — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
-    `• Seedance 2.0 — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• Seedance 2.0 Mini 1080p — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• Seedance 2.0 Fast 1080p — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• Seedance 2.0 1080p — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Seedance 2.5 I2V — ${formatRupiah(MODEL_PRICES.oneover_seedance_25)}\n` +
     `• Grok Imagine Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v3 Turbo — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v2.6 Pro — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v3 Standard — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Wan v2 Image-to-Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
-    `• Wan 3.0 Image-to-Video (30 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• Wan 3.0 1080p (30 detik) — ${formatRupiah(MODEL_PRICES.picsart_wan_v3)}\n` +
     `• PixVerse v6 (15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling 2.1 Pro (10 detik) — ${formatRupiah(MODEL_PRICES.kling_21_pro)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
@@ -3822,7 +3827,7 @@ bot.on('callback_query', async (ctx) => {
     return ctx.editMessageText(
       `🌀 *${cfg.label}*\n\n` +
       `Parameter: *${ratio} · ${cfg.settingsLabel}*\n` +
-      `Harga: *${formatRupiah(MODEL_PRICES.picsart_i2v)}* per video\n\n` +
+      `Harga: *${formatRupiah(getPicsartI2vPrice(model))}* per video\n\n` +
       '*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
       { parse_mode: 'Markdown' }
     );
@@ -3859,7 +3864,7 @@ bot.on('callback_query', async (ctx) => {
     return ctx.editMessageText(
       `🧩 *${cfg.label}*\n\n` +
       `Parameter: *${cfg.settingsLabel}*\n` +
-      `Harga: *${formatRupiah(MODEL_PRICES.picsart_i2v)}* per video\n\n` +
+      `Harga: *${formatRupiah(getPicsartI2vPrice(model))}* per video\n\n` +
       '*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
       { parse_mode: 'Markdown' }
     );
@@ -6163,7 +6168,7 @@ async function runPicsartI2v(
   const settingsLabel = (opts.model === 'wan_v3' || opts.model === 'pixverse_v6') && opts.ratio
     ? `${opts.ratio} · ${cfg.settingsLabel}`
     : cfg.settingsLabel;
-  const PRICE = MODEL_PRICES.picsart_i2v;
+  const PRICE = getPicsartI2vPrice(opts.model);
   const charge = await beginCharge(dbUserId, PRICE, 3);
   if (!charge.ok) {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});

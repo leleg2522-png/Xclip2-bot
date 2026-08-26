@@ -180,6 +180,11 @@ assert.equal(portraitExport.width * 16, portraitExport.height * 9, 'portrait exp
 assert.equal(landscapeExport.width * 9, landscapeExport.height * 16, 'landscape export must remain exact 16:9');
 assert.match(botSource, /mode_pi2v_wan_v3/);
 assert.match(botSource, /mode_pi2v_pixverse_v6/);
+assert.match(botSource, /picsart_wan_v3: 6000/);
+assert.match(botSource, /Wan 3\.0 1080p/);
+assert.match(botSource, /Seedance 2\.0 Mini 1080p/);
+assert.match(botSource, /Seedance 2\.0 Fast 1080p/);
+assert.match(botSource, /Seedance 2\.0 1080p/);
 assert.match(botSource, /picsart_ratio_916/);
 assert.match(botSource, /picsart_ratio_169/);
 const picsartSource = readFileSync(new URL('../src/picsart.ts', import.meta.url), 'utf8');

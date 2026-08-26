@@ -1305,22 +1305,22 @@ type PicsartI2vModelConfig = {
 
 export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfig> = {
   seedance_2_mini: {
-    label: 'Seedance 2.0 Mini',
-    settingsLabel: '9:16 · 15 detik · generate 480p → output 1080p · audio',
+    label: 'Seedance 2.0 Mini 1080p',
+    settingsLabel: '9:16 · 15 detik · 1080p · audio',
     workflowPath: 'seedance',
     pool: 'p500',
     pollAttempts: 300,
   },
   seedance_2_fast: {
-    label: 'Seedance 2.0 Fast',
-    settingsLabel: '9:16 · 15 detik · generate 480p → output 1080p · audio',
+    label: 'Seedance 2.0 Fast 1080p',
+    settingsLabel: '9:16 · 15 detik · 1080p · audio',
     workflowPath: 'seedance',
     pool: 'p500',
     pollAttempts: 300,
   },
   seedance_2: {
-    label: 'Seedance 2.0',
-    settingsLabel: '9:16 · 15 detik · generate 480p → output 1080p · audio',
+    label: 'Seedance 2.0 1080p',
+    settingsLabel: '9:16 · 15 detik · 1080p · audio',
     workflowPath: 'seedance',
     pool: 'p500',
     pollAttempts: 300,
@@ -1361,8 +1361,8 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
     pollAttempts: 180,
   },
   wan_v3: {
-    label: 'Wan 3.0 Image-to-Video',
-    settingsLabel: '30 detik · generate 480p → output 1080p',
+    label: 'Wan 3.0 1080p',
+    settingsLabel: '30 detik · 1080p',
     workflowPath: 'wan/v3/video',
     pool: null,
     pollAttempts: 240,
