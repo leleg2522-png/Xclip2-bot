@@ -170,6 +170,7 @@ const MODEL_PRICES = {
   audio: 3000,         // Semua model audio generation/transcription
   topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 4× 60fps)
   picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
+  picsart_seedance_2_mini: 3500, // Seedance 2.0 Mini, delivered as 1080p
   picsart_seedance_2: 4000, // Seedance 2.0 Mini/Fast/Standard, delivered as 1080p
   picsart_wan_v3: 6000, // Wan 3.0 30s, delivered as 1080p
   oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
@@ -179,7 +180,8 @@ type ModelKey = keyof typeof MODEL_PRICES;
 
 function getPicsartI2vPrice(model: picsart.PicsartI2vModelKey): number {
   if (model === 'wan_v3') return MODEL_PRICES.picsart_wan_v3;
-  if (model === 'seedance_2_mini' || model === 'seedance_2_fast' || model === 'seedance_2') {
+  if (model === 'seedance_2_mini') return MODEL_PRICES.picsart_seedance_2_mini;
+  if (model === 'seedance_2_fast' || model === 'seedance_2') {
     return MODEL_PRICES.picsart_seedance_2;
   }
   return MODEL_PRICES.picsart_i2v;
