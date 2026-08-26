@@ -170,6 +170,7 @@ const MODEL_PRICES = {
   audio: 3000,         // Semua model audio generation/transcription
   topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 4× 60fps)
   picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
+  picsart_seedance_2: 4000, // Seedance 2.0 Mini/Fast/Standard, delivered as 1080p
   picsart_wan_v3: 6000, // Wan 3.0 30s, delivered as 1080p
   oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
@@ -177,7 +178,11 @@ const MODEL_PRICES = {
 type ModelKey = keyof typeof MODEL_PRICES;
 
 function getPicsartI2vPrice(model: picsart.PicsartI2vModelKey): number {
-  return model === 'wan_v3' ? MODEL_PRICES.picsart_wan_v3 : MODEL_PRICES.picsart_i2v;
+  if (model === 'wan_v3') return MODEL_PRICES.picsart_wan_v3;
+  if (model === 'seedance_2_mini' || model === 'seedance_2_fast' || model === 'seedance_2') {
+    return MODEL_PRICES.picsart_seedance_2;
+  }
+  return MODEL_PRICES.picsart_i2v;
 }
 
 // Batas durasi video referensi Kling Motion Control (detik).
@@ -2556,9 +2561,9 @@ function hargaText(): string {
     `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
     `• Chat AI — ${formatRupiah(MODEL_PRICES.chat)}/pesan\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
-    `• Seedance 2.0 Mini 1080p — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
-    `• Seedance 2.0 Fast 1080p — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
-    `• Seedance 2.0 1080p — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• Seedance 2.0 Mini 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_mini'))}\n` +
+    `• Seedance 2.0 Fast 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_fast'))}\n` +
+    `• Seedance 2.0 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
     `• Seedance 2.5 I2V — ${formatRupiah(MODEL_PRICES.oneover_seedance_25)}\n` +
     `• Grok Imagine Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v3 Turbo — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
