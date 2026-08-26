@@ -20,6 +20,7 @@
 
 import axios from 'axios';
 import FormData from 'form-data';
+import sharp from 'sharp';
 import type { Pool, QueryResult, QueryResultRow } from 'pg';
 
 const API_BASE = 'https://api.picsart.com';
@@ -1289,7 +1290,8 @@ export type PicsartI2vModelKey =
   | 'kling_v26_pro'
   | 'kling_v3'
   | 'wan_v2'
-  | 'wan_v3';
+  | 'wan_v3'
+  | 'pixverse_v6';
 
 export type WanV3AspectRatio = '9:16' | '16:9';
 
@@ -1365,13 +1367,20 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
     pool: null,
     pollAttempts: 240,
   },
+  pixverse_v6: {
+    label: 'PixVerse v6',
+    settingsLabel: '15 detik · generate 360p → output 1080p · audio',
+    workflowPath: 'pixverse/v2/image-to-video',
+    pool: null,
+    pollAttempts: 240,
+  },
 };
 
 export function buildPicsartI2vParams(
   model: PicsartI2vModelKey,
   prompt: string,
   imageUrl: string,
-  options?: { ratio?: WanV3AspectRatio }
+  options?: { ratio?: WanV3AspectRatio; outputName?: string }
 ): Record<string, unknown> {
   switch (model) {
     case 'seedance_2_mini':
@@ -1476,6 +1485,34 @@ export function buildPicsartI2vParams(
         prompt,
         options: {},
       };
+    case 'pixverse_v6':
+      return {
+        model: 'v6',
+        prompt,
+        quality: '360p',
+        duration: 15,
+        generate_audio_switch: true,
+        image_url: imageUrl,
+        options: {
+          drive: {
+            name: options?.outputName || 'pixverse-v6-image-ai-playground.mp4',
+            attributes: {
+              model: 'pixverse-v6-image',
+              aiSDKPayload: JSON.stringify({
+                prompt,
+                quality: '360p',
+                duration: 15,
+                generateAudio: true,
+                imageUrls: [imageUrl],
+                outputMegapixels: 1.032192,
+              }),
+              appId: 'com.picsart.ai-playground',
+              appType: 'miniapp',
+            },
+            folder: { path: 'AI Playground' },
+          },
+        },
+      };
   }
 }
 
@@ -1484,15 +1521,37 @@ async function submitPicsartI2v(
   model: PicsartI2vModelKey,
   prompt: string,
   imageUrl: string,
-  options?: { ratio?: WanV3AspectRatio }
+  options?: { ratio?: WanV3AspectRatio; outputName?: string }
 ): Promise<string> {
   const cfg = PICSART_I2V_MODELS[model];
   const access = await getAccessToken(credId);
+  const isPixverse = model === 'pixverse_v6';
+  const workflowBase = isPixverse
+    ? `${API_BASE}/gw-v2/workflows/${cfg.workflowPath}`
+    : `${API_BASE}/workflows/${cfg.workflowPath}`;
   const r = await http.post(
-    `${API_BASE}/workflows/${cfg.workflowPath}/submit`,
-    { params: buildPicsartI2vParams(model, prompt, imageUrl, options) },
+    `${workflowBase}/submit`,
     {
-      headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
+      params: buildPicsartI2vParams(
+        model,
+        prompt,
+        imageUrl,
+        isPixverse
+          ? { ...options, outputName: `pixverse-v6-image-ai-playground-${Date.now()}.mp4` }
+          : options
+      ),
+    },
+    {
+      headers: commonHeaders({
+        'content-type': 'application/json',
+        authorization: `Bearer ${access}`,
+        ...(isPixverse
+          ? {
+              'x-app-authorization': X_APP_AUTHORIZATION,
+              'x-sub-package-id': 'subscription_pro_monthly',
+            }
+          : {}),
+      }),
       validateStatus: () => true,
     }
   );
@@ -1509,11 +1568,43 @@ export function getPicsartI2vExportSize(ratio: WanV3AspectRatio): { width: numbe
     : { width: 1080, height: 1920 };
 }
 
-function shouldExportPicsartI2v(model: PicsartI2vModelKey): boolean {
+export function shouldExportPicsartI2v(model: PicsartI2vModelKey): boolean {
   return model === 'seedance_2_mini'
     || model === 'seedance_2_fast'
     || model === 'seedance_2'
-    || model === 'wan_v3';
+    || model === 'wan_v3'
+    || model === 'pixverse_v6';
+}
+
+async function cropImageToAspectRatio(
+  imageBuffer: Buffer,
+  ratio: WanV3AspectRatio
+): Promise<Buffer> {
+  const normalized = await sharp(imageBuffer).rotate().toBuffer();
+  const metadata = await sharp(normalized).metadata();
+  if (!metadata.width || !metadata.height) {
+    throw new Error('PICSART_PIXVERSE_IMAGE_DIMENSIONS_MISSING');
+  }
+
+  const targetRatio = ratio === '16:9' ? 16 / 9 : 9 / 16;
+  const sourceRatio = metadata.width / metadata.height;
+  let width = metadata.width;
+  let height = metadata.height;
+  let left = 0;
+  let top = 0;
+
+  if (sourceRatio > targetRatio) {
+    width = Math.max(1, Math.floor(metadata.height * targetRatio));
+    left = Math.floor((metadata.width - width) / 2);
+  } else if (sourceRatio < targetRatio) {
+    height = Math.max(1, Math.floor(metadata.width / targetRatio));
+    top = Math.floor((metadata.height - height) / 2);
+  }
+
+  return sharp(normalized)
+    .extract({ left, top, width, height })
+    .jpeg({ quality: 95 })
+    .toBuffer();
 }
 
 async function submitPicsartI2vExport(
@@ -1614,8 +1705,20 @@ async function pollPicsartI2vResult(
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
     opts?.onTick?.(Date.now() - start);
     const access = await getAccessToken(credId);
-    const r = await http.get(`${API_BASE}/workflows/${cfg.workflowPath}/${id}/result`, {
-      headers: commonHeaders({ authorization: `Bearer ${access}` }),
+    const isPixverse = model === 'pixverse_v6';
+    const workflowBase = isPixverse
+      ? `${API_BASE}/gw-v2/workflows/${cfg.workflowPath}`
+      : `${API_BASE}/workflows/${cfg.workflowPath}`;
+    const r = await http.get(`${workflowBase}/${id}/result`, {
+      headers: commonHeaders({
+        authorization: `Bearer ${access}`,
+        ...(isPixverse
+          ? {
+              'x-app-authorization': X_APP_AUTHORIZATION,
+              'x-sub-package-id': 'subscription_pro_monthly',
+            }
+          : {}),
+      }),
       validateStatus: () => true,
     });
     const ok = diag.note(r);
@@ -1656,11 +1759,14 @@ export async function generatePicsartI2v(input: {
   const cfg = PICSART_I2V_MODELS[input.model];
   return runWithAccount(input.userId, cfg.pool, async (credId) => {
     input.onStatus?.('upload');
+    const uploadBuffer = input.model === 'pixverse_v6'
+      ? await cropImageToAspectRatio(input.imageBuffer, input.ratio ?? '9:16')
+      : input.imageBuffer;
     const imageUrl = await uploadFile(
       credId,
-      input.imageBuffer,
-      input.imageName || 'reference.jpg',
-      input.imageMime || 'image/jpeg'
+      uploadBuffer,
+      input.model === 'pixverse_v6' ? 'pixverse-reference.jpg' : (input.imageName || 'reference.jpg'),
+      input.model === 'pixverse_v6' ? 'image/jpeg' : (input.imageMime || 'image/jpeg')
     );
     input.onStatus?.('submit');
     const id = await submitPicsartI2v(credId, input.model, input.prompt, imageUrl, { ratio: input.ratio });

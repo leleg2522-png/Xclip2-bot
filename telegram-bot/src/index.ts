@@ -1726,7 +1726,7 @@ function generationDraftKindForContinuation(data: string): GenerationDraftKind |
   if (data.startsWith('img_')) return 'image';
   if (data.startsWith('sdm_')) return 'seedream';
   if (data.startsWith('gi_')) return 'gptimg';
-  if (data.startsWith('wan3_ratio_')) return 'picsart_i2v';
+  if (data.startsWith('picsart_ratio_')) return 'picsart_i2v';
   if (data.startsWith('audio_voice_')) return 'audio';
   return undefined;
 }
@@ -2167,6 +2167,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🌊 Seedance 2.0', 'mode_pi2v_seedance_2')],
     [Markup.button.callback('🌊 Seedance 2.5 I2V', 'mode_oneover_seedance25')],
     [Markup.button.callback('🌌 Grok Imagine Video', 'mode_pi2v_grok_imagine')],
+    [Markup.button.callback('🎨 PixVerse v6 • 15 detik • 1080p', 'mode_pi2v_pixverse_v6')],
     [Markup.button.callback('⚡ Kling v3 Turbo', 'mode_pi2v_kling_v3_turbo')],
     [Markup.button.callback('🎭 Kling v2.6 Pro', 'mode_pi2v_kling_v26_pro')],
     [Markup.button.callback('🎞️ Kling v3 Standard', 'mode_pi2v_kling_v3')],
@@ -2205,11 +2206,11 @@ function isPicsartI2vModelKey(value: string): value is picsart.PicsartI2vModelKe
   return Object.prototype.hasOwnProperty.call(picsart.PICSART_I2V_MODELS, value);
 }
 
-function wan3RatioKeyboard() {
+function picsartI2vRatioKeyboard() {
   return Markup.inlineKeyboard([
     [
-      Markup.button.callback('📱 9:16 (Portrait)', 'wan3_ratio_916'),
-      Markup.button.callback('🖥️ 16:9 (Landscape)', 'wan3_ratio_169'),
+      Markup.button.callback('📱 9:16 (Portrait)', 'picsart_ratio_916'),
+      Markup.button.callback('🖥️ 16:9 (Landscape)', 'picsart_ratio_169'),
     ],
     [Markup.button.callback('« Kembali', 'back_main')],
   ]);
@@ -2560,6 +2561,7 @@ function hargaText(): string {
     `• Kling v3 Standard — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Wan v2 Image-to-Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Wan 3.0 Image-to-Video (30 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• PixVerse v6 (15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling 2.1 Pro (10 detik) — ${formatRupiah(MODEL_PRICES.kling_21_pro)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +
@@ -3800,17 +3802,18 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
-  if (data.startsWith('wan3_ratio_')) {
+  if (data.startsWith('picsart_ratio_')) {
     const ratioMap: Record<string, picsart.WanV3AspectRatio> = {
-      wan3_ratio_916: '9:16',
-      wan3_ratio_169: '16:9',
+      picsart_ratio_916: '9:16',
+      picsart_ratio_169: '16:9',
     };
     const ratio = ratioMap[data];
     const session = getSession(userId);
-    if (!ratio || session.picsartI2vModel !== 'wan_v3') {
+    if (!ratio || !['wan_v3', 'pixverse_v6'].includes(session.picsartI2vModel ?? '')) {
       return ctx.reply('⚠️ Pilihan rasio sudah tidak aktif. Mulai lagi dari /menu.');
     }
-    const cfg = picsart.PICSART_I2V_MODELS.wan_v3;
+    const model = session.picsartI2vModel as 'wan_v3' | 'pixverse_v6';
+    const cfg = picsart.PICSART_I2V_MODELS[model];
     setSession(userId, {
       mode: 'picsart_i2v_wait_image',
       picsartI2vRatio: ratio,
@@ -3833,7 +3836,7 @@ bot.on('callback_query', async (ctx) => {
       return ctx.answerCbQuery('Model tidak dikenali. Buka menu lagi.').catch(() => {});
     }
     const cfg = picsart.PICSART_I2V_MODELS[model];
-    if (model === 'wan_v3') {
+    if (model === 'wan_v3' || model === 'pixverse_v6') {
       setSession(userId, {
         mode: 'picsart_i2v_wait_ratio',
         picsartI2vModel: model,
@@ -3844,7 +3847,7 @@ bot.on('callback_query', async (ctx) => {
         `🌀 *${cfg.label}*\n\n` +
         `${cfg.settingsLabel}\n\n` +
         '*Langkah 1:* Pilih rasio video:',
-        { parse_mode: 'Markdown', ...wan3RatioKeyboard() }
+        { parse_mode: 'Markdown', ...picsartI2vRatioKeyboard() }
       );
     }
     setSession(userId, {
@@ -4659,7 +4662,7 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
       return ctx.reply('⚠️ Model tidak ditemukan. Mulai lagi dari /menu.');
     }
     const cfg = picsart.PICSART_I2V_MODELS[model];
-    const settingsLabel = model === 'wan_v3' && session.picsartI2vRatio
+    const settingsLabel = (model === 'wan_v3' || model === 'pixverse_v6') && session.picsartI2vRatio
       ? `${session.picsartI2vRatio} · ${cfg.settingsLabel}`
       : cfg.settingsLabel;
     setSession(userId, { picsartI2vImageUrl: fileUrl, mode: 'picsart_i2v_wait_prompt' });
@@ -6157,7 +6160,7 @@ async function runPicsartI2v(
 ) {
   const cfg = picsart.PICSART_I2V_MODELS[opts.model];
   const label = cfg.label;
-  const settingsLabel = opts.model === 'wan_v3' && opts.ratio
+  const settingsLabel = (opts.model === 'wan_v3' || opts.model === 'pixverse_v6') && opts.ratio
     ? `${opts.ratio} · ${cfg.settingsLabel}`
     : cfg.settingsLabel;
   const PRICE = MODEL_PRICES.picsart_i2v;

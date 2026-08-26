@@ -6,6 +6,7 @@ import {
   extractPicsartVideoUrl,
   getPicsartI2vExportSize,
   isPicsartPostSubmitAuthFailure,
+  shouldExportPicsartI2v,
 } from '../src/picsart';
 
 const imageUrl = 'https://cdn.example.test/reference.jpg';
@@ -21,6 +22,7 @@ const expectedModels = [
   'kling_v3',
   'wan_v2',
   'wan_v3',
+  'pixverse_v6',
 ] as const;
 
 assert.deepEqual(Object.keys(PICSART_I2V_MODELS).sort(), [...expectedModels].sort());
@@ -148,6 +150,28 @@ assert.deepEqual(wan3Portrait, {
 
 const wan3Landscape = buildPicsartI2vParams('wan_v3', prompt, imageUrl, { ratio: '16:9' });
 assert.equal(wan3Landscape.ratio, '16:9');
+const pixverse = buildPicsartI2vParams('pixverse_v6', prompt, imageUrl);
+assert.equal(pixverse.model, 'v6');
+assert.equal(pixverse.prompt, prompt);
+assert.equal(pixverse.quality, '360p');
+assert.equal(pixverse.duration, 15);
+assert.equal(pixverse.generate_audio_switch, true);
+assert.equal(pixverse.image_url, imageUrl);
+const pixverseDrive = (pixverse.options as { drive: { name: string; attributes: { model: string; aiSDKPayload: string; appId: string; appType: string }; folder: { path: string } } }).drive;
+assert.equal(pixverseDrive.name, 'pixverse-v6-image-ai-playground.mp4');
+assert.equal(pixverseDrive.attributes.model, 'pixverse-v6-image');
+assert.equal(pixverseDrive.attributes.appId, 'com.picsart.ai-playground');
+assert.equal(pixverseDrive.attributes.appType, 'miniapp');
+assert.equal(pixverseDrive.folder.path, 'AI Playground');
+assert.deepEqual(JSON.parse(pixverseDrive.attributes.aiSDKPayload), {
+  prompt,
+  quality: '360p',
+  duration: 15,
+  generateAudio: true,
+  imageUrls: [imageUrl],
+  outputMegapixels: 1.032192,
+});
+assert.equal(shouldExportPicsartI2v('pixverse_v6'), true);
 const portraitExport = getPicsartI2vExportSize('9:16');
 const landscapeExport = getPicsartI2vExportSize('16:9');
 assert.deepEqual(portraitExport, { width: 1080, height: 1920 });
@@ -155,8 +179,13 @@ assert.deepEqual(landscapeExport, { width: 1920, height: 1080 });
 assert.equal(portraitExport.width * 16, portraitExport.height * 9, 'portrait export must remain exact 9:16');
 assert.equal(landscapeExport.width * 9, landscapeExport.height * 16, 'landscape export must remain exact 16:9');
 assert.match(botSource, /mode_pi2v_wan_v3/);
-assert.match(botSource, /wan3_ratio_916/);
-assert.match(botSource, /wan3_ratio_169/);
+assert.match(botSource, /mode_pi2v_pixverse_v6/);
+assert.match(botSource, /picsart_ratio_916/);
+assert.match(botSource, /picsart_ratio_169/);
+const picsartSource = readFileSync(new URL('../src/picsart.ts', import.meta.url), 'utf8');
+assert.match(picsartSource, /\/gw-v2\/workflows\/\$\{cfg\.workflowPath\}/);
+assert.match(picsartSource, /x-sub-package-id': 'subscription_pro_monthly'/);
+assert.match(picsartSource, /x-app-authorization/);
 
 assert.equal(
   extractPicsartVideoUrl({ status: 'COMPLETED', result: { video_url: 'https://video.example.test/a.mp4' } }),
