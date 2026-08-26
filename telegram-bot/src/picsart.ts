@@ -1364,7 +1364,7 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
     label: 'Wan 3.0 1080p',
     settingsLabel: '30 detik · 1080p',
     workflowPath: 'wan/v3/video',
-    pool: null,
+    pool: 'p500',
     pollAttempts: 240,
   },
   pixverse_v6: {

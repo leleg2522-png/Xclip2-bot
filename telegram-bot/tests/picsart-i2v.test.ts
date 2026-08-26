@@ -27,6 +27,7 @@ const expectedModels = [
 
 assert.deepEqual(Object.keys(PICSART_I2V_MODELS).sort(), [...expectedModels].sort());
 assert.equal('pika' in PICSART_I2V_MODELS, false);
+assert.equal(PICSART_I2V_MODELS.wan_v3.pool, 'p500');
 
 const botSource = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 assert.equal(botSource.includes('menu_picsart_i2v'), false);
