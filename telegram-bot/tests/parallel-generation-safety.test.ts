@@ -26,7 +26,7 @@ assert.ok(concurrentCharges.length >= 15, 'all generation runners must retain th
 
 // Every job is started with immutable local arguments and retains its own
 // captured Telegram status message rather than a shared status slot.
-assert.match(source, /runPicsartI2v\(ctx\.chat\.id, userId, session\.dbUserId!, statusMsg\.message_id, prompt, \{ model, imageUrl \}\)/);
+assert.match(source, /runPicsartI2v\(ctx\.chat\.id, userId, session\.dbUserId!, statusMsg\.message_id, prompt, \{ model, imageUrl, ratio \}\)/);
 assert.match(source, /runKlingP2\(ctx\.chat\.id, userId, session\.dbUserId!, statusMsg\.message_id, characterUrlP2, videoFileIdP2, videoDurationP2, prompt\)/);
 assert.match(source, /runFloraAudio\(ctx\.chat\.id, userId, session\.dbUserId!, statusMsg\.message_id, modelId, label, 'generate', prompt, undefined, undefined, voiceId\)/);
 

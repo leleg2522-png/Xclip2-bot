@@ -1493,6 +1493,7 @@ type Mode =
   | 'audio_wait_prompt'
   | 'audio_wait_voice'
   | 'audio_wait_file'
+  | 'picsart_i2v_wait_ratio'
   | 'picsart_i2v_wait_image'
   | 'picsart_i2v_wait_prompt'
   | 'oneover_wait_image'
@@ -1601,6 +1602,7 @@ interface Session {
   audioVoiceLabel?: string;
   // Picsart image-to-video wizard state
   picsartI2vModel?: picsart.PicsartI2vModelKey;
+  picsartI2vRatio?: picsart.WanV3AspectRatio;
   picsartI2vImageUrl?: string;
   // Seedance 2.5 Bridge stores the Telegram file ID, not a bot-token download URL.
   oneoverImageUrl?: string;
@@ -1683,7 +1685,7 @@ const GENERATION_DRAFT_MODES = new Set<Mode>([
   'seedream_wait_image', 'seedream_wait_prompt', 'gptimg_wait_image', 'gptimg_wait_prompt',
   'floraimg_wait_prompt', 'lipsync_wait_media', 'lipsync_wait_audio',
   'audio_wait_prompt', 'audio_wait_voice', 'audio_wait_file',
-  'picsart_i2v_wait_image', 'picsart_i2v_wait_prompt',
+  'picsart_i2v_wait_ratio', 'picsart_i2v_wait_image', 'picsart_i2v_wait_prompt',
   'oneover_wait_image', 'oneover_wait_prompt',
   'kling21_wait_image', 'kling21_wait_prompt', 'topaz_wait_video',
   'img_wait_image', 'img_wait_prompt',
@@ -1724,6 +1726,7 @@ function generationDraftKindForContinuation(data: string): GenerationDraftKind |
   if (data.startsWith('img_')) return 'image';
   if (data.startsWith('sdm_')) return 'seedream';
   if (data.startsWith('gi_')) return 'gptimg';
+  if (data.startsWith('wan3_ratio_')) return 'picsart_i2v';
   if (data.startsWith('audio_voice_')) return 'audio';
   return undefined;
 }
@@ -2168,6 +2171,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🎭 Kling v2.6 Pro', 'mode_pi2v_kling_v26_pro')],
     [Markup.button.callback('🎞️ Kling v3 Standard', 'mode_pi2v_kling_v3')],
     [Markup.button.callback('🌀 Wan v2 Image-to-Video', 'mode_pi2v_wan_v2')],
+    [Markup.button.callback('🌀 Wan 3.0 • 30 detik • 1080p', 'mode_pi2v_wan_v3')],
     [Markup.button.callback('🎬 Kling 2.1 Pro (10 detik)', 'mode_kling21')],
     [Markup.button.callback('🚀 Runway Gen-4.5', 'mode_rw')],
     [Markup.button.callback('🎥 Sora 2 (OpenAI)', 'mode_sora')],
@@ -2199,6 +2203,16 @@ const SD_RATIO_MAP: Record<string, string> = {
 
 function isPicsartI2vModelKey(value: string): value is picsart.PicsartI2vModelKey {
   return Object.prototype.hasOwnProperty.call(picsart.PICSART_I2V_MODELS, value);
+}
+
+function wan3RatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('📱 9:16 (Portrait)', 'wan3_ratio_916'),
+      Markup.button.callback('🖥️ 16:9 (Landscape)', 'wan3_ratio_169'),
+    ],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
 }
 
 // ─── Runway Gen-4.5 wizard keyboards (image-to-video) ─────────────────────────
@@ -2545,6 +2559,7 @@ function hargaText(): string {
     `• Kling v2.6 Pro — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v3 Standard — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Wan v2 Image-to-Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• Wan 3.0 Image-to-Video (30 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling 2.1 Pro (10 detik) — ${formatRupiah(MODEL_PRICES.kling_21_pro)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +
@@ -3785,6 +3800,31 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  if (data.startsWith('wan3_ratio_')) {
+    const ratioMap: Record<string, picsart.WanV3AspectRatio> = {
+      wan3_ratio_916: '9:16',
+      wan3_ratio_169: '16:9',
+    };
+    const ratio = ratioMap[data];
+    const session = getSession(userId);
+    if (!ratio || session.picsartI2vModel !== 'wan_v3') {
+      return ctx.reply('⚠️ Pilihan rasio sudah tidak aktif. Mulai lagi dari /menu.');
+    }
+    const cfg = picsart.PICSART_I2V_MODELS.wan_v3;
+    setSession(userId, {
+      mode: 'picsart_i2v_wait_image',
+      picsartI2vRatio: ratio,
+      picsartI2vImageUrl: undefined,
+    });
+    return ctx.editMessageText(
+      `🌀 *${cfg.label}*\n\n` +
+      `Parameter: *${ratio} · ${cfg.settingsLabel}*\n` +
+      `Harga: *${formatRupiah(MODEL_PRICES.picsart_i2v)}* per video\n\n` +
+      '*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (data.startsWith('mode_pi2v_')) {
     if (!await requireLogin(ctx)) return;
     const model = data.slice('mode_pi2v_'.length);
@@ -3793,9 +3833,24 @@ bot.on('callback_query', async (ctx) => {
       return ctx.answerCbQuery('Model tidak dikenali. Buka menu lagi.').catch(() => {});
     }
     const cfg = picsart.PICSART_I2V_MODELS[model];
+    if (model === 'wan_v3') {
+      setSession(userId, {
+        mode: 'picsart_i2v_wait_ratio',
+        picsartI2vModel: model,
+        picsartI2vRatio: undefined,
+        picsartI2vImageUrl: undefined,
+      });
+      return ctx.editMessageText(
+        `🌀 *${cfg.label}*\n\n` +
+        `${cfg.settingsLabel}\n\n` +
+        '*Langkah 1:* Pilih rasio video:',
+        { parse_mode: 'Markdown', ...wan3RatioKeyboard() }
+      );
+    }
     setSession(userId, {
       mode: 'picsart_i2v_wait_image',
       picsartI2vModel: model,
+      picsartI2vRatio: undefined,
       picsartI2vImageUrl: undefined,
     });
     return ctx.editMessageText(
@@ -4604,10 +4659,13 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
       return ctx.reply('⚠️ Model tidak ditemukan. Mulai lagi dari /menu.');
     }
     const cfg = picsart.PICSART_I2V_MODELS[model];
+    const settingsLabel = model === 'wan_v3' && session.picsartI2vRatio
+      ? `${session.picsartI2vRatio} · ${cfg.settingsLabel}`
+      : cfg.settingsLabel;
     setSession(userId, { picsartI2vImageUrl: fileUrl, mode: 'picsart_i2v_wait_prompt' });
     return ctx.reply(
       `✅ Foto acuan untuk *${cfg.label}* diterima!\n\n` +
-      `Parameter: *${cfg.settingsLabel}*\n\n` +
+      `Parameter: *${settingsLabel}*\n\n` +
       '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
       { parse_mode: 'Markdown' }
     );
@@ -5090,12 +5148,13 @@ bot.on('text', async (ctx) => {
     }
     const imageUrl = session.picsartI2vImageUrl;
     const cfg = picsart.PICSART_I2V_MODELS[model];
-    setSession(userId, { mode: 'idle', picsartI2vImageUrl: undefined });
+    const ratio = session.picsartI2vRatio;
+    setSession(userId, { mode: 'idle', picsartI2vImageUrl: undefined, picsartI2vRatio: undefined });
     const statusMsg = await ctx.reply(
       `⏳ Memproses ${cfg.label}...\nHasil dikirim otomatis (biasanya 3–10 menit).`,
       { parse_mode: 'Markdown' }
     );
-    runPicsartI2v(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, { model, imageUrl })
+    runPicsartI2v(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, { model, imageUrl, ratio })
       .catch(e => console.error(`[${userId}] ${cfg.label} error:`, e.message));
     return;
   }
@@ -6093,10 +6152,14 @@ async function runPicsartI2v(
   opts: {
     model: picsart.PicsartI2vModelKey;
     imageUrl: string;
+    ratio?: picsart.WanV3AspectRatio;
   }
 ) {
   const cfg = picsart.PICSART_I2V_MODELS[opts.model];
   const label = cfg.label;
+  const settingsLabel = opts.model === 'wan_v3' && opts.ratio
+    ? `${opts.ratio} · ${cfg.settingsLabel}`
+    : cfg.settingsLabel;
   const PRICE = MODEL_PRICES.picsart_i2v;
   const charge = await beginCharge(dbUserId, PRICE, 3);
   if (!charge.ok) {
@@ -6107,7 +6170,7 @@ async function runPicsartI2v(
 
   try {
     const img = await downloadBuffer(opts.imageUrl);
-    console.log(`[${userId}] ${label} started — ${cfg.settingsLabel}, image ${(img.buf.length / 1024).toFixed(1)}KB`);
+    console.log(`[${userId}] ${label} started — ${settingsLabel}, image ${(img.buf.length / 1024).toFixed(1)}KB`);
 
     let lastEdit = 0;
     const result = await picsart.generatePicsartI2v({
@@ -6117,12 +6180,15 @@ async function runPicsartI2v(
       imageBuffer: img.buf,
       imageName: `reference.${img.ext}`,
       imageMime: img.mime,
+      ratio: opts.ratio,
       onStatus: (stage) => {
         const text = stage === 'upload'
           ? `⏳ ${label}: mengunggah foto ke server... (1/3)`
           : stage === 'submit'
             ? `⏳ ${label}: mengirim perintah ke server... (2/3)`
-            : `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Biasanya 3–10 menit. Jangan tutup chat ini.`;
+            : stage === 'export'
+              ? `⏳ ${label}: menyiapkan hasil 1080p... (selangkah lagi)`
+              : `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Biasanya 3–10 menit. Jangan tutup chat ini.`;
         lastEdit = Date.now();
         bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
       },
@@ -6144,7 +6210,7 @@ async function runPicsartI2v(
     const delivered = await sendResult(
       chatId,
       result.url,
-      `🧩 ${label} (${cfg.settingsLabel})\n\n/menu untuk buat lagi`,
+      `🧩 ${label} (${settingsLabel})\n\n/menu untuk buat lagi`,
       true
     );
     if (delivered) {

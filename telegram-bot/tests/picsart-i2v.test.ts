@@ -4,6 +4,7 @@ import {
   PICSART_I2V_MODELS,
   buildPicsartI2vParams,
   extractPicsartVideoUrl,
+  getWanV3ExportSize,
   isPicsartPostSubmitAuthFailure,
 } from '../src/picsart';
 
@@ -19,6 +20,7 @@ const expectedModels = [
   'kling_v26_pro',
   'kling_v3',
   'wan_v2',
+  'wan_v3',
 ] as const;
 
 assert.deepEqual(Object.keys(PICSART_I2V_MODELS).sort(), [...expectedModels].sort());
@@ -132,6 +134,29 @@ assert.deepEqual(wan, {
   prompt,
   options: {},
 });
+
+const wan3Portrait = buildPicsartI2vParams('wan_v3', prompt, imageUrl, { ratio: '9:16' });
+assert.deepEqual(wan3Portrait, {
+  model: 'wan3.0-video',
+  resolution: '480P',
+  duration: 30,
+  ratio: '9:16',
+  media: [{ type: 'first_frame', url: imageUrl }],
+  prompt,
+  options: {},
+});
+
+const wan3Landscape = buildPicsartI2vParams('wan_v3', prompt, imageUrl, { ratio: '16:9' });
+assert.equal(wan3Landscape.ratio, '16:9');
+const portraitExport = getWanV3ExportSize('9:16');
+const landscapeExport = getWanV3ExportSize('16:9');
+assert.deepEqual(portraitExport, { width: 1080, height: 1920 });
+assert.deepEqual(landscapeExport, { width: 1920, height: 1080 });
+assert.equal(portraitExport.width * 16, portraitExport.height * 9, 'portrait export must remain exact 9:16');
+assert.equal(landscapeExport.width * 9, landscapeExport.height * 16, 'landscape export must remain exact 16:9');
+assert.match(botSource, /mode_pi2v_wan_v3/);
+assert.match(botSource, /wan3_ratio_916/);
+assert.match(botSource, /wan3_ratio_169/);
 
 assert.equal(
   extractPicsartVideoUrl({ status: 'COMPLETED', result: { video_url: 'https://video.example.test/a.mp4' } }),

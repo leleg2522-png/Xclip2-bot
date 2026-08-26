@@ -1288,7 +1288,10 @@ export type PicsartI2vModelKey =
   | 'kling_v3_turbo'
   | 'kling_v26_pro'
   | 'kling_v3'
-  | 'wan_v2';
+  | 'wan_v2'
+  | 'wan_v3';
+
+export type WanV3AspectRatio = '9:16' | '16:9';
 
 type PicsartI2vModelConfig = {
   label: string;
@@ -1355,12 +1358,20 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
     pool: null,
     pollAttempts: 180,
   },
+  wan_v3: {
+    label: 'Wan 3.0 Image-to-Video',
+    settingsLabel: '30 detik · generate 480p → output 1080p',
+    workflowPath: 'wan/v3/video',
+    pool: null,
+    pollAttempts: 240,
+  },
 };
 
 export function buildPicsartI2vParams(
   model: PicsartI2vModelKey,
   prompt: string,
-  imageUrl: string
+  imageUrl: string,
+  options?: { ratio?: WanV3AspectRatio }
 ): Record<string, unknown> {
   switch (model) {
     case 'seedance_2_mini':
@@ -1455,6 +1466,16 @@ export function buildPicsartI2vParams(
         prompt,
         options: {},
       };
+    case 'wan_v3':
+      return {
+        model: 'wan3.0-video',
+        resolution: '480P',
+        duration: 30,
+        ratio: options?.ratio ?? '9:16',
+        media: [{ type: 'first_frame', url: imageUrl }],
+        prompt,
+        options: {},
+      };
   }
 }
 
@@ -1462,13 +1483,14 @@ async function submitPicsartI2v(
   credId: number,
   model: PicsartI2vModelKey,
   prompt: string,
-  imageUrl: string
+  imageUrl: string,
+  options?: { ratio?: WanV3AspectRatio }
 ): Promise<string> {
   const cfg = PICSART_I2V_MODELS[model];
   const access = await getAccessToken(credId);
   const r = await http.post(
     `${API_BASE}/workflows/${cfg.workflowPath}/submit`,
-    { params: buildPicsartI2vParams(model, prompt, imageUrl) },
+    { params: buildPicsartI2vParams(model, prompt, imageUrl, options) },
     {
       headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
       validateStatus: () => true,
@@ -1479,6 +1501,73 @@ async function submitPicsartI2v(
     throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
   }
   return id;
+}
+
+export function getWanV3ExportSize(ratio: WanV3AspectRatio): { width: number; height: number } {
+  return ratio === '16:9'
+    ? { width: 1920, height: 1080 }
+    : { width: 1080, height: 1920 };
+}
+
+async function submitWanV3Export(
+  credId: number,
+  rawVideoUrl: string,
+  ratio: WanV3AspectRatio
+): Promise<string> {
+  const access = await getAccessToken(credId);
+  const r = await http.post(
+    `${API_BASE}/workflows/media-platform/v1/videos/edit/submit`,
+    {
+      params: {
+        params: {
+          video_url: rawVideoUrl,
+          resize: getWanV3ExportSize(ratio),
+        },
+        export_config: { mediaType: 'mp4' },
+      },
+    },
+    {
+      headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
+      validateStatus: () => true,
+    }
+  );
+  const id = r.data?.response?.id;
+  if (!ok2xx(r.status) || !id) {
+    throw new Error(`PICSART_WAN3_EXPORT_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+  }
+  return id;
+}
+
+async function pollWanV3ExportResult(
+  credId: number,
+  id: string,
+  opts?: { intervalMs?: number; onTick?: (elapsedMs: number) => void }
+): Promise<{ url: string }> {
+  const intervalMs = opts?.intervalMs ?? 5000;
+  const start = Date.now();
+  const diag = new PollDiag();
+  for (let i = 0; i < 120; i++) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    opts?.onTick?.(Date.now() - start);
+    const access = await getAccessToken(credId);
+    const r = await http.get(`${API_BASE}/workflows/media-platform/v1/videos/edit/${id}/result`, {
+      headers: commonHeaders({ authorization: `Bearer ${access}` }),
+      validateStatus: () => true,
+    });
+    const ok = diag.note(r);
+    if (!ok) continue;
+    const response = r.data?.response ?? r.data;
+    const status = String(response?.status ?? '').toUpperCase();
+    if (status === 'COMPLETED' || status === 'SUCCESS') {
+      const url = extractPicsartVideoUrl(response);
+      if (!url) throw new Error(`PICSART_WAN3_EXPORT_NO_RESULT_URL: ${JSON.stringify(response).slice(0, 250)}`);
+      return { url };
+    }
+    if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
+      throw new Error(`PICSART_WAN3_EXPORT_FAILED: ${JSON.stringify(response).slice(0, 250)}`);
+    }
+  }
+  throw diag.timeoutError();
 }
 
 export function extractPicsartVideoUrl(response: any): string | null {
@@ -1553,7 +1642,8 @@ export async function generatePicsartI2v(input: {
   imageBuffer: Buffer;
   imageName?: string;
   imageMime?: string;
-  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
+  ratio?: WanV3AspectRatio;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
   const cfg = PICSART_I2V_MODELS[input.model];
@@ -1566,12 +1656,19 @@ export async function generatePicsartI2v(input: {
       input.imageMime || 'image/jpeg'
     );
     input.onStatus?.('submit');
-    const id = await submitPicsartI2v(credId, input.model, input.prompt, imageUrl);
+    const id = await submitPicsartI2v(credId, input.model, input.prompt, imageUrl, { ratio: input.ratio });
     input.onStatus?.('poll');
     try {
-      return await pollPicsartI2vResult(credId, input.model, id, {
+      const rawResult = await pollPicsartI2vResult(credId, input.model, id, {
         onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
       });
+      if (input.model !== 'wan_v3') return rawResult;
+      input.onStatus?.('export');
+      const exportId = await submitWanV3Export(credId, rawResult.url, input.ratio ?? '9:16');
+      const exported = await pollWanV3ExportResult(credId, exportId, {
+        onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+      });
+      return { ...rawResult, url: exported.url };
     } catch (e: any) {
       // An accepted provider job must never be replayed. runWithAccount normally
       // fails over after PICSART_AUTH_DEAD, but at this point a second account
