@@ -1618,6 +1618,7 @@ interface Session {
   picsartI2vRatio?: picsart.WanV3AspectRatio;
   picsartI2vDisplayLabel?: string;
   picsartI2vImageUrl?: string;
+  picsartI2vImageUrls?: string[];
   picsartI2vPriceKey?: 'picsart_seedance_25' | 'picsart_wan_v3';
   // Seedance 2.5 Bridge stores the Telegram file ID, not a bot-token download URL.
   oneoverImageUrl?: string;
@@ -1742,6 +1743,7 @@ function generationDraftKindForContinuation(data: string): GenerationDraftKind |
   if (data.startsWith('sdm_')) return 'seedream';
   if (data.startsWith('gi_')) return 'gptimg';
   if (data.startsWith('picsart_ratio_')) return 'picsart_i2v';
+  if (data.startsWith('picsart_i2v_')) return 'picsart_i2v';
   if (data.startsWith('audio_voice_')) return 'audio';
   return undefined;
 }
@@ -3813,13 +3815,14 @@ bot.on('callback_query', async (ctx) => {
       picsartI2vRatio: '9:16',
       picsartI2vDisplayLabel: 'Seedance 2.5 I2V 1080p',
       picsartI2vImageUrl: undefined,
+      picsartI2vImageUrls: [],
       picsartI2vPriceKey: 'picsart_seedance_25',
     });
     return ctx.editMessageText(
       `🌊 *Seedance 2.5 I2V 1080p*\n\n` +
       `Durasi: *30 detik* • Output: *1080p*\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_25)}* per video\n\n` +
-      '*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
+      `*Langkah 1:* Kirim *1–${picsart.PICSART_I2V_MAX_IMAGES} foto acuan* untuk video kamu.`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -3840,13 +3843,43 @@ bot.on('callback_query', async (ctx) => {
       mode: 'picsart_i2v_wait_image',
       picsartI2vRatio: ratio,
       picsartI2vImageUrl: undefined,
+      picsartI2vImageUrls: model === 'wan_v3' ? [] : undefined,
       picsartI2vPriceKey: model === 'wan_v3' ? 'picsart_wan_v3' : undefined,
     });
     return ctx.editMessageText(
       `🌀 *${cfg.label}*\n\n` +
       `Parameter: *${ratio} · ${cfg.settingsLabel}*\n` +
       `Harga: *${formatRupiah(getPicsartI2vPrice(model))}* per video\n\n` +
-      '*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
+      (model === 'wan_v3'
+        ? `*Langkah 1:* Kirim *1–${picsart.PICSART_I2V_MAX_IMAGES} foto acuan* untuk video kamu.`
+        : '*Langkah 1:* Kirim *foto acuan* untuk video kamu.'),
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data === 'picsart_i2v_add_photo') {
+    const session = getSession(userId);
+    const imageCount = session.picsartI2vImageUrls?.length ?? 0;
+    if (session.mode !== 'picsart_i2v_wait_image' || session.picsartI2vModel !== 'wan_v3' || imageCount < 1 || imageCount >= picsart.PICSART_I2V_MAX_IMAGES) {
+      return ctx.answerCbQuery('Sesi sudah berubah, ulangi dari /menu.').catch(() => {});
+    }
+    const label = session.picsartI2vDisplayLabel ?? picsart.PICSART_I2V_MODELS.wan_v3.label;
+    return ctx.editMessageText(
+      `🌀 *${label}*\n\n📸 Kirim *foto acuan ke-${imageCount + 1}* (maksimal ${picsart.PICSART_I2V_MAX_IMAGES} foto).`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data === 'picsart_i2v_photos_done') {
+    const session = getSession(userId);
+    const imageCount = session.picsartI2vImageUrls?.length ?? 0;
+    if (session.mode !== 'picsart_i2v_wait_image' || session.picsartI2vModel !== 'wan_v3' || imageCount < 1) {
+      return ctx.answerCbQuery('Kirim minimal 1 foto dulu ya.').catch(() => {});
+    }
+    const label = session.picsartI2vDisplayLabel ?? picsart.PICSART_I2V_MODELS.wan_v3.label;
+    setSession(userId, { mode: 'picsart_i2v_wait_prompt' });
+    return ctx.editMessageText(
+      `🌀 *${label}*\n\n✅ ${imageCount} foto acuan diterima.\n\n*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -3866,6 +3899,7 @@ bot.on('callback_query', async (ctx) => {
         picsartI2vRatio: undefined,
         picsartI2vDisplayLabel: undefined,
         picsartI2vImageUrl: undefined,
+        picsartI2vImageUrls: undefined,
         picsartI2vPriceKey: undefined,
       });
       return ctx.editMessageText(
@@ -3881,6 +3915,7 @@ bot.on('callback_query', async (ctx) => {
       picsartI2vRatio: undefined,
       picsartI2vDisplayLabel: undefined,
       picsartI2vImageUrl: undefined,
+      picsartI2vImageUrls: undefined,
       picsartI2vPriceKey: undefined,
     });
     return ctx.editMessageText(
@@ -4589,6 +4624,13 @@ function imgAddPhotoKeyboard() {
   ]);
 }
 
+function picsartI2vAddPhotoKeyboard(count: number) {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(`➕ Tambah Foto (${count}/${picsart.PICSART_I2V_MAX_IMAGES})`, 'picsart_i2v_add_photo')],
+    [Markup.button.callback('✅ Lanjut ke Prompt', 'picsart_i2v_photos_done')],
+  ]);
+}
+
 // Label model gambar berdasarkan session aktif (dipakai di beberapa langkah wizard).
 function imgLabelFor(userId: number): string {
   const model = getSession(userId).imgModel;
@@ -4693,6 +4735,29 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     const settingsLabel = (model === 'wan_v3' || model === 'pixverse_v6') && session.picsartI2vRatio
       ? `${session.picsartI2vRatio} · ${cfg.settingsLabel}`
       : cfg.settingsLabel;
+    if (model === 'wan_v3') {
+      const imageUrls = [...(session.picsartI2vImageUrls ?? []), fileUrl]
+        .slice(0, picsart.PICSART_I2V_MAX_IMAGES);
+      const reachedLimit = imageUrls.length >= picsart.PICSART_I2V_MAX_IMAGES;
+      setSession(userId, {
+        picsartI2vImageUrl: imageUrls[0],
+        picsartI2vImageUrls: imageUrls,
+        mode: reachedLimit ? 'picsart_i2v_wait_prompt' : 'picsart_i2v_wait_image',
+      });
+      if (reachedLimit) {
+        return ctx.reply(
+          `✅ ${picsart.PICSART_I2V_MAX_IMAGES} foto acuan untuk *${displayLabel}* diterima (maksimal ${picsart.PICSART_I2V_MAX_IMAGES}).\n\n` +
+          `Parameter: *${settingsLabel}*\n\n` +
+          '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+          { parse_mode: 'Markdown' }
+        );
+      }
+      return ctx.reply(
+        `✅ Foto acuan ke-${imageUrls.length} untuk *${displayLabel}* diterima!\n\n` +
+        `Kirim foto berikutnya (maksimal ${picsart.PICSART_I2V_MAX_IMAGES}) atau lanjut ke prompt.`,
+        { parse_mode: 'Markdown', ...picsartI2vAddPhotoKeyboard(imageUrls.length) }
+      );
+    }
     setSession(userId, { picsartI2vImageUrl: fileUrl, mode: 'picsart_i2v_wait_prompt' });
     return ctx.reply(
       `✅ Foto acuan untuk *${displayLabel}* diterima!\n\n` +
@@ -5170,7 +5235,12 @@ bot.on('text', async (ctx) => {
     const activeDraft = getSession(userId);
     if (activeDraft.mode !== 'picsart_i2v_wait_prompt') return;
     const model = activeDraft.picsartI2vModel;
-    if (!activeDraft.dbUserId || !model || !isPicsartI2vModelKey(model) || !activeDraft.picsartI2vImageUrl) {
+    const imageUrls = activeDraft.picsartI2vImageUrls?.length
+      ? activeDraft.picsartI2vImageUrls
+      : activeDraft.picsartI2vImageUrl
+        ? [activeDraft.picsartI2vImageUrl]
+        : [];
+    if (!activeDraft.dbUserId || !model || !isPicsartI2vModelKey(model) || imageUrls.length === 0) {
       setSession(userId, { mode: 'idle' });
       return ctx.reply('⚠️ Sesi tidak lengkap. Mulai lagi dari /menu.');
     }
@@ -5180,7 +5250,6 @@ bot.on('text', async (ctx) => {
       return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
     }
     const cfg = picsart.PICSART_I2V_MODELS[model];
-    const imageUrl = activeDraft.picsartI2vImageUrl;
     const ratio = activeDraft.picsartI2vRatio;
     const displayLabel = activeDraft.picsartI2vDisplayLabel;
     const priceKey = activeDraft.picsartI2vPriceKey;
@@ -5189,6 +5258,7 @@ bot.on('text', async (ctx) => {
     setSession(userId, {
       mode: 'idle',
       picsartI2vImageUrl: undefined,
+      picsartI2vImageUrls: undefined,
       picsartI2vRatio: undefined,
       picsartI2vDisplayLabel: undefined,
       picsartI2vPriceKey: undefined,
@@ -5199,7 +5269,7 @@ bot.on('text', async (ctx) => {
     );
     runPicsartI2v(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, {
       model,
-      imageUrl,
+      imageUrls,
       ratio,
       displayLabel,
       priceKey,
@@ -5635,7 +5705,12 @@ bot.on('text', async (ctx) => {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
   if (session.mode === 'picsart_i2v_wait_image') {
-    return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+    return ctx.reply(
+      session.picsartI2vModel === 'wan_v3'
+        ? `📸 Kirim *1–${picsart.PICSART_I2V_MAX_IMAGES} foto acuan*, atau /menu untuk batal.`
+        : '📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.',
+      { parse_mode: 'Markdown' }
+    );
   }
   if (session.mode === 'oneover_wait_image') {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
@@ -6200,7 +6275,7 @@ async function runPicsartI2v(
   prompt: string,
   opts: {
     model: picsart.PicsartI2vModelKey;
-    imageUrl: string;
+    imageUrls: string[];
     ratio?: picsart.WanV3AspectRatio;
     displayLabel?: string;
     priceKey?: 'picsart_seedance_25' | 'picsart_wan_v3';
@@ -6220,17 +6295,26 @@ async function runPicsartI2v(
   let refund = true;
 
   try {
-    const img = await downloadBuffer(opts.imageUrl);
-    console.log(`[${userId}] ${label} started — ${settingsLabel}, image ${(img.buf.length / 1024).toFixed(1)}KB`);
+    const maxImages = opts.model === 'wan_v3' ? picsart.PICSART_I2V_MAX_IMAGES : 1;
+    const images = await Promise.all(
+      opts.imageUrls.slice(0, maxImages).map(async (imageUrl, index) => {
+        const image = await downloadBuffer(imageUrl);
+        return {
+          buffer: image.buf,
+          name: `reference-${index + 1}.${image.ext}`,
+          mime: image.mime,
+        };
+      })
+    );
+    const totalKb = images.reduce((sum, image) => sum + image.buffer.length, 0) / 1024;
+    console.log(`[${userId}] ${label} started — ${settingsLabel}, ${images.length} image(s) ${totalKb.toFixed(1)}KB`);
 
     let lastEdit = 0;
     const result = await picsart.generatePicsartI2v({
       userId: dbUserId,
       model: opts.model,
       prompt,
-      imageBuffer: img.buf,
-      imageName: `reference.${img.ext}`,
-      imageMime: img.mime,
+      images,
       ratio: opts.ratio,
       onStatus: (stage) => {
         const text = stage === 'upload'

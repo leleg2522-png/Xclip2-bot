@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  PICSART_I2V_MAX_IMAGES,
   PICSART_I2V_MODELS,
   buildPicsartI2vParams,
   extractPicsartVideoUrl,
@@ -28,6 +29,7 @@ const expectedModels = [
 assert.deepEqual(Object.keys(PICSART_I2V_MODELS).sort(), [...expectedModels].sort());
 assert.equal('pika' in PICSART_I2V_MODELS, false);
 assert.equal(PICSART_I2V_MODELS.wan_v3.pool, null);
+assert.equal(PICSART_I2V_MAX_IMAGES, 5);
 
 const botSource = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 assert.equal(botSource.includes('menu_picsart_i2v'), false);
@@ -176,6 +178,21 @@ assert.deepEqual(wan3Portrait, {
 
 const wan3Landscape = buildPicsartI2vParams('wan_v3', prompt, imageUrl, { ratio: '16:9' });
 assert.equal(wan3Landscape.ratio, '16:9');
+
+const wan3InputUrls = Array.from({ length: 6 }, (_, index) => `https://cdn.example.test/reference-${index + 1}.jpg`);
+const wan3MultiImage = buildPicsartI2vParams('wan_v3', prompt, imageUrl, {
+  ratio: '16:9',
+  imageUrls: wan3InputUrls,
+});
+const expectedWan3Urls = wan3InputUrls.slice(0, PICSART_I2V_MAX_IMAGES);
+assert.deepEqual(
+  wan3MultiImage.media,
+  expectedWan3Urls.map((url) => ({ type: 'reference_image', url }))
+);
+const wan3MultiDrive = (wan3MultiImage.options as {
+  drive: { attributes: { aiSDKPayload: string } };
+}).drive;
+assert.deepEqual(JSON.parse(wan3MultiDrive.attributes.aiSDKPayload).imageUrls, expectedWan3Urls);
 
 const pixverse = buildPicsartI2vParams('pixverse_v6', prompt, imageUrl);
 assert.equal(pixverse.model, 'v6');

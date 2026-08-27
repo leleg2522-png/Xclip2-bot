@@ -1294,6 +1294,7 @@ export type PicsartI2vModelKey =
   | 'pixverse_v6';
 
 export type WanV3AspectRatio = '9:16' | '16:9';
+export const PICSART_I2V_MAX_IMAGES = 5;
 
 type PicsartI2vModelConfig = {
   label: string;
@@ -1380,7 +1381,7 @@ export function buildPicsartI2vParams(
   model: PicsartI2vModelKey,
   prompt: string,
   imageUrl: string,
-  options?: { ratio?: WanV3AspectRatio; outputName?: string }
+  options?: { ratio?: WanV3AspectRatio; outputName?: string; imageUrls?: string[] }
 ): Record<string, unknown> {
   switch (model) {
     case 'seedance_2_mini':
@@ -1476,6 +1477,8 @@ export function buildPicsartI2vParams(
         options: {},
       };
     case 'wan_v3':
+      const referenceImageUrls = (options?.imageUrls?.length ? options.imageUrls : [imageUrl])
+        .slice(0, PICSART_I2V_MAX_IMAGES);
       return {
         model: 'wan3.0-video-prime',
         resolution: '480P',
@@ -1485,7 +1488,7 @@ export function buildPicsartI2vParams(
         enable_thinking: false,
         watermark: false,
         seed: 0,
-        media: [{ type: 'reference_image', url: imageUrl }],
+        media: referenceImageUrls.map((url) => ({ type: 'reference_image', url })),
         prompt,
         options: {
           drive: {
@@ -1501,7 +1504,7 @@ export function buildPicsartI2vParams(
                 enableThinking: false,
                 watermark: false,
                 seed: 0,
-                imageUrls: [imageUrl],
+                imageUrls: referenceImageUrls,
               }),
               appId: 'com.picsart.ai-playground',
               appType: 'miniapp',
@@ -1546,7 +1549,7 @@ async function submitPicsartI2v(
   model: PicsartI2vModelKey,
   prompt: string,
   imageUrl: string,
-  options?: { ratio?: WanV3AspectRatio; outputName?: string }
+  options?: { ratio?: WanV3AspectRatio; outputName?: string; imageUrls?: string[] }
 ): Promise<string> {
   const cfg = PICSART_I2V_MODELS[model];
   const access = await getAccessToken(credId);
@@ -1777,7 +1780,8 @@ export async function generatePicsartI2v(input: {
   userId: number;
   model: PicsartI2vModelKey;
   prompt: string;
-  imageBuffer: Buffer;
+  images?: Array<{ buffer: Buffer; name?: string; mime?: string }>;
+  imageBuffer?: Buffer;
   imageName?: string;
   imageMime?: string;
   ratio?: WanV3AspectRatio;
@@ -1786,18 +1790,40 @@ export async function generatePicsartI2v(input: {
 }): Promise<{ url: string; credits?: number }> {
   const cfg = PICSART_I2V_MODELS[input.model];
   return runWithAccount(input.userId, cfg.pool, async (credId) => {
-    input.onStatus?.('upload');
-    const uploadBuffer = input.model === 'pixverse_v6'
-      ? await cropImageToAspectRatio(input.imageBuffer, input.ratio ?? '9:16')
-      : input.imageBuffer;
-    const imageUrl = await uploadFile(
-      credId,
-      uploadBuffer,
-      input.model === 'pixverse_v6' ? 'pixverse-reference.jpg' : (input.imageName || 'reference.jpg'),
-      input.model === 'pixverse_v6' ? 'image/jpeg' : (input.imageMime || 'image/jpeg')
-    );
+    const inputImages = input.images?.length
+      ? input.images
+      : input.imageBuffer
+        ? [{ buffer: input.imageBuffer, name: input.imageName, mime: input.imageMime }]
+        : [];
+    const imagesToUpload = input.model === 'wan_v3'
+      ? inputImages.slice(0, PICSART_I2V_MAX_IMAGES)
+      : inputImages.slice(0, 1);
+    if (imagesToUpload.length === 0) throw new Error('PICSART_NO_REFERENCE_IMAGE');
+
+    const imageUrls: string[] = [];
+    for (const [index, image] of imagesToUpload.entries()) {
+      input.onStatus?.('upload');
+      const uploadBuffer = input.model === 'pixverse_v6'
+        ? await cropImageToAspectRatio(image.buffer, input.ratio ?? '9:16')
+        : image.buffer;
+      const imageUrl = await uploadFile(
+        credId,
+        uploadBuffer,
+        input.model === 'pixverse_v6'
+          ? 'pixverse-reference.jpg'
+          : (image.name || `reference-${index + 1}.jpg`),
+        input.model === 'pixverse_v6' ? 'image/jpeg' : (image.mime || 'image/jpeg')
+      );
+      imageUrls.push(imageUrl);
+    }
     input.onStatus?.('submit');
-    const id = await submitPicsartI2v(credId, input.model, input.prompt, imageUrl, { ratio: input.ratio });
+    const id = await submitPicsartI2v(
+      credId,
+      input.model,
+      input.prompt,
+      imageUrls[0],
+      { ratio: input.ratio, imageUrls }
+    );
     input.onStatus?.('poll');
     try {
       const rawResult = await pollPicsartI2vResult(credId, input.model, id, {
