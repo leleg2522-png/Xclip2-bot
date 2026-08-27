@@ -1477,13 +1477,38 @@ export function buildPicsartI2vParams(
       };
     case 'wan_v3':
       return {
-        model: 'wan3.0-video',
+        model: 'wan3.0-video-prime',
         resolution: '480P',
         duration: 30,
         ratio: options?.ratio ?? '9:16',
-        media: [{ type: 'first_frame', url: imageUrl }],
+        audio: false,
+        enable_thinking: false,
+        watermark: false,
+        seed: 0,
+        media: [{ type: 'reference_image', url: imageUrl }],
         prompt,
-        options: {},
+        options: {
+          drive: {
+            name: options?.outputName || 'wan-3-0-prime-ai-playground.mp4',
+            attributes: {
+              model: 'wan-3.0-video-prime',
+              aiSDKPayload: JSON.stringify({
+                prompt,
+                duration: 30,
+                resolution: '480P',
+                aspectRatio: options?.ratio ?? '9:16',
+                generateAudio: false,
+                enableThinking: false,
+                watermark: false,
+                seed: 0,
+                imageUrls: [imageUrl],
+              }),
+              appId: 'com.picsart.ai-playground',
+              appType: 'miniapp',
+            },
+            folder: { path: 'AI Playground' },
+          },
+        },
       };
     case 'pixverse_v6':
       return {
@@ -1525,8 +1550,11 @@ async function submitPicsartI2v(
 ): Promise<string> {
   const cfg = PICSART_I2V_MODELS[model];
   const access = await getAccessToken(credId);
-  const isPixverse = model === 'pixverse_v6';
-  const workflowBase = isPixverse
+  const usesGateway = model === 'pixverse_v6' || model === 'wan_v3';
+  const outputNamePrefix = model === 'wan_v3'
+    ? 'wan-3-0-prime-ai-playground'
+    : 'pixverse-v6-image-ai-playground';
+  const workflowBase = usesGateway
     ? `${API_BASE}/gw-v2/workflows/${cfg.workflowPath}`
     : `${API_BASE}/workflows/${cfg.workflowPath}`;
   const r = await http.post(
@@ -1536,8 +1564,8 @@ async function submitPicsartI2v(
         model,
         prompt,
         imageUrl,
-        isPixverse
-          ? { ...options, outputName: `pixverse-v6-image-ai-playground-${Date.now()}.mp4` }
+        usesGateway
+          ? { ...options, outputName: `${outputNamePrefix}-${Date.now()}.mp4` }
           : options
       ),
     },
@@ -1545,7 +1573,7 @@ async function submitPicsartI2v(
       headers: commonHeaders({
         'content-type': 'application/json',
         authorization: `Bearer ${access}`,
-        ...(isPixverse
+        ...(usesGateway
           ? {
               'x-app-authorization': X_APP_AUTHORIZATION,
               'x-sub-package-id': 'subscription_pro_monthly',
@@ -1705,14 +1733,14 @@ async function pollPicsartI2vResult(
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
     opts?.onTick?.(Date.now() - start);
     const access = await getAccessToken(credId);
-    const isPixverse = model === 'pixverse_v6';
-    const workflowBase = isPixverse
+    const usesGateway = model === 'pixverse_v6' || model === 'wan_v3';
+    const workflowBase = usesGateway
       ? `${API_BASE}/gw-v2/workflows/${cfg.workflowPath}`
       : `${API_BASE}/workflows/${cfg.workflowPath}`;
     const r = await http.get(`${workflowBase}/${id}/result`, {
       headers: commonHeaders({
         authorization: `Bearer ${access}`,
-        ...(isPixverse
+        ...(usesGateway
           ? {
               'x-app-authorization': X_APP_AUTHORIZATION,
               'x-sub-package-id': 'subscription_pro_monthly',

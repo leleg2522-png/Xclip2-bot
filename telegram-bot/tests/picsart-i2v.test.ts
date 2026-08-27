@@ -140,13 +140,38 @@ assert.deepEqual(wan, {
 
 const wan3Portrait = buildPicsartI2vParams('wan_v3', prompt, imageUrl, { ratio: '9:16' });
 assert.deepEqual(wan3Portrait, {
-  model: 'wan3.0-video',
+  model: 'wan3.0-video-prime',
   resolution: '480P',
   duration: 30,
   ratio: '9:16',
-  media: [{ type: 'first_frame', url: imageUrl }],
+  audio: false,
+  enable_thinking: false,
+  watermark: false,
+  seed: 0,
+  media: [{ type: 'reference_image', url: imageUrl }],
   prompt,
-  options: {},
+  options: {
+    drive: {
+      name: 'wan-3-0-prime-ai-playground.mp4',
+      attributes: {
+        model: 'wan-3.0-video-prime',
+        aiSDKPayload: JSON.stringify({
+          prompt,
+          duration: 30,
+          resolution: '480P',
+          aspectRatio: '9:16',
+          generateAudio: false,
+          enableThinking: false,
+          watermark: false,
+          seed: 0,
+          imageUrls: [imageUrl],
+        }),
+        appId: 'com.picsart.ai-playground',
+        appType: 'miniapp',
+      },
+      folder: { path: 'AI Playground' },
+    },
+  },
 });
 
 const wan3Landscape = buildPicsartI2vParams('wan_v3', prompt, imageUrl, { ratio: '16:9' });

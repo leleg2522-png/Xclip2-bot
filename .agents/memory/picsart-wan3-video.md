@@ -1,21 +1,21 @@
 ---
-name: Picsart Wan 3.0 video
-description: Verified Wan 3.0 workflow request and post-generation 1080-width export behavior from a captured Picsart HAR.
+name: Picsart Wan 3.0 Prime video
+description: Verified Wan 3.0 Prime gateway contract and the product's separate exact-ratio 1080 export policy.
 ---
 
-Wan 3.0 uses the Picsart v3 video workflow. A verified production submission uses
-model `wan3.0-video`, resolution `480P`, duration `30`, and `ratio: "9:16"`.
-The raw completed video is 480×832 at 30 fps and 30 seconds.
+Wan 3.0 now uses the Prime model through the Picsart gateway v3 video workflow.
+The captured successful submission uses model `wan3.0-video-prime`, resolution
+`480P`, duration `30`, `ratio: "9:16"`, a `reference_image`, and disabled audio,
+thinking, and watermark. The gateway Drive metadata identifies
+`wan-3.0-video-prime`.
 
-Picsart then performs a separate video edit/export operation. The captured UI used
-`resize.width: 1080` and `resize.height: 1872`; its completed downloaded file was
-verified as 1080×1872, 30 fps, and 30 seconds. This preserves the provider's raw
-480×832 frame shape, which is not an exact 9:16 frame.
+The Prime capture contains generation and polling only; it does not contain a
+1080 export. The product performs its own separate video edit/export after the
+Prime job completes.
 
-**Why:** “1080p” is an export/upscale step, not the native Wan generation setting.
-Charging and user copy should reflect that distinction.
+**Why:** Prime replaces the old Wan model while preserving the 30-second product.
+“1080p” remains an export step, not the native Prime generation setting.
 
-**How to apply:** For a product promise of exact 9:16/16:9 output, submit standard
-export dimensions (1080×1920 / 1920×1080) after the 480P generation rather than
-copying the captured 1080×1872 size. A real `16:9` submission was not present in
-the capture, so validate that ratio with its own HAR after release.
+**How to apply:** Route Wan Prime through the p500 account pool, then export exact
+1080×1920 / 1920×1080 output only after its 480P job completes. A real `16:9`
+Prime submission was not present in the capture, so validate that ratio live.
