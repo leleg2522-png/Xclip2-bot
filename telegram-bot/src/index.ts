@@ -3822,7 +3822,7 @@ bot.on('callback_query', async (ctx) => {
       `🌊 *Seedance 2.5 I2V 1080p*\n\n` +
       `Durasi: *30 detik* • Output: *1080p*\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_25)}* per video\n\n` +
-      '*Langkah 1:* Kirim *1–5 foto acuan* untuk video kamu.',
+      `*Langkah 1:* Kirim *1–${picsart.PICSART_I2V_MAX_IMAGES} foto acuan* untuk video kamu.`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -3850,7 +3850,7 @@ bot.on('callback_query', async (ctx) => {
       `🌀 *${cfg.label}*\n\n` +
       `Parameter: *${ratio} · ${cfg.settingsLabel}*\n` +
       `Harga: *${formatRupiah(getPicsartI2vPrice(model))}* per video\n\n` +
-      `${model === 'wan_v3' ? '*Langkah 1:* Kirim *1–5 foto acuan* untuk video kamu.' : '*Langkah 1:* Kirim *foto acuan* untuk video kamu.'}`,
+      `${model === 'wan_v3' ? `*Langkah 1:* Kirim *1–${picsart.PICSART_I2V_MAX_IMAGES} foto acuan* untuk video kamu.` : '*Langkah 1:* Kirim *foto acuan* untuk video kamu.'}`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -4622,11 +4622,9 @@ function imgAddPhotoKeyboard() {
   ]);
 }
 
-const PICSART_I2V_MAX_IMAGES = 5;
-
 function picsartI2vAddPhotoKeyboard(count: number) {
   return Markup.inlineKeyboard([
-    [Markup.button.callback(`➕ Tambah Foto (${count}/${PICSART_I2V_MAX_IMAGES})`, 'picsart_i2v_add_photo')],
+    [Markup.button.callback(`➕ Tambah Foto (${count}/${picsart.PICSART_I2V_MAX_IMAGES})`, 'picsart_i2v_add_photo')],
     [Markup.button.callback('✅ Lanjut ke Prompt', 'picsart_i2v_photos_done')],
   ]);
 }
@@ -4741,8 +4739,8 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
         : session.picsartI2vImageUrl
           ? [session.picsartI2vImageUrl]
           : [];
-      const imageUrls = [...previousUrls, fileUrl].slice(0, PICSART_I2V_MAX_IMAGES);
-      const reachedLimit = imageUrls.length >= PICSART_I2V_MAX_IMAGES;
+      const imageUrls = [...previousUrls, fileUrl].slice(0, picsart.PICSART_I2V_MAX_IMAGES);
+      const reachedLimit = imageUrls.length >= picsart.PICSART_I2V_MAX_IMAGES;
       setSession(userId, {
         picsartI2vImageUrl: imageUrls[0],
         picsartI2vImageUrls: imageUrls,
@@ -4750,7 +4748,7 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
       });
       if (reachedLimit) {
         return ctx.reply(
-          `✅ ${PICSART_I2V_MAX_IMAGES} foto acuan untuk *${displayLabel}* diterima (maksimal ${PICSART_I2V_MAX_IMAGES}).\n\n` +
+          `✅ ${picsart.PICSART_I2V_MAX_IMAGES} foto acuan untuk *${displayLabel}* diterima (maksimal ${picsart.PICSART_I2V_MAX_IMAGES}).\n\n` +
           `Parameter: *${settingsLabel}*\n\n` +
           '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
           { parse_mode: 'Markdown' }
@@ -4758,7 +4756,7 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
       }
       return ctx.reply(
         `✅ Foto acuan ke-${imageUrls.length} untuk *${displayLabel}* diterima!\n\n` +
-        `Kirim foto berikutnya (maksimal ${PICSART_I2V_MAX_IMAGES}) atau lanjut ke prompt.`,
+        `Kirim foto berikutnya (maksimal ${picsart.PICSART_I2V_MAX_IMAGES}) atau lanjut ke prompt.`,
         { parse_mode: 'Markdown', ...picsartI2vAddPhotoKeyboard(imageUrls.length) }
       );
     }
@@ -5718,7 +5716,7 @@ bot.on('text', async (ctx) => {
     const count = session.picsartI2vImageUrls?.length ?? 0;
     return ctx.reply(
       isWanV3
-        ? `📸 Kirim *1–5 foto acuan*. Saat ini ${count}/5 foto sudah diterima, atau /menu untuk batal.`
+        ? `📸 Kirim *1–${picsart.PICSART_I2V_MAX_IMAGES} foto acuan*. Saat ini ${count}/${picsart.PICSART_I2V_MAX_IMAGES} foto sudah diterima, atau /menu untuk batal.`
         : '📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.',
       { parse_mode: 'Markdown' }
     );
@@ -6306,7 +6304,7 @@ async function runPicsartI2v(
   let refund = true;
 
   try {
-    const maxImages = opts.model === 'wan_v3' ? PICSART_I2V_MAX_IMAGES : 1;
+    const maxImages = opts.model === 'wan_v3' ? picsart.PICSART_I2V_MAX_IMAGES : 1;
     const images = await Promise.all(
       opts.imageUrls.slice(0, maxImages).map(async (imageUrl, index) => {
         const image = await downloadBuffer(imageUrl);

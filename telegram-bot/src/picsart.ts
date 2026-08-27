@@ -1293,6 +1293,8 @@ export type PicsartI2vModelKey =
   | 'wan_v3'
   | 'pixverse_v6';
 
+export const PICSART_I2V_MAX_IMAGES = 100;
+
 export type WanV3AspectRatio = '9:16' | '16:9';
 
 type PicsartI2vModelConfig = {
@@ -1476,7 +1478,8 @@ export function buildPicsartI2vParams(
         options: {},
       };
     case 'wan_v3':
-      const referenceImageUrls = (options?.imageUrls?.length ? options.imageUrls : [imageUrl]).slice(0, 5);
+      const referenceImageUrls = (options?.imageUrls?.length ? options.imageUrls : [imageUrl])
+        .slice(0, PICSART_I2V_MAX_IMAGES);
       return {
         model: 'wan3.0-video-prime',
         resolution: '480P',
@@ -1794,7 +1797,10 @@ export async function generatePicsartI2v(input: {
       : input.imageBuffer
         ? [{ buffer: input.imageBuffer, name: input.imageName, mime: input.imageMime }]
         : [];
-    const imagesToUpload = inputImages.slice(0, input.model === 'wan_v3' ? 5 : 1);
+    const imagesToUpload = inputImages.slice(
+      0,
+      input.model === 'wan_v3' ? PICSART_I2V_MAX_IMAGES : 1
+    );
     if (imagesToUpload.length === 0) throw new Error('PICSART_NO_REFERENCE_IMAGE');
 
     const imageUrls: string[] = [];
