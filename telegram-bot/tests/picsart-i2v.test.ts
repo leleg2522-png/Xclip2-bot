@@ -224,7 +224,7 @@ assert.equal(portraitExport.width * 16, portraitExport.height * 9, 'portrait exp
 assert.equal(landscapeExport.width * 9, landscapeExport.height * 16, 'landscape export must remain exact 16:9');
 assert.match(botSource, /mode_pi2v_wan_v3/);
 assert.match(botSource, /mode_pi2v_pixverse_v6/);
-assert.match(botSource, /picsart_wan_v3: 6000/);
+assert.match(botSource, /picsart_wan_v3: 5000/);
 assert.match(botSource, /picsart_seedance_2_mini: 3500/);
 assert.match(botSource, /picsart_seedance_2: 4000/);
 assert.match(botSource, /Wan 3\.0 1080p/);

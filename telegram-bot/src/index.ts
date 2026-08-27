@@ -172,7 +172,7 @@ const MODEL_PRICES = {
   picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
   picsart_seedance_2_mini: 3500, // Seedance 2.0 Mini, delivered as 1080p
   picsart_seedance_2: 4000, // Seedance 2.0 Mini/Fast/Standard, delivered as 1080p
-  picsart_wan_v3: 6000, // Wan 3.0 30s, delivered as 1080p
+  picsart_wan_v3: 5000, // Wan 3.0 30s, delivered as 1080p
   picsart_seedance_25: 4500, // Public Seedance 2.5 label, routed through Wan 3.0 Prime
   oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
