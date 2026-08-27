@@ -26,7 +26,19 @@ assert.ok(concurrentCharges.length >= 15, 'all generation runners must retain th
 
 // Every job is started with immutable local arguments and retains its own
 // captured Telegram status message rather than a shared status slot.
-assert.match(source, /runPicsartI2v\(ctx\.chat\.id, userId, session\.dbUserId!, statusMsg\.message_id, prompt, \{ model, imageUrl, ratio \}\)/);
+assert.match(source, /runPicsartI2v\(ctx\.chat\.id, userId, dbUserId, statusMsg\.message_id, prompt, \{\s*model,\s*imageUrl,\s*ratio,\s*displayLabel,/s);
+const picsartPromptStart = source.indexOf("// ── Picsart image-to-video prompt ──");
+const picsartPromptEnd = source.indexOf("// ── OneOver Seedance 2.5 image-to-video prompt ──", picsartPromptStart);
+assert.ok(picsartPromptStart >= 0 && picsartPromptEnd > picsartPromptStart);
+const picsartPromptBlock = source.slice(picsartPromptStart, picsartPromptEnd);
+const rereadIndex = picsartPromptBlock.indexOf('const activeDraft = getSession(userId);');
+const modeGuardIndex = picsartPromptBlock.indexOf("if (activeDraft.mode !== 'picsart_i2v_wait_prompt') return;");
+const claimIndex = picsartPromptBlock.indexOf("setSession(userId, {\n      mode: 'idle',");
+const statusAwaitIndex = picsartPromptBlock.indexOf('const statusMsg = await ctx.reply');
+assert.ok(rereadIndex >= 0, 'Picsart prompt must re-read the active draft after login');
+assert.ok(modeGuardIndex > rereadIndex, 'Picsart prompt must validate the re-read mode');
+assert.ok(claimIndex > modeGuardIndex, 'Picsart prompt must synchronously claim the active draft');
+assert.ok(statusAwaitIndex > claimIndex, 'Picsart prompt must claim the draft before the next await');
 assert.match(source, /runKlingP2\(ctx\.chat\.id, userId, session\.dbUserId!, statusMsg\.message_id, characterUrlP2, videoFileIdP2, videoDurationP2, prompt\)/);
 assert.match(source, /runFloraAudio\(ctx\.chat\.id, userId, session\.dbUserId!, statusMsg\.message_id, modelId, label, 'generate', prompt, undefined, undefined, voiceId\)/);
 

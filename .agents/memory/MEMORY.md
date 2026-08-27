@@ -12,9 +12,9 @@
 - [Flora AI API](flora-ai-api.md) — generate pakai params.image_url/video_url (bukan inputs[]); upload form_fields snake_case; "1 key 1 task" salah (paralel jalan); tak ada endpoint saldo credits
 - [XclipAI referral scheme](xclip-referral-scheme.md) — 5% dari SETIAP top-up undangan masuk saldo utama pengundang; bonus cair hanya saat order PAID, idempotent via UNIQUE(order_id)
 - [Picsart account pools](picsart-account-pools.md) — split by CREDIT-at-add (>=200→p500 else p100), tag NEW accounts only, NULL=wildcard for legacy; per-(user,pool) sticky; model routing Kling=any, Runway/Sora/Gemini=p100, Seedance=p500
-- [Picsart Seedance 2.5 API](seedance-api.md) — submit /workflows/seedance/submit (model:"seedance_2_5", content[] ref_image+text); poll result.video_url (not .url/.videoUrl)
+- [Picsart Seedance 2.5 API](seedance-api.md) — native contract is reference-only; public Seedance 2.5 currently routes through Wan Prime.
 - [edanbot Kling Motion](edanbot-kling-motion.md) — bot's "Kling MC V3 PRO P2" is really edanbot.digital→roboneo; auth = fragile Flask signed session= cookie (EDANBOT_COOKIE, needs prefix); job_id isolates users; never leak provider name
 - [Paid provider post-submit failover](paid-provider-post-submit-failover.md) — failover may retry only before an upstream paid job is accepted; post-submit auth loss must refund, not resubmit.
-- [OneOver submit timeouts](oneover-submit-timeouts.md) — Railway submit can exceed two minutes; wait longer and never retry an ambiguous submit response.
-- [Freebeat Windows Bridge](freebeat-windows-bridge.md) — keep Freebeat browser sessions on the logged-in Windows PC; Railway owns durable jobs, saldo, and result delivery.
+- [OneOver submit timeouts](oneover-submit-timeouts.md) — legacy-only; never retry an ambiguous submit response while old OneOver jobs remain.
+- [Freebeat Windows Bridge](freebeat-windows-bridge.md) — legacy completion only; do not enqueue new public Seedance 2.5 orders.
 - [Public provider labels](public-provider-labels.md) — customer Telegram copy is model-led; provider and bridge names stay internal.
