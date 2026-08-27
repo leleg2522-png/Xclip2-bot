@@ -14,7 +14,11 @@ Accounts are split by their **current credit balance AT ADD-TIME** (owner's expl
 - **NULL pool = wildcard**: a legacy NULL account matches *every* pool request (`pool = $req OR pool IS NULL`). This is a deliberate backward-compat transition policy so routing never starves the ~259 pre-existing uncategorized accounts. Downside accepted: a legacy account that is actually tier-500 can still be consumed by p100 requests until it is (re)categorized.
 - New accounts are inserted with provisional `pool='p100'` (NOT null), so a NEW account whose categorization API call fails stays scoped to p100 instead of becoming an all-pools wildcard. The wildcard exception is for legacy rows only.
 
-**Model → pool routing** (in `runWithAccount(userId, poolFilter, fn)`): Kling Motion Control = `null` (any pool); Runway, Sora, Gemini Omni = `'p100'`; Seedance 2.5 = `'p500'`.
+**Model → pool routing:** Kling Motion Control = any pool; Runway, Sora, Gemini Omni = p100; Wan 3.0 Prime—including the public Seedance 2.5 alias—= any pool, so both p100 and p500 accounts are eligible.
+
+**Why:** the owner clarified that “5–100 dan p500” refers to the two account pools, not the number of reference photos. Wan 3.0/Seedance 2.5 must remain single-image generation while drawing from either pool.
+
+**How to apply:** route Wan 3.0 Prime and its public Seedance 2.5 alias through the unfiltered/any-pool account selector. Do not add multi-image upload behavior from this requirement.
 
 **p500 excludes legacy wildcards**: `acquireAccount` only picks `c.pool = 'p500'` accounts for p500 requests — legacy NULL-pool accounts are excluded. This prevents old ~50-credit accounts from being assigned to expensive models. NULL wildcards still apply for null and p100 pool requests.
 

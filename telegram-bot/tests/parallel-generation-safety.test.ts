@@ -26,7 +26,7 @@ assert.ok(concurrentCharges.length >= 15, 'all generation runners must retain th
 
 // Every job is started with immutable local arguments and retains its own
 // captured Telegram status message rather than a shared status slot.
-assert.match(source, /runPicsartI2v\(ctx\.chat\.id, userId, dbUserId, statusMsg\.message_id, prompt, \{\s*model,\s*imageUrls,\s*ratio,\s*displayLabel,\s*priceKey,/s);
+assert.match(source, /runPicsartI2v\(ctx\.chat\.id, userId, dbUserId, statusMsg\.message_id, prompt, \{\s*model,\s*imageUrl,\s*ratio,\s*displayLabel,\s*priceKey,/s);
 const picsartPromptStart = source.indexOf("// ── Picsart image-to-video prompt ──");
 const picsartPromptEnd = source.indexOf("// ── OneOver Seedance 2.5 image-to-video prompt ──", picsartPromptStart);
 assert.ok(picsartPromptStart >= 0 && picsartPromptEnd > picsartPromptStart);
