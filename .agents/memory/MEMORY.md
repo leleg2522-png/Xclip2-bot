@@ -18,3 +18,4 @@
 - [OneOver submit timeouts](oneover-submit-timeouts.md) — legacy-only; never retry an ambiguous submit response while old OneOver jobs remain.
 - [Freebeat Windows Bridge](freebeat-windows-bridge.md) — legacy completion only; do not enqueue new public Seedance 2.5 orders.
 - [Public provider labels](public-provider-labels.md) — customer Telegram copy is model-led; provider and bridge names stay internal.
+- [Standalone Telegram bot package](telegram-bot-deps.md) — install the nested bot with pnpm --ignore-workspace before running its tests or build
