@@ -176,6 +176,22 @@ assert.deepEqual(wan3Portrait, {
 
 const wan3Landscape = buildPicsartI2vParams('wan_v3', prompt, imageUrl, { ratio: '16:9' });
 assert.equal(wan3Landscape.ratio, '16:9');
+
+const wan3InputUrls = Array.from({ length: 6 }, (_, index) => `https://cdn.example.test/reference-${index + 1}.jpg`);
+const wan3MultiImage = buildPicsartI2vParams('wan_v3', prompt, imageUrl, {
+  ratio: '16:9',
+  imageUrls: wan3InputUrls,
+});
+const expectedWan3Urls = wan3InputUrls.slice(0, 5);
+assert.deepEqual(
+  wan3MultiImage.media,
+  expectedWan3Urls.map((url) => ({ type: 'reference_image', url }))
+);
+const wan3MultiDrive = (wan3MultiImage.options as {
+  drive: { attributes: { aiSDKPayload: string } };
+}).drive;
+assert.deepEqual(JSON.parse(wan3MultiDrive.attributes.aiSDKPayload).imageUrls, expectedWan3Urls);
+
 const pixverse = buildPicsartI2vParams('pixverse_v6', prompt, imageUrl);
 assert.equal(pixverse.model, 'v6');
 assert.equal(pixverse.prompt, prompt);

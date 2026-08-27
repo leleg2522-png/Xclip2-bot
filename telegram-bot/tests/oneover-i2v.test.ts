@@ -40,6 +40,8 @@ assert.equal(
 assert.equal(resolveOneOverAccountId({ apiKey: 'test', authorization: 'opaque-token' }), null);
 
 assert.match(bot, /oneover_seedance_25: 6000/);
+assert.match(bot, /picsart_seedance_25: 4500/);
+assert.match(bot, /picsart_wan_v3: 6000/);
 assert.match(bot, /Seedance 2\.5 I2V 1080p/);
 assert.doesNotMatch(bot, /Provider: \*Freebeat Bridge\*/);
 assert.doesNotMatch(bot, /Seedance 2\.5 I2V • Bridge/);
@@ -55,7 +57,12 @@ const publicSeedance25End = bot.indexOf("if (data.startsWith('picsart_ratio_'))"
 assert.ok(publicSeedance25Start >= 0 && publicSeedance25End > publicSeedance25Start);
 const publicSeedance25Block = bot.slice(publicSeedance25Start, publicSeedance25End);
 assert.match(publicSeedance25Block, /picsartI2vModel: 'wan_v3'/);
+assert.match(publicSeedance25Block, /picsartI2vPriceKey: 'picsart_seedance_25'/);
+assert.match(publicSeedance25Block, /MODEL_PRICES\.picsart_seedance_25/);
 assert.doesNotMatch(publicSeedance25Block, /queueFreebeatBridgeSeedance25/);
+assert.match(bot, /PICSART_I2V_MAX_IMAGES = 5/);
+assert.match(bot, /picsart_i2v_photos_done/);
+assert.match(bot, /picsartI2vImageUrls/);
 assert.match(bot, /oneover_wait_image/);
 assert.match(bot, /oneover_wait_prompt/);
 assert.match(bot, /queueFreebeatBridgeSeedance25/);
