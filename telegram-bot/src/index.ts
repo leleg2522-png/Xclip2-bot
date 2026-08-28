@@ -2240,6 +2240,13 @@ function isPicsartI2vModelKey(value: string): value is picsart.PicsartI2vModelKe
   return Object.prototype.hasOwnProperty.call(picsart.PICSART_I2V_MODELS, value);
 }
 
+function supportsMultiplePicsartI2vImages(model?: picsart.PicsartI2vModelKey): boolean {
+  return model === 'seedance_2_mini'
+    || model === 'seedance_2_fast'
+    || model === 'seedance_2'
+    || model === 'wan_v3';
+}
+
 function picsartI2vRatioKeyboard() {
   return Markup.inlineKeyboard([
     [
@@ -3878,7 +3885,7 @@ bot.on('callback_query', async (ctx) => {
       mode: 'picsart_i2v_wait_image',
       picsartI2vRatio: ratio,
       picsartI2vImageUrl: undefined,
-      picsartI2vImageUrls: model === 'wan_v3' ? [] : undefined,
+      picsartI2vImageUrls: supportsMultiplePicsartI2vImages(model) ? [] : undefined,
       picsartI2vPriceKey: model === 'wan_v3' ? 'picsart_wan_v3' : undefined,
     });
     return ctx.editMessageText(
@@ -3892,13 +3899,20 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
-  if (data === 'picsart_i2v_add_photo') {
+    if (data === 'picsart_i2v_add_photo') {
     const session = getSession(userId);
     const imageCount = session.picsartI2vImageUrls?.length ?? 0;
-    if (session.mode !== 'picsart_i2v_wait_image' || session.picsartI2vModel !== 'wan_v3' || imageCount < 1 || imageCount >= picsart.PICSART_I2V_MAX_IMAGES) {
+      if (
+        session.mode !== 'picsart_i2v_wait_image'
+        || !session.picsartI2vModel
+        || !supportsMultiplePicsartI2vImages(session.picsartI2vModel)
+        || imageCount < 1
+        || imageCount >= picsart.PICSART_I2V_MAX_IMAGES
+      ) {
       return ctx.answerCbQuery('Sesi sudah berubah, ulangi dari /menu.').catch(() => {});
     }
-    const label = session.picsartI2vDisplayLabel ?? picsart.PICSART_I2V_MODELS.wan_v3.label;
+      const model = session.picsartI2vModel;
+      const label = session.picsartI2vDisplayLabel ?? picsart.PICSART_I2V_MODELS[model].label;
     return ctx.editMessageText(
       `🌀 *${label}*\n\n📸 Kirim *foto acuan ke-${imageCount + 1}* (maksimal ${picsart.PICSART_I2V_MAX_IMAGES} foto).`,
       { parse_mode: 'Markdown' }
@@ -3908,10 +3922,16 @@ bot.on('callback_query', async (ctx) => {
   if (data === 'picsart_i2v_photos_done') {
     const session = getSession(userId);
     const imageCount = session.picsartI2vImageUrls?.length ?? 0;
-    if (session.mode !== 'picsart_i2v_wait_image' || session.picsartI2vModel !== 'wan_v3' || imageCount < 1) {
+      if (
+        session.mode !== 'picsart_i2v_wait_image'
+        || !session.picsartI2vModel
+        || !supportsMultiplePicsartI2vImages(session.picsartI2vModel)
+        || imageCount < 1
+      ) {
       return ctx.answerCbQuery('Kirim minimal 1 foto dulu ya.').catch(() => {});
     }
-    const label = session.picsartI2vDisplayLabel ?? picsart.PICSART_I2V_MODELS.wan_v3.label;
+      const model = session.picsartI2vModel;
+      const label = session.picsartI2vDisplayLabel ?? picsart.PICSART_I2V_MODELS[model].label;
     setSession(userId, { mode: 'picsart_i2v_wait_prompt' });
     return ctx.editMessageText(
       `🌀 *${label}*\n\n✅ ${imageCount} foto acuan diterima.\n\n*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).`,
@@ -4854,7 +4874,7 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     ) && session.picsartI2vRatio
       ? `${session.picsartI2vRatio} · ${cfg.settingsLabel}`
       : cfg.settingsLabel;
-    if (model === 'wan_v3') {
+    if (supportsMultiplePicsartI2vImages(model)) {
       const imageUrls = [...(session.picsartI2vImageUrls ?? []), fileUrl]
         .slice(0, picsart.PICSART_I2V_MAX_IMAGES);
       const reachedLimit = imageUrls.length >= picsart.PICSART_I2V_MAX_IMAGES;
@@ -6448,7 +6468,7 @@ async function runPicsartI2v(
 
   try {
     stage = 'download';
-    const maxImages = opts.model === 'wan_v3' ? picsart.PICSART_I2V_MAX_IMAGES : 1;
+    const maxImages = supportsMultiplePicsartI2vImages(opts.model) ? picsart.PICSART_I2V_MAX_IMAGES : 1;
     const images = await Promise.all(
       opts.imageUrls.slice(0, maxImages).map(async (imageUrl, index) => {
         const image = await downloadBuffer(imageUrl);

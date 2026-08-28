@@ -1506,10 +1506,16 @@ export function buildPicsartI2vParams(
 ): Record<string, unknown> {
   switch (model) {
     case 'seedance_2_mini':
+      const seedanceMiniReferenceUrls = (options?.imageUrls?.length ? options.imageUrls : [imageUrl])
+        .slice(0, PICSART_I2V_MAX_IMAGES);
       return {
         model: 'seedance_2_0_mini',
         content: [
-          { type: 'image_url', image_url: { url: imageUrl }, role: 'reference_image' },
+          ...seedanceMiniReferenceUrls.map((url) => ({
+            type: 'image_url',
+            image_url: { url },
+            role: 'reference_image',
+          })),
           { type: 'text', text: prompt },
         ],
         ratio: options?.ratio ?? '9:16',
@@ -1519,10 +1525,16 @@ export function buildPicsartI2vParams(
         options: {},
       };
     case 'seedance_2_fast':
+      const seedanceFastReferenceUrls = (options?.imageUrls?.length ? options.imageUrls : [imageUrl])
+        .slice(0, PICSART_I2V_MAX_IMAGES);
       return {
         model: 'seedance_2_0_fast',
         content: [
-          { type: 'image_url', image_url: { url: imageUrl }, role: 'reference_image' },
+          ...seedanceFastReferenceUrls.map((url) => ({
+            type: 'image_url',
+            image_url: { url },
+            role: 'reference_image',
+          })),
           { type: 'text', text: prompt },
         ],
         ratio: options?.ratio ?? '9:16',
@@ -1532,10 +1544,16 @@ export function buildPicsartI2vParams(
         options: {},
       };
     case 'seedance_2':
+      const seedanceReferenceUrls = (options?.imageUrls?.length ? options.imageUrls : [imageUrl])
+        .slice(0, PICSART_I2V_MAX_IMAGES);
       return {
         model: 'seedance_2_0',
         content: [
-          { type: 'image_url', image_url: { url: imageUrl }, role: 'reference_image' },
+          ...seedanceReferenceUrls.map((url) => ({
+            type: 'image_url',
+            image_url: { url },
+            role: 'reference_image',
+          })),
           { type: 'text', text: prompt },
         ],
         ratio: options?.ratio ?? '9:16',
@@ -1916,7 +1934,12 @@ export async function generatePicsartI2v(input: {
       : input.imageBuffer
         ? [{ buffer: input.imageBuffer, name: input.imageName, mime: input.imageMime }]
         : [];
-    const imagesToUpload = input.model === 'wan_v3'
+    const imagesToUpload = (
+      input.model === 'seedance_2_mini'
+      || input.model === 'seedance_2_fast'
+      || input.model === 'seedance_2'
+      || input.model === 'wan_v3'
+    )
       ? inputImages.slice(0, PICSART_I2V_MAX_IMAGES)
       : inputImages.slice(0, 1);
     if (imagesToUpload.length === 0) throw new Error('PICSART_NO_REFERENCE_IMAGE');

@@ -85,6 +85,14 @@ assert.deepEqual(seedanceMini, {
   options: {},
 });
 assert.equal(buildPicsartI2vParams('seedance_2_mini', prompt, imageUrl, { ratio: '16:9' }).ratio, '16:9');
+const seedanceMiniMulti = buildPicsartI2vParams('seedance_2_mini', prompt, imageUrl, {
+  imageUrls: ['https://cdn.example.test/mini-1.jpg', 'https://cdn.example.test/mini-2.jpg'],
+});
+assert.deepEqual(seedanceMiniMulti.content, [
+  { type: 'image_url', image_url: { url: 'https://cdn.example.test/mini-1.jpg' }, role: 'reference_image' },
+  { type: 'image_url', image_url: { url: 'https://cdn.example.test/mini-2.jpg' }, role: 'reference_image' },
+  { type: 'text', text: prompt },
+]);
 
 const seedanceFast = buildPicsartI2vParams('seedance_2_fast', prompt, imageUrl);
 assert.deepEqual(seedanceFast, {
@@ -100,6 +108,12 @@ assert.deepEqual(seedanceFast, {
   options: {},
 });
 assert.equal(buildPicsartI2vParams('seedance_2_fast', prompt, imageUrl, { ratio: '16:9' }).ratio, '16:9');
+assert.equal(
+  (buildPicsartI2vParams('seedance_2_fast', prompt, imageUrl, {
+    imageUrls: Array.from({ length: 6 }, (_, index) => `https://cdn.example.test/fast-${index + 1}.jpg`),
+  }).content as unknown[]).length,
+  6,
+);
 
 const seedance = buildPicsartI2vParams('seedance_2', prompt, imageUrl);
 assert.deepEqual(seedance, {
@@ -115,6 +129,12 @@ assert.deepEqual(seedance, {
   options: {},
 });
 assert.equal(buildPicsartI2vParams('seedance_2', prompt, imageUrl, { ratio: '16:9' }).ratio, '16:9');
+assert.equal(
+  (buildPicsartI2vParams('seedance_2', prompt, imageUrl, {
+    imageUrls: Array.from({ length: 6 }, (_, index) => `https://cdn.example.test/standard-${index + 1}.jpg`),
+  }).content as unknown[]).length,
+  6,
+);
 
 const grok = buildPicsartI2vParams('grok_imagine', prompt, imageUrl);
 assert.deepEqual(grok, {
@@ -272,6 +292,9 @@ assert.match(botSource, /Seedance 2\.0 Fast 1080p/);
 assert.match(botSource, /Seedance 2\.0 1080p/);
 assert.match(botSource, /picsart_ratio_916/);
 assert.match(botSource, /picsart_ratio_169/);
+assert.match(botSource, /supportsMultiplePicsartI2vImages/);
+assert.match(botSource, /picsart_i2v_add_photo/);
+assert.match(botSource, /PICSART_I2V_MAX_IMAGES/);
 assert.match(botSource, /mode_oneover_seedance25[\s\S]*picsart_i2v_wait_ratio/);
 assert.match(botSource, /picsart_seedance_25[\s\S]*picsart_ratio_169/);
 assert.match(botSource, /seedance_2_mini[\s\S]*picsart_i2v_wait_ratio/);
