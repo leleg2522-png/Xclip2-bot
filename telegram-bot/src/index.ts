@@ -213,6 +213,18 @@ function describeError(err: any): string {
   return parts.join(' ');
 }
 
+// Provider and bridge names are internal implementation details. Customer-facing
+// copy must stay model-led even if a future session/config accidentally carries
+// an internal provider name into a display label.
+function customerSafeModelLabel(label: string, fallback: string): string {
+  const safe = String(label || '')
+    .replace(/\b(?:Picsart|Freebeat|OneOver|Renderful)\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([·:])/g, '$1')
+    .trim();
+  return safe || fallback;
+}
+
 function formatRupiah(n: number): string {
   return 'Rp' + Math.round(n).toLocaleString('id-ID');
 }
@@ -6282,7 +6294,7 @@ async function runPicsartI2v(
   }
 ) {
   const cfg = picsart.PICSART_I2V_MODELS[opts.model];
-  const label = opts.displayLabel ?? cfg.label;
+  const label = customerSafeModelLabel(opts.displayLabel ?? cfg.label, cfg.label);
   const settingsLabel = (opts.model === 'wan_v3' || opts.model === 'pixverse_v6') && opts.ratio
     ? `${opts.ratio} · ${cfg.settingsLabel}`
     : cfg.settingsLabel;
