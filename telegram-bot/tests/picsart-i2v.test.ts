@@ -272,6 +272,8 @@ assert.match(botSource, /Seedance 2\.0 Fast 1080p/);
 assert.match(botSource, /Seedance 2\.0 1080p/);
 assert.match(botSource, /picsart_ratio_916/);
 assert.match(botSource, /picsart_ratio_169/);
+assert.match(botSource, /mode_oneover_seedance25[\s\S]*picsart_i2v_wait_ratio/);
+assert.match(botSource, /picsart_seedance_25[\s\S]*picsart_ratio_169/);
 assert.match(botSource, /seedance_2_mini[\s\S]*picsart_i2v_wait_ratio/);
 assert.match(botSource, /seedance_2_fast[\s\S]*picsart_i2v_wait_ratio/);
 assert.match(botSource, /seedance_2[\s\S]*picsart_i2v_wait_ratio/);

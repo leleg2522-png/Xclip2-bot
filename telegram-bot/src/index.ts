@@ -3837,20 +3837,20 @@ bot.on('callback_query', async (ctx) => {
 
   if (data === 'mode_oneover_seedance25') {
     setSession(userId, {
-      mode: 'picsart_i2v_wait_image',
+      mode: 'picsart_i2v_wait_ratio',
       picsartI2vModel: 'wan_v3',
-      picsartI2vRatio: '9:16',
+      picsartI2vRatio: undefined,
       picsartI2vDisplayLabel: 'Seedance 2.5 I2V 1080p',
       picsartI2vImageUrl: undefined,
-      picsartI2vImageUrls: [],
+      picsartI2vImageUrls: undefined,
       picsartI2vPriceKey: 'picsart_seedance_25',
     });
     return ctx.editMessageText(
       `🌊 *Seedance 2.5 I2V 1080p*\n\n` +
       `Durasi: *30 detik* • Output: *1080p*\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_25)}* per video\n\n` +
-      `*Langkah 1:* Kirim *1–${picsart.PICSART_I2V_MAX_IMAGES} foto acuan* untuk video kamu.`,
-      { parse_mode: 'Markdown' }
+      '*Langkah 1:* Pilih rasio video:',
+      { parse_mode: 'Markdown', ...picsartI2vRatioKeyboard() }
     );
   }
 
@@ -3873,6 +3873,7 @@ bot.on('callback_query', async (ctx) => {
     }
     const model = session.picsartI2vModel as picsart.PicsartI2vModelKey;
     const cfg = picsart.PICSART_I2V_MODELS[model];
+    const displayLabel = session.picsartI2vDisplayLabel ?? cfg.label;
     setSession(userId, {
       mode: 'picsart_i2v_wait_image',
       picsartI2vRatio: ratio,
@@ -3881,7 +3882,7 @@ bot.on('callback_query', async (ctx) => {
       picsartI2vPriceKey: model === 'wan_v3' ? 'picsart_wan_v3' : undefined,
     });
     return ctx.editMessageText(
-      `🌀 *${cfg.label}*\n\n` +
+      `🌀 *${displayLabel}*\n\n` +
       `Parameter: *${ratio} · ${cfg.settingsLabel}*\n` +
       `Harga: *${formatRupiah(getPicsartI2vPrice(model))}* per video\n\n` +
       (model === 'wan_v3'
