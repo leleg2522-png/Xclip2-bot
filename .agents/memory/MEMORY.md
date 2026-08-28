@@ -19,3 +19,4 @@
 - [Freebeat Windows Bridge](freebeat-windows-bridge.md) — legacy completion only; do not enqueue new public Seedance 2.5 orders.
 - [Public provider labels](public-provider-labels.md) — customer Telegram copy is model-led; provider and bridge names stay internal.
 - [Standalone Telegram bot package](telegram-bot-deps.md) — install the nested bot with pnpm --ignore-workspace before running its tests or build
+- [Gemini Omni model separation](gemini-omni-model-separation.md) — Omni 1.2 is a separate paid model; never replace or repoint the legacy Omni route.

@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  GEMINI_OMNI_12_DURATION_SECONDS,
+  GEMINI_OMNI_12_MAX_IMAGES,
+  GEMINI_OMNI_12_MODEL,
+  GEMINI_OMNI_12_RESOLUTION,
+  GEMINI_OMNI_MODEL,
   PICSART_I2V_MAX_IMAGES,
   PICSART_I2V_MODELS,
+  buildGeminiOmni12Params,
   buildPicsartI2vParams,
   extractPicsartVideoUrl,
   getPicsartI2vExportSize,
@@ -12,6 +18,31 @@ import {
 
 const imageUrl = 'https://cdn.example.test/reference.jpg';
 const prompt = 'A subject moves gracefully through the scene';
+
+assert.equal(GEMINI_OMNI_MODEL, 'gemini-omni-flash-preview', 'legacy Gemini Omni model must remain unchanged');
+assert.equal(GEMINI_OMNI_12_MODEL, 'gemini-omni-1.1-flash-preview');
+assert.equal(GEMINI_OMNI_12_DURATION_SECONDS, 10);
+assert.equal(GEMINI_OMNI_12_RESOLUTION, '360p');
+assert.equal(GEMINI_OMNI_12_MAX_IMAGES, 5);
+const gemini12Images = Array.from({ length: 6 }, (_, index) => ({
+  url: `https://cdn.example.test/gemini-${index + 1}.jpg`,
+  mimeType: 'image/jpeg',
+}));
+const gemini12Video = { url: 'https://cdn.example.test/motion.mp4', mimeType: 'video/mp4' };
+assert.deepEqual(buildGeminiOmni12Params({
+  prompt,
+  imageReferences: gemini12Images,
+  videoReference: gemini12Video,
+  aspectRatio: '16:9',
+}), {
+  prompt,
+  model: 'gemini-omni-1.1-flash-preview',
+  aspectRatio: '16:9',
+  durationSeconds: 10,
+  resolution: '360p',
+  referenceImages: gemini12Images.slice(0, 5),
+  referenceVideos: [gemini12Video],
+});
 
 const expectedModels = [
   'seedance_2_mini',
@@ -227,6 +258,10 @@ assert.match(botSource, /mode_pi2v_pixverse_v6/);
 assert.match(botSource, /picsart_wan_v3: 5000/);
 assert.match(botSource, /picsart_seedance_2_mini: 3500/);
 assert.match(botSource, /picsart_seedance_2: 4000/);
+assert.match(botSource, /gemini_omni: 2500/);
+assert.match(botSource, /gemini_omni_12: 3500/);
+assert.match(botSource, /mode_gomni12/);
+assert.match(botSource, /GEMINI_OMNI_12_MAX_IMAGES/);
 assert.match(botSource, /Wan 3\.0 1080p/);
 assert.match(botSource, /Seedance 2\.0 Mini 1080p/);
 assert.match(botSource, /Seedance 2\.0 Fast 1080p/);

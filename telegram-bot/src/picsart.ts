@@ -976,9 +976,7 @@ export async function generateSora(input: {
   });
 }
 
-// ─── Gemini Omni (Google video: text-to-video or image-to-video) ──────────────
-// POST /workflows/gemini-omni/video/submit          -> {response:{id}}
-// poll GET /workflows/gemini-omni/video/{id}/result -> COMPLETED, result[0].url
+// ─── Gemini Omni (legacy) ──────────────────────────────────────────────────────
 export const GEMINI_OMNI_MODEL = 'gemini-omni-flash-preview';
 
 export async function submitGeminiOmni(credId: number, input: {
@@ -996,12 +994,8 @@ export async function submitGeminiOmni(credId: number, input: {
     aspectRatio: input.aspectRatio,
     durationSeconds: input.durationSeconds,
   };
-  if (input.imageUrl) {
-    params.image = { url: input.imageUrl, mimeType: input.imageMime || 'image/jpeg' };
-  }
-  if (input.videoUrl) {
-    params.video = { url: input.videoUrl };
-  }
+  if (input.imageUrl) params.image = { url: input.imageUrl, mimeType: input.imageMime || 'image/jpeg' };
+  if (input.videoUrl) params.video = { url: input.videoUrl };
   const r = await http.post(`${API_BASE}/workflows/gemini-omni/video/submit`, { params }, {
     headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
     validateStatus: () => true,
@@ -1095,6 +1089,123 @@ export async function generateGeminiOmni(input: {
     });
     input.onStatus?.('poll');
     return pollGeminiOmniResult(credId, id, {
+      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+    });
+  });
+}
+
+// ─── Gemini Omni 1.2 (Picsart gateway) ─────────────────────────────────────────
+export const GEMINI_OMNI_12_MODEL = 'gemini-omni-1.1-flash-preview';
+export const GEMINI_OMNI_12_MAX_IMAGES = 5;
+export const GEMINI_OMNI_12_DURATION_SECONDS = 10;
+export const GEMINI_OMNI_12_RESOLUTION = '360p';
+export type GeminiOmni12AspectRatio = '9:16' | '16:9';
+
+export function buildGeminiOmni12Params(input: {
+  prompt: string;
+  imageReferences?: Array<{ url: string; mimeType: string }>;
+  videoReference?: { url: string; mimeType: string };
+  aspectRatio: GeminiOmni12AspectRatio;
+}) {
+  const referenceImages = (input.imageReferences ?? []).slice(0, GEMINI_OMNI_12_MAX_IMAGES);
+  const params: Record<string, unknown> = {
+    prompt: input.prompt,
+    model: GEMINI_OMNI_12_MODEL,
+    aspectRatio: input.aspectRatio,
+    durationSeconds: GEMINI_OMNI_12_DURATION_SECONDS,
+    resolution: GEMINI_OMNI_12_RESOLUTION,
+  };
+  if (referenceImages.length > 0) params.referenceImages = referenceImages;
+  if (input.videoReference) params.referenceVideos = [input.videoReference];
+  return params;
+}
+
+export async function submitGeminiOmni12(credId: number, input: {
+  prompt: string;
+  imageReferences?: Array<{ url: string; mimeType: string }>;
+  videoReference?: { url: string; mimeType: string };
+  aspectRatio: GeminiOmni12AspectRatio;
+}): Promise<string> {
+  const access = await getAccessToken(credId);
+  const params = buildGeminiOmni12Params(input);
+  const r = await http.post(`${API_BASE}/gw-v2/workflows/gemini-omni/video/submit`, { params }, {
+    headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
+    validateStatus: () => true,
+  });
+  const id = r.data?.response?.id;
+  if (!ok2xx(r.status) || !id) {
+    throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+  }
+  return id;
+}
+
+export async function pollGeminiOmni12Result(
+  credId: number,
+  id: string,
+  opts?: { maxAttempts?: number; intervalMs?: number; onTick?: (elapsedMs: number) => void }
+): Promise<{ url: string; credits?: number }> {
+  const maxAttempts = opts?.maxAttempts ?? 180;
+  const intervalMs = opts?.intervalMs ?? 5000;
+  const start = Date.now();
+  const diag = new PollDiag();
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((res) => setTimeout(res, intervalMs));
+    opts?.onTick?.(Date.now() - start);
+    const access = await getAccessToken(credId);
+    const r = await http.get(`${API_BASE}/gw-v2/workflows/gemini-omni/video/${id}/result`, {
+      headers: commonHeaders({ authorization: `Bearer ${access}` }),
+      validateStatus: () => true,
+    });
+    if (!diag.note(r)) continue;
+    const resp = r.data?.response;
+    const status = String(resp?.status ?? '').toUpperCase();
+    if (status === 'COMPLETED') {
+      const url = Array.isArray(resp?.result) ? resp.result[0]?.url : resp?.result?.url;
+      if (!url) throw new Error('PICSART_NO_RESULT_URL');
+      return { url, credits: resp.usage?.credits };
+    }
+    if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
+      throw new Error(`PICSART_GEN_FAILED: ${JSON.stringify(resp).slice(0, 200)}`);
+    }
+  }
+  throw diag.timeoutError();
+}
+
+export async function generateGeminiOmni12(input: {
+  userId: number;
+  prompt: string;
+  images?: Array<{ buffer: Buffer; name?: string; mime?: string }>;
+  videoBuffer?: Buffer;
+  videoName?: string;
+  videoMime?: string;
+  aspectRatio: GeminiOmni12AspectRatio;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  return runWithAccount(input.userId, 'p100', async (credId) => {
+    const imageReferences: Array<{ url: string; mimeType: string }> = [];
+    const images = (input.images ?? []).slice(0, GEMINI_OMNI_12_MAX_IMAGES);
+    if (images.length > 0 || input.videoBuffer) input.onStatus?.('upload');
+    for (const [index, image] of images.entries()) {
+      const mimeType = image.mime || 'image/jpeg';
+      const url = await uploadFile(credId, image.buffer, image.name || `reference-${index + 1}.jpg`, mimeType);
+      imageReferences.push({ url, mimeType });
+    }
+    let videoReference: { url: string; mimeType: string } | undefined;
+    if (input.videoBuffer) {
+      const mimeType = input.videoMime || 'video/mp4';
+      const url = await uploadFile(credId, input.videoBuffer, input.videoName || 'reference.mp4', mimeType);
+      videoReference = { url, mimeType };
+    }
+    input.onStatus?.('submit');
+    const id = await submitGeminiOmni12(credId, {
+      prompt: input.prompt,
+      imageReferences,
+      videoReference,
+      aspectRatio: input.aspectRatio,
+    });
+    input.onStatus?.('poll');
+    return pollGeminiOmni12Result(credId, id, {
       onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
     });
   });

@@ -153,6 +153,7 @@ async function checkActiveSubscription(userId: number): Promise<boolean> {
 const MODEL_PRICES = {
   sora: 2500,
   gemini_omni: 2500,
+  gemini_omni_12: 3500,
   chat: 100,           // Chat AI per pesan
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
   kling_p3: 2500,      // Kling MC V3.0 PRO P3 (Edanbot, kling-motion-26-pro)
@@ -1590,11 +1591,13 @@ interface Session {
   veoliteInputMode?: 'i2v' | 't2v';
   veoliteImageUrl?: string;
   veoliteRatio?: string;
-  // Gemini Omni wizard state (text-to-video, image-to-video, or image+video ref)
+  // Gemini Omni wizard state (legacy or new 1.2 model)
+  gomniModel?: 'legacy' | '1.2';
   gomniInputMode?: 'i2v' | 't2v' | 'v2v';
   gomniDuration?: number;
   gomniRatio?: string;
   gomniImageUrl?: string;
+  gomniImageUrls?: string[];
   gomniVideoUrl?: string;
   // Image generation wizard state (SnapGen: Nano Banana Pro / 2 / 2 Lite)
   imgModel?: 'nano-banana-pro' | 'nano-banana-2' | 'nano-banana-2-lite';
@@ -1735,6 +1738,7 @@ function generationDraftKindForStart(data: string): GenerationDraftKind | undefi
     mode_veofast: 'veofast',
     mode_veolite: 'veolite',
     mode_gomni: 'gomni',
+    mode_gomni12: 'gomni',
     mode_nbpro: 'image',
     mode_nb2: 'image',
     mode_nb2lite: 'image',
@@ -2207,7 +2211,8 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🎥 Sora 2 (OpenAI)', 'mode_sora')],
     [Markup.button.callback('⚡ Veo 3.1 Fast (Full HD)', 'mode_veofast')],
     [Markup.button.callback('🎞️ Veo 3.1 Lite (Full HD)', 'mode_veolite')],
-    [Markup.button.callback('✨ Gemini Omni (Google)', 'mode_gomni')],
+    [Markup.button.callback('✨ Gemini Omni', 'mode_gomni')],
+    [Markup.button.callback('✨ Gemini Omni 1.2', 'mode_gomni12')],
     [Markup.button.callback('── 🔧 Video Tools ──', 'noop')],
     [Markup.button.callback('🎞️ Topaz 4K Upscaler (60fps)', 'mode_topaz')],
     [Markup.button.callback('🎙️ AI Lipsync (Rp3.000)', 'menu_lipsync')],
@@ -2344,15 +2349,24 @@ function veoliteInputKeyboard() {
   ]);
 }
 
-// ─── Gemini Omni wizard keyboards (text-to-video or image-to-video) ───────────
+// ─── Gemini Omni wizard keyboards ──────────────────────────────────────────────
 
-function gomniInputKeyboard() {
+function gomniInputKeyboard(is12 = false) {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('🖼️ Foto + Prompt', 'go_in_i2v')],
-    [Markup.button.callback('🎬 Foto + Video + Prompt', 'go_in_v2v')],
+    [Markup.button.callback(is12 ? '🖼️ 1–5 Foto + Prompt' : '🖼️ Foto + Prompt', 'go_in_i2v')],
+    [Markup.button.callback(is12 ? '🎬 1–5 Foto + Video + Prompt' : '🎬 Foto + Video + Prompt', 'go_in_v2v')],
     [Markup.button.callback('✍️ Prompt Saja', 'go_in_t2v')],
     [Markup.button.callback('« Kembali', 'back_main')],
   ]);
+}
+
+function gomniAddPhotoKeyboard(imageCount: number, needsVideo: boolean) {
+  const rows = [];
+  if (imageCount < picsart.GEMINI_OMNI_12_MAX_IMAGES) {
+    rows.push([Markup.button.callback('➕ Tambah Foto', 'go_add_photo')]);
+  }
+  rows.push([Markup.button.callback(needsVideo ? '🎬 Lanjut ke Video' : '✅ Lanjut ke Prompt', 'go_photos_done')]);
+  return Markup.inlineKeyboard(rows);
 }
 
 function gomniDurationKeyboard() {
@@ -2578,6 +2592,7 @@ function hargaText(): string {
     `• Veo 3.1 Fast (Full HD) — ${formatRupiah(MODEL_PRICES.veo_fast)}\n` +
     `• Veo 3.1 Lite (Full HD) — ${formatRupiah(MODEL_PRICES.veo_lite)}\n` +
     `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
+    `• Gemini Omni 1.2 (360p · 10 detik) — ${formatRupiah(MODEL_PRICES.gemini_omni_12)}\n` +
     `• Chat AI — ${formatRupiah(MODEL_PRICES.chat)}/pesan\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
     `• Seedance 2.0 Mini 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_mini'))}\n` +
@@ -4161,6 +4176,7 @@ bot.on('callback_query', async (ctx) => {
   if (data === 'mode_gomni') {
     setSession(userId, {
       mode: 'idle',
+      gomniModel: 'legacy',
       gomniInputMode: undefined,
       gomniDuration: undefined,
       gomniRatio: undefined,
@@ -4173,9 +4189,39 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  if (data === 'mode_gomni12') {
+    setSession(userId, {
+      mode: 'idle',
+      gomniModel: '1.2',
+      gomniInputMode: undefined,
+      gomniDuration: picsart.GEMINI_OMNI_12_DURATION_SECONDS,
+      gomniRatio: undefined,
+      gomniImageUrl: undefined,
+      gomniImageUrls: [],
+      gomniVideoUrl: undefined,
+    });
+    return ctx.editMessageText(
+      `✨ *Gemini Omni 1.2*\n\nOutput: *360p · 10 detik*\nHarga: *${formatRupiah(MODEL_PRICES.gemini_omni_12)}* per video\n\nPilih cara membuat video:`,
+      { parse_mode: 'Markdown', ...gomniInputKeyboard(true) }
+    );
+  }
+
   if (data === 'go_in_i2v' || data === 'go_in_t2v' || data === 'go_in_v2v') {
     const inputMode = data === 'go_in_i2v' ? 'i2v' : data === 'go_in_v2v' ? 'v2v' : 't2v';
-    setSession(userId, { gomniInputMode: inputMode });
+    const is12 = getSession(userId).gomniModel === '1.2';
+    setSession(userId, {
+      gomniInputMode: inputMode,
+      gomniDuration: is12 ? picsart.GEMINI_OMNI_12_DURATION_SECONDS : undefined,
+      gomniImageUrl: undefined,
+      gomniImageUrls: is12 ? [] : undefined,
+      gomniVideoUrl: undefined,
+    });
+    if (is12) {
+      return ctx.editMessageText(
+        '✨ *Gemini Omni 1.2*\n\nDurasi: *10 detik* · Output: *360p*\n\n*Langkah 1:* Pilih rasio layar:',
+        { parse_mode: 'Markdown', ...gomniRatioKeyboard() }
+      );
+    }
     return ctx.editMessageText(
       '✨ *Gemini Omni*\n\n*Langkah 1:* Pilih durasi video:',
       { parse_mode: 'Markdown', ...gomniDurationKeyboard() }
@@ -4195,15 +4241,56 @@ bot.on('callback_query', async (ctx) => {
     const ratio = SD_RATIO_MAP[data.replace('go_ratio_', '')] ?? '9:16';
     const session = getSession(userId);
     if (session.gomniInputMode === 'i2v' || session.gomniInputMode === 'v2v') {
-      setSession(userId, { gomniRatio: ratio, mode: 'gomni_wait_image' });
+      setSession(userId, {
+        gomniRatio: ratio,
+        mode: 'gomni_wait_image',
+        gomniImageUrl: undefined,
+        gomniImageUrls: session.gomniModel === '1.2' ? [] : undefined,
+      });
       return ctx.editMessageText(
-        `✨ *Gemini Omni*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Kirim *foto acuan* untuk video kamu.`,
+        session.gomniModel === '1.2'
+          ? `✨ *Gemini Omni 1.2*\n\nRasio: *${ratio}* · 360p · 10 detik\n\n*Langkah 2:* Kirim *1–${picsart.GEMINI_OMNI_12_MAX_IMAGES} foto acuan* untuk video kamu.`
+          : `✨ *Gemini Omni*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Kirim *foto acuan* untuk video kamu.`,
         { parse_mode: 'Markdown' }
       );
     }
     setSession(userId, { gomniRatio: ratio, mode: 'gomni_wait_prompt' });
     return ctx.editMessageText(
-      `✨ *Gemini Omni*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).`,
+      session.gomniModel === '1.2'
+        ? `✨ *Gemini Omni 1.2*\n\nRasio: *${ratio}* · 360p · 10 detik\n\n*Langkah 2:* Kirim *prompt teks* untuk video kamu.`
+        : `✨ *Gemini Omni*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data === 'go_add_photo') {
+    const session = getSession(userId);
+    const count = session.gomniImageUrls?.length ?? 0;
+    if (session.gomniModel !== '1.2' || session.mode !== 'gomni_wait_image' || count < 1 || count >= picsart.GEMINI_OMNI_12_MAX_IMAGES) {
+      return ctx.answerCbQuery('Sesi sudah berubah, ulangi dari /menu.').catch(() => {});
+    }
+    return ctx.editMessageText(
+      `✨ *Gemini Omni 1.2*\n\n📸 Kirim *foto acuan ke-${count + 1}* (maksimal ${picsart.GEMINI_OMNI_12_MAX_IMAGES} foto).`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data === 'go_photos_done') {
+    const session = getSession(userId);
+    const count = session.gomniImageUrls?.length ?? 0;
+    if (session.gomniModel !== '1.2' || session.mode !== 'gomni_wait_image' || count < 1) {
+      return ctx.answerCbQuery('Kirim minimal 1 foto dulu ya.').catch(() => {});
+    }
+    if (session.gomniInputMode === 'v2v') {
+      setSession(userId, { mode: 'gomni_wait_video' });
+      return ctx.editMessageText(
+        `✨ *Gemini Omni 1.2*\n\n✅ ${count} foto acuan diterima.\n\n*Langkah berikutnya:* Kirim *video referensi*.`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+    setSession(userId, { mode: 'gomni_wait_prompt' });
+    return ctx.editMessageText(
+      `✨ *Gemini Omni 1.2*\n\n✅ ${count} foto acuan diterima.\n\n*Langkah terakhir:* Kirim *prompt teks* untuk video kamu.`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -4846,6 +4933,29 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
   }
 
   if (session.mode === 'gomni_wait_image') {
+    if (session.gomniModel === '1.2') {
+      const urls = [...(session.gomniImageUrls ?? []), fileUrl].slice(0, picsart.GEMINI_OMNI_12_MAX_IMAGES);
+      const count = urls.length;
+      setSession(userId, { gomniImageUrl: urls[0], gomniImageUrls: urls });
+      if (count >= picsart.GEMINI_OMNI_12_MAX_IMAGES) {
+        if (session.gomniInputMode === 'v2v') {
+          setSession(userId, { mode: 'gomni_wait_video' });
+          return ctx.reply(
+            `✅ ${count} foto acuan diterima (maksimal ${picsart.GEMINI_OMNI_12_MAX_IMAGES}).\n\n*Langkah berikutnya:* Kirim *video referensi*.`,
+            { parse_mode: 'Markdown' }
+          );
+        }
+        setSession(userId, { mode: 'gomni_wait_prompt' });
+        return ctx.reply(
+          `✅ ${count} foto acuan diterima (maksimal ${picsart.GEMINI_OMNI_12_MAX_IMAGES}).\n\n*Langkah terakhir:* Kirim *prompt teks* untuk video kamu.`,
+          { parse_mode: 'Markdown' }
+        );
+      }
+      return ctx.reply(
+        `✅ Foto acuan ke-${count} diterima.\n\nKamu bisa tambah foto (maksimal ${picsart.GEMINI_OMNI_12_MAX_IMAGES}) atau lanjut.`,
+        { parse_mode: 'Markdown', ...gomniAddPhotoKeyboard(count, session.gomniInputMode === 'v2v') }
+      );
+    }
     if (session.gomniInputMode === 'v2v') {
       setSession(userId, { gomniImageUrl: fileUrl, mode: 'gomni_wait_video' });
       return ctx.reply(
@@ -5462,21 +5572,29 @@ bot.on('text', async (ctx) => {
       setSession(userId, { mode: 'idle' });
       return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
     }
-    if (session.gomniInputMode === 'v2v' && (!session.gomniImageUrl || !session.gomniVideoUrl)) {
+    const gomniImageUrls = session.gomniModel === '1.2'
+      ? session.gomniImageUrls ?? []
+      : session.gomniImageUrl
+        ? [session.gomniImageUrl]
+        : [];
+    if (session.gomniInputMode === 'v2v' && (gomniImageUrls.length === 0 || !session.gomniVideoUrl)) {
       setSession(userId, { mode: 'idle' });
       return ctx.reply('⚠️ Mode ini butuh *foto* dan *video referensi*. Ulangi dari /menu.', { parse_mode: 'Markdown' });
     }
     const opts = {
+      model: session.gomniModel ?? 'legacy',
       inputMode: session.gomniInputMode ?? 't2v',
       imageUrl: session.gomniImageUrl,
+      imageUrls: gomniImageUrls,
       videoUrl: session.gomniVideoUrl,
-      duration: session.gomniDuration ?? 10,
+      duration: session.gomniModel === '1.2' ? picsart.GEMINI_OMNI_12_DURATION_SECONDS : session.gomniDuration ?? 10,
       ratio: session.gomniRatio ?? '9:16',
     };
     setSession(userId, { mode: 'idle' });
-    const statusMsg = await ctx.reply('⏳ Memproses Gemini Omni...\nHasil dikirim otomatis (~3-8 menit).', { parse_mode: 'Markdown' });
+    const label = session.gomniModel === '1.2' ? 'Gemini Omni 1.2' : 'Gemini Omni';
+    const statusMsg = await ctx.reply(`⏳ Memproses ${label}...\nHasil dikirim otomatis (~3-8 menit).`, { parse_mode: 'Markdown' });
     runGeminiOmni(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
-      .catch(e => console.error(`[${userId}] Gemini Omni gen error:`, e.message));
+      .catch(e => console.error(`[${userId}] ${label} gen error:`, e.message));
     return;
   }
 
@@ -6344,7 +6462,7 @@ async function runPicsartI2v(
         lastEdit = Date.now();
         bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
       },
-      onPoll: (elapsedSec) => {
+      onPoll: (elapsedSec: number) => {
         if (Date.now() - lastEdit < 30_000) return;
         lastEdit = Date.now();
         const mins = Math.floor(elapsedSec / 60);
@@ -6636,7 +6754,7 @@ async function runRunway(
         lastEdit = Date.now();
         bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
       },
-      onPoll: (elapsedSec) => {
+      onPoll: (elapsedSec: number) => {
         if (Date.now() - lastEdit < 30_000) return;
         lastEdit = Date.now();
         const mins = Math.floor(elapsedSec / 60);
@@ -7239,16 +7357,20 @@ async function runGeminiOmni(
   statusMsgId: number,
   prompt: string,
   opts: {
+    model: 'legacy' | '1.2';
     inputMode: 'i2v' | 't2v' | 'v2v';
     imageUrl?: string;
+    imageUrls: string[];
     videoUrl?: string;
     duration: number;
     ratio: string;
   }
 ) {
-  console.log(`[${userId}] Gemini Omni started — mode: ${opts.inputMode}, dur: ${opts.duration}s, ratio: ${opts.ratio}`);
+  const is12 = opts.model === '1.2';
+  const label = is12 ? 'Gemini Omni 1.2' : 'Gemini Omni';
+  console.log(`[${userId}] ${label} started — mode: ${opts.inputMode}, refs: ${opts.imageUrls.length}, dur: ${opts.duration}s, ratio: ${opts.ratio}`);
 
-  const PRICE = MODEL_PRICES.gemini_omni;
+  const PRICE = is12 ? MODEL_PRICES.gemini_omni_12 : MODEL_PRICES.gemini_omni;
   const charge = await beginCharge(dbUserId, PRICE, 3);
   if (!charge.ok) {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
@@ -7257,16 +7379,13 @@ async function runGeminiOmni(
   let refund = true;
 
   try {
-    let imageBuffer: Buffer | undefined;
-    let imageName: string | undefined;
-    let imageMime: string | undefined;
-    if ((opts.inputMode === 'i2v' || opts.inputMode === 'v2v') && opts.imageUrl) {
-      const img = await downloadBuffer(opts.imageUrl);
-      imageBuffer = img.buf;
-      imageName = `reference.${img.ext}`;
-      imageMime = img.mime;
-      console.log(`[${userId}] Gemini Omni ref image — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
+    const downloadedImages: Array<{ buffer: Buffer; name: string; mime: string }> = [];
+    for (const [index, imageUrl] of opts.imageUrls.entries()) {
+      const img = await downloadBuffer(imageUrl);
+      downloadedImages.push({ buffer: img.buf, name: `reference-${index + 1}.${img.ext}`, mime: img.mime });
+      console.log(`[${userId}] ${label} ref image ${index + 1}/${opts.imageUrls.length} — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
     }
+    const legacyImage = downloadedImages[0];
 
     let videoBuffer: Buffer | undefined;
     let videoName: string | undefined;
@@ -7276,31 +7395,21 @@ async function runGeminiOmni(
       videoBuffer = vid.buf;
       videoName = `reference.${vid.ext}`;
       videoMime = vid.mime;
-      console.log(`[${userId}] Gemini Omni ref video — ${vid.mime} ${(vid.buf.length / 1024 / 1024).toFixed(1)}MB`);
+      console.log(`[${userId}] ${label} ref video — ${vid.mime} ${(vid.buf.length / 1024 / 1024).toFixed(1)}MB`);
     }
 
     let lastEdit = 0;
-    const result = await picsart.generateGeminiOmni({
-      userId: dbUserId,
-      prompt,
-      imageBuffer,
-      imageName,
-      imageMime,
-      videoBuffer,
-      videoName,
-      videoMime,
-      durationSeconds: opts.duration,
-      aspectRatio: opts.ratio,
-      onStatus: (stage) => {
+    const callbacks = {
+      onStatus: (stage: 'upload' | 'submit' | 'poll') => {
         const text = stage === 'upload'
-          ? '⏳ Gemini Omni: mengunggah foto/video ke server... (1/3)'
+          ? `⏳ ${label}: mengunggah foto/video ke server... (1/3)`
           : stage === 'submit'
-            ? '⏳ Gemini Omni: mengirim perintah ke server... (2/3)'
-            : '⏳ Gemini Omni: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 3–8 menit. Jangan tutup chat ini.';
+            ? `⏳ ${label}: mengirim perintah ke server... (2/3)`
+            : `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 3–8 menit. Jangan tutup chat ini.`;
         lastEdit = Date.now();
         bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
       },
-      onPoll: (elapsedSec) => {
+      onPoll: (elapsedSec: number) => {
         if (Date.now() - lastEdit < 30_000) return;
         lastEdit = Date.now();
         const mins = Math.floor(elapsedSec / 60);
@@ -7308,15 +7417,39 @@ async function runGeminiOmni(
         const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
         bot.telegram.editMessageText(
           chatId, statusMsgId, undefined,
-          `⏳ Gemini Omni: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${timer} (biasanya 3–8 menit).\nJangan tutup chat ini, video dikirim otomatis.`
+          `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${timer} (biasanya 3–8 menit).\nJangan tutup chat ini, video dikirim otomatis.`
         ).catch(() => {});
       },
-    });
+    };
+    const result = is12
+      ? await picsart.generateGeminiOmni12({
+          userId: dbUserId,
+          prompt,
+          images: downloadedImages,
+          videoBuffer,
+          videoName,
+          videoMime,
+          aspectRatio: opts.ratio as picsart.GeminiOmni12AspectRatio,
+          ...callbacks,
+        })
+      : await picsart.generateGeminiOmni({
+          userId: dbUserId,
+          prompt,
+          imageBuffer: legacyImage?.buffer,
+          imageName: legacyImage?.name,
+          imageMime: legacyImage?.mime,
+          videoBuffer,
+          videoName,
+          videoMime,
+          durationSeconds: opts.duration,
+          aspectRatio: opts.ratio,
+          ...callbacks,
+        });
 
     const delivered = await sendResult(
       chatId,
       result.url,
-      `✨ Gemini Omni (${opts.duration}s · ${opts.ratio})\n\n/menu untuk buat lagi`,
+      `✨ ${label} (${is12 ? '360p · 10s' : `${opts.duration}s`} · ${opts.ratio})\n\n/menu untuk buat lagi`,
       true
     );
     if (delivered) {
@@ -7324,12 +7457,12 @@ async function runGeminiOmni(
       const newCount = await incrementKlingUsage(dbUserId);
       markGenSuccess(userId);
       await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-      console.log(`[${userId}] Gemini Omni done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+      console.log(`[${userId}] ${label} done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
     }
 
   } catch (err: any) {
     const msg = describeError(err);
-    console.error(`[${userId}] Gemini Omni error: ${msg}`);
+    console.error(`[${userId}] ${label} error: ${msg}`);
     let friendly: string;
     if (msg.includes('PICSART_TIMEOUT')) {
       friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
