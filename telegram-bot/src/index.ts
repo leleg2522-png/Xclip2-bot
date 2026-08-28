@@ -6287,14 +6287,17 @@ async function runPicsartI2v(
     ? `${opts.ratio} · ${cfg.settingsLabel}`
     : cfg.settingsLabel;
   const PRICE = opts.priceKey ? MODEL_PRICES[opts.priceKey] : getPicsartI2vPrice(opts.model);
+  let stage = 'charge';
   const charge = await beginCharge(dbUserId, PRICE, 3);
   if (!charge.ok) {
+    console.warn(`[picsart-i2v] user=${userId} model=${opts.model} label="${label}" stage=charge rejected reason=${charge.reason}`);
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
     return;
   }
   let refund = true;
 
   try {
+    stage = 'download';
     const maxImages = opts.model === 'wan_v3' ? picsart.PICSART_I2V_MAX_IMAGES : 1;
     const images = await Promise.all(
       opts.imageUrls.slice(0, maxImages).map(async (imageUrl, index) => {
@@ -6316,14 +6319,16 @@ async function runPicsartI2v(
       prompt,
       images,
       ratio: opts.ratio,
-      onStatus: (stage) => {
-        const text = stage === 'upload'
+      onStatus: (providerStage) => {
+        const text = providerStage === 'upload'
           ? `⏳ ${label}: mengunggah foto ke server... (1/3)`
-          : stage === 'submit'
+          : providerStage === 'submit'
             ? `⏳ ${label}: mengirim perintah ke server... (2/3)`
-            : stage === 'export'
+            : providerStage === 'export'
               ? `⏳ ${label}: menyiapkan hasil 1080p... (selangkah lagi)`
               : `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Biasanya 3–10 menit. Jangan tutup chat ini.`;
+        stage = providerStage;
+        console.log(`[picsart-i2v] user=${userId} model=${opts.model} label="${label}" stage=${providerStage}`);
         lastEdit = Date.now();
         bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
       },
@@ -6342,6 +6347,7 @@ async function runPicsartI2v(
       },
     });
 
+    stage = 'delivery';
     const delivered = await sendResult(
       chatId,
       result.url,
@@ -6357,7 +6363,12 @@ async function runPicsartI2v(
     }
   } catch (err: any) {
     const msg = describeError(err);
-    console.error(`[${userId}] ${label} error: ${msg}`);
+    console.error(
+      `[picsart-i2v] user=${userId} dbUser=${dbUserId} model=${opts.model} ` +
+      `label="${label}" stage=${stage} images=${opts.imageUrls.length} ratio=${opts.ratio ?? 'default'} ` +
+      `error=${msg}`,
+      err?.stack ? `\n${err.stack}` : ''
+    );
     let friendly = '❌ Gagal memproses. Coba lagi nanti.';
     if (msg.includes('PICSART_TIMEOUT')) {
       friendly = '❌ Proses terlalu lama. Coba lagi nanti.';

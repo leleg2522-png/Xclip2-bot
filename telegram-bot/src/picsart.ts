@@ -360,6 +360,10 @@ async function runWithAccount<T>(
     } catch (e: any) {
       lastErr = e;
       const msg = String(e?.message ?? '');
+      console.error(
+        `[picsart:account] user=${userId} pool=${poolFilter ?? 'any'} ` +
+        `cred=${credId} attempt=${attempt + 1}/${ceiling} failed: ${msg || e?.name || 'unknown error'}`
+      );
       if (msg.includes('PICSART_REFRESH_DEAD')) {
         // Account already marked 'dead' inside doRefresh — move to next account.
         continue;
@@ -1802,6 +1806,10 @@ export async function generatePicsartI2v(input: {
 
     const imageUrls: string[] = [];
     for (const [index, image] of imagesToUpload.entries()) {
+      console.log(
+        `[picsart:i2v] model=${input.model} cred=${credId} stage=upload ` +
+        `image=${index + 1}/${imagesToUpload.length} bytes=${image.buffer.length} mime=${image.mime || 'image/jpeg'}`
+      );
       input.onStatus?.('upload');
       const uploadBuffer = input.model === 'pixverse_v6'
         ? await cropImageToAspectRatio(image.buffer, input.ratio ?? '9:16')
@@ -1815,7 +1823,9 @@ export async function generatePicsartI2v(input: {
         input.model === 'pixverse_v6' ? 'image/jpeg' : (image.mime || 'image/jpeg')
       );
       imageUrls.push(imageUrl);
+      console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=upload-complete image=${index + 1}/${imagesToUpload.length}`);
     }
+    console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=submit images=${imageUrls.length} ratio=${input.ratio ?? '9:16'}`);
     input.onStatus?.('submit');
     const id = await submitPicsartI2v(
       credId,
@@ -1824,17 +1834,22 @@ export async function generatePicsartI2v(input: {
       imageUrls[0],
       { ratio: input.ratio, imageUrls }
     );
+    console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=submit-accepted job=${id}`);
     input.onStatus?.('poll');
     try {
       const rawResult = await pollPicsartI2vResult(credId, input.model, id, {
         onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
       });
+      console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=generation-complete job=${id}`);
       if (!shouldExportPicsartI2v(input.model)) return rawResult;
       input.onStatus?.('export');
+      console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=export-submit job=${id} ratio=${input.ratio ?? '9:16'}`);
       const exportId = await submitPicsartI2vExport(credId, rawResult.url, input.ratio ?? '9:16');
+      console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=export-accepted job=${id} exportJob=${exportId}`);
       const exported = await pollPicsartI2vExportResult(credId, exportId, {
         onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
       });
+      console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=export-complete job=${id} exportJob=${exportId}`);
       return { ...rawResult, url: exported.url };
     } catch (e: any) {
       // An accepted provider job must never be replayed. runWithAccount normally
