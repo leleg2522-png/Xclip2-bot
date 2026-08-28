@@ -1179,7 +1179,7 @@ export async function generateGeminiOmni12(input: {
   videoName?: string;
   videoMime?: string;
   aspectRatio: GeminiOmni12AspectRatio;
-  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
   return runWithAccount(input.userId, 'p100', async (credId) => {
@@ -1205,9 +1205,15 @@ export async function generateGeminiOmni12(input: {
       aspectRatio: input.aspectRatio,
     });
     input.onStatus?.('poll');
-    return pollGeminiOmni12Result(credId, id, {
+    const rawResult = await pollGeminiOmni12Result(credId, id, {
       onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
     });
+    input.onStatus?.('export');
+    const exportId = await submitPicsartI2vExport(credId, rawResult.url, input.aspectRatio);
+    const exported = await pollPicsartI2vExportResult(credId, exportId, {
+      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+    });
+    return { ...rawResult, url: exported.url };
   });
 }
 
