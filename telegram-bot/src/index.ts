@@ -3861,10 +3861,17 @@ bot.on('callback_query', async (ctx) => {
     };
     const ratio = ratioMap[data];
     const session = getSession(userId);
-    if (!ratio || !['wan_v3', 'pixverse_v6'].includes(session.picsartI2vModel ?? '')) {
+    const ratioModels: picsart.PicsartI2vModelKey[] = [
+      'seedance_2_mini',
+      'seedance_2_fast',
+      'seedance_2',
+      'wan_v3',
+      'pixverse_v6',
+    ];
+    if (!ratio || !ratioModels.includes(session.picsartI2vModel ?? 'grok_imagine')) {
       return ctx.reply('⚠️ Pilihan rasio sudah tidak aktif. Mulai lagi dari /menu.');
     }
-    const model = session.picsartI2vModel as 'wan_v3' | 'pixverse_v6';
+    const model = session.picsartI2vModel as picsart.PicsartI2vModelKey;
     const cfg = picsart.PICSART_I2V_MODELS[model];
     setSession(userId, {
       mode: 'picsart_i2v_wait_image',
@@ -3919,7 +3926,13 @@ bot.on('callback_query', async (ctx) => {
       return ctx.answerCbQuery('Model tidak dikenali. Buka menu lagi.').catch(() => {});
     }
     const cfg = picsart.PICSART_I2V_MODELS[model];
-    if (model === 'wan_v3' || model === 'pixverse_v6') {
+    if (
+      model === 'seedance_2_mini'
+      || model === 'seedance_2_fast'
+      || model === 'seedance_2'
+      || model === 'wan_v3'
+      || model === 'pixverse_v6'
+    ) {
       setSession(userId, {
         mode: 'picsart_i2v_wait_ratio',
         picsartI2vModel: model,
@@ -4831,7 +4844,13 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     }
     const cfg = picsart.PICSART_I2V_MODELS[model];
     const displayLabel = session.picsartI2vDisplayLabel ?? cfg.label;
-    const settingsLabel = (model === 'wan_v3' || model === 'pixverse_v6') && session.picsartI2vRatio
+    const settingsLabel = (
+      model === 'seedance_2_mini'
+      || model === 'seedance_2_fast'
+      || model === 'seedance_2'
+      || model === 'wan_v3'
+      || model === 'pixverse_v6'
+    ) && session.picsartI2vRatio
       ? `${session.picsartI2vRatio} · ${cfg.settingsLabel}`
       : cfg.settingsLabel;
     if (model === 'wan_v3') {

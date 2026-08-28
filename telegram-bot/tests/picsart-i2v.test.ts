@@ -84,6 +84,7 @@ assert.deepEqual(seedanceMini, {
   generate_audio: true,
   options: {},
 });
+assert.equal(buildPicsartI2vParams('seedance_2_mini', prompt, imageUrl, { ratio: '16:9' }).ratio, '16:9');
 
 const seedanceFast = buildPicsartI2vParams('seedance_2_fast', prompt, imageUrl);
 assert.deepEqual(seedanceFast, {
@@ -98,6 +99,7 @@ assert.deepEqual(seedanceFast, {
   generate_audio: true,
   options: {},
 });
+assert.equal(buildPicsartI2vParams('seedance_2_fast', prompt, imageUrl, { ratio: '16:9' }).ratio, '16:9');
 
 const seedance = buildPicsartI2vParams('seedance_2', prompt, imageUrl);
 assert.deepEqual(seedance, {
@@ -112,6 +114,7 @@ assert.deepEqual(seedance, {
   generate_audio: true,
   options: {},
 });
+assert.equal(buildPicsartI2vParams('seedance_2', prompt, imageUrl, { ratio: '16:9' }).ratio, '16:9');
 
 const grok = buildPicsartI2vParams('grok_imagine', prompt, imageUrl);
 assert.deepEqual(grok, {
@@ -269,6 +272,9 @@ assert.match(botSource, /Seedance 2\.0 Fast 1080p/);
 assert.match(botSource, /Seedance 2\.0 1080p/);
 assert.match(botSource, /picsart_ratio_916/);
 assert.match(botSource, /picsart_ratio_169/);
+assert.match(botSource, /seedance_2_mini[\s\S]*picsart_i2v_wait_ratio/);
+assert.match(botSource, /seedance_2_fast[\s\S]*picsart_i2v_wait_ratio/);
+assert.match(botSource, /seedance_2[\s\S]*picsart_i2v_wait_ratio/);
 const picsartSource = readFileSync(new URL('../src/picsart.ts', import.meta.url), 'utf8');
 assert.match(picsartSource, /generateGeminiOmni12[\s\S]*submitPicsartI2vExport/);
 assert.match(picsartSource, /\/gw-v2\/workflows\/\$\{cfg\.workflowPath\}/);
