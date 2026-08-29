@@ -172,6 +172,7 @@ const MODEL_PRICES = {
   topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 4× 60fps)
   picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
   picsart_seedance_2_mini: 3500, // Seedance 2.0 Mini, delivered as 1080p
+  picsart_seedance_2_mini_edit: 3500, // Seedance 2.0 Mini Video Edit, delivered as 1080p
   picsart_seedance_2: 4000, // Seedance 2.0 Mini/Fast/Standard, delivered as 1080p
   picsart_wan_v3: 5000, // Wan 3.0 30s, delivered as 1080p
   picsart_seedance_25: 4500, // Public Seedance 2.5 label, routed through Wan 3.0 Prime
@@ -1522,6 +1523,10 @@ type Mode =
   | 'picsart_i2v_wait_ratio'
   | 'picsart_i2v_wait_image'
   | 'picsart_i2v_wait_prompt'
+  | 'seedance_mini_edit_wait_ratio'
+  | 'seedance_mini_edit_wait_video'
+  | 'seedance_mini_edit_wait_image'
+  | 'seedance_mini_edit_wait_prompt'
   | 'oneover_wait_image'
   | 'oneover_wait_prompt'
   | 'kling21_wait_image'
@@ -1635,6 +1640,11 @@ interface Session {
   picsartI2vImageUrl?: string;
   picsartI2vImageUrls?: string[];
   picsartI2vPriceKey?: 'picsart_seedance_25' | 'picsart_wan_v3';
+  // Separate Seedance 2 Mini Video Edit wizard state.
+  seedanceMiniEditRatio?: picsart.WanV3AspectRatio;
+  seedanceMiniEditVideoFileId?: string;
+  seedanceMiniEditVideoMime?: string;
+  seedanceMiniEditImageFileId?: string;
   // Seedance 2.5 Bridge stores the Telegram file ID, not a bot-token download URL.
   oneoverImageUrl?: string;
   // Kling 2.1 Pro (10-second image-to-video) wizard state
@@ -1717,6 +1727,8 @@ const GENERATION_DRAFT_MODES = new Set<Mode>([
   'floraimg_wait_prompt', 'lipsync_wait_media', 'lipsync_wait_audio',
   'audio_wait_prompt', 'audio_wait_voice', 'audio_wait_file',
   'picsart_i2v_wait_ratio', 'picsart_i2v_wait_image', 'picsart_i2v_wait_prompt',
+  'seedance_mini_edit_wait_ratio', 'seedance_mini_edit_wait_video',
+  'seedance_mini_edit_wait_image', 'seedance_mini_edit_wait_prompt',
   'oneover_wait_image', 'oneover_wait_prompt',
   'kling21_wait_image', 'kling21_wait_prompt', 'topaz_wait_video',
   'img_wait_image', 'img_wait_prompt',
@@ -1733,6 +1745,7 @@ function generationDraftKindForStart(data: string): GenerationDraftKind | undefi
     mode_klingp3: 'klingp3',
     mode_kling21: 'kling21',
     mode_oneover_seedance25: 'picsart_i2v',
+    mode_seedance_mini_edit: 'picsart_i2v',
     mode_rw: 'runway',
     mode_sora: 'sora',
     mode_veofast: 'veofast',
@@ -1760,6 +1773,7 @@ function generationDraftKindForContinuation(data: string): GenerationDraftKind |
   if (data.startsWith('gi_')) return 'gptimg';
   if (data.startsWith('picsart_ratio_')) return 'picsart_i2v';
   if (data.startsWith('picsart_i2v_')) return 'picsart_i2v';
+  if (data.startsWith('seedance_edit_')) return 'picsart_i2v';
   if (data.startsWith('audio_voice_')) return 'audio';
   return undefined;
 }
@@ -2196,6 +2210,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('── 🎬 Generate Video ──', 'noop')],
     [Markup.button.callback('🕹️ Kling Motion Control', 'menu_kling_list')],
     [Markup.button.callback('🌊 Seedance 2.0 Mini 1080p', 'mode_pi2v_seedance_2_mini')],
+    [Markup.button.callback('🎬 Seedance 2 Mini Video Edit 1080p', 'mode_seedance_mini_edit')],
     [Markup.button.callback('🌊 Seedance 2.0 Fast 1080p', 'mode_pi2v_seedance_2_fast')],
     [Markup.button.callback('🌊 Seedance 2.0 1080p', 'mode_pi2v_seedance_2')],
     [Markup.button.callback('🌊 Seedance 2.5 I2V 1080p', 'mode_oneover_seedance25')],
@@ -2254,6 +2269,22 @@ function picsartI2vRatioKeyboard() {
       Markup.button.callback('🖥️ 16:9 (Landscape)', 'picsart_ratio_169'),
     ],
     [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function seedanceMiniEditRatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('📱 9:16 (Portrait)', 'seedance_edit_ratio_916'),
+      Markup.button.callback('🖥️ 16:9 (Landscape)', 'seedance_edit_ratio_169'),
+    ],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function seedanceMiniEditOptionalImageKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('⏭️ Lewati Foto Acuan', 'seedance_edit_skip_image')],
   ]);
 }
 
@@ -2606,6 +2637,7 @@ function hargaText(): string {
     `• Seedance 2.0 Fast 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_fast'))}\n` +
     `• Seedance 2.0 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
     `• Seedance 2.5 I2V 1080p — ${formatRupiah(MODEL_PRICES.picsart_seedance_25)}\n` +
+    `• Seedance 2 Mini Video Edit 1080p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_mini_edit)}\n` +
     `• Grok Imagine Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v3 Turbo — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v2.6 Pro — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
@@ -3842,6 +3874,59 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  if (data === 'mode_seedance_mini_edit') {
+    setSession(userId, {
+      mode: 'seedance_mini_edit_wait_ratio',
+      seedanceMiniEditRatio: undefined,
+      seedanceMiniEditVideoFileId: undefined,
+      seedanceMiniEditVideoMime: undefined,
+      seedanceMiniEditImageFileId: undefined,
+    });
+    return ctx.editMessageText(
+      `🎬 *Seedance 2 Mini Video Edit 1080p*\n\n` +
+      `Durasi hasil: *15 detik* • Audio: *aktif*\n` +
+      `Proses: native *480p* → export *1080p*\n` +
+      `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_2_mini_edit)}* per video\n\n` +
+      '*Langkah 1:* Pilih rasio hasil:',
+      { parse_mode: 'Markdown', ...seedanceMiniEditRatioKeyboard() }
+    );
+  }
+
+  if (data === 'seedance_edit_ratio_916' || data === 'seedance_edit_ratio_169') {
+    const session = getSession(userId);
+    if (session.mode !== 'seedance_mini_edit_wait_ratio') {
+      return ctx.reply('⚠️ Pilihan rasio sudah tidak aktif. Mulai lagi dari /menu.');
+    }
+    const ratio: picsart.WanV3AspectRatio = data === 'seedance_edit_ratio_169' ? '16:9' : '9:16';
+    setSession(userId, {
+      mode: 'seedance_mini_edit_wait_video',
+      seedanceMiniEditRatio: ratio,
+      seedanceMiniEditVideoFileId: undefined,
+      seedanceMiniEditVideoMime: undefined,
+      seedanceMiniEditImageFileId: undefined,
+    });
+    return ctx.editMessageText(
+      `🎬 *Seedance 2 Mini Video Edit 1080p*\n\n` +
+      `Parameter: *${ratio} · 15 detik · audio · output 1080p*\n\n` +
+      '*Langkah 2:* Kirim *video referensi* yang ingin diedit.\n\n' +
+      'Maksimal ukuran file: *19MB*.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data === 'seedance_edit_skip_image') {
+    const session = getSession(userId);
+    if (session.mode !== 'seedance_mini_edit_wait_image' || !session.seedanceMiniEditVideoFileId) {
+      return ctx.reply('⚠️ Sesi video edit sudah berubah. Mulai lagi dari /menu.');
+    }
+    setSession(userId, { mode: 'seedance_mini_edit_wait_prompt', seedanceMiniEditImageFileId: undefined });
+    return ctx.editMessageText(
+      '✅ Dilanjutkan tanpa foto acuan.\n\n' +
+      '*Langkah terakhir:* Kirim *prompt teks* yang menjelaskan perubahan pada video.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (data === 'mode_oneover_seedance25') {
     setSession(userId, {
       mode: 'picsart_i2v_wait_ratio',
@@ -4788,6 +4873,21 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     );
   }
 
+  if (session.mode === 'seedance_mini_edit_wait_image') {
+    if (!fileId || !session.seedanceMiniEditVideoFileId) {
+      return ctx.reply('⚠️ Foto tidak bisa dibaca. Kirim ulang foto JPG atau PNG.');
+    }
+    setSession(userId, {
+      seedanceMiniEditImageFileId: fileId,
+      mode: 'seedance_mini_edit_wait_prompt',
+    });
+    return ctx.reply(
+      '✅ Foto acuan diterima!\n\n' +
+      '*Langkah terakhir:* Kirim *prompt teks* yang menjelaskan perubahan pada video.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (session.mode === 'kling_wait_prompt') {
     return ctx.reply(
       '⚠️ Sekarang giliran *prompt teks*. Kirim deskripsi gerakan/adegan, atau ketik *-* untuk lewati.',
@@ -5076,6 +5176,27 @@ bot.on('video', async (ctx) => {
     return ctx.reply(
       '✅ Video diterima!\n\n*Langkah terakhir:* Kirim *file audio* (MP3, M4A, WAV, atau voice note) untuk sinkronisasi bibir.',
       { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'seedance_mini_edit_wait_video') {
+    if (vid.file_size && vid.file_size > picsart.SEEDANCE_2_MINI_EDIT_MAX_VIDEO_BYTES) {
+      return ctx.reply(
+        `❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\n` +
+        'Maksimal 19MB. Kompres dulu atau kirim file lebih kecil.'
+      );
+    }
+    setSession(userId, {
+      seedanceMiniEditVideoFileId: vid.file_id,
+      seedanceMiniEditVideoMime: vid.mime_type ?? 'video/mp4',
+      seedanceMiniEditImageFileId: undefined,
+      mode: 'seedance_mini_edit_wait_image',
+    });
+    return ctx.reply(
+      '✅ Video referensi diterima!\n\n' +
+      '*Langkah 3 (opsional):* Kirim *1 foto acuan* untuk karakter/gaya yang ingin diterapkan, ' +
+      'atau tekan tombol lewati.',
+      { parse_mode: 'Markdown', ...seedanceMiniEditOptionalImageKeyboard() }
     );
   }
 
@@ -5384,6 +5505,69 @@ bot.on('text', async (ctx) => {
     const statusMsg = await ctx.reply(`⏳ Memproses Kling MC V3.0 PRO P3...\nHasil dikirim otomatis (~5-20 menit).`);
     runKlingP3(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, characterUrlP3, videoFileIdP3, videoDurationP3, prompt)
       .catch(e => console.error(`[${userId}] KlingP3 gen error:`, e.message));
+    return;
+  }
+
+  // ── Seedance 2 Mini Video Edit prompt ──
+  if (session.mode === 'seedance_mini_edit_wait_prompt') {
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Jelaskan perubahan yang diinginkan pada video.');
+    }
+    if (!session.dbUserId && !await requireLogin(ctx)) return;
+    const activeDraft = getSession(userId);
+    if (activeDraft.mode !== 'seedance_mini_edit_wait_prompt') return;
+    if (!activeDraft.dbUserId || !activeDraft.seedanceMiniEditVideoFileId || !activeDraft.seedanceMiniEditRatio) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply('⚠️ Sesi video edit tidak lengkap. Mulai lagi dari /menu.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(
+        `⏳ Sabar ya, lagi cooldown!\n\nTunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+
+    const dbUserId = activeDraft.dbUserId;
+    const ratio = activeDraft.seedanceMiniEditRatio;
+    const videoFileId = activeDraft.seedanceMiniEditVideoFileId;
+    const videoMime = activeDraft.seedanceMiniEditVideoMime ?? 'video/mp4';
+    const imageFileId = activeDraft.seedanceMiniEditImageFileId;
+    // Claim this prompt synchronously so duplicate Telegram updates cannot create
+    // two paid provider jobs while file links are being resolved.
+    setSession(userId, {
+      mode: 'idle',
+      seedanceMiniEditRatio: undefined,
+      seedanceMiniEditVideoFileId: undefined,
+      seedanceMiniEditVideoMime: undefined,
+      seedanceMiniEditImageFileId: undefined,
+    });
+
+    let videoUrl: string;
+    let imageUrl: string | undefined;
+    try {
+      videoUrl = (await bot.telegram.getFileLink(videoFileId)).href;
+      imageUrl = imageFileId ? (await bot.telegram.getFileLink(imageFileId)).href : undefined;
+    } catch (err: any) {
+      console.error(`[${userId}] Seedance 2 Mini Video Edit file-link error:`, err?.message ?? err);
+      return ctx.reply('❌ Media referensi tidak bisa dibaca. Mulai ulang dari /menu.');
+    }
+
+    const statusMsg = await ctx.reply(
+      '⏳ Memproses Seedance 2 Mini Video Edit 1080p...\n' +
+      'Hasil dikirim otomatis setelah proses export selesai.',
+      { parse_mode: 'Markdown' }
+    );
+    runSeedanceMiniVideoEdit(
+      ctx.chat.id,
+      userId,
+      dbUserId,
+      statusMsg.message_id,
+      prompt,
+      { videoUrl, videoMime, imageUrl, ratio }
+    ).catch((e) => console.error(`[${userId}] Seedance 2 Mini Video Edit error:`, e.message));
     return;
   }
 
@@ -5882,6 +6066,18 @@ bot.on('text', async (ctx) => {
       { parse_mode: 'Markdown' }
     );
   }
+  if (session.mode === 'seedance_mini_edit_wait_ratio') {
+    return ctx.reply('📐 Pilih rasio video dari tombol di atas dulu, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+  }
+  if (session.mode === 'seedance_mini_edit_wait_video') {
+    return ctx.reply('🎥 Kirim *video referensi* dulu, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+  }
+  if (session.mode === 'seedance_mini_edit_wait_image') {
+    return ctx.reply(
+      '📸 Kirim *1 foto acuan*, atau tekan *Lewati Foto Acuan* pada tombol sebelumnya.',
+      { parse_mode: 'Markdown' }
+    );
+  }
   if (session.mode === 'oneover_wait_image') {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
@@ -5959,6 +6155,27 @@ bot.on('document', async (ctx) => {
     return ctx.reply(
       '✅ Video diterima!\n\n*Langkah terakhir:* Kirim *file audio* (MP3, M4A, WAV, atau voice note) untuk sinkronisasi bibir.',
       { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (doc.mime_type?.startsWith('video/') && session.mode === 'seedance_mini_edit_wait_video') {
+    if (doc.file_size && doc.file_size > picsart.SEEDANCE_2_MINI_EDIT_MAX_VIDEO_BYTES) {
+      return ctx.reply(
+        `❌ Video terlalu besar (${(doc.file_size / 1024 / 1024).toFixed(1)} MB).\n` +
+        'Maksimal 19MB. Kompres dulu atau kirim file lebih kecil.'
+      );
+    }
+    setSession(userId, {
+      seedanceMiniEditVideoFileId: doc.file_id,
+      seedanceMiniEditVideoMime: doc.mime_type ?? 'video/mp4',
+      seedanceMiniEditImageFileId: undefined,
+      mode: 'seedance_mini_edit_wait_image',
+    });
+    return ctx.reply(
+      '✅ Video referensi diterima!\n\n' +
+      '*Langkah 3 (opsional):* Kirim *1 foto acuan* untuk karakter/gaya yang ingin diterapkan, ' +
+      'atau tekan tombol lewati.',
+      { parse_mode: 'Markdown', ...seedanceMiniEditOptionalImageKeyboard() }
     );
   }
 
@@ -6553,6 +6770,134 @@ async function runPicsartI2v(
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
+// ─── Background: Seedance 2 Mini Video Edit (separate pipeline) ───────────────
+
+async function runSeedanceMiniVideoEdit(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  opts: {
+    videoUrl: string;
+    videoMime: string;
+    imageUrl?: string;
+    ratio: picsart.WanV3AspectRatio;
+  }
+) {
+  const label = 'Seedance 2 Mini Video Edit 1080p';
+  const settingsLabel = `${opts.ratio} · 15 detik · audio · output 1080p`;
+  const PRICE = MODEL_PRICES.picsart_seedance_2_mini_edit;
+  let stage = 'charge';
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  if (!charge.ok) {
+    console.warn(`[seedance-mini-edit] user=${userId} stage=charge rejected reason=${charge.reason}`);
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+
+  try {
+    stage = 'download';
+    const video = await downloadBuffer(opts.videoUrl);
+    if (video.buf.length > picsart.SEEDANCE_2_MINI_EDIT_MAX_VIDEO_BYTES) {
+      throw new Error('PICSART_REFERENCE_VIDEO_TOO_LARGE');
+    }
+    const image = opts.imageUrl ? await downloadBuffer(opts.imageUrl) : undefined;
+    console.log(
+      `[seedance-mini-edit] user=${userId} stage=download-complete ` +
+      `videoBytes=${video.buf.length} imageBytes=${image?.buf.length ?? 0} ratio=${opts.ratio}`
+    );
+
+    let lastEdit = 0;
+    const result = await picsart.generateSeedanceMiniVideoEdit({
+      userId: dbUserId,
+      prompt,
+      ratio: opts.ratio,
+      video: {
+        buffer: video.buf,
+        name: `reference-video.${video.ext || 'mp4'}`,
+        mime: opts.videoMime || video.mime || 'video/mp4',
+      },
+      image: image
+        ? {
+            buffer: image.buf,
+            name: `reference-image.${image.ext || 'jpg'}`,
+            mime: image.mime || 'image/jpeg',
+          }
+        : undefined,
+      onStatus: (providerStage) => {
+        const text = providerStage === 'upload'
+          ? `⏳ ${label}: mengunggah media referensi... (1/4)`
+          : providerStage === 'submit'
+            ? `⏳ ${label}: mengirim perintah video edit... (2/4)`
+            : providerStage === 'export'
+              ? `⏳ ${label}: export hasil ke 1080p... (4/4)`
+              : `⏳ ${label}: video sedang dibuat... (3/4)\n⏱️ Biasanya 3–10 menit.`;
+        stage = providerStage;
+        lastEdit = Date.now();
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+      },
+      onPoll: (elapsedSec) => {
+        if (Date.now() - lastEdit < 30_000) return;
+        lastEdit = Date.now();
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = elapsedSec % 60;
+        const elapsed = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
+        const text = stage === 'export'
+          ? `⏳ ${label}: export hasil ke 1080p...\n⏱️ Sudah berjalan ${elapsed}.`
+          : `⏳ ${label}: video sedang dibuat...\n⏱️ Sudah berjalan ${elapsed}.`;
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+      },
+    });
+
+    stage = 'delivery';
+    const delivered = await sendResult(
+      chatId,
+      result.url,
+      `🎬 ${label} (${settingsLabel})\n\n/menu untuk buat lagi`,
+      true
+    );
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[seedance-mini-edit] user=${userId} stage=done usage=${newCount} credits=${result.credits ?? '?'}`);
+    }
+  } catch (err: any) {
+    const msg = describeError(err);
+    console.error(
+      `[seedance-mini-edit] user=${userId} dbUser=${dbUserId} stage=${stage} ratio=${opts.ratio} ` +
+      `hasImage=${Boolean(opts.imageUrl)} error=${msg}`,
+      err?.stack ? `\n${err.stack}` : ''
+    );
+    let friendly = '❌ Gagal memproses video. Coba lagi nanti.';
+    if (msg.includes('PICSART_TIMEOUT')) {
+      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
+    } else if (msg.includes('PICSART_REFERENCE_VIDEO_TOO_LARGE')) {
+      friendly = '❌ Video referensi terlalu besar. Maksimal 19MB.';
+    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
+      friendly = '❌ Media referensi tidak bisa diproses. Coba file lain.';
+    } else if (msg.includes('PICSART_NO_CREDENTIAL') || msg.includes('PICSART_INSUFFICIENT_CREDITS')) {
+      friendly = '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.';
+    } else if (stage === 'export') {
+      friendly = '❌ Hasil belum berhasil diekspor ke 1080p. Saldo akan dikembalikan.';
+    }
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
+      .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(
+        chatId,
+        `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (video 1080p tidak berhasil dikirim).`
+      ).catch(() => {});
     }
     releaseGenerating(dbUserId);
   }

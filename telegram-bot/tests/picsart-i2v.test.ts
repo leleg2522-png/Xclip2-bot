@@ -8,8 +8,13 @@ import {
   GEMINI_OMNI_MODEL,
   PICSART_I2V_MAX_IMAGES,
   PICSART_I2V_MODELS,
+  SEEDANCE_2_MINI_EDIT_DURATION_SECONDS,
+  SEEDANCE_2_MINI_EDIT_MAX_IMAGES,
+  SEEDANCE_2_MINI_EDIT_MODEL,
+  SEEDANCE_2_MINI_EDIT_RESOLUTION,
   buildGeminiOmni12Params,
   buildPicsartI2vParams,
+  buildSeedanceMiniVideoEditParams,
   extractPicsartVideoUrl,
   getPicsartI2vExportSize,
   isPicsartPostSubmitAuthFailure,
@@ -18,12 +23,17 @@ import {
 
 const imageUrl = 'https://cdn.example.test/reference.jpg';
 const prompt = 'A subject moves gracefully through the scene';
+const videoUrl = 'https://cdn.example.test/reference.mp4';
 
 assert.equal(GEMINI_OMNI_MODEL, 'gemini-omni-flash-preview', 'legacy Gemini Omni model must remain unchanged');
 assert.equal(GEMINI_OMNI_12_MODEL, 'gemini-omni-1.1-flash-preview');
 assert.equal(GEMINI_OMNI_12_DURATION_SECONDS, 10);
 assert.equal(GEMINI_OMNI_12_RESOLUTION, '360p');
 assert.equal(GEMINI_OMNI_12_MAX_IMAGES, 5);
+assert.equal(SEEDANCE_2_MINI_EDIT_MODEL, 'seedance_2_0_mini');
+assert.equal(SEEDANCE_2_MINI_EDIT_DURATION_SECONDS, 15);
+assert.equal(SEEDANCE_2_MINI_EDIT_RESOLUTION, '480p');
+assert.equal(SEEDANCE_2_MINI_EDIT_MAX_IMAGES, 1);
 const gemini12Images = Array.from({ length: 6 }, (_, index) => ({
   url: `https://cdn.example.test/gemini-${index + 1}.jpg`,
   mimeType: 'image/jpeg',
@@ -93,6 +103,55 @@ assert.deepEqual(seedanceMiniMulti.content, [
   { type: 'image_url', image_url: { url: 'https://cdn.example.test/mini-2.jpg' }, role: 'reference_image' },
   { type: 'text', text: prompt },
 ]);
+
+const seedanceMiniEdit = buildSeedanceMiniVideoEditParams({
+  prompt,
+  videoUrl,
+  imageUrl,
+  ratio: '16:9',
+  outputName: 'seedance-mini-edit.mp4',
+});
+assert.equal(seedanceMiniEdit.model, 'seedance_2_0_mini');
+assert.equal(seedanceMiniEdit.ratio, '16:9');
+assert.equal(seedanceMiniEdit.resolution, '480p');
+assert.equal(seedanceMiniEdit.duration, 15);
+assert.equal(seedanceMiniEdit.generate_audio, true);
+assert.deepEqual(seedanceMiniEdit.content, [
+  { type: 'text', text: prompt },
+  { type: 'video_url', video_url: { url: videoUrl }, role: 'reference_video' },
+  { type: 'image_url', image_url: { url: imageUrl }, role: 'reference_image' },
+]);
+const seedanceMiniEditDrive = (seedanceMiniEdit.options as {
+  drive: { name: string; attributes: { model: string; aiSDKPayload: string } };
+}).drive;
+assert.equal(seedanceMiniEditDrive.name, 'seedance-mini-edit.mp4');
+assert.equal(seedanceMiniEditDrive.attributes.model, 'seedance-2.0-mini-video-edit');
+assert.deepEqual(JSON.parse(seedanceMiniEditDrive.attributes.aiSDKPayload), {
+  prompt,
+  aspectRatio: '16:9',
+  resolution: '480p',
+  duration: 15,
+  generateAudio: true,
+  returnLastFrame: false,
+  videoUrl,
+  imageUrls: [imageUrl],
+});
+const seedanceMiniEditWithoutImage = buildSeedanceMiniVideoEditParams({
+  prompt,
+  videoUrl,
+  ratio: '9:16',
+});
+assert.deepEqual(seedanceMiniEditWithoutImage.content, [
+  { type: 'text', text: prompt },
+  { type: 'video_url', video_url: { url: videoUrl }, role: 'reference_video' },
+]);
+assert.equal(
+  'imageUrls' in JSON.parse(
+    ((seedanceMiniEditWithoutImage.options as { drive: { attributes: { aiSDKPayload: string } } })
+      .drive.attributes.aiSDKPayload)
+  ),
+  false
+);
 
 const seedanceFast = buildPicsartI2vParams('seedance_2_fast', prompt, imageUrl);
 assert.deepEqual(seedanceFast, {
@@ -288,6 +347,12 @@ assert.match(botSource, /GEMINI_OMNI_12_MAX_IMAGES/);
 assert.match(botSource, /mengekstrak hasil ke 1080p/);
 assert.match(botSource, /Wan 3\.0 1080p/);
 assert.match(botSource, /Seedance 2\.0 Mini 1080p/);
+assert.match(botSource, /Seedance 2 Mini Video Edit 1080p/);
+assert.match(botSource, /mode_seedance_mini_edit/);
+assert.match(botSource, /seedance_edit_ratio_916/);
+assert.match(botSource, /seedance_edit_ratio_169/);
+assert.match(botSource, /seedance_edit_skip_image/);
+assert.match(botSource, /picsart_seedance_2_mini_edit: 3500/);
 assert.match(botSource, /Seedance 2\.0 Fast 1080p/);
 assert.match(botSource, /Seedance 2\.0 1080p/);
 assert.match(botSource, /picsart_ratio_916/);
@@ -302,6 +367,8 @@ assert.match(botSource, /seedance_2_fast[\s\S]*picsart_i2v_wait_ratio/);
 assert.match(botSource, /seedance_2[\s\S]*picsart_i2v_wait_ratio/);
 const picsartSource = readFileSync(new URL('../src/picsart.ts', import.meta.url), 'utf8');
 assert.match(picsartSource, /generateGeminiOmni12[\s\S]*submitPicsartI2vExport/);
+assert.match(picsartSource, /generateSeedanceMiniVideoEdit[\s\S]*submitPicsartI2vExport/);
+assert.match(picsartSource, /seedance-2\.0-mini-video-edit/);
 assert.match(picsartSource, /\/gw-v2\/workflows\/\$\{cfg\.workflowPath\}/);
 assert.match(picsartSource, /x-sub-package-id': 'subscription_pro_monthly'/);
 assert.match(picsartSource, /x-app-authorization/);
