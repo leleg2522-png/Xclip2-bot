@@ -1417,6 +1417,16 @@ export type PicsartI2vModelKey =
 export type WanV3AspectRatio = '9:16' | '16:9';
 export const PICSART_I2V_MAX_IMAGES = 5;
 
+// Seedance 2 Mini Video Edit is intentionally separate from the existing
+// Seedance 2 image-to-video models. Its native job accepts a reference video
+// and uses a different Drive payload, then goes through the same verified
+// 1080p export workflow as the other low-resolution Picsart generators.
+export const SEEDANCE_2_MINI_EDIT_MODEL = 'seedance_2_0_mini';
+export const SEEDANCE_2_MINI_EDIT_DURATION_SECONDS = 15;
+export const SEEDANCE_2_MINI_EDIT_RESOLUTION = '480p';
+export const SEEDANCE_2_MINI_EDIT_MAX_VIDEO_BYTES = 19 * 1024 * 1024;
+export const SEEDANCE_2_MINI_EDIT_MAX_IMAGES = 1;
+
 type PicsartI2vModelConfig = {
   label: string;
   settingsLabel: string;
@@ -1683,6 +1693,67 @@ export function buildPicsartI2vParams(
   }
 }
 
+export function buildSeedanceMiniVideoEditParams(input: {
+  prompt: string;
+  videoUrl: string;
+  imageUrl?: string;
+  ratio: WanV3AspectRatio;
+  outputName?: string;
+}): Record<string, unknown> {
+  const {
+    prompt,
+    videoUrl,
+    imageUrl,
+    ratio,
+    outputName = 'seedance-2-0-mini-video-edit-ai-playground.mp4',
+  } = input;
+  const content: Array<Record<string, unknown>> = [
+    { type: 'text', text: prompt },
+    {
+      type: 'video_url',
+      video_url: { url: videoUrl },
+      role: 'reference_video',
+    },
+  ];
+  if (imageUrl) {
+    content.push({
+      type: 'image_url',
+      image_url: { url: imageUrl },
+      role: 'reference_image',
+    });
+  }
+
+  return {
+    model: SEEDANCE_2_MINI_EDIT_MODEL,
+    content,
+    ratio,
+    duration: SEEDANCE_2_MINI_EDIT_DURATION_SECONDS,
+    resolution: SEEDANCE_2_MINI_EDIT_RESOLUTION,
+    generate_audio: true,
+    options: {
+      drive: {
+        name: outputName,
+        attributes: {
+          model: 'seedance-2.0-mini-video-edit',
+          aiSDKPayload: JSON.stringify({
+            prompt,
+            aspectRatio: ratio,
+            resolution: SEEDANCE_2_MINI_EDIT_RESOLUTION,
+            duration: SEEDANCE_2_MINI_EDIT_DURATION_SECONDS,
+            generateAudio: true,
+            returnLastFrame: false,
+            videoUrl,
+            ...(imageUrl ? { imageUrls: [imageUrl] } : {}),
+          }),
+          appId: 'com.picsart.ai-playground',
+          appType: 'miniapp',
+        },
+        folder: { path: 'AI Playground' },
+      },
+    },
+  };
+}
+
 async function submitPicsartI2v(
   credId: number,
   model: PicsartI2vModelKey,
@@ -1913,6 +1984,150 @@ async function pollPicsartI2vResult(
     }
   }
   throw diag.timeoutError();
+}
+
+async function submitSeedanceMiniVideoEdit(
+  credId: number,
+  input: {
+    prompt: string;
+    videoUrl: string;
+    imageUrl?: string;
+    ratio: WanV3AspectRatio;
+  }
+): Promise<string> {
+  const access = await getAccessToken(credId);
+  const r = await http.post(
+    `${API_BASE}/gw-v2/workflows/seedance/submit`,
+    {
+      params: buildSeedanceMiniVideoEditParams({
+        ...input,
+        outputName: `seedance-2-0-mini-video-edit-ai-playground-${Date.now()}.mp4`,
+      }),
+    },
+    {
+      headers: commonHeaders({
+        'content-type': 'application/json',
+        authorization: `Bearer ${access}`,
+        'x-app-authorization': X_APP_AUTHORIZATION,
+        'x-sub-package-id': 'subscription_pro_monthly',
+      }),
+      validateStatus: () => true,
+    }
+  );
+  const id = r.data?.response?.id;
+  if (!ok2xx(r.status) || !id) {
+    throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+  }
+  return id;
+}
+
+async function pollSeedanceMiniVideoEditResult(
+  credId: number,
+  id: string,
+  opts?: { intervalMs?: number; onTick?: (elapsedMs: number) => void }
+): Promise<{ url: string; credits?: number }> {
+  const intervalMs = opts?.intervalMs ?? 5000;
+  const start = Date.now();
+  const diag = new PollDiag();
+  for (let i = 0; i < 300; i++) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    opts?.onTick?.(Date.now() - start);
+    const access = await getAccessToken(credId);
+    const r = await http.get(`${API_BASE}/gw-v2/workflows/seedance/${id}/result`, {
+      headers: commonHeaders({
+        authorization: `Bearer ${access}`,
+        'x-app-authorization': X_APP_AUTHORIZATION,
+        'x-sub-package-id': 'subscription_pro_monthly',
+      }),
+      validateStatus: () => true,
+    });
+    const ok = diag.note(r);
+    if (!ok) {
+      const topStatus = String((r.data as any)?.status ?? '').toLowerCase();
+      const reason = String((r.data as any)?.reason ?? '');
+      const message = String((r.data as any)?.message ?? '');
+      if (r.status >= 400 && (topStatus === 'error' || reason || message)) {
+        throw new Error(`PICSART_GEN_FAILED: ${r.status} ${reason || topStatus} — ${message}`.slice(0, 300));
+      }
+      continue;
+    }
+    const response = r.data?.response ?? r.data;
+    const status = String(response?.status ?? '').toUpperCase();
+    if (status === 'COMPLETED' || status === 'SUCCESS') {
+      const url = extractPicsartVideoUrl(response);
+      if (!url) throw new Error(`PICSART_NO_RESULT_URL: ${JSON.stringify(response).slice(0, 250)}`);
+      return { url, credits: response?.usage?.credits };
+    }
+    if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
+      throw new Error(`PICSART_GEN_FAILED: ${JSON.stringify(response).slice(0, 250)}`);
+    }
+  }
+  throw diag.timeoutError();
+}
+
+export async function generateSeedanceMiniVideoEdit(input: {
+  userId: number;
+  prompt: string;
+  video: { buffer: Buffer; name?: string; mime?: string };
+  image?: { buffer: Buffer; name?: string; mime?: string };
+  ratio: WanV3AspectRatio;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  return runWithAccount(input.userId, 'p500', async (credId) => {
+    input.onStatus?.('upload');
+    const videoUrl = await uploadFile(
+      credId,
+      input.video.buffer,
+      input.video.name || 'reference-video.mp4',
+      input.video.mime || 'video/mp4'
+    );
+    let imageUrl: string | undefined;
+    if (input.image) {
+      input.onStatus?.('upload');
+      imageUrl = await uploadFile(
+        credId,
+        input.image.buffer,
+        input.image.name || 'reference-image.jpg',
+        input.image.mime || 'image/jpeg'
+      );
+    }
+
+    input.onStatus?.('submit');
+    const id = await submitSeedanceMiniVideoEdit(credId, {
+      prompt: input.prompt,
+      videoUrl,
+      imageUrl,
+      ratio: input.ratio,
+    });
+    input.onStatus?.('poll');
+    try {
+      const rawResult = await pollSeedanceMiniVideoEditResult(credId, id, {
+        onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+      });
+      input.onStatus?.('export');
+      const exportId = await submitPicsartI2vExport(credId, rawResult.url, input.ratio);
+      const exported = await pollPicsartI2vExportResult(credId, exportId, {
+        onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+      });
+      return { ...rawResult, url: exported.url };
+    } catch (e: any) {
+      // Once the paid provider job is accepted, never submit it again through
+      // another account. The caller refunds this whole attempt instead.
+      if (isPicsartPostSubmitAuthFailure(e)) {
+        await q(
+          `UPDATE picsart_credentials SET status = 'dead', dead_at = NOW(), updated_at = NOW() WHERE id = $1`,
+          [credId]
+        );
+        notifyOwner(
+          `⚠️ Akun Picsart #${credId} ditolak saat polling Seedance 2 Mini Video Edit. ` +
+          'Job tidak diulang agar tidak membuat generate ganda.'
+        );
+        throw new Error(`PICSART_POST_SUBMIT_AUTH_LOST job=${id}`);
+      }
+      throw e;
+    }
+  });
 }
 
 export async function generatePicsartI2v(input: {
