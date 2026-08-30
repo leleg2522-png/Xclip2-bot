@@ -1431,6 +1431,11 @@ export const SEEDANCE_2_FAST_EDIT_DURATION_SECONDS = 15;
 export const SEEDANCE_2_FAST_EDIT_RESOLUTION = '480p';
 export const SEEDANCE_2_FAST_EDIT_MAX_VIDEO_BYTES = 19 * 1024 * 1024;
 export const SEEDANCE_2_FAST_EDIT_MAX_IMAGES = 1;
+export const SEEDANCE_2_EDIT_MODEL = 'seedance_2_0';
+export const SEEDANCE_2_EDIT_DURATION_SECONDS = 15;
+export const SEEDANCE_2_EDIT_RESOLUTION = '480p';
+export const SEEDANCE_2_EDIT_MAX_VIDEO_BYTES = 19 * 1024 * 1024;
+export const SEEDANCE_2_EDIT_MAX_IMAGES = 1;
 
 type SeedanceVideoEditConfig = {
   model: string;
@@ -1448,6 +1453,12 @@ const SEEDANCE_2_FAST_EDIT_CONFIG: SeedanceVideoEditConfig = {
   model: SEEDANCE_2_FAST_EDIT_MODEL,
   driveModel: 'seedance-2.0-fast-video-edit',
   defaultOutputName: 'seedance-2-0-fast-video-edit-ai-playground.mp4',
+};
+
+const SEEDANCE_2_EDIT_CONFIG: SeedanceVideoEditConfig = {
+  model: SEEDANCE_2_EDIT_MODEL,
+  driveModel: 'seedance-2.0-video-edit',
+  defaultOutputName: 'seedance-2-0-video-edit-ai-playground.mp4',
 };
 
 type PicsartI2vModelConfig = {
@@ -1798,6 +1809,16 @@ export function buildSeedanceFastVideoEditParams(input: {
   outputName?: string;
 }): Record<string, unknown> {
   return buildSeedanceVideoEditParams(input, SEEDANCE_2_FAST_EDIT_CONFIG);
+}
+
+export function buildSeedance2VideoEditParams(input: {
+  prompt: string;
+  videoUrl: string;
+  imageUrl?: string;
+  ratio: WanV3AspectRatio;
+  outputName?: string;
+}): Record<string, unknown> {
+  return buildSeedanceVideoEditParams(input, SEEDANCE_2_EDIT_CONFIG);
 }
 
 async function submitPicsartI2v(
@@ -2211,6 +2232,22 @@ export async function generateSeedanceFastVideoEdit(input: {
     ...input,
     config: SEEDANCE_2_FAST_EDIT_CONFIG,
     maxVideoBytes: SEEDANCE_2_FAST_EDIT_MAX_VIDEO_BYTES,
+  });
+}
+
+export async function generateSeedance2VideoEdit(input: {
+  userId: number;
+  prompt: string;
+  video: { buffer: Buffer; name?: string; mime?: string };
+  image?: { buffer: Buffer; name?: string; mime?: string };
+  ratio: WanV3AspectRatio;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  return generateSeedanceVideoEdit({
+    ...input,
+    config: SEEDANCE_2_EDIT_CONFIG,
+    maxVideoBytes: SEEDANCE_2_EDIT_MAX_VIDEO_BYTES,
   });
 }
 

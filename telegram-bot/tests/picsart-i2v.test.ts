@@ -16,10 +16,15 @@ import {
   SEEDANCE_2_FAST_EDIT_MAX_IMAGES,
   SEEDANCE_2_FAST_EDIT_MODEL,
   SEEDANCE_2_FAST_EDIT_RESOLUTION,
+  SEEDANCE_2_EDIT_DURATION_SECONDS,
+  SEEDANCE_2_EDIT_MAX_IMAGES,
+  SEEDANCE_2_EDIT_MODEL,
+  SEEDANCE_2_EDIT_RESOLUTION,
   buildGeminiOmni12Params,
   buildPicsartI2vParams,
   buildSeedanceMiniVideoEditParams,
   buildSeedanceFastVideoEditParams,
+  buildSeedance2VideoEditParams,
   extractPicsartVideoUrl,
   getPicsartI2vExportSize,
   isPicsartPostSubmitAuthFailure,
@@ -43,6 +48,10 @@ assert.equal(SEEDANCE_2_FAST_EDIT_MODEL, 'seedance_2_0_fast');
 assert.equal(SEEDANCE_2_FAST_EDIT_DURATION_SECONDS, 15);
 assert.equal(SEEDANCE_2_FAST_EDIT_RESOLUTION, '480p');
 assert.equal(SEEDANCE_2_FAST_EDIT_MAX_IMAGES, 1);
+assert.equal(SEEDANCE_2_EDIT_MODEL, 'seedance_2_0');
+assert.equal(SEEDANCE_2_EDIT_DURATION_SECONDS, 15);
+assert.equal(SEEDANCE_2_EDIT_RESOLUTION, '480p');
+assert.equal(SEEDANCE_2_EDIT_MAX_IMAGES, 1);
 const gemini12Images = Array.from({ length: 6 }, (_, index) => ({
   url: `https://cdn.example.test/gemini-${index + 1}.jpg`,
   mimeType: 'image/jpeg',
@@ -186,6 +195,40 @@ const seedanceFastEditDrive = (seedanceFastEdit.options as {
 assert.equal(seedanceFastEditDrive.name, 'seedance-fast-edit.mp4');
 assert.equal(seedanceFastEditDrive.attributes.model, 'seedance-2.0-fast-video-edit');
 assert.deepEqual(JSON.parse(seedanceFastEditDrive.attributes.aiSDKPayload), {
+  prompt,
+  aspectRatio: '9:16',
+  resolution: '480p',
+  duration: 15,
+  generateAudio: true,
+  returnLastFrame: false,
+  videoUrl,
+  imageUrls: [imageUrl],
+});
+
+// Captured Seedance 2 Video Edit HAR contract.
+const seedance2Edit = buildSeedance2VideoEditParams({
+  prompt,
+  videoUrl,
+  imageUrl,
+  ratio: '9:16',
+  outputName: 'seedance-2-edit.mp4',
+});
+assert.equal(seedance2Edit.model, 'seedance_2_0');
+assert.equal(seedance2Edit.ratio, '9:16');
+assert.equal(seedance2Edit.resolution, '480p');
+assert.equal(seedance2Edit.duration, 15);
+assert.equal(seedance2Edit.generate_audio, true);
+assert.deepEqual(seedance2Edit.content, [
+  { type: 'text', text: prompt },
+  { type: 'video_url', video_url: { url: videoUrl }, role: 'reference_video' },
+  { type: 'image_url', image_url: { url: imageUrl }, role: 'reference_image' },
+]);
+const seedance2EditDrive = (seedance2Edit.options as {
+  drive: { name: string; attributes: { model: string; aiSDKPayload: string } };
+}).drive;
+assert.equal(seedance2EditDrive.name, 'seedance-2-edit.mp4');
+assert.equal(seedance2EditDrive.attributes.model, 'seedance-2.0-video-edit');
+assert.deepEqual(JSON.parse(seedance2EditDrive.attributes.aiSDKPayload), {
   prompt,
   aspectRatio: '9:16',
   resolution: '480p',
@@ -406,6 +449,16 @@ assert.match(botSource, /seedance_fast_edit_ratio_916/);
 assert.match(botSource, /seedance_fast_edit_ratio_169/);
 assert.match(botSource, /seedance_fast_edit_skip_image/);
 assert.match(botSource, /picsart_seedance_2_fast_edit: 4000/);
+assert.match(botSource, /Seedance 2 Video Edit 1080p/);
+assert.match(botSource, /mode_seedance_2_edit/);
+assert.match(botSource, /seedance_2_edit_wait_ratio/);
+assert.match(botSource, /seedance_2_edit_wait_video/);
+assert.match(botSource, /seedance_2_edit_wait_image/);
+assert.match(botSource, /seedance_2_edit_wait_prompt/);
+assert.match(botSource, /seedance_2_edit_ratio_916/);
+assert.match(botSource, /seedance_2_edit_ratio_169/);
+assert.match(botSource, /seedance_2_edit_skip_image/);
+assert.match(botSource, /picsart_seedance_2_video_edit: 4000/);
 assert.match(botSource, /Seedance 2\.0 Fast 1080p/);
 assert.match(botSource, /Seedance 2\.0 1080p/);
 assert.match(botSource, /picsart_ratio_916/);
@@ -424,6 +477,8 @@ assert.match(picsartSource, /generateSeedanceVideoEdit[\s\S]*submitPicsartI2vExp
 assert.match(picsartSource, /seedance-2\.0-mini-video-edit/);
 assert.match(picsartSource, /seedance-2\.0-fast-video-edit/);
 assert.match(picsartSource, /generateSeedanceFastVideoEdit/);
+assert.match(picsartSource, /seedance-2\.0-video-edit/);
+assert.match(picsartSource, /generateSeedance2VideoEdit/);
 assert.match(picsartSource, /\/gw-v2\/workflows\/\$\{cfg\.workflowPath\}/);
 assert.match(picsartSource, /x-sub-package-id': 'subscription_pro_monthly'/);
 assert.match(picsartSource, /x-app-authorization/);
