@@ -1425,17 +1425,17 @@ export const SEEDANCE_2_MINI_EDIT_MODEL = 'seedance_2_0_mini';
 export const SEEDANCE_2_MINI_EDIT_DURATION_SECONDS = 15;
 export const SEEDANCE_2_MINI_EDIT_RESOLUTION = '480p';
 export const SEEDANCE_2_MINI_EDIT_MAX_VIDEO_BYTES = 19 * 1024 * 1024;
-export const SEEDANCE_2_MINI_EDIT_MAX_IMAGES = 1;
+export const SEEDANCE_2_MINI_EDIT_MAX_IMAGES = 5;
 export const SEEDANCE_2_FAST_EDIT_MODEL = 'seedance_2_0_fast';
 export const SEEDANCE_2_FAST_EDIT_DURATION_SECONDS = 15;
 export const SEEDANCE_2_FAST_EDIT_RESOLUTION = '480p';
 export const SEEDANCE_2_FAST_EDIT_MAX_VIDEO_BYTES = 19 * 1024 * 1024;
-export const SEEDANCE_2_FAST_EDIT_MAX_IMAGES = 1;
+export const SEEDANCE_2_FAST_EDIT_MAX_IMAGES = 5;
 export const SEEDANCE_2_EDIT_MODEL = 'seedance_2_0';
 export const SEEDANCE_2_EDIT_DURATION_SECONDS = 15;
 export const SEEDANCE_2_EDIT_RESOLUTION = '480p';
 export const SEEDANCE_2_EDIT_MAX_VIDEO_BYTES = 19 * 1024 * 1024;
-export const SEEDANCE_2_EDIT_MAX_IMAGES = 1;
+export const SEEDANCE_2_EDIT_MAX_IMAGES = 5;
 
 type SeedanceVideoEditConfig = {
   model: string;
@@ -1732,6 +1732,7 @@ function buildSeedanceVideoEditParams(
   prompt: string;
   videoUrl: string;
   imageUrl?: string;
+  imageUrls?: string[];
   ratio: WanV3AspectRatio;
   outputName?: string;
   },
@@ -1741,9 +1742,11 @@ function buildSeedanceVideoEditParams(
     prompt,
     videoUrl,
     imageUrl,
+    imageUrls,
     ratio,
     outputName = config.defaultOutputName,
   } = input;
+  const referenceImageUrls = (imageUrls?.length ? imageUrls : imageUrl ? [imageUrl] : []).slice(0, 5);
   const content: Array<Record<string, unknown>> = [
     { type: 'text', text: prompt },
     {
@@ -1752,10 +1755,10 @@ function buildSeedanceVideoEditParams(
       role: 'reference_video',
     },
   ];
-  if (imageUrl) {
+  for (const referenceImageUrl of referenceImageUrls) {
     content.push({
       type: 'image_url',
-      image_url: { url: imageUrl },
+      image_url: { url: referenceImageUrl },
       role: 'reference_image',
     });
   }
@@ -1780,7 +1783,7 @@ function buildSeedanceVideoEditParams(
             generateAudio: true,
             returnLastFrame: false,
             videoUrl,
-            ...(imageUrl ? { imageUrls: [imageUrl] } : {}),
+            ...(referenceImageUrls.length ? { imageUrls: referenceImageUrls } : {}),
           }),
           appId: 'com.picsart.ai-playground',
           appType: 'miniapp',
@@ -1795,6 +1798,7 @@ export function buildSeedanceMiniVideoEditParams(input: {
   prompt: string;
   videoUrl: string;
   imageUrl?: string;
+  imageUrls?: string[];
   ratio: WanV3AspectRatio;
   outputName?: string;
 }): Record<string, unknown> {
@@ -1805,6 +1809,7 @@ export function buildSeedanceFastVideoEditParams(input: {
   prompt: string;
   videoUrl: string;
   imageUrl?: string;
+  imageUrls?: string[];
   ratio: WanV3AspectRatio;
   outputName?: string;
 }): Record<string, unknown> {
@@ -1815,6 +1820,7 @@ export function buildSeedance2VideoEditParams(input: {
   prompt: string;
   videoUrl: string;
   imageUrl?: string;
+  imageUrls?: string[];
   ratio: WanV3AspectRatio;
   outputName?: string;
 }): Record<string, unknown> {
@@ -2059,6 +2065,7 @@ async function submitSeedanceVideoEdit(
     prompt: string;
     videoUrl: string;
     imageUrl?: string;
+    imageUrls?: string[];
     ratio: WanV3AspectRatio;
   },
   config: SeedanceVideoEditConfig,
@@ -2138,6 +2145,7 @@ async function generateSeedanceVideoEdit(input: {
   prompt: string;
   video: { buffer: Buffer; name?: string; mime?: string };
   image?: { buffer: Buffer; name?: string; mime?: string };
+  images?: Array<{ buffer: Buffer; name?: string; mime?: string }>;
   ratio: WanV3AspectRatio;
   config: SeedanceVideoEditConfig;
   maxVideoBytes: number;
@@ -2155,22 +2163,22 @@ async function generateSeedanceVideoEdit(input: {
       input.video.name || 'reference-video.mp4',
       input.video.mime || 'video/mp4'
     );
-    let imageUrl: string | undefined;
-    if (input.image) {
+    const imageUrls: string[] = [];
+    for (const [index, image] of (input.images ?? []).entries()) {
       input.onStatus?.('upload');
-      imageUrl = await uploadFile(
+      imageUrls.push(await uploadFile(
         credId,
-        input.image.buffer,
-        input.image.name || 'reference-image.jpg',
-        input.image.mime || 'image/jpeg'
-      );
+        image.buffer,
+        image.name || `reference-image-${index + 1}.jpg`,
+        image.mime || 'image/jpeg'
+      ));
     }
 
     input.onStatus?.('submit');
     const id = await submitSeedanceVideoEdit(credId, {
       prompt: input.prompt,
       videoUrl,
-      imageUrl,
+      imageUrls,
       ratio: input.ratio,
     }, input.config);
     input.onStatus?.('poll');
@@ -2208,6 +2216,7 @@ export async function generateSeedanceMiniVideoEdit(input: {
   prompt: string;
   video: { buffer: Buffer; name?: string; mime?: string };
   image?: { buffer: Buffer; name?: string; mime?: string };
+  images?: Array<{ buffer: Buffer; name?: string; mime?: string }>;
   ratio: WanV3AspectRatio;
   onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
   onPoll?: (elapsedSec: number) => void;
@@ -2224,6 +2233,7 @@ export async function generateSeedanceFastVideoEdit(input: {
   prompt: string;
   video: { buffer: Buffer; name?: string; mime?: string };
   image?: { buffer: Buffer; name?: string; mime?: string };
+  images?: Array<{ buffer: Buffer; name?: string; mime?: string }>;
   ratio: WanV3AspectRatio;
   onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
   onPoll?: (elapsedSec: number) => void;
@@ -2240,6 +2250,7 @@ export async function generateSeedance2VideoEdit(input: {
   prompt: string;
   video: { buffer: Buffer; name?: string; mime?: string };
   image?: { buffer: Buffer; name?: string; mime?: string };
+  images?: Array<{ buffer: Buffer; name?: string; mime?: string }>;
   ratio: WanV3AspectRatio;
   onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
   onPoll?: (elapsedSec: number) => void;

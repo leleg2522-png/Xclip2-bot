@@ -43,15 +43,15 @@ assert.equal(GEMINI_OMNI_12_MAX_IMAGES, 5);
 assert.equal(SEEDANCE_2_MINI_EDIT_MODEL, 'seedance_2_0_mini');
 assert.equal(SEEDANCE_2_MINI_EDIT_DURATION_SECONDS, 15);
 assert.equal(SEEDANCE_2_MINI_EDIT_RESOLUTION, '480p');
-assert.equal(SEEDANCE_2_MINI_EDIT_MAX_IMAGES, 1);
+assert.equal(SEEDANCE_2_MINI_EDIT_MAX_IMAGES, 5);
 assert.equal(SEEDANCE_2_FAST_EDIT_MODEL, 'seedance_2_0_fast');
 assert.equal(SEEDANCE_2_FAST_EDIT_DURATION_SECONDS, 15);
 assert.equal(SEEDANCE_2_FAST_EDIT_RESOLUTION, '480p');
-assert.equal(SEEDANCE_2_FAST_EDIT_MAX_IMAGES, 1);
+assert.equal(SEEDANCE_2_FAST_EDIT_MAX_IMAGES, 5);
 assert.equal(SEEDANCE_2_EDIT_MODEL, 'seedance_2_0');
 assert.equal(SEEDANCE_2_EDIT_DURATION_SECONDS, 15);
 assert.equal(SEEDANCE_2_EDIT_RESOLUTION, '480p');
-assert.equal(SEEDANCE_2_EDIT_MAX_IMAGES, 1);
+assert.equal(SEEDANCE_2_EDIT_MAX_IMAGES, 5);
 const gemini12Images = Array.from({ length: 6 }, (_, index) => ({
   url: `https://cdn.example.test/gemini-${index + 1}.jpg`,
   mimeType: 'image/jpeg',
@@ -238,6 +238,23 @@ assert.deepEqual(JSON.parse(seedance2EditDrive.attributes.aiSDKPayload), {
   videoUrl,
   imageUrls: [imageUrl],
 });
+
+const sixEditImageUrls = Array.from(
+  { length: 6 },
+  (_, index) => `https://cdn.example.test/edit-reference-${index + 1}.jpg`
+);
+for (const [builder, expectedModel] of [
+  [buildSeedanceMiniVideoEditParams, 'seedance_2_0_mini'],
+  [buildSeedanceFastVideoEditParams, 'seedance_2_0_fast'],
+  [buildSeedance2VideoEditParams, 'seedance_2_0'],
+] as const) {
+  const params = builder({ prompt, videoUrl, imageUrls: sixEditImageUrls, ratio: '16:9' });
+  assert.equal(params.model, expectedModel);
+  const imageContent = (params.content as Array<{ type: string }>).filter((item) => item.type === 'image_url');
+  assert.equal(imageContent.length, 5);
+  const drive = (params.options as { drive: { attributes: { aiSDKPayload: string } } }).drive;
+  assert.deepEqual(JSON.parse(drive.attributes.aiSDKPayload).imageUrls, sixEditImageUrls.slice(0, 5));
+}
 
 const seedanceFast = buildPicsartI2vParams('seedance_2_fast', prompt, imageUrl);
 assert.deepEqual(seedanceFast, {

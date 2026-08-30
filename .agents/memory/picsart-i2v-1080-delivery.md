@@ -10,8 +10,9 @@ generated at 480P, then delivered at 1080×1920 for 9:16 or 1920×1080 for 16:9.
 
 Seedance 2 Mini Video Edit and Seedance 2 Fast Video Edit stay separate from
 each other and from their image-to-video variants. Each Video Edit route
-requires a reference video and has model-specific payload metadata. Never
-merge or silently substitute these routes.
+requires a reference video, accepts up to five optional reference images, and
+has model-specific payload metadata. Seedance 2 Video Edit follows the same
+five-image limit. Never merge or silently substitute these routes.
 
 **Why:** This preserves lower native-generation settings while giving customers a
 consistent 1080 product deliverable. The export must finish before delivery; a
