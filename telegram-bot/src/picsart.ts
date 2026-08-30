@@ -1426,6 +1426,29 @@ export const SEEDANCE_2_MINI_EDIT_DURATION_SECONDS = 15;
 export const SEEDANCE_2_MINI_EDIT_RESOLUTION = '480p';
 export const SEEDANCE_2_MINI_EDIT_MAX_VIDEO_BYTES = 19 * 1024 * 1024;
 export const SEEDANCE_2_MINI_EDIT_MAX_IMAGES = 1;
+export const SEEDANCE_2_FAST_EDIT_MODEL = 'seedance_2_0_fast';
+export const SEEDANCE_2_FAST_EDIT_DURATION_SECONDS = 15;
+export const SEEDANCE_2_FAST_EDIT_RESOLUTION = '480p';
+export const SEEDANCE_2_FAST_EDIT_MAX_VIDEO_BYTES = 19 * 1024 * 1024;
+export const SEEDANCE_2_FAST_EDIT_MAX_IMAGES = 1;
+
+type SeedanceVideoEditConfig = {
+  model: string;
+  driveModel: string;
+  defaultOutputName: string;
+};
+
+const SEEDANCE_2_MINI_EDIT_CONFIG: SeedanceVideoEditConfig = {
+  model: SEEDANCE_2_MINI_EDIT_MODEL,
+  driveModel: 'seedance-2.0-mini-video-edit',
+  defaultOutputName: 'seedance-2-0-mini-video-edit-ai-playground.mp4',
+};
+
+const SEEDANCE_2_FAST_EDIT_CONFIG: SeedanceVideoEditConfig = {
+  model: SEEDANCE_2_FAST_EDIT_MODEL,
+  driveModel: 'seedance-2.0-fast-video-edit',
+  defaultOutputName: 'seedance-2-0-fast-video-edit-ai-playground.mp4',
+};
 
 type PicsartI2vModelConfig = {
   label: string;
@@ -1693,19 +1716,22 @@ export function buildPicsartI2vParams(
   }
 }
 
-export function buildSeedanceMiniVideoEditParams(input: {
+function buildSeedanceVideoEditParams(
+  input: {
   prompt: string;
   videoUrl: string;
   imageUrl?: string;
   ratio: WanV3AspectRatio;
   outputName?: string;
-}): Record<string, unknown> {
+  },
+  config: SeedanceVideoEditConfig,
+): Record<string, unknown> {
   const {
     prompt,
     videoUrl,
     imageUrl,
     ratio,
-    outputName = 'seedance-2-0-mini-video-edit-ai-playground.mp4',
+    outputName = config.defaultOutputName,
   } = input;
   const content: Array<Record<string, unknown>> = [
     { type: 'text', text: prompt },
@@ -1724,22 +1750,22 @@ export function buildSeedanceMiniVideoEditParams(input: {
   }
 
   return {
-    model: SEEDANCE_2_MINI_EDIT_MODEL,
+    model: config.model,
     content,
     ratio,
-    duration: SEEDANCE_2_MINI_EDIT_DURATION_SECONDS,
-    resolution: SEEDANCE_2_MINI_EDIT_RESOLUTION,
+    duration: 15,
+    resolution: '480p',
     generate_audio: true,
     options: {
       drive: {
         name: outputName,
         attributes: {
-          model: 'seedance-2.0-mini-video-edit',
+          model: config.driveModel,
           aiSDKPayload: JSON.stringify({
             prompt,
             aspectRatio: ratio,
-            resolution: SEEDANCE_2_MINI_EDIT_RESOLUTION,
-            duration: SEEDANCE_2_MINI_EDIT_DURATION_SECONDS,
+            resolution: '480p',
+            duration: 15,
             generateAudio: true,
             returnLastFrame: false,
             videoUrl,
@@ -1752,6 +1778,26 @@ export function buildSeedanceMiniVideoEditParams(input: {
       },
     },
   };
+}
+
+export function buildSeedanceMiniVideoEditParams(input: {
+  prompt: string;
+  videoUrl: string;
+  imageUrl?: string;
+  ratio: WanV3AspectRatio;
+  outputName?: string;
+}): Record<string, unknown> {
+  return buildSeedanceVideoEditParams(input, SEEDANCE_2_MINI_EDIT_CONFIG);
+}
+
+export function buildSeedanceFastVideoEditParams(input: {
+  prompt: string;
+  videoUrl: string;
+  imageUrl?: string;
+  ratio: WanV3AspectRatio;
+  outputName?: string;
+}): Record<string, unknown> {
+  return buildSeedanceVideoEditParams(input, SEEDANCE_2_FAST_EDIT_CONFIG);
 }
 
 async function submitPicsartI2v(
@@ -1986,23 +2032,24 @@ async function pollPicsartI2vResult(
   throw diag.timeoutError();
 }
 
-async function submitSeedanceMiniVideoEdit(
+async function submitSeedanceVideoEdit(
   credId: number,
   input: {
     prompt: string;
     videoUrl: string;
     imageUrl?: string;
     ratio: WanV3AspectRatio;
-  }
+  },
+  config: SeedanceVideoEditConfig,
 ): Promise<string> {
   const access = await getAccessToken(credId);
   const r = await http.post(
     `${API_BASE}/gw-v2/workflows/seedance/submit`,
     {
-      params: buildSeedanceMiniVideoEditParams({
+      params: buildSeedanceVideoEditParams({
         ...input,
-        outputName: `seedance-2-0-mini-video-edit-ai-playground-${Date.now()}.mp4`,
-      }),
+        outputName: `${config.driveModel}-ai-playground-${Date.now()}.mp4`,
+      }, config),
     },
     {
       headers: commonHeaders({
@@ -2021,7 +2068,7 @@ async function submitSeedanceMiniVideoEdit(
   return id;
 }
 
-async function pollSeedanceMiniVideoEditResult(
+async function pollSeedanceVideoEditResult(
   credId: number,
   id: string,
   opts?: { intervalMs?: number; onTick?: (elapsedMs: number) => void }
@@ -2065,17 +2112,22 @@ async function pollSeedanceMiniVideoEditResult(
   throw diag.timeoutError();
 }
 
-export async function generateSeedanceMiniVideoEdit(input: {
+async function generateSeedanceVideoEdit(input: {
   userId: number;
   prompt: string;
   video: { buffer: Buffer; name?: string; mime?: string };
   image?: { buffer: Buffer; name?: string; mime?: string };
   ratio: WanV3AspectRatio;
+  config: SeedanceVideoEditConfig;
+  maxVideoBytes: number;
   onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
   return runWithAccount(input.userId, 'p500', async (credId) => {
     input.onStatus?.('upload');
+    if (input.video.buffer.length > input.maxVideoBytes) {
+      throw new Error('PICSART_REFERENCE_VIDEO_TOO_LARGE');
+    }
     const videoUrl = await uploadFile(
       credId,
       input.video.buffer,
@@ -2094,15 +2146,15 @@ export async function generateSeedanceMiniVideoEdit(input: {
     }
 
     input.onStatus?.('submit');
-    const id = await submitSeedanceMiniVideoEdit(credId, {
+    const id = await submitSeedanceVideoEdit(credId, {
       prompt: input.prompt,
       videoUrl,
       imageUrl,
       ratio: input.ratio,
-    });
+    }, input.config);
     input.onStatus?.('poll');
     try {
-      const rawResult = await pollSeedanceMiniVideoEditResult(credId, id, {
+      const rawResult = await pollSeedanceVideoEditResult(credId, id, {
         onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
       });
       input.onStatus?.('export');
@@ -2112,21 +2164,53 @@ export async function generateSeedanceMiniVideoEdit(input: {
       });
       return { ...rawResult, url: exported.url };
     } catch (e: any) {
-      // Once the paid provider job is accepted, never submit it again through
-      // another account. The caller refunds this whole attempt instead.
+      // Once the paid provider job is accepted, never submit it through another
+      // account. The caller refunds this whole attempt instead.
       if (isPicsartPostSubmitAuthFailure(e)) {
         await q(
           `UPDATE picsart_credentials SET status = 'dead', dead_at = NOW(), updated_at = NOW() WHERE id = $1`,
           [credId]
         );
         notifyOwner(
-          `⚠️ Akun Picsart #${credId} ditolak saat polling Seedance 2 Mini Video Edit. ` +
+          `⚠️ Akun Picsart #${credId} ditolak saat polling Seedance Video Edit (${input.config.driveModel}). ` +
           'Job tidak diulang agar tidak membuat generate ganda.'
         );
         throw new Error(`PICSART_POST_SUBMIT_AUTH_LOST job=${id}`);
       }
       throw e;
     }
+  });
+}
+
+export async function generateSeedanceMiniVideoEdit(input: {
+  userId: number;
+  prompt: string;
+  video: { buffer: Buffer; name?: string; mime?: string };
+  image?: { buffer: Buffer; name?: string; mime?: string };
+  ratio: WanV3AspectRatio;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  return generateSeedanceVideoEdit({
+    ...input,
+    config: SEEDANCE_2_MINI_EDIT_CONFIG,
+    maxVideoBytes: SEEDANCE_2_MINI_EDIT_MAX_VIDEO_BYTES,
+  });
+}
+
+export async function generateSeedanceFastVideoEdit(input: {
+  userId: number;
+  prompt: string;
+  video: { buffer: Buffer; name?: string; mime?: string };
+  image?: { buffer: Buffer; name?: string; mime?: string };
+  ratio: WanV3AspectRatio;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  return generateSeedanceVideoEdit({
+    ...input,
+    config: SEEDANCE_2_FAST_EDIT_CONFIG,
+    maxVideoBytes: SEEDANCE_2_FAST_EDIT_MAX_VIDEO_BYTES,
   });
 }
 
