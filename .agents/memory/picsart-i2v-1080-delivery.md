@@ -4,13 +4,14 @@ description: Delivery policy for selected Picsart I2V models: native generation 
 ---
 
 Seedance 2.0 Mini, Seedance 2.0 Fast, Seedance 2.0 Standard, Seedance 2 Mini
-Video Edit, and Wan 3.0 should deliver a separate 1080 export rather than the
-native generated file. Seedance is intentionally generated at 480P, then
-delivered at 1080×1920 for 9:16 or 1920×1080 for 16:9.
+Video Edit, Seedance 2 Fast Video Edit, and Wan 3.0 should deliver a separate
+1080 export rather than the native generated file. Seedance is intentionally
+generated at 480P, then delivered at 1080×1920 for 9:16 or 1920×1080 for 16:9.
 
-Seedance 2 Mini Video Edit stays a separate product flow from Seedance 2 Mini
-image-to-video because its native contract requires a reference video and has
-different payload metadata. Never merge or silently substitute the two routes.
+Seedance 2 Mini Video Edit and Seedance 2 Fast Video Edit stay separate from
+each other and from their image-to-video variants. Each Video Edit route
+requires a reference video and has model-specific payload metadata. Never
+merge or silently substitute these routes.
 
 **Why:** This preserves lower native-generation settings while giving customers a
 consistent 1080 product deliverable. The export must finish before delivery; a

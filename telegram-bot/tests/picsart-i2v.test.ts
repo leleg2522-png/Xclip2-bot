@@ -12,9 +12,14 @@ import {
   SEEDANCE_2_MINI_EDIT_MAX_IMAGES,
   SEEDANCE_2_MINI_EDIT_MODEL,
   SEEDANCE_2_MINI_EDIT_RESOLUTION,
+  SEEDANCE_2_FAST_EDIT_DURATION_SECONDS,
+  SEEDANCE_2_FAST_EDIT_MAX_IMAGES,
+  SEEDANCE_2_FAST_EDIT_MODEL,
+  SEEDANCE_2_FAST_EDIT_RESOLUTION,
   buildGeminiOmni12Params,
   buildPicsartI2vParams,
   buildSeedanceMiniVideoEditParams,
+  buildSeedanceFastVideoEditParams,
   extractPicsartVideoUrl,
   getPicsartI2vExportSize,
   isPicsartPostSubmitAuthFailure,
@@ -34,6 +39,10 @@ assert.equal(SEEDANCE_2_MINI_EDIT_MODEL, 'seedance_2_0_mini');
 assert.equal(SEEDANCE_2_MINI_EDIT_DURATION_SECONDS, 15);
 assert.equal(SEEDANCE_2_MINI_EDIT_RESOLUTION, '480p');
 assert.equal(SEEDANCE_2_MINI_EDIT_MAX_IMAGES, 1);
+assert.equal(SEEDANCE_2_FAST_EDIT_MODEL, 'seedance_2_0_fast');
+assert.equal(SEEDANCE_2_FAST_EDIT_DURATION_SECONDS, 15);
+assert.equal(SEEDANCE_2_FAST_EDIT_RESOLUTION, '480p');
+assert.equal(SEEDANCE_2_FAST_EDIT_MAX_IMAGES, 1);
 const gemini12Images = Array.from({ length: 6 }, (_, index) => ({
   url: `https://cdn.example.test/gemini-${index + 1}.jpg`,
   mimeType: 'image/jpeg',
@@ -152,6 +161,40 @@ assert.equal(
   ),
   false
 );
+
+// Captured Seedance 2 Fast Video Edit HAR contract.
+const seedanceFastEdit = buildSeedanceFastVideoEditParams({
+  prompt,
+  videoUrl,
+  imageUrl,
+  ratio: '9:16',
+  outputName: 'seedance-fast-edit.mp4',
+});
+assert.equal(seedanceFastEdit.model, 'seedance_2_0_fast');
+assert.equal(seedanceFastEdit.ratio, '9:16');
+assert.equal(seedanceFastEdit.resolution, '480p');
+assert.equal(seedanceFastEdit.duration, 15);
+assert.equal(seedanceFastEdit.generate_audio, true);
+assert.deepEqual(seedanceFastEdit.content, [
+  { type: 'text', text: prompt },
+  { type: 'video_url', video_url: { url: videoUrl }, role: 'reference_video' },
+  { type: 'image_url', image_url: { url: imageUrl }, role: 'reference_image' },
+]);
+const seedanceFastEditDrive = (seedanceFastEdit.options as {
+  drive: { name: string; attributes: { model: string; aiSDKPayload: string } };
+}).drive;
+assert.equal(seedanceFastEditDrive.name, 'seedance-fast-edit.mp4');
+assert.equal(seedanceFastEditDrive.attributes.model, 'seedance-2.0-fast-video-edit');
+assert.deepEqual(JSON.parse(seedanceFastEditDrive.attributes.aiSDKPayload), {
+  prompt,
+  aspectRatio: '9:16',
+  resolution: '480p',
+  duration: 15,
+  generateAudio: true,
+  returnLastFrame: false,
+  videoUrl,
+  imageUrls: [imageUrl],
+});
 
 const seedanceFast = buildPicsartI2vParams('seedance_2_fast', prompt, imageUrl);
 assert.deepEqual(seedanceFast, {
@@ -353,6 +396,16 @@ assert.match(botSource, /seedance_edit_ratio_916/);
 assert.match(botSource, /seedance_edit_ratio_169/);
 assert.match(botSource, /seedance_edit_skip_image/);
 assert.match(botSource, /picsart_seedance_2_mini_edit: 3500/);
+assert.match(botSource, /Seedance 2 Fast Video Edit 1080p/);
+assert.match(botSource, /mode_seedance_fast_edit/);
+assert.match(botSource, /seedance_fast_edit_wait_ratio/);
+assert.match(botSource, /seedance_fast_edit_wait_video/);
+assert.match(botSource, /seedance_fast_edit_wait_image/);
+assert.match(botSource, /seedance_fast_edit_wait_prompt/);
+assert.match(botSource, /seedance_fast_edit_ratio_916/);
+assert.match(botSource, /seedance_fast_edit_ratio_169/);
+assert.match(botSource, /seedance_fast_edit_skip_image/);
+assert.match(botSource, /picsart_seedance_2_fast_edit: 4000/);
 assert.match(botSource, /Seedance 2\.0 Fast 1080p/);
 assert.match(botSource, /Seedance 2\.0 1080p/);
 assert.match(botSource, /picsart_ratio_916/);
@@ -367,8 +420,10 @@ assert.match(botSource, /seedance_2_fast[\s\S]*picsart_i2v_wait_ratio/);
 assert.match(botSource, /seedance_2[\s\S]*picsart_i2v_wait_ratio/);
 const picsartSource = readFileSync(new URL('../src/picsart.ts', import.meta.url), 'utf8');
 assert.match(picsartSource, /generateGeminiOmni12[\s\S]*submitPicsartI2vExport/);
-assert.match(picsartSource, /generateSeedanceMiniVideoEdit[\s\S]*submitPicsartI2vExport/);
+assert.match(picsartSource, /generateSeedanceVideoEdit[\s\S]*submitPicsartI2vExport/);
 assert.match(picsartSource, /seedance-2\.0-mini-video-edit/);
+assert.match(picsartSource, /seedance-2\.0-fast-video-edit/);
+assert.match(picsartSource, /generateSeedanceFastVideoEdit/);
 assert.match(picsartSource, /\/gw-v2\/workflows\/\$\{cfg\.workflowPath\}/);
 assert.match(picsartSource, /x-sub-package-id': 'subscription_pro_monthly'/);
 assert.match(picsartSource, /x-app-authorization/);
