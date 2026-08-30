@@ -458,7 +458,7 @@ assert.match(botSource, /seedance_2_edit_wait_prompt/);
 assert.match(botSource, /seedance_2_edit_ratio_916/);
 assert.match(botSource, /seedance_2_edit_ratio_169/);
 assert.match(botSource, /seedance_2_edit_skip_image/);
-assert.match(botSource, /picsart_seedance_2_video_edit: 4000/);
+assert.match(botSource, /picsart_seedance_2_video_edit: 4500/);
 assert.match(botSource, /Seedance 2\.0 Fast 1080p/);
 assert.match(botSource, /Seedance 2\.0 1080p/);
 assert.match(botSource, /picsart_ratio_916/);
