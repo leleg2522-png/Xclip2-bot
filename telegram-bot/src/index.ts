@@ -156,7 +156,7 @@ const MODEL_PRICES = {
   gemini_omni_12: 3500,
   chat: 100,           // Chat AI per pesan
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
-  kling_p3: 2500,      // Kling MC V3.0 PRO P3 (Edanbot, kling-motion-26-pro)
+  kling_p3: 3000,      // Kling MC V3.0 PRO P3 (Edanbot, kling-motion-26-pro)
   kling_p2: 3500,      // Kling MC V3 PRO P2 (Edanbot, kling-motion-26-pro--secondary)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
   veo_fast: 1500,      // Veo 3.1 Fast Full HD (SnapGen)
