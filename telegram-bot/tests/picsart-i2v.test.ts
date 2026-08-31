@@ -6,6 +6,7 @@ import {
   GEMINI_OMNI_12_MODEL,
   GEMINI_OMNI_12_RESOLUTION,
   GEMINI_OMNI_MODEL,
+  KLING_MOTION_CONTROL_POOL,
   PICSART_I2V_MAX_IMAGES,
   PICSART_I2V_MODELS,
   SEEDANCE_2_MINI_EDIT_DURATION_SECONDS,
@@ -40,6 +41,7 @@ assert.equal(GEMINI_OMNI_12_MODEL, 'gemini-omni-1.1-flash-preview');
 assert.equal(GEMINI_OMNI_12_DURATION_SECONDS, 10);
 assert.equal(GEMINI_OMNI_12_RESOLUTION, '360p');
 assert.equal(GEMINI_OMNI_12_MAX_IMAGES, 5);
+assert.equal(KLING_MOTION_CONTROL_POOL, 'p100');
 assert.equal(PICSART_I2V_MODELS.seedance_2_mini.pool, 'p500');
 assert.equal(PICSART_I2V_MODELS.seedance_2_fast.pool, 'p500');
 assert.equal(PICSART_I2V_MODELS.seedance_2.pool, 'p500');
