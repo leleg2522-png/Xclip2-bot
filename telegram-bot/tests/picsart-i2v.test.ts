@@ -40,6 +40,11 @@ assert.equal(GEMINI_OMNI_12_MODEL, 'gemini-omni-1.1-flash-preview');
 assert.equal(GEMINI_OMNI_12_DURATION_SECONDS, 10);
 assert.equal(GEMINI_OMNI_12_RESOLUTION, '360p');
 assert.equal(GEMINI_OMNI_12_MAX_IMAGES, 5);
+assert.equal(PICSART_I2V_MODELS.seedance_2_mini.pool, 'p500');
+assert.equal(PICSART_I2V_MODELS.seedance_2_fast.pool, 'p500');
+assert.equal(PICSART_I2V_MODELS.seedance_2.pool, 'p500');
+assert.equal(PICSART_I2V_MODELS.wan_v2.pool, 'p500');
+assert.equal(PICSART_I2V_MODELS.wan_v3.pool, 'p500');
 assert.equal(SEEDANCE_2_MINI_EDIT_MODEL, 'seedance_2_0_mini');
 assert.equal(SEEDANCE_2_MINI_EDIT_DURATION_SECONDS, 15);
 assert.equal(SEEDANCE_2_MINI_EDIT_RESOLUTION, '480p');
@@ -87,7 +92,7 @@ const expectedModels = [
 
 assert.deepEqual(Object.keys(PICSART_I2V_MODELS).sort(), [...expectedModels].sort());
 assert.equal('pika' in PICSART_I2V_MODELS, false);
-assert.equal(PICSART_I2V_MODELS.wan_v3.pool, null);
+assert.equal(PICSART_I2V_MODELS.wan_v3.pool, 'p500');
 assert.equal(PICSART_I2V_MAX_IMAGES, 5);
 
 const botSource = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');

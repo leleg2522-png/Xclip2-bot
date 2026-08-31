@@ -1182,7 +1182,7 @@ export async function generateGeminiOmni12(input: {
   onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
-  return runWithAccount(input.userId, 'p100', async (credId) => {
+  return runWithAccount(input.userId, 'p500', async (credId) => {
     const imageReferences: Array<{ url: string; mimeType: string }> = [];
     const images = (input.images ?? []).slice(0, GEMINI_OMNI_12_MAX_IMAGES);
     if (images.length > 0 || input.videoBuffer) input.onStatus?.('upload');
@@ -1523,14 +1523,14 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
     label: 'Wan v2 Image-to-Video',
     settingsLabel: '15 detik · 720p · prompt extend',
     workflowPath: 'wan/v2/image-to-video',
-    pool: null,
+    pool: 'p500',
     pollAttempts: 180,
   },
   wan_v3: {
     label: 'Wan 3.0 1080p',
     settingsLabel: '30 detik · 1080p',
     workflowPath: 'wan/v3/video',
-    pool: null,
+    pool: 'p500',
     pollAttempts: 240,
   },
   pixverse_v6: {

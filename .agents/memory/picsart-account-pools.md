@@ -14,11 +14,11 @@ Accounts are split by their **current credit balance AT ADD-TIME** (owner's expl
 - **NULL pool = wildcard**: a legacy NULL account matches *every* pool request (`pool = $req OR pool IS NULL`). This is a deliberate backward-compat transition policy so routing never starves the ~259 pre-existing uncategorized accounts. Downside accepted: a legacy account that is actually tier-500 can still be consumed by p100 requests until it is (re)categorized.
 - New accounts are inserted with provisional `pool='p100'` (NOT null), so a NEW account whose categorization API call fails stays scoped to p100 instead of becoming an all-pools wildcard. The wildcard exception is for legacy rows only.
 
-**Model → pool routing:** Kling Motion Control = any pool; Runway, Sora, Gemini Omni = p100; Wan 3.0 Prime—including the public Seedance 2.5 alias—= any pool, so both p100 and p500 accounts are eligible.
+**Model → pool routing:** Kling Motion Control = any pool; Runway and Sora = p100; Gemini Omni 1.2, all Seedance 2 variants, and all Wan models = p500.
 
-**Why:** the owner clarified that “5–100 dan p500” refers to the two account pools. Separately, both Wan 3.0 and its public Seedance 2.5 alias may accept up to 5 reference images while drawing from either pool.
+**Why:** the owner explicitly requested that Gemini Omni Flash 1.2, all Seedance 2 variants, and all Wan models consume only premium p500 accounts.
 
-**How to apply:** route Wan 3.0 Prime and its public Seedance 2.5 alias through the unfiltered/any-pool account selector. Their shared upload wizard and provider payload must cap reference images at 5.
+**How to apply:** use the p500 selector for Gemini Omni 1.2, every Seedance 2 route, and both Wan model routes. Keep their reference-image limits separate from pool selection.
 
 **p500 excludes legacy wildcards**: `acquireAccount` only picks `c.pool = 'p500'` accounts for p500 requests — legacy NULL-pool accounts are excluded. This prevents old ~50-credit accounts from being assigned to expensive models. NULL wildcards still apply for null and p100 pool requests.
 
