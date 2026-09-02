@@ -462,7 +462,7 @@ assert.match(botSource, /go12_res_1080/);
 assert.match(botSource, /go12_res_4k/);
 assert.match(botSource, /gomniResolution/);
 assert.match(botSource, /GEMINI_OMNI_12_MAX_IMAGES/);
-assert.match(botSource, /mengekspor hasil ke \$\{opts\.exportResolution\}/);
+assert.match(botSource, /menyiapkan video akhir \$\{opts\.exportResolution\}/);
 assert.match(botSource, /Wan 3\.0 1080p/);
 assert.match(botSource, /Seedance 2\.0 Mini 1080p/);
 assert.match(botSource, /Seedance 2 Mini Video Edit 1080p/);

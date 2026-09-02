@@ -3985,7 +3985,7 @@ bot.on('callback_query', async (ctx) => {
     return ctx.editMessageText(
       `🎬 *Seedance 2 Mini Video Edit 1080p*\n\n` +
       `Durasi hasil: *15 detik* • Audio: *aktif*\n` +
-      `Proses: native *480p* → export *1080p*\n` +
+      `Kualitas video disiapkan hingga *1080p*\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_2_mini_edit)}* per video\n\n` +
       '*Langkah 1:* Pilih rasio hasil:',
       { parse_mode: 'Markdown', ...seedanceMiniEditRatioKeyboard() }
@@ -4004,7 +4004,7 @@ bot.on('callback_query', async (ctx) => {
     return ctx.editMessageText(
       `⚡ *Seedance 2 Fast Video Edit 1080p*\n\n` +
       `Durasi hasil: *15 detik* • Audio: *aktif*\n` +
-      `Proses: native *480p* → export *1080p*\n` +
+      `Kualitas video disiapkan hingga *1080p*\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_2_fast_edit)}* per video\n\n` +
       '*Langkah 1:* Pilih rasio hasil:',
       { parse_mode: 'Markdown', ...seedanceFastEditRatioKeyboard() }
@@ -4023,7 +4023,7 @@ bot.on('callback_query', async (ctx) => {
     return ctx.editMessageText(
       `🌊 *Seedance 2 Video Edit 1080p*\n\n` +
       `Durasi hasil: *15 detik* • Audio: *aktif*\n` +
-      `Proses: native *480p* → export *1080p*\n` +
+      `Kualitas video disiapkan hingga *1080p*\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_2_video_edit)}* per video\n\n` +
       '*Langkah 1:* Pilih rasio hasil:',
       { parse_mode: 'Markdown', ...seedance2EditRatioKeyboard() }
@@ -5908,7 +5908,7 @@ bot.on('text', async (ctx) => {
 
     const statusMsg = await ctx.reply(
       '⏳ Memproses Seedance 2 Mini Video Edit 1080p...\n' +
-      'Hasil dikirim otomatis setelah proses export selesai.',
+      'Hasil dikirim otomatis setelah video selesai disiapkan.',
       { parse_mode: 'Markdown' }
     );
     runSeedanceMiniVideoEdit(
@@ -5970,7 +5970,7 @@ bot.on('text', async (ctx) => {
 
     const statusMsg = await ctx.reply(
       '⏳ Memproses Seedance 2 Fast Video Edit 1080p...\n' +
-      'Hasil dikirim otomatis setelah proses export selesai.',
+      'Hasil dikirim otomatis setelah video selesai disiapkan.',
       { parse_mode: 'Markdown' }
     );
     runSeedanceFastVideoEdit(
@@ -6032,7 +6032,7 @@ bot.on('text', async (ctx) => {
 
     const statusMsg = await ctx.reply(
       '⏳ Memproses Seedance 2 Video Edit 1080p...\n' +
-      'Hasil dikirim otomatis setelah proses export selesai.',
+      'Hasil dikirim otomatis setelah video selesai disiapkan.',
       { parse_mode: 'Markdown' }
     );
     runSeedance2VideoEdit(
@@ -7404,7 +7404,7 @@ async function runSeedanceVideoEdit(
           : providerStage === 'submit'
             ? `⏳ ${label}: mengirim perintah video edit... (2/4)`
             : providerStage === 'export'
-              ? `⏳ ${label}: export hasil ke 1080p... (4/4)`
+              ? `⏳ ${label}: menyiapkan video akhir 1080p... (4/4)`
               : `⏳ ${label}: video sedang dibuat... (3/4)\n⏱️ Biasanya 3–10 menit.`;
         stage = providerStage;
         lastEdit = Date.now();
@@ -7417,7 +7417,7 @@ async function runSeedanceVideoEdit(
         const secs = elapsedSec % 60;
         const elapsed = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
         const text = stage === 'export'
-          ? `⏳ ${label}: export hasil ke 1080p...\n⏱️ Sudah berjalan ${elapsed}.`
+          ? `⏳ ${label}: menyiapkan video akhir 1080p...\n⏱️ Sudah berjalan ${elapsed}.`
           : `⏳ ${label}: video sedang dibuat...\n⏱️ Sudah berjalan ${elapsed}.`;
         bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
       },
@@ -8397,7 +8397,7 @@ async function runGeminiOmni(
           : stage === 'submit'
             ? `⏳ ${label}: mengirim perintah ke server... (2/3)`
             : stage === 'export'
-              ? `⏳ ${label}: mengekspor hasil ke ${opts.exportResolution}... (selangkah lagi)`
+              ? `⏳ ${label}: menyiapkan video akhir ${opts.exportResolution}... (selangkah lagi)`
             : `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 3–8 menit. Jangan tutup chat ini.`;
         lastEdit = Date.now();
         bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
