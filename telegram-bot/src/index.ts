@@ -154,6 +154,7 @@ const MODEL_PRICES = {
   sora: 2500,
   gemini_omni: 2500,
   gemini_omni_12: 3500,
+  gemini_omni_12_4k: 4000,
   chat: 100,           // Chat AI per pesan
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
   kling_p3: 3000,      // Kling MC V3.0 PRO P3 (Edanbot, kling-motion-26-pro)
@@ -1611,6 +1612,7 @@ interface Session {
   gomniInputMode?: 'i2v' | 't2v' | 'v2v';
   gomniDuration?: number;
   gomniRatio?: string;
+  gomniResolution?: picsart.PicsartExportResolution;
   gomniImageUrl?: string;
   gomniImageUrls?: string[];
   gomniVideoUrl?: string;
@@ -2484,6 +2486,14 @@ function gomniInputKeyboard(is12 = false) {
   ]);
 }
 
+function gomni12ResolutionKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(`📺 1080p — ${formatRupiah(MODEL_PRICES.gemini_omni_12)}`, 'go12_res_1080')],
+    [Markup.button.callback(`✨ 4K — ${formatRupiah(MODEL_PRICES.gemini_omni_12_4k)}`, 'go12_res_4k')],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
 function gomniAddPhotoKeyboard(imageCount: number, needsVideo: boolean) {
   const rows = [];
   if (imageCount < picsart.GEMINI_OMNI_12_MAX_IMAGES) {
@@ -2717,6 +2727,7 @@ function hargaText(): string {
     `• Veo 3.1 Lite (Full HD) — ${formatRupiah(MODEL_PRICES.veo_lite)}\n` +
     `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
     `• Gemini Omni 1.2 (1080p · 10 detik) — ${formatRupiah(MODEL_PRICES.gemini_omni_12)}\n` +
+    `• Gemini Omni 1.2 (4K · 10 detik) — ${formatRupiah(MODEL_PRICES.gemini_omni_12_4k)}\n` +
     `• Chat AI — ${formatRupiah(MODEL_PRICES.chat)}/pesan\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
     `• Seedance 2.0 Mini 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_mini'))}\n` +
@@ -4547,6 +4558,7 @@ bot.on('callback_query', async (ctx) => {
       gomniInputMode: undefined,
       gomniDuration: undefined,
       gomniRatio: undefined,
+      gomniResolution: undefined,
       gomniImageUrl: undefined,
       gomniVideoUrl: undefined,
     });
@@ -4563,12 +4575,25 @@ bot.on('callback_query', async (ctx) => {
       gomniInputMode: undefined,
       gomniDuration: picsart.GEMINI_OMNI_12_DURATION_SECONDS,
       gomniRatio: undefined,
+      gomniResolution: undefined,
       gomniImageUrl: undefined,
       gomniImageUrls: [],
       gomniVideoUrl: undefined,
     });
     return ctx.editMessageText(
-      `✨ *Gemini Omni 1.2*\n\nOutput: *1080p · 10 detik*\nHarga: *${formatRupiah(MODEL_PRICES.gemini_omni_12)}* per video\n\nPilih cara membuat video:`,
+      `✨ *Gemini Omni 1.2*\n\nDurasi: *10 detik*\n\nPilih resolusi output:`,
+      { parse_mode: 'Markdown', ...gomni12ResolutionKeyboard() }
+    );
+  }
+
+  if (data === 'go12_res_1080' || data === 'go12_res_4k') {
+    const resolution: picsart.PicsartExportResolution = data === 'go12_res_4k' ? '4K' : '1080p';
+    const price = resolution === '4K'
+      ? MODEL_PRICES.gemini_omni_12_4k
+      : MODEL_PRICES.gemini_omni_12;
+    setSession(userId, { gomniModel: '1.2', gomniResolution: resolution });
+    return ctx.editMessageText(
+      `✨ *Gemini Omni 1.2*\n\nOutput: *${resolution} · 10 detik*\nHarga: *${formatRupiah(price)}* per video\n\nPilih cara membuat video:`,
       { parse_mode: 'Markdown', ...gomniInputKeyboard(true) }
     );
   }
@@ -4576,6 +4601,7 @@ bot.on('callback_query', async (ctx) => {
   if (data === 'go_in_i2v' || data === 'go_in_t2v' || data === 'go_in_v2v') {
     const inputMode = data === 'go_in_i2v' ? 'i2v' : data === 'go_in_v2v' ? 'v2v' : 't2v';
     const is12 = getSession(userId).gomniModel === '1.2';
+    const resolution = getSession(userId).gomniResolution ?? '1080p';
     setSession(userId, {
       gomniInputMode: inputMode,
       gomniDuration: is12 ? picsart.GEMINI_OMNI_12_DURATION_SECONDS : undefined,
@@ -4585,7 +4611,7 @@ bot.on('callback_query', async (ctx) => {
     });
     if (is12) {
       return ctx.editMessageText(
-        '✨ *Gemini Omni 1.2*\n\nDurasi: *10 detik* · Output: *1080p*\n\n*Langkah 1:* Pilih rasio layar:',
+        `✨ *Gemini Omni 1.2*\n\nDurasi: *10 detik* · Output: *${resolution}*\n\n*Langkah 1:* Pilih rasio layar:`,
         { parse_mode: 'Markdown', ...gomniRatioKeyboard() }
       );
     }
@@ -4607,6 +4633,7 @@ bot.on('callback_query', async (ctx) => {
   if (data.startsWith('go_ratio_')) {
     const ratio = SD_RATIO_MAP[data.replace('go_ratio_', '')] ?? '9:16';
     const session = getSession(userId);
+    const resolution = session.gomniResolution ?? '1080p';
     if (session.gomniInputMode === 'i2v' || session.gomniInputMode === 'v2v') {
       setSession(userId, {
         gomniRatio: ratio,
@@ -4616,7 +4643,7 @@ bot.on('callback_query', async (ctx) => {
       });
       return ctx.editMessageText(
         session.gomniModel === '1.2'
-          ? `✨ *Gemini Omni 1.2*\n\nRasio: *${ratio}* · 1080p · 10 detik\n\n*Langkah 2:* Kirim *1–${picsart.GEMINI_OMNI_12_MAX_IMAGES} foto acuan* untuk video kamu.`
+          ? `✨ *Gemini Omni 1.2*\n\nRasio: *${ratio}* · ${resolution} · 10 detik\n\n*Langkah 2:* Kirim *1–${picsart.GEMINI_OMNI_12_MAX_IMAGES} foto acuan* untuk video kamu.`
           : `✨ *Gemini Omni*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Kirim *foto acuan* untuk video kamu.`,
         { parse_mode: 'Markdown' }
       );
@@ -4624,7 +4651,7 @@ bot.on('callback_query', async (ctx) => {
     setSession(userId, { gomniRatio: ratio, mode: 'gomni_wait_prompt' });
     return ctx.editMessageText(
       session.gomniModel === '1.2'
-        ? `✨ *Gemini Omni 1.2*\n\nRasio: *${ratio}* · 1080p · 10 detik\n\n*Langkah 2:* Kirim *prompt teks* untuk video kamu.`
+        ? `✨ *Gemini Omni 1.2*\n\nRasio: *${ratio}* · ${resolution} · 10 detik\n\n*Langkah 2:* Kirim *prompt teks* untuk video kamu.`
         : `✨ *Gemini Omni*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).`,
       { parse_mode: 'Markdown' }
     );
@@ -6261,6 +6288,7 @@ bot.on('text', async (ctx) => {
       videoUrl: session.gomniVideoUrl,
       duration: session.gomniModel === '1.2' ? picsart.GEMINI_OMNI_12_DURATION_SECONDS : session.gomniDuration ?? 10,
       ratio: session.gomniRatio ?? '9:16',
+      exportResolution: session.gomniResolution ?? '1080p',
     };
     setSession(userId, { mode: 'idle' });
     const label = session.gomniModel === '1.2' ? 'Gemini Omni 1.2' : 'Gemini Omni';
@@ -8321,13 +8349,19 @@ async function runGeminiOmni(
     videoUrl?: string;
     duration: number;
     ratio: string;
+    exportResolution: picsart.PicsartExportResolution;
   }
 ) {
   const is12 = opts.model === '1.2';
   const label = is12 ? 'Gemini Omni 1.2' : 'Gemini Omni';
-  console.log(`[${userId}] ${label} started — mode: ${opts.inputMode}, refs: ${opts.imageUrls.length}, dur: ${opts.duration}s, ratio: ${opts.ratio}`);
+  const outputResolution = is12 ? opts.exportResolution : 'native';
+  console.log(`[${userId}] ${label} started — mode: ${opts.inputMode}, refs: ${opts.imageUrls.length}, dur: ${opts.duration}s, ratio: ${opts.ratio}, output=${outputResolution}`);
 
-  const PRICE = is12 ? MODEL_PRICES.gemini_omni_12 : MODEL_PRICES.gemini_omni;
+  const PRICE = is12
+    ? opts.exportResolution === '4K'
+      ? MODEL_PRICES.gemini_omni_12_4k
+      : MODEL_PRICES.gemini_omni_12
+    : MODEL_PRICES.gemini_omni;
   const charge = await beginCharge(dbUserId, PRICE, 3);
   if (!charge.ok) {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
@@ -8363,7 +8397,7 @@ async function runGeminiOmni(
           : stage === 'submit'
             ? `⏳ ${label}: mengirim perintah ke server... (2/3)`
             : stage === 'export'
-              ? `⏳ ${label}: mengekstrak hasil ke 1080p... (selangkah lagi)`
+              ? `⏳ ${label}: mengekspor hasil ke ${opts.exportResolution}... (selangkah lagi)`
             : `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 3–8 menit. Jangan tutup chat ini.`;
         lastEdit = Date.now();
         bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
@@ -8389,6 +8423,7 @@ async function runGeminiOmni(
           videoName,
           videoMime,
           aspectRatio: opts.ratio as picsart.GeminiOmni12AspectRatio,
+          exportResolution: opts.exportResolution,
           ...callbacks,
         })
       : await picsart.generateGeminiOmni({
@@ -8408,7 +8443,7 @@ async function runGeminiOmni(
     const delivered = await sendResult(
       chatId,
       result.url,
-      `✨ ${label} (${is12 ? '1080p · 10s' : `${opts.duration}s`} · ${opts.ratio})\n\n/menu untuk buat lagi`,
+      `✨ ${label} (${is12 ? `${opts.exportResolution} · 10s` : `${opts.duration}s`} · ${opts.ratio})\n\n/menu untuk buat lagi`,
       true
     );
     if (delivered) {

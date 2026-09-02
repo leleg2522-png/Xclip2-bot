@@ -27,6 +27,7 @@ import {
   buildSeedanceFastVideoEditParams,
   buildSeedance2VideoEditParams,
   extractPicsartVideoUrl,
+  getPicsartExportSize,
   getPicsartI2vExportSize,
   isPicsartPostSubmitAuthFailure,
   shouldExportPicsartI2v,
@@ -442,6 +443,8 @@ assert.deepEqual(JSON.parse(pixverseDrive.attributes.aiSDKPayload), {
 assert.equal(shouldExportPicsartI2v('pixverse_v6'), true);
 const portraitExport = getPicsartI2vExportSize('9:16');
 const landscapeExport = getPicsartI2vExportSize('16:9');
+assert.deepEqual(getPicsartExportSize('9:16', '4K'), { width: 2160, height: 3840 });
+assert.deepEqual(getPicsartExportSize('16:9', '4K'), { width: 3840, height: 2160 });
 assert.deepEqual(portraitExport, { width: 1080, height: 1920 });
 assert.deepEqual(landscapeExport, { width: 1920, height: 1080 });
 assert.equal(portraitExport.width * 16, portraitExport.height * 9, 'portrait export must remain exact 9:16');
@@ -454,8 +457,12 @@ assert.match(botSource, /picsart_seedance_2: 4000/);
 assert.match(botSource, /gemini_omni: 2500/);
 assert.match(botSource, /gemini_omni_12: 3500/);
 assert.match(botSource, /mode_gomni12/);
+assert.match(botSource, /gemini_omni_12_4k:\s*4000/);
+assert.match(botSource, /go12_res_1080/);
+assert.match(botSource, /go12_res_4k/);
+assert.match(botSource, /gomniResolution/);
 assert.match(botSource, /GEMINI_OMNI_12_MAX_IMAGES/);
-assert.match(botSource, /mengekstrak hasil ke 1080p/);
+assert.match(botSource, /mengekspor hasil ke \$\{opts\.exportResolution\}/);
 assert.match(botSource, /Wan 3\.0 1080p/);
 assert.match(botSource, /Seedance 2\.0 Mini 1080p/);
 assert.match(botSource, /Seedance 2 Mini Video Edit 1080p/);

@@ -1101,6 +1101,7 @@ export const GEMINI_OMNI_12_MAX_IMAGES = 5;
 export const GEMINI_OMNI_12_DURATION_SECONDS = 10;
 export const GEMINI_OMNI_12_RESOLUTION = '360p';
 export type GeminiOmni12AspectRatio = '9:16' | '16:9';
+export type PicsartExportResolution = '1080p' | '4K';
 
 export function buildGeminiOmni12Params(input: {
   prompt: string;
@@ -1180,6 +1181,7 @@ export async function generateGeminiOmni12(input: {
   videoName?: string;
   videoMime?: string;
   aspectRatio: GeminiOmni12AspectRatio;
+  exportResolution?: PicsartExportResolution;
   onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
@@ -1210,9 +1212,15 @@ export async function generateGeminiOmni12(input: {
       onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
     });
     input.onStatus?.('export');
-    const exportId = await submitPicsartI2vExport(credId, rawResult.url, input.aspectRatio);
+    const exportId = await submitPicsartI2vExport(
+      credId,
+      rawResult.url,
+      input.aspectRatio,
+      input.exportResolution ?? '1080p'
+    );
     const exported = await pollPicsartI2vExportResult(credId, exportId, {
       onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+      useGateway: input.exportResolution === '4K',
     });
     return { ...rawResult, url: exported.url };
   });
@@ -1883,6 +1891,18 @@ export function getPicsartI2vExportSize(ratio: WanV3AspectRatio): { width: numbe
     : { width: 1080, height: 1920 };
 }
 
+export function getPicsartExportSize(
+  ratio: WanV3AspectRatio,
+  resolution: PicsartExportResolution = '1080p'
+): { width: number; height: number } {
+  if (resolution === '4K') {
+    return ratio === '16:9'
+      ? { width: 3840, height: 2160 }
+      : { width: 2160, height: 3840 };
+  }
+  return getPicsartI2vExportSize(ratio);
+}
+
 export function shouldExportPicsartI2v(model: PicsartI2vModelKey): boolean {
   return model === 'seedance_2_mini'
     || model === 'seedance_2_fast'
@@ -1926,22 +1946,33 @@ async function cropImageToAspectRatio(
 async function submitPicsartI2vExport(
   credId: number,
   rawVideoUrl: string,
-  ratio: WanV3AspectRatio
+  ratio: WanV3AspectRatio,
+  resolution: PicsartExportResolution = '1080p'
 ): Promise<string> {
   const access = await getAccessToken(credId);
+  const useGateway = resolution === '4K';
   const r = await http.post(
-    `${API_BASE}/workflows/media-platform/v1/videos/edit/submit`,
+    `${API_BASE}${useGateway ? '/gw-v2' : ''}/workflows/media-platform/v1/videos/edit/submit`,
     {
       params: {
         params: {
           video_url: rawVideoUrl,
-          resize: getPicsartI2vExportSize(ratio),
+          resize: getPicsartExportSize(ratio, resolution),
         },
         export_config: { mediaType: 'mp4' },
       },
     },
     {
-      headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
+      headers: commonHeaders({
+        'content-type': 'application/json',
+        authorization: `Bearer ${access}`,
+        ...(useGateway
+          ? {
+              'x-app-authorization': X_APP_AUTHORIZATION,
+              'x-sub-package-id': 'subscription_pro_monthly',
+            }
+          : {}),
+      }),
       validateStatus: () => true,
     }
   );
@@ -1955,7 +1986,7 @@ async function submitPicsartI2vExport(
 async function pollPicsartI2vExportResult(
   credId: number,
   id: string,
-  opts?: { intervalMs?: number; onTick?: (elapsedMs: number) => void }
+  opts?: { intervalMs?: number; onTick?: (elapsedMs: number) => void; useGateway?: boolean }
 ): Promise<{ url: string }> {
   const intervalMs = opts?.intervalMs ?? 5000;
   const start = Date.now();
@@ -1964,8 +1995,16 @@ async function pollPicsartI2vExportResult(
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
     opts?.onTick?.(Date.now() - start);
     const access = await getAccessToken(credId);
-    const r = await http.get(`${API_BASE}/workflows/media-platform/v1/videos/edit/${id}/result`, {
-      headers: commonHeaders({ authorization: `Bearer ${access}` }),
+    const r = await http.get(`${API_BASE}${opts?.useGateway ? '/gw-v2' : ''}/workflows/media-platform/v1/videos/edit/${id}/result`, {
+      headers: commonHeaders({
+        authorization: `Bearer ${access}`,
+        ...(opts?.useGateway
+          ? {
+              'x-app-authorization': X_APP_AUTHORIZATION,
+              'x-sub-package-id': 'subscription_pro_monthly',
+            }
+          : {}),
+      }),
       validateStatus: () => true,
     });
     const ok = diag.note(r);
