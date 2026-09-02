@@ -47,6 +47,7 @@ assert.equal(PICSART_I2V_MODELS.seedance_2_fast.pool, 'p500');
 assert.equal(PICSART_I2V_MODELS.seedance_2.pool, 'p500');
 assert.equal(PICSART_I2V_MODELS.wan_v2.pool, 'p500');
 assert.equal(PICSART_I2V_MODELS.wan_v3.pool, 'p500');
+assert.equal(shouldExportPicsartI2v('grok_imagine'), true);
 assert.equal(SEEDANCE_2_MINI_EDIT_MODEL, 'seedance_2_0_mini');
 assert.equal(SEEDANCE_2_MINI_EDIT_DURATION_SECONDS, 15);
 assert.equal(SEEDANCE_2_MINI_EDIT_RESOLUTION, '480p');
@@ -305,13 +306,13 @@ assert.equal(
   6,
 );
 
-const grok = buildPicsartI2vParams('grok_imagine', prompt, imageUrl);
+const grok = buildPicsartI2vParams('grok_imagine', prompt, imageUrl, { ratio: '16:9' });
 assert.deepEqual(grok, {
   model: 'grok-imagine-video',
   prompt,
   image: { url: imageUrl },
   duration: 15,
-  aspect_ratio: '9:16',
+  aspect_ratio: '16:9',
   options: {},
 });
 

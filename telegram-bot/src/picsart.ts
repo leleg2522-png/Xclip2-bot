@@ -1613,7 +1613,7 @@ export function buildPicsartI2vParams(
         prompt,
         image: { url: imageUrl },
         duration: 15,
-        aspect_ratio: '9:16',
+        aspect_ratio: options?.ratio ?? '9:16',
         options: {},
       };
     case 'kling_v3_turbo':
@@ -1887,6 +1887,7 @@ export function shouldExportPicsartI2v(model: PicsartI2vModelKey): boolean {
   return model === 'seedance_2_mini'
     || model === 'seedance_2_fast'
     || model === 'seedance_2'
+    || model === 'grok_imagine'
     || model === 'wan_v3'
     || model === 'pixverse_v6';
 }
