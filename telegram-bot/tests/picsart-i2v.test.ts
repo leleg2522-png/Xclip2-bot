@@ -537,6 +537,8 @@ assert.match(botSource, /mh3_ratio_916/);
 assert.match(botSource, /mh3_ratio_169/);
 assert.match(botSource, /mh3_res_4k/);
 assert.match(botSource, /Output: \*4K\*/);
+assert.match(botSource, /hampir selesai menyiapkan video/);
+assert.doesNotMatch(botSource, /MiniMax H3: menyiapkan hasil \$\{opts\.resolution\}/);
 assert.match(botSource, /minimax_h3_wait_start_frame/);
 assert.match(botSource, /minimax_h3_wait_end_frame/);
 assert.match(botSource, /minimax_h3_wait_prompt/);

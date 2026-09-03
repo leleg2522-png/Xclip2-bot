@@ -8433,7 +8433,7 @@ async function runMinimaxH3(
           : stage === 'submit'
             ? `⏳ ${label}: mengirim perintah ke server... (2/4)`
             : stage === 'export'
-              ? `⏳ ${label}: menyiapkan hasil ${opts.resolution}... (4/4)`
+              ? `⏳ ${label}: hampir selesai menyiapkan video... (4/4)`
               : `⏳ ${label}: video sedang dibuat... (3/4)\n⏱️ Biasanya 3–15 menit.`;
         lastEdit = Date.now();
         bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
