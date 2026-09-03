@@ -21,3 +21,4 @@
 - [Standalone Telegram bot package](telegram-bot-deps.md) — install the nested bot with pnpm --ignore-workspace before running its tests or build
 - [Gemini Omni model separation](gemini-omni-model-separation.md) — Omni 1.2 is a separate paid model; never replace or repoint the legacy Omni route.
 - [Picsart Veo 3.1 4K](picsart-veo31-4k.md) — public Veo 3.1 4K uses the Picsart Veo Lite gateway contract, then a separate hidden 4K preparation step.
+- [Picsart MiniMax H3](picsart-minimax-h3.md) — H3 Max uses the gateway I2V route; first frame is image_url, optional last frame is end_image_url, native HAR mode is 480p/15s.

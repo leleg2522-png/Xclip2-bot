@@ -163,6 +163,7 @@ const MODEL_PRICES = {
   veo_fast: 1500,      // Veo 3.1 Fast Full HD (SnapGen)
   veo_lite: 1500,      // Veo 3.1 Lite Full HD (SnapGen, with audio)
   picsart_veo31_4k: 2500, // Public Veo 3.1 4K label, routed through Picsart
+  picsart_minimax_h3: 4000, // MiniMax H3 Max, 15s image-to-video / start-end frame
   nb_pro: 500,         // Nano Banana Pro (SnapGen image)
   nb_2: 500,           // Nano Banana 2 (SnapGen image)
   nb_2lite: 500,       // Nano Banana 2 Lite (SnapGen image)
@@ -1512,6 +1513,9 @@ type Mode =
   | 'veolite_wait_prompt'
   | 'veo31_wait_image'
   | 'veo31_wait_prompt'
+  | 'minimax_h3_wait_start_frame'
+  | 'minimax_h3_wait_end_frame'
+  | 'minimax_h3_wait_prompt'
   | 'gomni_wait_image'
   | 'gomni_wait_video'
   | 'gomni_wait_prompt'
@@ -1562,6 +1566,7 @@ type GenerationDraftKind =
   | 'veofast'
   | 'veolite'
   | 'veo31'
+  | 'minimax_h3'
   | 'gomni'
   | 'image'
   | 'seedream'
@@ -1614,6 +1619,12 @@ interface Session {
   veo31InputMode?: 'i2v' | 't2v';
   veo31ImageUrl?: string;
   veo31Ratio?: picsart.Veo31LiteAspectRatio;
+  // MiniMax H3 Max wizard state.
+  minimaxH3InputMode?: 'i2v' | 'start_end';
+  minimaxH3Ratio?: picsart.MinimaxH3AspectRatio;
+  minimaxH3Resolution?: picsart.MinimaxH3OutputResolution;
+  minimaxH3StartFrameUrl?: string;
+  minimaxH3EndFrameUrl?: string;
   // Gemini Omni wizard state (legacy or new 1.2 model)
   gomniModel?: 'legacy' | '1.2';
   gomniInputMode?: 'i2v' | 't2v' | 'v2v';
@@ -2272,6 +2283,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('⚡ Veo 3.1 Fast (Full HD)', 'mode_veofast')],
     [Markup.button.callback('🎞️ Veo 3.1 Lite (Full HD)', 'mode_veolite')],
     [Markup.button.callback('🎞️ Veo 3.1 4K (Rp2.500)', 'mode_veo31')],
+    [Markup.button.callback('🎬 MiniMax H3 • 15 detik', 'mode_minimax_h3')],
     [Markup.button.callback('✨ Gemini Omni', 'mode_gomni')],
     [Markup.button.callback('✨ Gemini Omni 1.2', 'mode_gomni12')],
     [Markup.button.callback('── 🔧 Video Tools ──', 'noop')],
@@ -2500,6 +2512,32 @@ function veo31RatioKeyboard() {
       Markup.button.callback('📱 9:16', 'v31_ratio_916'),
       Markup.button.callback('🖥️ 16:9', 'v31_ratio_169'),
     ],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function minimaxH3InputKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🖼️ Image to Video', 'mh3_mode_i2v')],
+    [Markup.button.callback('🎞️ Start + End Frame', 'mh3_mode_start_end')],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function minimaxH3RatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('📱 9:16', 'mh3_ratio_916'),
+      Markup.button.callback('🖥️ 16:9', 'mh3_ratio_169'),
+    ],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function minimaxH3ResolutionKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('480p (Native)', 'mh3_res_480')],
+    [Markup.button.callback('1080p (Full HD)', 'mh3_res_1080')],
     [Markup.button.callback('« Kembali', 'back_main')],
   ]);
 }
@@ -2755,6 +2793,7 @@ function hargaText(): string {
     `• Veo 3.1 Fast (Full HD) — ${formatRupiah(MODEL_PRICES.veo_fast)}\n` +
     `• Veo 3.1 Lite (Full HD) — ${formatRupiah(MODEL_PRICES.veo_lite)}\n` +
     `• Veo 3.1 4K (8 detik) — ${formatRupiah(MODEL_PRICES.picsart_veo31_4k)}\n` +
+    `• MiniMax H3 (15 detik) — ${formatRupiah(MODEL_PRICES.picsart_minimax_h3)}\n` +
     `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
     `• Gemini Omni 1.2 (1080p · 10 detik) — ${formatRupiah(MODEL_PRICES.gemini_omni_12)}\n` +
     `• Gemini Omni 1.2 (4K · 10 detik) — ${formatRupiah(MODEL_PRICES.gemini_omni_12_4k)}\n` +
@@ -4620,6 +4659,61 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  // ── MiniMax H3 Max wizard ──
+  if (data === 'mode_minimax_h3') {
+    setSession(userId, {
+      mode: 'idle',
+      generationDraft: true,
+      generationDraftKind: 'minimax_h3',
+      minimaxH3InputMode: undefined,
+      minimaxH3Ratio: undefined,
+      minimaxH3Resolution: undefined,
+      minimaxH3StartFrameUrl: undefined,
+      minimaxH3EndFrameUrl: undefined,
+    });
+    return ctx.editMessageText(
+      `🎬 *MiniMax H3*\n\nDurasi: *15 detik*\nHarga: *${formatRupiah(MODEL_PRICES.picsart_minimax_h3)}*\n\nPilih mode:`,
+      { parse_mode: 'Markdown', ...minimaxH3InputKeyboard() }
+    );
+  }
+
+  if (data === 'mh3_mode_i2v' || data === 'mh3_mode_start_end') {
+    setSession(userId, {
+      minimaxH3InputMode: data === 'mh3_mode_start_end' ? 'start_end' : 'i2v',
+      minimaxH3StartFrameUrl: undefined,
+      minimaxH3EndFrameUrl: undefined,
+    });
+    return ctx.editMessageText(
+      `🎬 *MiniMax H3*\n\nMode: *${data === 'mh3_mode_start_end' ? 'Start + End Frame' : 'Image to Video'}*\n\nPilih rasio:`,
+      { parse_mode: 'Markdown', ...minimaxH3RatioKeyboard() }
+    );
+  }
+
+  if (data === 'mh3_ratio_916' || data === 'mh3_ratio_169') {
+    const ratio: picsart.MinimaxH3AspectRatio = data === 'mh3_ratio_169' ? '16:9' : '9:16';
+    setSession(userId, { minimaxH3Ratio: ratio });
+    return ctx.editMessageText(
+      `🎬 *MiniMax H3*\n\nRasio: *${ratio}*\nDurasi: *15 detik*\n\nPilih resolusi hasil:`,
+      { parse_mode: 'Markdown', ...minimaxH3ResolutionKeyboard() }
+    );
+  }
+
+  if (data === 'mh3_res_480' || data === 'mh3_res_1080') {
+    const resolution: picsart.MinimaxH3OutputResolution = data === 'mh3_res_1080' ? '1080p' : '480p';
+    const session = getSession(userId);
+    setSession(userId, {
+      minimaxH3Resolution: resolution,
+      mode: 'minimax_h3_wait_start_frame',
+    });
+    return ctx.editMessageText(
+      `🎬 *MiniMax H3*\n\n` +
+      `Mode: *${session.minimaxH3InputMode === 'start_end' ? 'Start + End Frame' : 'Image to Video'}*\n` +
+      `Rasio: *${session.minimaxH3Ratio ?? '9:16'}* · Resolusi: *${resolution}*\n\n` +
+      '*Langkah berikutnya:* Kirim *foto frame awal*.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   // ── Gemini Omni wizard (text-to-video or image-to-video) ──
   if (data === 'mode_gomni') {
     setSession(userId, {
@@ -5328,6 +5422,38 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     return ctx.reply(
       '✅ Foto acuan diterima!\n\n' +
       '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'minimax_h3_wait_start_frame') {
+    if (session.minimaxH3InputMode === 'start_end') {
+      setSession(userId, {
+        minimaxH3StartFrameUrl: fileUrl,
+        mode: 'minimax_h3_wait_end_frame',
+      });
+      return ctx.reply(
+        '✅ Frame awal diterima!\n\n*Langkah berikutnya:* Kirim *foto frame akhir*.',
+        { parse_mode: 'Markdown' }
+      );
+    }
+    setSession(userId, {
+      minimaxH3StartFrameUrl: fileUrl,
+      mode: 'minimax_h3_wait_prompt',
+    });
+    return ctx.reply(
+      '✅ Foto acuan diterima!\n\n*Langkah terakhir:* Kirim *prompt teks* untuk video kamu.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'minimax_h3_wait_end_frame') {
+    setSession(userId, {
+      minimaxH3EndFrameUrl: fileUrl,
+      mode: 'minimax_h3_wait_prompt',
+    });
+    return ctx.reply(
+      '✅ Frame akhir diterima!\n\n*Langkah terakhir:* Kirim *prompt teks* untuk mengarahkan transisi dari frame awal ke frame akhir.',
       { parse_mode: 'Markdown' }
     );
   }
@@ -6290,6 +6416,45 @@ bot.on('text', async (ctx) => {
     return;
   }
 
+  // ── MiniMax H3 prompt ──
+  if (session.mode === 'minimax_h3_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi gerakan atau transisi video.');
+    }
+    if (!session.minimaxH3StartFrameUrl) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply('⚠️ Frame awal tidak ditemukan. Mulai lagi dari /menu.');
+    }
+    if (session.minimaxH3InputMode === 'start_end' && !session.minimaxH3EndFrameUrl) {
+      return ctx.reply('⚠️ Frame akhir belum ada. Kirim foto frame akhir terlebih dahulu.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(
+        `⏳ Sabar ya, lagi cooldown!\n\nTunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+    const opts = {
+      inputMode: session.minimaxH3InputMode ?? 'i2v',
+      startFrameUrl: session.minimaxH3StartFrameUrl,
+      endFrameUrl: session.minimaxH3EndFrameUrl,
+      ratio: session.minimaxH3Ratio ?? '9:16',
+      resolution: session.minimaxH3Resolution ?? '480p',
+    } as const;
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply(
+      `⏳ Memproses MiniMax H3 ${opts.resolution}...\nHasil dikirim otomatis setelah video selesai disiapkan.`,
+      { parse_mode: 'Markdown' }
+    );
+    runMinimaxH3(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
+      .catch((e) => console.error(`[${userId}] MiniMax H3 gen error:`, e.message));
+    return;
+  }
+
   // ── Veo 3.1 Fast prompt (SnapGen) ──
   if (session.mode === 'veofast_wait_prompt') {
     if (!await requireLogin(ctx)) return;
@@ -6639,6 +6804,12 @@ bot.on('text', async (ctx) => {
   }
   if (session.mode === 'sora_wait_image') {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+  }
+  if (session.mode === 'minimax_h3_wait_start_frame') {
+    return ctx.reply('📸 Kirim *foto frame awal* terlebih dahulu, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+  }
+  if (session.mode === 'minimax_h3_wait_end_frame') {
+    return ctx.reply('📸 Kirim *foto frame akhir* terlebih dahulu, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
   if (session.mode === 'picsart_i2v_wait_image') {
     return ctx.reply(
@@ -8194,6 +8365,129 @@ async function runVeo(
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
+// ─── Background: MiniMax H3 (Picsart gateway) ────────────────────────────────
+async function runMinimaxH3(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  opts: {
+    inputMode: 'i2v' | 'start_end';
+    startFrameUrl: string;
+    endFrameUrl?: string;
+    ratio: picsart.MinimaxH3AspectRatio;
+    resolution: picsart.MinimaxH3OutputResolution;
+  }
+) {
+  const PRICE = MODEL_PRICES.picsart_minimax_h3;
+  const label = 'MiniMax H3';
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(
+      chatId,
+      statusMsgId,
+      undefined,
+      chargeFailMsg(charge.reason, PRICE)
+    ).catch(() => {});
+    return;
+  }
+  let refund = true;
+
+  try {
+    const startDownload = await downloadBuffer(opts.startFrameUrl);
+    const startFrame = {
+      buffer: startDownload.buf,
+      name: `start-frame.${startDownload.ext}`,
+      mime: startDownload.mime,
+    };
+    let endFrame: { buffer: Buffer; name: string; mime: string } | undefined;
+    if (opts.inputMode === 'start_end' && opts.endFrameUrl) {
+      const endDownload = await downloadBuffer(opts.endFrameUrl);
+      endFrame = {
+        buffer: endDownload.buf,
+        name: `end-frame.${endDownload.ext}`,
+        mime: endDownload.mime,
+      };
+    }
+
+    console.log(
+      `[${userId}] ${label} started — mode=${opts.inputMode} ratio=${opts.ratio} ` +
+      `resolution=${opts.resolution} frames=${endFrame ? 2 : 1}`
+    );
+    let lastEdit = 0;
+    const result = await picsart.generateMinimaxH3({
+      userId: dbUserId,
+      prompt,
+      startFrame,
+      endFrame,
+      aspectRatio: opts.ratio,
+      outputResolution: opts.resolution,
+      onStatus: (stage) => {
+        const text = stage === 'upload'
+          ? `⏳ ${label}: mengunggah frame... (1/4)`
+          : stage === 'submit'
+            ? `⏳ ${label}: mengirim perintah ke server... (2/4)`
+            : stage === 'export'
+              ? `⏳ ${label}: menyiapkan hasil ${opts.resolution}... (4/4)`
+              : `⏳ ${label}: video sedang dibuat... (3/4)\n⏱️ Biasanya 3–15 menit.`;
+        lastEdit = Date.now();
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+      },
+      onPoll: (elapsedSec) => {
+        if (Date.now() - lastEdit < 30_000) return;
+        lastEdit = Date.now();
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = elapsedSec % 60;
+        bot.telegram.editMessageText(
+          chatId,
+          statusMsgId,
+          undefined,
+          `⏳ ${label}: video sedang disiapkan...\n⏱️ Sudah berjalan ${mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`}.`
+        ).catch(() => {});
+      },
+    });
+
+    const modeLabel = opts.inputMode === 'start_end' ? 'Start + End Frame' : 'Image to Video';
+    const delivered = await sendResult(
+      chatId,
+      result.url,
+      `🎬 ${label} (${modeLabel} · 15s · ${opts.ratio} · ${opts.resolution})\n\n/menu untuk buat lagi`,
+      true
+    );
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] ${label} done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    }
+  } catch (err: any) {
+    const msg = describeError(err);
+    console.error(`[${userId}] ${label} error: ${msg}`);
+    const friendly = msg.includes('PICSART_TIMEOUT')
+      ? '❌ Proses terlalu lama. Coba lagi nanti.'
+      : msg.includes('PICSART_UPLOAD_FAILED')
+        ? '❌ Frame tidak bisa diproses. Coba gambar lain.'
+        : '❌ Gagal memproses. Coba lagi nanti.';
+    await bot.telegram.editMessageText(
+      chatId,
+      statusMsgId,
+      undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(
+        chatId,
+        `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`
+      ).catch(() => {});
     }
     releaseGenerating(dbUserId);
   }

@@ -7,6 +7,9 @@ import {
   GEMINI_OMNI_12_RESOLUTION,
   GEMINI_OMNI_MODEL,
   KLING_MOTION_CONTROL_POOL,
+  MINIMAX_H3_DURATION_SECONDS,
+  MINIMAX_H3_MODEL,
+  MINIMAX_H3_NATIVE_RESOLUTION,
   VEO_31_LITE_DURATION_SECONDS,
   VEO_31_LITE_MODEL,
   VEO_31_LITE_RESOLUTION,
@@ -25,6 +28,7 @@ import {
   SEEDANCE_2_EDIT_MODEL,
   SEEDANCE_2_EDIT_RESOLUTION,
   buildGeminiOmni12Params,
+  buildMinimaxH3Params,
   buildVeo31LiteParams,
   buildPicsartI2vParams,
   buildSeedanceMiniVideoEditParams,
@@ -46,6 +50,37 @@ assert.equal(GEMINI_OMNI_12_MODEL, 'gemini-omni-1.1-flash-preview');
 assert.equal(GEMINI_OMNI_12_DURATION_SECONDS, 10);
 assert.equal(GEMINI_OMNI_12_RESOLUTION, '360p');
 assert.equal(GEMINI_OMNI_12_MAX_IMAGES, 5);
+assert.equal(MINIMAX_H3_MODEL, 'minimax-h3-max');
+assert.equal(MINIMAX_H3_DURATION_SECONDS, 15);
+assert.equal(MINIMAX_H3_NATIVE_RESOLUTION, '480p');
+const minimaxH3Params = buildMinimaxH3Params({
+  prompt,
+  startFrameUrl: imageUrl,
+  endFrameUrl: 'https://cdn.example.test/end-frame.jpg',
+  aspectRatio: '9:16',
+  outputName: 'minimax-h3-test.mp4',
+}) as any;
+assert.equal(minimaxH3Params.prompt, prompt);
+assert.equal(minimaxH3Params.prompt_expansion_mode, 'balanced');
+assert.equal(minimaxH3Params.duration, 15);
+assert.equal(minimaxH3Params.resolution, '480p');
+assert.equal(minimaxH3Params.image_url, imageUrl);
+assert.equal(minimaxH3Params.end_image_url, 'https://cdn.example.test/end-frame.jpg');
+assert.equal(minimaxH3Params.enable_safety_checker, true);
+assert.equal(minimaxH3Params.options.drive.attributes.model, 'minimax-h3-max');
+assert.equal(minimaxH3Params.options.drive.name, 'minimax-h3-test.mp4');
+assert.deepEqual(JSON.parse(minimaxH3Params.options.drive.attributes.aiSDKPayload), {
+  prompt,
+  resolution: '480p',
+  duration: 15,
+  aspectRatio: '9:16',
+  promptExpansionMode: 'balanced',
+  seed: -1,
+  enableSafetyChecker: true,
+  startFrame: imageUrl,
+  outputMegapixels: 0.91392,
+  endFrame: 'https://cdn.example.test/end-frame.jpg',
+});
 assert.equal(VEO_31_LITE_MODEL, 'veo-3.1-lite-generate-preview');
 assert.equal(VEO_31_LITE_DURATION_SECONDS, 8);
 assert.equal(VEO_31_LITE_RESOLUTION, '720p');
@@ -480,6 +515,17 @@ assert.match(botSource, /gemini_omni: 2500/);
 assert.match(botSource, /gemini_omni_12: 3500/);
 assert.match(botSource, /mode_gomni12/);
 assert.match(botSource, /mode_veo31/);
+assert.match(botSource, /mode_minimax_h3/);
+assert.match(botSource, /picsart_minimax_h3:\s*4000/);
+assert.match(botSource, /mh3_mode_i2v/);
+assert.match(botSource, /mh3_mode_start_end/);
+assert.match(botSource, /mh3_ratio_916/);
+assert.match(botSource, /mh3_ratio_169/);
+assert.match(botSource, /mh3_res_480/);
+assert.match(botSource, /mh3_res_1080/);
+assert.match(botSource, /minimax_h3_wait_start_frame/);
+assert.match(botSource, /minimax_h3_wait_end_frame/);
+assert.match(botSource, /minimax_h3_wait_prompt/);
 assert.match(botSource, /picsart_veo31_4k:\s*2500/);
 assert.match(botSource, /Veo 3\.1 4K/);
 assert.match(botSource, /v31_ratio_916/);
@@ -533,6 +579,8 @@ assert.match(botSource, /seedance_2[\s\S]*picsart_i2v_wait_ratio/);
 const picsartSource = readFileSync(new URL('../src/picsart.ts', import.meta.url), 'utf8');
 assert.match(picsartSource, /generateGeminiOmni12[\s\S]*submitPicsartI2vExport/);
 assert.match(picsartSource, /generateVeo31Lite4K[\s\S]*submitPicsartI2vExport/);
+assert.match(picsartSource, /gw-v2\/workflows\/minimax\/h3-max\/image-to-video\/submit/);
+assert.match(picsartSource, /generateMinimaxH3[\s\S]*outputResolution === '480p'[\s\S]*submitPicsartI2vExport/);
 assert.match(picsartSource, /gw-v2\/workflows\/veo-t2v\/submit/);
 assert.match(picsartSource, /generateSeedanceVideoEdit[\s\S]*submitPicsartI2vExport/);
 assert.match(picsartSource, /seedance-2\.0-mini-video-edit/);
