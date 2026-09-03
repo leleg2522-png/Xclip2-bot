@@ -162,6 +162,7 @@ const MODEL_PRICES = {
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
   veo_fast: 1500,      // Veo 3.1 Fast Full HD (SnapGen)
   veo_lite: 1500,      // Veo 3.1 Lite Full HD (SnapGen, with audio)
+  picsart_veo31_4k: 2500, // Public Veo 3.1 4K label, routed through Picsart
   nb_pro: 500,         // Nano Banana Pro (SnapGen image)
   nb_2: 500,           // Nano Banana 2 (SnapGen image)
   nb_2lite: 500,       // Nano Banana 2 Lite (SnapGen image)
@@ -1509,6 +1510,8 @@ type Mode =
   | 'veofast_wait_prompt'
   | 'veolite_wait_image'
   | 'veolite_wait_prompt'
+  | 'veo31_wait_image'
+  | 'veo31_wait_prompt'
   | 'gomni_wait_image'
   | 'gomni_wait_video'
   | 'gomni_wait_prompt'
@@ -1558,6 +1561,7 @@ type GenerationDraftKind =
   | 'sora'
   | 'veofast'
   | 'veolite'
+  | 'veo31'
   | 'gomni'
   | 'image'
   | 'seedream'
@@ -1607,6 +1611,9 @@ interface Session {
   veoliteInputMode?: 'i2v' | 't2v';
   veoliteImageUrl?: string;
   veoliteRatio?: string;
+  veo31InputMode?: 'i2v' | 't2v';
+  veo31ImageUrl?: string;
+  veo31Ratio?: picsart.Veo31LiteAspectRatio;
   // Gemini Omni wizard state (legacy or new 1.2 model)
   gomniModel?: 'legacy' | '1.2';
   gomniInputMode?: 'i2v' | 't2v' | 'v2v';
@@ -1747,6 +1754,7 @@ const GENERATION_DRAFT_MODES = new Set<Mode>([
   'klingp3_wait_image', 'klingp3_wait_video', 'klingp3_wait_prompt',
   'rw_wait_image', 'rw_wait_prompt', 'sora_wait_image', 'sora_wait_prompt',
   'veofast_wait_image', 'veofast_wait_prompt', 'veolite_wait_image', 'veolite_wait_prompt',
+  'veo31_wait_image', 'veo31_wait_prompt',
   'gomni_wait_image', 'gomni_wait_video', 'gomni_wait_prompt',
   'seedream_wait_image', 'seedream_wait_prompt', 'gptimg_wait_image', 'gptimg_wait_prompt',
   'floraimg_wait_prompt', 'lipsync_wait_media', 'lipsync_wait_audio',
@@ -1781,6 +1789,7 @@ function generationDraftKindForStart(data: string): GenerationDraftKind | undefi
     mode_sora: 'sora',
     mode_veofast: 'veofast',
     mode_veolite: 'veolite',
+    mode_veo31: 'veo31',
     mode_gomni: 'gomni',
     mode_gomni12: 'gomni',
     mode_nbpro: 'image',
@@ -1798,6 +1807,7 @@ function generationDraftKindForContinuation(data: string): GenerationDraftKind |
   if (data.startsWith('so_')) return 'sora';
   if (data.startsWith('vf_')) return 'veofast';
   if (data.startsWith('vl_')) return 'veolite';
+  if (data.startsWith('v31_')) return 'veo31';
   if (data.startsWith('go_')) return 'gomni';
   if (data.startsWith('img_')) return 'image';
   if (data.startsWith('sdm_')) return 'seedream';
@@ -2261,6 +2271,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🎥 Sora 2 (OpenAI)', 'mode_sora')],
     [Markup.button.callback('⚡ Veo 3.1 Fast (Full HD)', 'mode_veofast')],
     [Markup.button.callback('🎞️ Veo 3.1 Lite (Full HD)', 'mode_veolite')],
+    [Markup.button.callback('🎞️ Veo 3.1 4K (Rp2.500)', 'mode_veo31')],
     [Markup.button.callback('✨ Gemini Omni', 'mode_gomni')],
     [Markup.button.callback('✨ Gemini Omni 1.2', 'mode_gomni12')],
     [Markup.button.callback('── 🔧 Video Tools ──', 'noop')],
@@ -2471,6 +2482,24 @@ function veoliteInputKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('🖼️ Foto + Prompt', 'vl_in_i2v')],
     [Markup.button.callback('✍️ Prompt Saja', 'vl_in_t2v')],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function veo31InputKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('🖼️ Foto + Prompt', 'v31_in_i2v')],
+    [Markup.button.callback('✍️ Prompt Saja', 'v31_in_t2v')],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function veo31RatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('📱 9:16', 'v31_ratio_916'),
+      Markup.button.callback('🖥️ 16:9', 'v31_ratio_169'),
+    ],
     [Markup.button.callback('« Kembali', 'back_main')],
   ]);
 }
@@ -2725,6 +2754,7 @@ function hargaText(): string {
     `• Sora 2 — ${formatRupiah(MODEL_PRICES.sora)}\n` +
     `• Veo 3.1 Fast (Full HD) — ${formatRupiah(MODEL_PRICES.veo_fast)}\n` +
     `• Veo 3.1 Lite (Full HD) — ${formatRupiah(MODEL_PRICES.veo_lite)}\n` +
+    `• Veo 3.1 4K (8 detik) — ${formatRupiah(MODEL_PRICES.picsart_veo31_4k)}\n` +
     `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
     `• Gemini Omni 1.2 (1080p · 10 detik) — ${formatRupiah(MODEL_PRICES.gemini_omni_12)}\n` +
     `• Gemini Omni 1.2 (4K · 10 detik) — ${formatRupiah(MODEL_PRICES.gemini_omni_12_4k)}\n` +
@@ -4550,6 +4580,46 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  // ── Veo 3.1 4K wizard (Picsart Veo 3.1 Lite contract) ──
+  if (data === 'mode_veo31') {
+    setSession(userId, {
+      mode: 'idle',
+      veo31InputMode: undefined,
+      veo31ImageUrl: undefined,
+      veo31Ratio: undefined,
+    });
+    return ctx.editMessageText(
+      `🎞️ *Veo 3.1 4K*\n\nDurasi: *8 detik*\nHarga: *${formatRupiah(MODEL_PRICES.picsart_veo31_4k)}* per video\n\nPilih rasio video:`,
+      { parse_mode: 'Markdown', ...veo31RatioKeyboard() }
+    );
+  }
+
+  if (data === 'v31_ratio_169' || data === 'v31_ratio_916') {
+    const ratio: picsart.Veo31LiteAspectRatio = data === 'v31_ratio_169' ? '16:9' : '9:16';
+    setSession(userId, { veo31Ratio: ratio });
+    return ctx.editMessageText(
+      `🎞️ *Veo 3.1 4K*\n\nDurasi: *8 detik* · Rasio: *${ratio}* · Output: *4K*\n\nPilih cara membuat video:`,
+      { parse_mode: 'Markdown', ...veo31InputKeyboard() }
+    );
+  }
+
+  if (data === 'v31_in_i2v' || data === 'v31_in_t2v') {
+    const inputMode = data === 'v31_in_i2v' ? 'i2v' : 't2v';
+    const ratio = getSession(userId).veo31Ratio ?? '16:9';
+    if (inputMode === 'i2v') {
+      setSession(userId, { veo31InputMode: 'i2v', mode: 'veo31_wait_image' });
+      return ctx.editMessageText(
+        `🎞️ *Veo 3.1 4K*\n\nRasio: *${ratio}*\n\n*Langkah 1:* Kirim *foto acuan* untuk video kamu.`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+    setSession(userId, { veo31InputMode: 't2v', mode: 'veo31_wait_prompt' });
+    return ctx.editMessageText(
+      `🎞️ *Veo 3.1 4K*\n\nRasio: *${ratio}*\n\n*Langkah 1:* Kirim *prompt teks* untuk video kamu.`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   // ── Gemini Omni wizard (text-to-video or image-to-video) ──
   if (data === 'mode_gomni') {
     setSession(userId, {
@@ -5353,6 +5423,15 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     return ctx.reply(
       `✅ Foto acuan diterima! (Rasio: ${session.veoliteRatio ?? '16:9'})\n\n` +
       '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'veo31_wait_image') {
+    setSession(userId, { veo31ImageUrl: fileUrl, mode: 'veo31_wait_prompt' });
+    return ctx.reply(
+      `✅ Foto acuan diterima! (Rasio: ${session.veo31Ratio ?? '16:9'})\n\n` +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu.',
       { parse_mode: 'Markdown' }
     );
   }
@@ -6259,6 +6338,33 @@ bot.on('text', async (ctx) => {
     return;
   }
 
+  // ── Veo 3.1 4K prompt (Picsart) ──
+  if (session.mode === 'veo31_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    const opts = {
+      inputMode: session.veo31InputMode ?? 't2v',
+      imageUrl: session.veo31ImageUrl,
+      ratio: session.veo31Ratio ?? '16:9',
+    };
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply(
+      '⏳ Memproses Veo 3.1 4K...\nHasil dikirim otomatis setelah video selesai disiapkan.',
+      { parse_mode: 'Markdown' }
+    );
+    runPicsartVeo31(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
+      .catch((e) => console.error(`[${userId}] Veo 3.1 4K gen error:`, e.message));
+    return;
+  }
+
   // ── Gemini Omni prompt ──
   if (session.mode === 'gomni_wait_prompt') {
     if (!await requireLogin(ctx)) return;
@@ -6581,7 +6687,7 @@ bot.on('text', async (ctx) => {
   if (session.mode === 'oneover_wait_image') {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
-  if (session.mode === 'veofast_wait_image' || session.mode === 'veolite_wait_image') {
+  if (session.mode === 'veofast_wait_image' || session.mode === 'veolite_wait_image' || session.mode === 'veo31_wait_image') {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
   if (session.mode === 'seedream_wait_image') {
@@ -8088,6 +8194,113 @@ async function runVeo(
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
+// ─── Background: Veo 3.1 4K (Picsart gateway) ────────────────────────────────
+async function runPicsartVeo31(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  opts: {
+    inputMode: 'i2v' | 't2v';
+    imageUrl?: string;
+    ratio: picsart.Veo31LiteAspectRatio;
+  }
+) {
+  const PRICE = MODEL_PRICES.picsart_veo31_4k;
+  const label = 'Veo 3.1 4K';
+  console.log(`[${userId}] ${label} started — mode: ${opts.inputMode}, ratio: ${opts.ratio}`);
+
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+
+  try {
+    let image: { buffer: Buffer; name: string; mime: string } | undefined;
+    if (opts.inputMode === 'i2v' && opts.imageUrl) {
+      const downloaded = await downloadBuffer(opts.imageUrl);
+      image = {
+        buffer: downloaded.buf,
+        name: `reference.${downloaded.ext}`,
+        mime: downloaded.mime,
+      };
+      console.log(`[${userId}] ${label} ref image — ${downloaded.mime} ${(downloaded.buf.length / 1024).toFixed(1)}KB`);
+    }
+
+    let lastEdit = 0;
+    const result = await picsart.generateVeo31Lite4K({
+      userId: dbUserId,
+      prompt,
+      image,
+      aspectRatio: opts.ratio,
+      onStatus: (stage) => {
+        const text = stage === 'upload'
+          ? `⏳ ${label}: mengunggah foto acuan... (1/4)`
+          : stage === 'submit'
+            ? `⏳ ${label}: mengirim perintah ke server... (2/4)`
+            : stage === 'export'
+              ? `⏳ ${label}: menyiapkan video akhir 4K... (4/4)`
+              : `⏳ ${label}: video sedang dibuat... (3/4)\n⏱️ Mohon tunggu, biasanya 3–15 menit.`;
+        lastEdit = Date.now();
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+      },
+      onPoll: (elapsedSec) => {
+        if (Date.now() - lastEdit < 30_000) return;
+        lastEdit = Date.now();
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = elapsedSec % 60;
+        const elapsed = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
+        bot.telegram.editMessageText(
+          chatId,
+          statusMsgId,
+          undefined,
+          `⏳ ${label}: video sedang disiapkan...\n⏱️ Sudah berjalan ${elapsed}.`
+        ).catch(() => {});
+      },
+    });
+
+    const delivered = await sendResult(
+      chatId,
+      result.url,
+      `🎞️ ${label} (8s · ${opts.ratio})\n\n/menu untuk buat lagi`,
+      true
+    );
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[${userId}] ${label} done (usage: ${newCount}, credits used: ${result.credits ?? '?'})`);
+    }
+  } catch (err: any) {
+    const msg = describeError(err);
+    console.error(`[${userId}] ${label} error: ${msg}`);
+    const friendly = msg.includes('PICSART_TIMEOUT')
+      ? '❌ Proses terlalu lama. Coba lagi nanti.'
+      : msg.includes('PICSART_UPLOAD_FAILED')
+        ? '❌ Foto tidak bisa diproses. Coba foto lain.'
+        : '❌ Gagal memproses. Coba lagi nanti.';
+    await bot.telegram.editMessageText(
+      chatId,
+      statusMsgId,
+      undefined,
+      `${friendly}\n\n/menu untuk coba lagi`
+    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(
+        chatId,
+        `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`
+      ).catch(() => {});
     }
     releaseGenerating(dbUserId);
   }

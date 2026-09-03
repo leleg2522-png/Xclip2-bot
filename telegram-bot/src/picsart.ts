@@ -1226,6 +1226,118 @@ export async function generateGeminiOmni12(input: {
   });
 }
 
+// ─── Veo 3.1 Lite (Picsart gateway, customer branding: Veo 3.1 4K) ──────────
+export const VEO_31_LITE_MODEL = 'veo-3.1-lite-generate-preview';
+export const VEO_31_LITE_DURATION_SECONDS = 8;
+export const VEO_31_LITE_RESOLUTION = '720p';
+export type Veo31LiteAspectRatio = '9:16' | '16:9';
+
+export function buildVeo31LiteParams(input: {
+  prompt: string;
+  imageReference?: { url: string; mimeType: string };
+  aspectRatio: Veo31LiteAspectRatio;
+}) {
+  const params: Record<string, unknown> = {
+    model: VEO_31_LITE_MODEL,
+    prompt: input.prompt,
+    count: 1,
+    parameters: {
+      resolution: VEO_31_LITE_RESOLUTION,
+      aspectRatio: input.aspectRatio,
+      durationSeconds: VEO_31_LITE_DURATION_SECONDS,
+    },
+  };
+  if (input.imageReference) params.image = input.imageReference;
+  return params;
+}
+
+async function submitVeo31Lite(credId: number, input: {
+  prompt: string;
+  imageReference?: { url: string; mimeType: string };
+  aspectRatio: Veo31LiteAspectRatio;
+}): Promise<string> {
+  const access = await getAccessToken(credId);
+  const params = buildVeo31LiteParams(input);
+  const r = await http.post(`${API_BASE}/gw-v2/workflows/veo-t2v/submit`, { params }, {
+    headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
+    validateStatus: () => true,
+  });
+  const id = r.data?.response?.id;
+  if (!ok2xx(r.status) || !id) {
+    throw new Error(`PICSART_VEO31_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+  }
+  return id;
+}
+
+async function pollVeo31LiteResult(
+  credId: number,
+  id: string,
+  opts?: { maxAttempts?: number; intervalMs?: number; onTick?: (elapsedMs: number) => void }
+): Promise<{ url: string; credits?: number }> {
+  const maxAttempts = opts?.maxAttempts ?? 180;
+  const intervalMs = opts?.intervalMs ?? 5000;
+  const start = Date.now();
+  const diag = new PollDiag();
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    opts?.onTick?.(Date.now() - start);
+    const access = await getAccessToken(credId);
+    const r = await http.get(`${API_BASE}/gw-v2/workflows/veo-t2v/${id}/result`, {
+      headers: commonHeaders({ authorization: `Bearer ${access}` }),
+      validateStatus: () => true,
+    });
+    if (!diag.note(r)) continue;
+    const resp = r.data?.response;
+    const status = String(resp?.status ?? '').toUpperCase();
+    if (status === 'COMPLETED') {
+      const result = Array.isArray(resp?.result) ? resp.result[0] : resp?.result;
+      const url = result?.url;
+      if (!url) throw new Error('PICSART_VEO31_NO_RESULT_URL');
+      return { url, credits: resp.usage?.credits };
+    }
+    if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
+      throw new Error(`PICSART_VEO31_GEN_FAILED: ${JSON.stringify(resp).slice(0, 200)}`);
+    }
+  }
+  throw diag.timeoutError();
+}
+
+export async function generateVeo31Lite4K(input: {
+  userId: number;
+  prompt: string;
+  image?: { buffer: Buffer; name?: string; mime?: string };
+  aspectRatio: Veo31LiteAspectRatio;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  return runWithAccount(input.userId, 'p500', async (credId) => {
+    let imageReference: { url: string; mimeType: string } | undefined;
+    if (input.image) {
+      input.onStatus?.('upload');
+      const mimeType = input.image.mime || 'image/jpeg';
+      const url = await uploadFile(credId, input.image.buffer, input.image.name || 'reference.jpg', mimeType);
+      imageReference = { url, mimeType };
+    }
+    input.onStatus?.('submit');
+    const id = await submitVeo31Lite(credId, {
+      prompt: input.prompt,
+      imageReference,
+      aspectRatio: input.aspectRatio,
+    });
+    input.onStatus?.('poll');
+    const rawResult = await pollVeo31LiteResult(credId, id, {
+      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+    });
+    input.onStatus?.('export');
+    const exportId = await submitPicsartI2vExport(credId, rawResult.url, input.aspectRatio, '4K');
+    const exported = await pollPicsartI2vExportResult(credId, exportId, {
+      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+      useGateway: true,
+    });
+    return { ...rawResult, url: exported.url };
+  });
+}
+
 
 // ─── Seedance 2.5 (ByteDance video: text + up to 5 reference images) ───────────
 // POST /workflows/seedance/submit          -> {response:{id}}

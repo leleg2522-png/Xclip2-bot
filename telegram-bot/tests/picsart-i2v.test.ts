@@ -7,6 +7,9 @@ import {
   GEMINI_OMNI_12_RESOLUTION,
   GEMINI_OMNI_MODEL,
   KLING_MOTION_CONTROL_POOL,
+  VEO_31_LITE_DURATION_SECONDS,
+  VEO_31_LITE_MODEL,
+  VEO_31_LITE_RESOLUTION,
   PICSART_I2V_MAX_IMAGES,
   PICSART_I2V_MODELS,
   SEEDANCE_2_MINI_EDIT_DURATION_SECONDS,
@@ -22,6 +25,7 @@ import {
   SEEDANCE_2_EDIT_MODEL,
   SEEDANCE_2_EDIT_RESOLUTION,
   buildGeminiOmni12Params,
+  buildVeo31LiteParams,
   buildPicsartI2vParams,
   buildSeedanceMiniVideoEditParams,
   buildSeedanceFastVideoEditParams,
@@ -42,6 +46,24 @@ assert.equal(GEMINI_OMNI_12_MODEL, 'gemini-omni-1.1-flash-preview');
 assert.equal(GEMINI_OMNI_12_DURATION_SECONDS, 10);
 assert.equal(GEMINI_OMNI_12_RESOLUTION, '360p');
 assert.equal(GEMINI_OMNI_12_MAX_IMAGES, 5);
+assert.equal(VEO_31_LITE_MODEL, 'veo-3.1-lite-generate-preview');
+assert.equal(VEO_31_LITE_DURATION_SECONDS, 8);
+assert.equal(VEO_31_LITE_RESOLUTION, '720p');
+assert.deepEqual(buildVeo31LiteParams({
+  prompt,
+  imageReference: { url: imageUrl, mimeType: 'image/jpeg' },
+  aspectRatio: '9:16',
+}), {
+  model: 'veo-3.1-lite-generate-preview',
+  prompt,
+  count: 1,
+  image: { url: imageUrl, mimeType: 'image/jpeg' },
+  parameters: {
+    resolution: '720p',
+    aspectRatio: '9:16',
+    durationSeconds: 8,
+  },
+});
 assert.equal(KLING_MOTION_CONTROL_POOL, 'p100');
 assert.equal(PICSART_I2V_MODELS.seedance_2_mini.pool, 'p500');
 assert.equal(PICSART_I2V_MODELS.seedance_2_fast.pool, 'p500');
@@ -457,6 +479,11 @@ assert.match(botSource, /picsart_seedance_2: 4000/);
 assert.match(botSource, /gemini_omni: 2500/);
 assert.match(botSource, /gemini_omni_12: 3500/);
 assert.match(botSource, /mode_gomni12/);
+assert.match(botSource, /mode_veo31/);
+assert.match(botSource, /picsart_veo31_4k:\s*2500/);
+assert.match(botSource, /Veo 3\.1 4K/);
+assert.match(botSource, /v31_ratio_916/);
+assert.match(botSource, /v31_ratio_169/);
 assert.match(botSource, /gemini_omni_12_4k:\s*4000/);
 assert.match(botSource, /go12_res_1080/);
 assert.match(botSource, /go12_res_4k/);
@@ -505,6 +532,8 @@ assert.match(botSource, /seedance_2_fast[\s\S]*picsart_i2v_wait_ratio/);
 assert.match(botSource, /seedance_2[\s\S]*picsart_i2v_wait_ratio/);
 const picsartSource = readFileSync(new URL('../src/picsart.ts', import.meta.url), 'utf8');
 assert.match(picsartSource, /generateGeminiOmni12[\s\S]*submitPicsartI2vExport/);
+assert.match(picsartSource, /generateVeo31Lite4K[\s\S]*submitPicsartI2vExport/);
+assert.match(picsartSource, /gw-v2\/workflows\/veo-t2v\/submit/);
 assert.match(picsartSource, /generateSeedanceVideoEdit[\s\S]*submitPicsartI2vExport/);
 assert.match(picsartSource, /seedance-2\.0-mini-video-edit/);
 assert.match(picsartSource, /seedance-2\.0-fast-video-edit/);
