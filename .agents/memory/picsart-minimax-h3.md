@@ -19,5 +19,6 @@ verification boundary explicit prevents untested provider behavior from being
 treated as proven.
 
 **How to apply:** Keep MiniMax H3 on p500, preserve native 480p generation, and
-only use the existing media preparation workflow when delivering 1080p. Never
-retry an accepted paid job through another account; refund any failed delivery.
+use the existing gateway media preparation workflow to deliver 4K at the exact
+portrait or landscape dimensions. Never retry an accepted paid job through
+another account; refund any failed delivery.

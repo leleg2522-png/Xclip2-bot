@@ -1343,7 +1343,7 @@ export const MINIMAX_H3_MODEL = 'minimax-h3-max';
 export const MINIMAX_H3_DURATION_SECONDS = 15;
 export const MINIMAX_H3_NATIVE_RESOLUTION = '480p';
 export type MinimaxH3AspectRatio = '9:16' | '16:9';
-export type MinimaxH3OutputResolution = '480p' | '1080p';
+export type MinimaxH3OutputResolution = '4K';
 
 export function buildMinimaxH3Params(input: {
   prompt: string;
@@ -1495,12 +1495,11 @@ export async function generateMinimaxH3(input: {
       const rawResult = await pollMinimaxH3Result(credId, id, {
         onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
       });
-      if (input.outputResolution === '480p') return rawResult;
-
       input.onStatus?.('export');
-      const exportId = await submitPicsartI2vExport(credId, rawResult.url, input.aspectRatio, '1080p');
+      const exportId = await submitPicsartI2vExport(credId, rawResult.url, input.aspectRatio, '4K');
       const exported = await pollPicsartI2vExportResult(credId, exportId, {
         onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+        useGateway: true,
       });
       return { ...rawResult, url: exported.url };
     } catch (e: any) {

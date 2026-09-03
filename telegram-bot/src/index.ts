@@ -2536,8 +2536,7 @@ function minimaxH3RatioKeyboard() {
 
 function minimaxH3ResolutionKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('480p (Native)', 'mh3_res_480')],
-    [Markup.button.callback('1080p (Full HD)', 'mh3_res_1080')],
+    [Markup.button.callback('✨ 4K (Ultra HD)', 'mh3_res_4k')],
     [Markup.button.callback('« Kembali', 'back_main')],
   ]);
 }
@@ -4698,8 +4697,8 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
-  if (data === 'mh3_res_480' || data === 'mh3_res_1080') {
-    const resolution: picsart.MinimaxH3OutputResolution = data === 'mh3_res_1080' ? '1080p' : '480p';
+  if (data === 'mh3_res_4k') {
+    const resolution: picsart.MinimaxH3OutputResolution = '4K';
     const session = getSession(userId);
     setSession(userId, {
       minimaxH3Resolution: resolution,
@@ -4708,7 +4707,7 @@ bot.on('callback_query', async (ctx) => {
     return ctx.editMessageText(
       `🎬 *MiniMax H3*\n\n` +
       `Mode: *${session.minimaxH3InputMode === 'start_end' ? 'Start + End Frame' : 'Image to Video'}*\n` +
-      `Rasio: *${session.minimaxH3Ratio ?? '9:16'}* · Resolusi: *${resolution}*\n\n` +
+      `Rasio: *${session.minimaxH3Ratio ?? '9:16'}* · Output: *${resolution}*\n\n` +
       '*Langkah berikutnya:* Kirim *foto frame awal*.',
       { parse_mode: 'Markdown' }
     );
@@ -6443,7 +6442,7 @@ bot.on('text', async (ctx) => {
       startFrameUrl: session.minimaxH3StartFrameUrl,
       endFrameUrl: session.minimaxH3EndFrameUrl,
       ratio: session.minimaxH3Ratio ?? '9:16',
-      resolution: session.minimaxH3Resolution ?? '480p',
+      resolution: session.minimaxH3Resolution ?? '4K',
     } as const;
     setSession(userId, { mode: 'idle' });
     const statusMsg = await ctx.reply(
