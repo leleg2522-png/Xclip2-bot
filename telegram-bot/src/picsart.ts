@@ -2319,9 +2319,11 @@ async function pollPicsartI2vExportResult(
 export function extractPicsartVideoUrl(response: any): string | null {
   const result = response?.result ?? response?.data ?? response;
   const candidates = [
+    result?.video?.url,
     result?.video_url,
     result?.videoUrl,
     result?.url,
+    response?.result?.video?.url,
     response?.video_url,
     response?.videoUrl,
     response?.url,

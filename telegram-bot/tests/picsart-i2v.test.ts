@@ -81,6 +81,20 @@ assert.deepEqual(JSON.parse(minimaxH3Params.options.drive.attributes.aiSDKPayloa
   outputMegapixels: 0.91392,
   endFrame: 'https://cdn.example.test/end-frame.jpg',
 });
+assert.equal(
+  extractPicsartVideoUrl({
+    id: 'b96a9f92-c255-478a-8b73-cb2bc805ac20',
+    status: 'COMPLETED',
+    result: {
+      video: {
+        url: 'https://gcdn.picsart.com/editing-temp/minimax-h3-result.mp4',
+        content_type: 'video/mp4',
+      },
+    },
+  }),
+  'https://gcdn.picsart.com/editing-temp/minimax-h3-result.mp4',
+  'MiniMax H3 returns its completed URL at result.video.url'
+);
 assert.equal(VEO_31_LITE_MODEL, 'veo-3.1-lite-generate-preview');
 assert.equal(VEO_31_LITE_DURATION_SECONDS, 8);
 assert.equal(VEO_31_LITE_RESOLUTION, '720p');

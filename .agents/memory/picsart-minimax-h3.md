@@ -7,6 +7,8 @@ MiniMax H3 Max uses the Picsart gateway workflow
 `minimax/h3-max/image-to-video`. The captured HAR verifies a 15-second native
 480p request with `image_url` as the first frame, balanced prompt expansion,
 the safety checker enabled, and submit/poll completion through the same workflow.
+Completed polling responses expose the media URL as `result.video.url`, not the
+older `result.video_url` shape used by several other Picsart workflows.
 
 An optional last frame is represented by `end_image_url`; this matches the
 authoritative H3 input schema. The Picsart HAR did not include an actual
