@@ -2260,6 +2260,7 @@ function mainMenuKeyboard() {
       Markup.button.callback('🧾 Riwayat Top-up', 'menu_riwayat'),
     ],
     [Markup.button.callback('🎁 Program Referral', 'menu_referral')],
+    [Markup.button.url('💬 Masuk Grup Diskusi', 'https://t.me/+r9196est92MxNWE1')],
     [Markup.button.callback('🔍 Cek Status Pembayaran', 'menu_cekbayar')],
     // ── Generate Video ──
     [Markup.button.callback('── 🎬 Generate Video ──', 'noop')],
