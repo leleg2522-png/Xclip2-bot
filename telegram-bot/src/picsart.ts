@@ -715,7 +715,7 @@ export async function pollKlingResult(
   id: string,
   opts?: { maxAttempts?: number; intervalMs?: number }
 ): Promise<{ url: string; duration?: string; credits?: number }> {
-  const maxAttempts = opts?.maxAttempts ?? 180; // ~15 min at 5s
+  const maxAttempts = opts?.maxAttempts ?? 240; // ~20 min at 5s
   const intervalMs = opts?.intervalMs ?? 5000;
   const diag = new PollDiag();
   for (let i = 0; i < maxAttempts; i++) {
