@@ -2259,6 +2259,7 @@ function mainMenuKeyboard() {
       Markup.button.callback('📋 Lihat Tarif', 'menu_harga'),
       Markup.button.callback('🧾 Riwayat Top-up', 'menu_riwayat'),
     ],
+    [Markup.button.callback('🎁 Program Referral', 'menu_referral')],
     [Markup.button.callback('🔍 Cek Status Pembayaran', 'menu_cekbayar')],
     // ── Generate Video ──
     [Markup.button.callback('── 🎬 Generate Video ──', 'noop')],
@@ -3050,8 +3051,7 @@ bot.command('endchat', async (ctx) => {
   );
 });
 
-bot.command('referral', async (ctx) => {
-  if (!await requireLogin(ctx)) return;
+async function buildReferralView(ctx: any) {
   const session = getSession(ctx.from.id);
   const botUsername = ctx.botInfo?.username ?? 'bot';
   const link = `https://t.me/${botUsername}?start=ref_${ctx.from.id}`;
@@ -3059,14 +3059,29 @@ bot.command('referral', async (ctx) => {
     db.query(`SELECT COUNT(*) AS n FROM users WHERE referred_by = $1`, [session.dbUserId]),
     db.query(`SELECT COALESCE(SUM(amount), 0) AS total FROM referral_bonuses WHERE referrer_id = $1`, [session.dbUserId]),
   ]);
-  // Tanpa parse_mode: link mengandung underscore yang bisa merusak Markdown.
-  return ctx.reply(
+  const text =
     `🎁 Program Referral\n\n` +
     `Ajak teman pakai link di bawah. Setiap mereka top-up, kamu dapat bonus 5% dari nominalnya — langsung masuk saldo, berlaku selamanya.\n\n` +
     `🔗 Link kamu:\n${link}\n\n` +
     `👥 Teman diundang: ${cnt.rows[0]?.n ?? 0}\n` +
-    `💰 Total bonus diterima: ${formatRupiah(Number(sum.rows[0]?.total ?? 0))}`
-  );
+    `💰 Total bonus diterima: ${formatRupiah(Number(sum.rows[0]?.total ?? 0))}`;
+  const shareUrl =
+    `https://t.me/share/url?url=${encodeURIComponent(link)}` +
+    `&text=${encodeURIComponent('Gabung XclipAI lewat link referral saya dan coba berbagai model AI video!')}`;
+  return {
+    text,
+    keyboard: Markup.inlineKeyboard([
+      [Markup.button.url('📤 Bagikan Link Referral', shareUrl)],
+      [Markup.button.callback('« Kembali ke Menu', 'back_main')],
+    ]),
+  };
+}
+
+bot.command('referral', async (ctx) => {
+  if (!await requireLogin(ctx)) return;
+  const view = await buildReferralView(ctx);
+  // Tanpa parse_mode: link mengandung underscore yang bisa merusak Markdown.
+  return ctx.reply(view.text, view.keyboard);
 });
 
 bot.command('riwayat', async (ctx) => {
@@ -3954,6 +3969,12 @@ bot.on('callback_query', async (ctx) => {
 
   if (data === 'menu_harga') {
     return ctx.reply(hargaText(), { parse_mode: 'Markdown' });
+  }
+
+  if (data === 'menu_referral') {
+    const view = await buildReferralView(ctx);
+    // Tanpa parse_mode: link referral mengandung underscore.
+    return ctx.editMessageText(view.text, view.keyboard);
   }
 
   if (data === 'menu_riwayat') {
