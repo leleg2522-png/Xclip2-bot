@@ -52,7 +52,7 @@ assert.equal(GEMINI_OMNI_12_RESOLUTION, '360p');
 assert.equal(GEMINI_OMNI_12_MAX_IMAGES, 5);
 assert.equal(MINIMAX_H3_MODEL, 'minimax-h3-max');
 assert.equal(MINIMAX_H3_DURATION_SECONDS, 15);
-assert.equal(MINIMAX_H3_NATIVE_RESOLUTION, '480p');
+assert.equal(MINIMAX_H3_NATIVE_RESOLUTION, '768p');
 const minimaxH3Params = buildMinimaxH3Params({
   prompt,
   startFrameUrl: imageUrl,
@@ -63,7 +63,7 @@ const minimaxH3Params = buildMinimaxH3Params({
 assert.equal(minimaxH3Params.prompt, prompt);
 assert.equal(minimaxH3Params.prompt_expansion_mode, 'balanced');
 assert.equal(minimaxH3Params.duration, 15);
-assert.equal(minimaxH3Params.resolution, '480p');
+assert.equal(minimaxH3Params.resolution, '768p');
 assert.equal(minimaxH3Params.image_url, imageUrl);
 assert.equal(minimaxH3Params.end_image_url, 'https://cdn.example.test/end-frame.jpg');
 assert.equal(minimaxH3Params.enable_safety_checker, true);
@@ -71,14 +71,14 @@ assert.equal(minimaxH3Params.options.drive.attributes.model, 'minimax-h3-max');
 assert.equal(minimaxH3Params.options.drive.name, 'minimax-h3-test.mp4');
 assert.deepEqual(JSON.parse(minimaxH3Params.options.drive.attributes.aiSDKPayload), {
   prompt,
-  resolution: '480p',
+  resolution: '768p',
   duration: 15,
   aspectRatio: '9:16',
   promptExpansionMode: 'balanced',
   seed: -1,
   enableSafetyChecker: true,
   startFrame: imageUrl,
-  outputMegapixels: 0.91392,
+  outputMegapixels: 1.048576,
   endFrame: 'https://cdn.example.test/end-frame.jpg',
 });
 assert.equal(

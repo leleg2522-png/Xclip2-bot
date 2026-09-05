@@ -1341,7 +1341,7 @@ export async function generateVeo31Lite4K(input: {
 // ─── MiniMax H3 Max (Picsart gateway) ────────────────────────────────────────
 export const MINIMAX_H3_MODEL = 'minimax-h3-max';
 export const MINIMAX_H3_DURATION_SECONDS = 15;
-export const MINIMAX_H3_NATIVE_RESOLUTION = '480p';
+export const MINIMAX_H3_NATIVE_RESOLUTION = '768p';
 export type MinimaxH3AspectRatio = '9:16' | '16:9';
 export type MinimaxH3OutputResolution = '4K';
 
@@ -1361,7 +1361,7 @@ export function buildMinimaxH3Params(input: {
     seed: -1,
     enableSafetyChecker: true,
     startFrame: input.startFrameUrl,
-    outputMegapixels: 0.91392,
+    outputMegapixels: 1.048576,
   };
   if (input.endFrameUrl) sdkPayload.endFrame = input.endFrameUrl;
 
