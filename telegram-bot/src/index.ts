@@ -252,9 +252,9 @@ async function deductSaldo(dbUserId: number, amount: number): Promise<boolean> {
   return (res.rowCount ?? 0) > 0;
 }
 
-// Bonus referral: pengundang dapat 5% dari SETIAP top-up user undangannya,
+// Bonus referral: pengundang dapat 10% dari SETIAP top-up user undangannya,
 // langsung masuk saldo utama. Anti-dobel via UNIQUE(order_id) di referral_bonuses.
-const REFERRAL_RATE = 0.05;
+const REFERRAL_RATE = 0.10;
 
 // Tambah/kembalikan saldo (top-up sukses ATAU refund saat generate gagal).
 async function addSaldo(dbUserId: number, amount: number): Promise<number> {
@@ -407,7 +407,7 @@ async function markTopupPaidAndCredit(
       [row.db_user_id, row.amount]
     );
 
-    // Bonus referral 5% ke pengundang — dalam transaksi yang sama biar atomik.
+    // Bonus referral 10% ke pengundang — dalam transaksi yang sama biar atomik.
     // UNIQUE(order_id) menjamin bonus per order cuma sekali walau ada balapan.
     let referral: { referrerTelegramId: number | null; bonus: number } | null = null;
     const ref = await client.query(`SELECT referred_by FROM users WHERE id = $1`, [row.db_user_id]);
@@ -3061,7 +3061,7 @@ async function buildReferralView(ctx: any) {
   ]);
   const text =
     `🎁 Program Referral\n\n` +
-    `Ajak teman pakai link di bawah. Setiap mereka top-up, kamu dapat bonus 5% dari nominalnya — langsung masuk saldo, berlaku selamanya.\n\n` +
+    `Ajak teman pakai link di bawah. Setiap mereka top-up, kamu dapat bonus 10% dari nominalnya — langsung masuk saldo, berlaku selamanya.\n\n` +
     `🔗 Link kamu:\n${link}\n\n` +
     `👥 Teman diundang: ${cnt.rows[0]?.n ?? 0}\n` +
     `💰 Total bonus diterima: ${formatRupiah(Number(sum.rows[0]?.total ?? 0))}`;
@@ -3897,7 +3897,7 @@ bot.help((ctx) => {
     '*Perintah:*\n' +
     '/start — Menu utama\n' +
     '/menu — Tampilkan menu\n' +
-    '/referral — Ajak teman, dapat bonus 5% tiap mereka top-up\n' +
+    '/referral — Ajak teman, dapat bonus 10% tiap mereka top-up\n' +
     '/cancel — Batalkan proses\n\n' +
     '*🕹️ Kling Motion Control:*\n' +
     '• Transfer gerakan dari video referensi ke karakter dengan kualitas sinematik\n' +

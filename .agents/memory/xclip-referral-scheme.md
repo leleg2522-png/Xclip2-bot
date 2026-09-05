@@ -3,9 +3,9 @@ name: XclipAI referral scheme
 description: Agreed referral rules for the Telegram bot — rates, payout target, anti-abuse invariants.
 ---
 
-Rule: referral bonus is **5% of EVERY top-up** by the invited user, forever, credited straight to the inviter's main saldo (no separate commission wallet). Link format: `t.me/<bot>?start=ref_<telegramId>`.
+Rule: referral bonus is **10% of EVERY top-up** by the invited user, forever, credited straight to the inviter's main saldo (no separate commission wallet). Link format: `t.me/<bot>?start=ref_<telegramId>`.
 
-**Why:** user chose scheme B (lifetime commission) after margin discussion; 5% chosen instead of 10% to protect thin margins. Bonus deliberately tied to real payments (not signups) to make fake-account abuse unprofitable.
+**Why:** user explicitly changed the lifetime commission rate to 10%. Bonus remains tied to real payments (not signups) to make fake-account abuse unprofitable.
 
 **How to apply:** keep these invariants when touching top-up/referral code:
 - `users.referred_by` is set only once, at account INSERT; self-referral blocked.
