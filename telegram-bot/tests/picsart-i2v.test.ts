@@ -668,6 +668,11 @@ assert.match(botSource, /Seedance 2\.0 1080p/);
 assert.match(botSource, /picsart_ratio_916/);
 assert.match(botSource, /picsart_ratio_169/);
 assert.match(botSource, /supportsMultiplePicsartI2vImages/);
+assert.match(
+  botSource,
+  /function supportsMultiplePicsartI2vImages[\s\S]*model === 'wan_v3'/,
+  'Wan 3.0 and the public Seedance 2.5 alias must accept up to five reference images'
+);
 assert.match(botSource, /picsart_i2v_add_photo/);
 assert.match(botSource, /PICSART_I2V_MAX_IMAGES/);
 assert.match(botSource, /mode_oneover_seedance25[\s\S]*picsart_i2v_wait_ratio/);
