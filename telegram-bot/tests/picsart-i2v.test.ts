@@ -490,7 +490,7 @@ assert.deepEqual(klingOmni, {
   },
 });
 assert.equal(PICSART_I2V_MODELS.kling_omni.workflowPath, 'kling-omni-video');
-assert.equal(PICSART_I2V_MODELS.kling_omni.pool, null);
+assert.equal(PICSART_I2V_MODELS.kling_omni.pool, 'p100');
 assert.equal(shouldExportPicsartI2v('kling_omni'), true);
 const klingOmniLandscape = buildPicsartI2vParams('kling_omni', prompt, imageUrl, { ratio: '16:9' }) as any;
 assert.equal(klingOmniLandscape.aspect_ratio, '16:9');

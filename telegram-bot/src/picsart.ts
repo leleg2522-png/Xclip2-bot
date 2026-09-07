@@ -2010,7 +2010,7 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
     label: 'Kling Omni 1K',
     settingsLabel: '12 detik · output 1K · audio · Standard',
     workflowPath: 'kling-omni-video',
-    pool: null,
+    pool: 'p100',
     pollAttempts: 240,
   },
   wan_v2: {

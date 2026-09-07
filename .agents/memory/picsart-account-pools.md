@@ -14,11 +14,11 @@ Accounts are split by their **current credit balance AT ADD-TIME** (owner's expl
 - **NULL pool = wildcard**: a legacy NULL account matches *every* pool request (`pool = $req OR pool IS NULL`). This is a deliberate backward-compat transition policy so routing never starves the ~259 pre-existing uncategorized accounts. Downside accepted: a legacy account that is actually tier-500 can still be consumed by p100 requests until it is (re)categorized.
 - New accounts are inserted with provisional `pool='p100'` (NOT null), so a NEW account whose categorization API call fails stays scoped to p100 instead of becoming an all-pools wildcard. The wildcard exception is for legacy rows only.
 
-**Model → pool routing:** Kling Motion Control Picsart, Runway, and Sora = p100; Gemini Omni 1.2, all Seedance 2 variants, and all Wan models = p500. Kling P2/P3 bridge routes use their own pool.
+**Model → pool routing:** Kling Motion Control Picsart, Kling Omni, Runway, and Sora = p100; Gemini Omni 1.2, all Seedance 2 variants, and all Wan models = p500. Kling P2/P3 bridge routes use their own pool.
 
 **Why:** the owner explicitly requested that Gemini Omni Flash 1.2, all Seedance 2 variants, and all Wan models consume only premium p500 accounts.
 
-**How to apply:** use the p100 selector for Kling Motion Control Picsart, and p500 for Gemini Omni 1.2, every Seedance 2 route, and both Wan model routes. Keep bridge routes separate.
+**How to apply:** use the p100 selector for Kling Motion Control Picsart and Kling Omni, and p500 for Gemini Omni 1.2, every Seedance 2 route, and both Wan model routes. Keep bridge routes separate.
 
 **p500 excludes legacy wildcards**: `acquireAccount` only picks `c.pool = 'p500'` accounts for p500 requests — legacy NULL-pool accounts are excluded. This prevents old ~50-credit accounts from being assigned to expensive models. NULL wildcards still apply for null and p100 pool requests.
 
