@@ -2007,8 +2007,8 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
     pollAttempts: 180,
   },
   kling_omni: {
-    label: 'Kling Omni',
-    settingsLabel: '9:16 · 12 detik · 720p · audio · Standard',
+    label: 'Kling Omni 1K',
+    settingsLabel: '9:16 · 12 detik · output 1K · audio · Standard',
     workflowPath: 'kling-omni-video',
     pool: null,
     pollAttempts: 240,
@@ -2427,6 +2427,7 @@ export function shouldExportPicsartI2v(model: PicsartI2vModelKey): boolean {
     || model === 'seedance_2_fast'
     || model === 'seedance_2'
     || model === 'grok_imagine'
+    || model === 'kling_omni'
     || model === 'wan_v3'
     || model === 'pixverse_v6';
 }
