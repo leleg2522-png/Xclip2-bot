@@ -180,7 +180,7 @@ const MODEL_PRICES = {
   picsart_seedance_2_video_edit: 4500, // Seedance 2 Video Edit, delivered as 1080p
   picsart_seedance_2: 4000, // Seedance 2.0 Mini/Fast/Standard, delivered as 1080p
   picsart_wan_v3: 5000, // Wan 3.0 30s, delivered as 1080p
-  picsart_seedance_25: 4500, // Public Seedance 2.5 label, routed through Wan 3.0 Prime
+  picsart_seedance_25: 5000, // Public Seedance 2.5 label, routed through Wan 3.0
   oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
 } as const;
