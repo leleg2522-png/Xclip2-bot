@@ -27,7 +27,7 @@ the H3 schema resolves the otherwise-missing final-frame field. Keeping the
 verification boundary explicit prevents untested provider behavior from being
 treated as proven.
 
-**How to apply:** Keep MiniMax H3 on p500, preserve native 768p generation, and
-use the existing gateway media preparation workflow to deliver 4K at the exact
-portrait or landscape dimensions. Never retry an accepted paid job through
-another account; refund any failed delivery.
+**How to apply:** Keep MiniMax H3 on p500 and preserve native 768p generation.
+Deliver only 1K through the 1080p preparation path, at exact portrait or
+landscape dimensions. Never retry an accepted paid job through another account;
+refund any failed delivery.

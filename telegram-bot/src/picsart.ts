@@ -1344,7 +1344,7 @@ export const MINIMAX_H3_REFERENCE_MODEL = 'minimax-h3-max-r2v';
 export const MINIMAX_H3_DURATION_SECONDS = 15;
 export const MINIMAX_H3_NATIVE_RESOLUTION = '768p';
 export type MinimaxH3AspectRatio = '9:16' | '16:9';
-export type MinimaxH3OutputResolution = '4K';
+export type MinimaxH3OutputResolution = '1K';
 
 export function buildMinimaxH3Params(input: {
   prompt: string;
@@ -1497,7 +1497,12 @@ export async function generateMinimaxH3(input: {
         onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
       });
       input.onStatus?.('export');
-      const exportId = await submitPicsartI2vExport(credId, rawResult.url, input.aspectRatio, '4K');
+      const exportId = await submitPicsartI2vExport(
+        credId,
+        rawResult.url,
+        input.aspectRatio,
+        '1080p'
+      );
       const exported = await pollPicsartI2vExportResult(credId, exportId, {
         onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
         useGateway: true,
@@ -1670,7 +1675,12 @@ export async function generateMinimaxH3ReferenceToVideo(input: {
         onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
       });
       input.onStatus?.('export');
-      const exportId = await submitPicsartI2vExport(credId, rawResult.url, input.aspectRatio, '4K');
+      const exportId = await submitPicsartI2vExport(
+        credId,
+        rawResult.url,
+        input.aspectRatio,
+        '1080p'
+      );
       const exported = await pollPicsartI2vExportResult(credId, exportId, {
         onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
         useGateway: true,

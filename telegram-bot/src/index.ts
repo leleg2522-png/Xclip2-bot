@@ -2543,7 +2543,7 @@ function minimaxH3RatioKeyboard() {
 
 function minimaxH3ResolutionKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('✨ 4K (Ultra HD)', 'mh3_res_4k')],
+    [Markup.button.callback('1K (Full HD)', 'mh3_res_1k')],
     [Markup.button.callback('« Kembali', 'back_main')],
   ]);
 }
@@ -4738,8 +4738,8 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
-  if (data === 'mh3_res_4k') {
-    const resolution: picsart.MinimaxH3OutputResolution = '4K';
+  if (data === 'mh3_res_1k') {
+    const resolution: picsart.MinimaxH3OutputResolution = '1K';
     const session = getSession(userId);
     const modeLabel =
       session.minimaxH3InputMode === 'start_end'
@@ -6521,7 +6521,7 @@ bot.on('text', async (ctx) => {
       endFrameUrl: session.minimaxH3EndFrameUrl,
       referenceVideoUrl: session.minimaxH3ReferenceVideoUrl,
       ratio: session.minimaxH3Ratio ?? '9:16',
-      resolution: session.minimaxH3Resolution ?? '4K',
+      resolution: session.minimaxH3Resolution ?? '1K',
     } as const;
     setSession(userId, { mode: 'idle' });
     const statusMsg = await ctx.reply(
