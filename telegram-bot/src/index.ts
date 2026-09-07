@@ -174,7 +174,7 @@ const MODEL_PRICES = {
   audio: 3000,         // Semua model audio generation/transcription
   topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 4× 60fps)
   picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
-  picsart_kling_omni: 4000, // Kling Omni 12s, delivered as 1K
+  picsart_kling_omni: 3500, // Kling Omni 12s, delivered as 1K
   picsart_seedance_2_mini: 3500, // Seedance 2.0 Mini, delivered as 1080p
   picsart_seedance_2_mini_edit: 3500, // Seedance 2.0 Mini Video Edit, delivered as 1080p
   picsart_seedance_2_fast_edit: 4000, // Seedance 2.0 Fast Video Edit, delivered as 1080p
