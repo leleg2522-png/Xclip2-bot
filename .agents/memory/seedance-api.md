@@ -18,6 +18,6 @@ Reverse-engineered from an AI Playground HAR. Follows the same access-token / `c
 - **Options probe:** `POST /workflows/seedance/options` shows defaults `ratio:"16:9", duration:5, resolution:"720p", generate_audio:false` — the playground UI overrides these; our bot forces 480p and 15/30.
 
 **How to apply:** Keep this as protocol reference only; the public Seedance 2.5
-product is currently routed through the Wan Prime backend and must not silently
+product is currently routed through the verified Wan 3.0 standard backend and must not silently
 switch back to this native contract. If the native model is intentionally restored,
 re-capture a real generation HAR before exposing it.

@@ -2322,8 +2322,7 @@ function isPicsartI2vModelKey(value: string): value is picsart.PicsartI2vModelKe
 function supportsMultiplePicsartI2vImages(model?: picsart.PicsartI2vModelKey): boolean {
   return model === 'seedance_2_mini'
     || model === 'seedance_2_fast'
-    || model === 'seedance_2'
-    || model === 'wan_v3';
+    || model === 'seedance_2';
 }
 
 function picsartI2vRatioKeyboard() {

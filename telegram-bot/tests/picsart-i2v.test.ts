@@ -464,31 +464,30 @@ assert.deepEqual(wan, {
 });
 
 const wan3Portrait = buildPicsartI2vParams('wan_v3', prompt, imageUrl, { ratio: '9:16' });
+assert.doesNotMatch(JSON.stringify(wan3Portrait), /prime/i);
 assert.deepEqual(wan3Portrait, {
-  model: 'wan3.0-video-prime',
+  model: 'wan3.0-video',
   resolution: '480P',
   duration: 30,
   ratio: '9:16',
   audio: true,
-  enable_thinking: false,
+  enable_thinking: true,
   watermark: false,
-  seed: 0,
   media: [{ type: 'reference_image', url: imageUrl }],
   prompt,
   options: {
     drive: {
-      name: 'wan-3-0-prime-ai-playground.mp4',
+      name: 'storyboard-creation-wan-3-0-ai-playground.mp4',
       attributes: {
-        model: 'wan-3.0-video-prime',
+        model: 'wan-3.0-video',
         aiSDKPayload: JSON.stringify({
           prompt,
           duration: 30,
           resolution: '480P',
           aspectRatio: '9:16',
           generateAudio: true,
-          enableThinking: false,
+          enableThinking: true,
           watermark: false,
-          seed: 0,
           imageUrls: [imageUrl],
         }),
         appId: 'com.picsart.ai-playground',
@@ -507,15 +506,14 @@ const wan3MultiImage = buildPicsartI2vParams('wan_v3', prompt, imageUrl, {
   ratio: '16:9',
   imageUrls: wan3InputUrls,
 });
-const expectedWan3Urls = wan3InputUrls.slice(0, PICSART_I2V_MAX_IMAGES);
 assert.deepEqual(
   wan3MultiImage.media,
-  expectedWan3Urls.map((url) => ({ type: 'reference_image', url }))
+  [{ type: 'reference_image', url: wan3InputUrls[0] }]
 );
 const wan3MultiDrive = (wan3MultiImage.options as {
   drive: { attributes: { aiSDKPayload: string } };
 }).drive;
-assert.deepEqual(JSON.parse(wan3MultiDrive.attributes.aiSDKPayload).imageUrls, expectedWan3Urls);
+assert.deepEqual(JSON.parse(wan3MultiDrive.attributes.aiSDKPayload).imageUrls, [wan3InputUrls[0]]);
 
 const pixverse = buildPicsartI2vParams('pixverse_v6', prompt, imageUrl);
 assert.equal(pixverse.model, 'v6');

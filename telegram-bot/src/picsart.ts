@@ -2146,34 +2146,31 @@ export function buildPicsartI2vParams(
         options: {},
       };
     case 'wan_v3':
-      const referenceImageUrls = (options?.imageUrls?.length ? options.imageUrls : [imageUrl])
-        .slice(0, PICSART_I2V_MAX_IMAGES);
+      const wanReferenceImageUrl = options?.imageUrls?.[0] ?? imageUrl;
       return {
-        model: 'wan3.0-video-prime',
+        model: 'wan3.0-video',
         resolution: '480P',
         duration: 30,
         ratio: options?.ratio ?? '9:16',
         audio: true,
-        enable_thinking: false,
+        enable_thinking: true,
         watermark: false,
-        seed: 0,
-        media: referenceImageUrls.map((url) => ({ type: 'reference_image', url })),
+        media: [{ type: 'reference_image', url: wanReferenceImageUrl }],
         prompt,
         options: {
           drive: {
-            name: options?.outputName || 'wan-3-0-prime-ai-playground.mp4',
+            name: options?.outputName || 'storyboard-creation-wan-3-0-ai-playground.mp4',
             attributes: {
-              model: 'wan-3.0-video-prime',
+              model: 'wan-3.0-video',
               aiSDKPayload: JSON.stringify({
                 prompt,
                 duration: 30,
                 resolution: '480P',
                 aspectRatio: options?.ratio ?? '9:16',
                 generateAudio: true,
-                enableThinking: false,
+                enableThinking: true,
                 watermark: false,
-                seed: 0,
-                imageUrls: referenceImageUrls,
+                imageUrls: [wanReferenceImageUrl],
               }),
               appId: 'com.picsart.ai-playground',
               appType: 'miniapp',
@@ -2324,7 +2321,7 @@ async function submitPicsartI2v(
   const access = await getAccessToken(credId);
   const usesGateway = model === 'pixverse_v6' || model === 'wan_v3';
   const outputNamePrefix = model === 'wan_v3'
-    ? 'wan-3-0-prime-ai-playground'
+    ? 'storyboard-creation-wan-3-0-ai-playground'
     : 'pixverse-v6-image-ai-playground';
   const workflowBase = usesGateway
     ? `${API_BASE}/gw-v2/workflows/${cfg.workflowPath}`
