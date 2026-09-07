@@ -187,6 +187,7 @@ const expectedModels = [
   'kling_v3_turbo',
   'kling_v26_pro',
   'kling_v3',
+  'kling_omni',
   'wan_v2',
   'wan_v3',
   'pixverse_v6',
@@ -453,6 +454,53 @@ assert.deepEqual(klingV3, {
   options: {},
 });
 
+const klingOmni = buildPicsartI2vParams('kling_omni', prompt, imageUrl);
+assert.deepEqual(klingOmni, {
+  prompt,
+  model_name: 'kling-v3-omni',
+  aspect_ratio: '9:16',
+  duration: '12',
+  mode: 'std',
+  multi_shot: false,
+  shot_type: 'customize',
+  image_list: [{ image_url: imageUrl }],
+  sound: 'on',
+  options: {
+    drive: {
+      name: 'storyboard-creation-kling-v3-omni-ai-playground.mp4',
+      attributes: {
+        model: 'kling-v3-omni',
+        aiSDKPayload: JSON.stringify({
+          prompt,
+          aspectRatio: '9:16',
+          duration: 12,
+          resolution: '720p',
+          generateAudio: true,
+          referType: 'feature',
+          keepOriginalSound: 'yes',
+          multiShot: false,
+          shotType: 'customize',
+          imageUrls: [imageUrl],
+        }),
+        appId: 'com.picsart.ai-playground',
+        appType: 'miniapp',
+      },
+      folder: { path: 'AI Playground' },
+    },
+  },
+});
+assert.equal(PICSART_I2V_MODELS.kling_omni.workflowPath, 'kling-omni-video');
+assert.equal(PICSART_I2V_MODELS.kling_omni.pool, null);
+assert.equal(shouldExportPicsartI2v('kling_omni'), false);
+assert.equal(
+  extractPicsartVideoUrl({
+    status: 'COMPLETED',
+    result: { url: 'https://gcdn.picsart.com/editing-temp/kling-omni.mp4' },
+    usage: { credits: 48 },
+  }),
+  'https://gcdn.picsart.com/editing-temp/kling-omni.mp4',
+);
+
 const wan = buildPicsartI2vParams('wan_v2', prompt, imageUrl);
 assert.deepEqual(wan, {
   media: [{ type: 'first_frame', url: imageUrl }],
@@ -549,6 +597,7 @@ assert.equal(portraitExport.width * 16, portraitExport.height * 9, 'portrait exp
 assert.equal(landscapeExport.width * 9, landscapeExport.height * 16, 'landscape export must remain exact 16:9');
 assert.match(botSource, /mode_pi2v_wan_v3/);
 assert.match(botSource, /mode_pi2v_pixverse_v6/);
+assert.match(botSource, /mode_pi2v_kling_omni/);
 assert.match(botSource, /picsart_wan_v3: 5000/);
 assert.match(botSource, /picsart_seedance_2_mini: 3500/);
 assert.match(botSource, /picsart_seedance_2: 4000/);
@@ -627,6 +676,8 @@ assert.match(picsartSource, /generateGeminiOmni12[\s\S]*submitPicsartI2vExport/)
 assert.match(picsartSource, /generateVeo31Lite4K[\s\S]*submitPicsartI2vExport/);
 assert.match(picsartSource, /gw-v2\/workflows\/minimax\/h3-max\/image-to-video\/submit/);
 assert.match(picsartSource, /gw-v2\/workflows\/minimax\/h3-max\/reference-to-video\/submit/);
+assert.match(picsartSource, /model === 'kling_omni'/);
+assert.match(picsartSource, /storyboard-creation-kling-v3-omni-ai-playground/);
 assert.match(picsartSource, /reference_image_urls: \[input\.imageUrl\]/);
 assert.match(picsartSource, /reference_video_urls: \[input\.videoUrl\]/);
 assert.match(picsartSource, /generateMinimaxH3ReferenceToVideo[\s\S]*submitPicsartI2vExport[\s\S]*'1080p'/);

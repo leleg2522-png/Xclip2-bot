@@ -2281,6 +2281,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('⚡ Kling v3 Turbo', 'mode_pi2v_kling_v3_turbo')],
     [Markup.button.callback('🎭 Kling v2.6 Pro', 'mode_pi2v_kling_v26_pro')],
     [Markup.button.callback('🎞️ Kling v3 Standard', 'mode_pi2v_kling_v3')],
+    [Markup.button.callback('🌐 Kling Omni • 12 detik • 720p', 'mode_pi2v_kling_omni')],
     [Markup.button.callback('🌀 Wan v2 Image-to-Video', 'mode_pi2v_wan_v2')],
     [Markup.button.callback('🌀 Wan 3.0 1080p • 30 detik', 'mode_pi2v_wan_v3')],
     [Markup.button.callback('🎬 Kling 2.1 Pro (10 detik)', 'mode_kling21')],
@@ -2815,6 +2816,7 @@ function hargaText(): string {
     `• Kling v3 Turbo — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v2.6 Pro — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v3 Standard — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• Kling Omni (12 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Wan v2 Image-to-Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Wan 3.0 1080p (30 detik) — ${formatRupiah(MODEL_PRICES.picsart_wan_v3)}\n` +
     `• PixVerse v6 (15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +

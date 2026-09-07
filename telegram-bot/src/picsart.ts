@@ -1896,6 +1896,7 @@ export type PicsartI2vModelKey =
   | 'kling_v3_turbo'
   | 'kling_v26_pro'
   | 'kling_v3'
+  | 'kling_omni'
   | 'wan_v2'
   | 'wan_v3'
   | 'pixverse_v6';
@@ -2004,6 +2005,13 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
     workflowPath: 'kling-image-to-video',
     pool: null,
     pollAttempts: 180,
+  },
+  kling_omni: {
+    label: 'Kling Omni',
+    settingsLabel: '9:16 · 12 detik · 720p · audio · Standard',
+    workflowPath: 'kling-omni-video',
+    pool: null,
+    pollAttempts: 240,
   },
   wan_v2: {
     label: 'Wan v2 Image-to-Video',
@@ -2135,6 +2143,41 @@ export function buildPicsartI2vParams(
         multi_shot: false,
         shot_type: 'customize',
         options: {},
+      };
+    case 'kling_omni':
+      return {
+        prompt,
+        model_name: 'kling-v3-omni',
+        aspect_ratio: '9:16',
+        duration: '12',
+        mode: 'std',
+        multi_shot: false,
+        shot_type: 'customize',
+        image_list: [{ image_url: imageUrl }],
+        sound: 'on',
+        options: {
+          drive: {
+            name: options?.outputName || 'storyboard-creation-kling-v3-omni-ai-playground.mp4',
+            attributes: {
+              model: 'kling-v3-omni',
+              aiSDKPayload: JSON.stringify({
+                prompt,
+                aspectRatio: '9:16',
+                duration: 12,
+                resolution: '720p',
+                generateAudio: true,
+                referType: 'feature',
+                keepOriginalSound: 'yes',
+                multiShot: false,
+                shotType: 'customize',
+                imageUrls: [imageUrl],
+              }),
+              appId: 'com.picsart.ai-playground',
+              appType: 'miniapp',
+            },
+            folder: { path: 'AI Playground' },
+          },
+        },
       };
     case 'wan_v2':
       return {
@@ -2319,10 +2362,12 @@ async function submitPicsartI2v(
 ): Promise<string> {
   const cfg = PICSART_I2V_MODELS[model];
   const access = await getAccessToken(credId);
-  const usesGateway = model === 'pixverse_v6' || model === 'wan_v3';
+  const usesGateway = model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni';
   const outputNamePrefix = model === 'wan_v3'
     ? 'storyboard-creation-wan-3-0-ai-playground'
-    : 'pixverse-v6-image-ai-playground';
+    : model === 'kling_omni'
+      ? 'storyboard-creation-kling-v3-omni-ai-playground'
+      : 'pixverse-v6-image-ai-playground';
   const workflowBase = usesGateway
     ? `${API_BASE}/gw-v2/workflows/${cfg.workflowPath}`
     : `${API_BASE}/workflows/${cfg.workflowPath}`;
@@ -2536,7 +2581,7 @@ async function pollPicsartI2vResult(
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
     opts?.onTick?.(Date.now() - start);
     const access = await getAccessToken(credId);
-    const usesGateway = model === 'pixverse_v6' || model === 'wan_v3';
+    const usesGateway = model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni';
     const workflowBase = usesGateway
       ? `${API_BASE}/gw-v2/workflows/${cfg.workflowPath}`
       : `${API_BASE}/workflows/${cfg.workflowPath}`;

@@ -22,3 +22,4 @@
 - [Gemini Omni model separation](gemini-omni-model-separation.md) — Omni 1.2 is a separate paid model; never replace or repoint the legacy Omni route.
 - [Picsart Veo 3.1 4K](picsart-veo31-4k.md) — public Veo 3.1 4K uses the Picsart Veo Lite gateway contract, then a separate hidden 4K preparation step.
 - [Picsart MiniMax H3](picsart-minimax-h3.md) — H3 Max uses the gateway I2V route; first frame is image_url, optional last frame is end_image_url, native HAR mode is 480p/15s.
+- [Picsart Kling Omni](picsart-kling-omni.md) — verified I2V contract is Kling v3 Omni Standard, 9:16, 12s, native 720p with audio; completion uses result.url.
