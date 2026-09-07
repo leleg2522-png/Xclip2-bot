@@ -4314,6 +4314,7 @@ bot.on('callback_query', async (ctx) => {
       'seedance_2_mini',
       'seedance_2_fast',
       'seedance_2',
+      'kling_omni',
       'wan_v3',
       'pixverse_v6',
     ];
@@ -4393,6 +4394,7 @@ bot.on('callback_query', async (ctx) => {
       model === 'seedance_2_mini'
       || model === 'seedance_2_fast'
       || model === 'seedance_2'
+      || model === 'kling_omni'
       || model === 'wan_v3'
       || model === 'pixverse_v6'
     ) {

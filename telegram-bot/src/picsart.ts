@@ -2008,7 +2008,7 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
   },
   kling_omni: {
     label: 'Kling Omni 1K',
-    settingsLabel: '9:16 · 12 detik · output 1K · audio · Standard',
+    settingsLabel: '12 detik · output 1K · audio · Standard',
     workflowPath: 'kling-omni-video',
     pool: null,
     pollAttempts: 240,
@@ -2148,7 +2148,7 @@ export function buildPicsartI2vParams(
       return {
         prompt,
         model_name: 'kling-v3-omni',
-        aspect_ratio: '9:16',
+        aspect_ratio: options?.ratio ?? '9:16',
         duration: '12',
         mode: 'std',
         multi_shot: false,
@@ -2162,7 +2162,7 @@ export function buildPicsartI2vParams(
               model: 'kling-v3-omni',
               aiSDKPayload: JSON.stringify({
                 prompt,
-                aspectRatio: '9:16',
+                aspectRatio: options?.ratio ?? '9:16',
                 duration: 12,
                 resolution: '720p',
                 generateAudio: true,

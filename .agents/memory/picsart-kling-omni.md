@@ -18,7 +18,7 @@ workflows, so reusing their endpoint or payload would silently submit the wrong
 model.
 
 **How to apply:** Keep Kling Omni as a separate native-720p I2V product using one
-reference image, then prepare exact 1080×1920 output before delivery. The public
-price is Rp4,000. Never resubmit an accepted paid job after an authentication
-failure. Do not add video-reference payload fields until a real submitted HAR
-captures their names and shape.
+reference image, with customer-selectable 9:16 or 16:9 ratio, then prepare exact
+1080×1920 or 1920×1080 output before delivery. The public price is Rp4,000.
+Never resubmit an accepted paid job after an authentication failure. Do not add
+video-reference payload fields until a real submitted HAR captures their names.
