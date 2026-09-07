@@ -11,6 +11,12 @@ prompt expansion, and the safety checker.
 Completed polling responses expose the media URL as `result.video.url`, not the
 older `result.video_url` shape used by several other Picsart workflows.
 
+Reference-to-video is a separate verified gateway workflow using model
+`minimax-h3-max-r2v`. It accepts one image in `reference_image_urls` plus one
+video in `reference_video_urls`, with matching `imageUrls`/`videoUrls` metadata.
+The HAR verifies 15 seconds, 768p, both portrait and landscape ratios, 15
+credits, and the same `result.video.url` completion shape.
+
 An optional last frame is represented by `end_image_url`; this matches the
 authoritative H3 input schema. The Picsart HAR did not include an actual
 two-frame submit, so never claim that path was live-verified through Picsart

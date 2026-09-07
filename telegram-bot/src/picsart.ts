@@ -1340,6 +1340,7 @@ export async function generateVeo31Lite4K(input: {
 
 // ─── MiniMax H3 Max (Picsart gateway) ────────────────────────────────────────
 export const MINIMAX_H3_MODEL = 'minimax-h3-max';
+export const MINIMAX_H3_REFERENCE_MODEL = 'minimax-h3-max-r2v';
 export const MINIMAX_H3_DURATION_SECONDS = 15;
 export const MINIMAX_H3_NATIVE_RESOLUTION = '768p';
 export type MinimaxH3AspectRatio = '9:16' | '16:9';
@@ -1510,6 +1511,179 @@ export async function generateMinimaxH3(input: {
         );
         notifyOwner(
           `⚠️ Akun Picsart #${credId} ditolak saat polling MiniMax H3. ` +
+          'Job tidak diulang agar tidak membuat generate ganda.'
+        );
+        throw new Error(`PICSART_POST_SUBMIT_AUTH_LOST job=${id}`);
+      }
+      throw e;
+    }
+  });
+}
+
+export function buildMinimaxH3ReferenceParams(input: {
+  prompt: string;
+  imageUrl: string;
+  videoUrl: string;
+  aspectRatio: MinimaxH3AspectRatio;
+  outputName?: string;
+}): Record<string, unknown> {
+  const sdkPayload = {
+    prompt: input.prompt,
+    resolution: MINIMAX_H3_NATIVE_RESOLUTION,
+    duration: MINIMAX_H3_DURATION_SECONDS,
+    aspectRatio: input.aspectRatio,
+    promptExpansionMode: 'balanced',
+    seed: -1,
+    enableSafetyChecker: true,
+    imageUrls: [input.imageUrl],
+    videoUrls: [input.videoUrl],
+  };
+  return {
+    prompt: input.prompt,
+    prompt_expansion_mode: 'balanced',
+    duration: MINIMAX_H3_DURATION_SECONDS,
+    resolution: MINIMAX_H3_NATIVE_RESOLUTION,
+    aspect_ratio: input.aspectRatio,
+    reference_image_urls: [input.imageUrl],
+    reference_video_urls: [input.videoUrl],
+    enable_safety_checker: true,
+    options: {
+      drive: {
+        name: input.outputName ?? `minimax-h3-reference-ai-playground-${Date.now()}.mp4`,
+        attributes: {
+          model: MINIMAX_H3_REFERENCE_MODEL,
+          aiSDKPayload: JSON.stringify(sdkPayload),
+          appId: 'com.picsart.ai-playground',
+          appType: 'miniapp',
+        },
+        folder: { path: 'AI Playground' },
+      },
+    },
+  };
+}
+
+async function submitMinimaxH3Reference(
+  credId: number,
+  input: {
+    prompt: string;
+    imageUrl: string;
+    videoUrl: string;
+    aspectRatio: MinimaxH3AspectRatio;
+  }
+): Promise<string> {
+  const access = await getAccessToken(credId);
+  const r = await http.post(
+    `${API_BASE}/gw-v2/workflows/minimax/h3-max/reference-to-video/submit`,
+    { params: buildMinimaxH3ReferenceParams(input) },
+    {
+      headers: commonHeaders({
+        'content-type': 'application/json',
+        authorization: `Bearer ${access}`,
+        'x-app-authorization': X_APP_AUTHORIZATION,
+        'x-sub-package-id': 'subscription_pro_monthly',
+      }),
+      validateStatus: () => true,
+    }
+  );
+  const id = r.data?.response?.id;
+  if (!ok2xx(r.status) || !id) {
+    throw new Error(`PICSART_MINIMAX_H3_REFERENCE_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+  }
+  return id;
+}
+
+async function pollMinimaxH3ReferenceResult(
+  credId: number,
+  id: string,
+  opts?: { intervalMs?: number; onTick?: (elapsedMs: number) => void }
+): Promise<{ url: string; credits?: number }> {
+  const intervalMs = opts?.intervalMs ?? 5000;
+  const start = Date.now();
+  const diag = new PollDiag();
+  for (let i = 0; i < 240; i++) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    opts?.onTick?.(Date.now() - start);
+    const access = await getAccessToken(credId);
+    const r = await http.get(
+      `${API_BASE}/gw-v2/workflows/minimax/h3-max/reference-to-video/${id}/result`,
+      {
+        headers: commonHeaders({
+          authorization: `Bearer ${access}`,
+          'x-app-authorization': X_APP_AUTHORIZATION,
+          'x-sub-package-id': 'subscription_pro_monthly',
+        }),
+        validateStatus: () => true,
+      }
+    );
+    if (!diag.note(r)) continue;
+    const response = r.data?.response ?? r.data;
+    const status = String(response?.status ?? '').toUpperCase();
+    if (status === 'COMPLETED' || status === 'SUCCESS') {
+      const url = extractPicsartVideoUrl(response);
+      if (!url) throw new Error(`PICSART_MINIMAX_H3_REFERENCE_NO_RESULT_URL: ${JSON.stringify(response).slice(0, 250)}`);
+      return { url, credits: response?.usage?.credits };
+    }
+    if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
+      throw new Error(`PICSART_MINIMAX_H3_REFERENCE_FAILED: ${JSON.stringify(response).slice(0, 250)}`);
+    }
+  }
+  throw diag.timeoutError();
+}
+
+export async function generateMinimaxH3ReferenceToVideo(input: {
+  userId: number;
+  prompt: string;
+  referenceImage: { buffer: Buffer; name?: string; mime?: string };
+  referenceVideo: { buffer: Buffer; name?: string; mime?: string };
+  aspectRatio: MinimaxH3AspectRatio;
+  outputResolution: MinimaxH3OutputResolution;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  return runWithAccount(input.userId, 'p500', async (credId) => {
+    input.onStatus?.('upload');
+    const [imageUrl, videoUrl] = await Promise.all([
+      uploadFile(
+        credId,
+        input.referenceImage.buffer,
+        input.referenceImage.name || 'minimax-reference.jpg',
+        input.referenceImage.mime || 'image/jpeg'
+      ),
+      uploadFile(
+        credId,
+        input.referenceVideo.buffer,
+        input.referenceVideo.name || 'minimax-reference.mp4',
+        input.referenceVideo.mime || 'video/mp4'
+      ),
+    ]);
+
+    input.onStatus?.('submit');
+    const id = await submitMinimaxH3Reference(credId, {
+      prompt: input.prompt,
+      imageUrl,
+      videoUrl,
+      aspectRatio: input.aspectRatio,
+    });
+    input.onStatus?.('poll');
+    try {
+      const rawResult = await pollMinimaxH3ReferenceResult(credId, id, {
+        onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+      });
+      input.onStatus?.('export');
+      const exportId = await submitPicsartI2vExport(credId, rawResult.url, input.aspectRatio, '4K');
+      const exported = await pollPicsartI2vExportResult(credId, exportId, {
+        onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+        useGateway: true,
+      });
+      return { ...rawResult, url: exported.url };
+    } catch (e: any) {
+      if (isPicsartPostSubmitAuthFailure(e)) {
+        await q(
+          `UPDATE picsart_credentials SET status = 'dead', dead_at = NOW(), updated_at = NOW() WHERE id = $1`,
+          [credId]
+        );
+        notifyOwner(
+          `⚠️ Akun Picsart #${credId} ditolak saat polling MiniMax H3 reference video. ` +
           'Job tidak diulang agar tidak membuat generate ganda.'
         );
         throw new Error(`PICSART_POST_SUBMIT_AUTH_LOST job=${id}`);

@@ -1515,6 +1515,7 @@ type Mode =
   | 'veo31_wait_prompt'
   | 'minimax_h3_wait_start_frame'
   | 'minimax_h3_wait_end_frame'
+  | 'minimax_h3_wait_reference_video'
   | 'minimax_h3_wait_prompt'
   | 'gomni_wait_image'
   | 'gomni_wait_video'
@@ -1620,11 +1621,12 @@ interface Session {
   veo31ImageUrl?: string;
   veo31Ratio?: picsart.Veo31LiteAspectRatio;
   // MiniMax H3 Max wizard state.
-  minimaxH3InputMode?: 'i2v' | 'start_end';
+  minimaxH3InputMode?: 'i2v' | 'start_end' | 'reference_video';
   minimaxH3Ratio?: picsart.MinimaxH3AspectRatio;
   minimaxH3Resolution?: picsart.MinimaxH3OutputResolution;
   minimaxH3StartFrameUrl?: string;
   minimaxH3EndFrameUrl?: string;
+  minimaxH3ReferenceVideoUrl?: string;
   // Gemini Omni wizard state (legacy or new 1.2 model)
   gomniModel?: 'legacy' | '1.2';
   gomniInputMode?: 'i2v' | 't2v' | 'v2v';
@@ -1766,6 +1768,8 @@ const GENERATION_DRAFT_MODES = new Set<Mode>([
   'rw_wait_image', 'rw_wait_prompt', 'sora_wait_image', 'sora_wait_prompt',
   'veofast_wait_image', 'veofast_wait_prompt', 'veolite_wait_image', 'veolite_wait_prompt',
   'veo31_wait_image', 'veo31_wait_prompt',
+  'minimax_h3_wait_start_frame', 'minimax_h3_wait_end_frame',
+  'minimax_h3_wait_reference_video', 'minimax_h3_wait_prompt',
   'gomni_wait_image', 'gomni_wait_video', 'gomni_wait_prompt',
   'seedream_wait_image', 'seedream_wait_prompt', 'gptimg_wait_image', 'gptimg_wait_prompt',
   'floraimg_wait_prompt', 'lipsync_wait_media', 'lipsync_wait_audio',
@@ -2522,6 +2526,7 @@ function minimaxH3InputKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('🖼️ Image to Video', 'mh3_mode_i2v')],
     [Markup.button.callback('🎞️ Start + End Frame', 'mh3_mode_start_end')],
+    [Markup.button.callback('🎥 Gambar + Video Referensi', 'mh3_mode_reference_video')],
     [Markup.button.callback('« Kembali', 'back_main')],
   ]);
 }
@@ -4691,6 +4696,7 @@ bot.on('callback_query', async (ctx) => {
       minimaxH3Resolution: undefined,
       minimaxH3StartFrameUrl: undefined,
       minimaxH3EndFrameUrl: undefined,
+      minimaxH3ReferenceVideoUrl: undefined,
     });
     return ctx.editMessageText(
       `🎬 *MiniMax H3*\n\nDurasi: *15 detik*\nHarga: *${formatRupiah(MODEL_PRICES.picsart_minimax_h3)}*\n\nPilih mode:`,
@@ -4698,14 +4704,27 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
-  if (data === 'mh3_mode_i2v' || data === 'mh3_mode_start_end') {
+  if (data === 'mh3_mode_i2v' || data === 'mh3_mode_start_end' || data === 'mh3_mode_reference_video') {
+    const inputMode =
+      data === 'mh3_mode_start_end'
+        ? 'start_end'
+        : data === 'mh3_mode_reference_video'
+          ? 'reference_video'
+          : 'i2v';
+    const modeLabel =
+      inputMode === 'start_end'
+        ? 'Start + End Frame'
+        : inputMode === 'reference_video'
+          ? 'Gambar + Video Referensi'
+          : 'Image to Video';
     setSession(userId, {
-      minimaxH3InputMode: data === 'mh3_mode_start_end' ? 'start_end' : 'i2v',
+      minimaxH3InputMode: inputMode,
       minimaxH3StartFrameUrl: undefined,
       minimaxH3EndFrameUrl: undefined,
+      minimaxH3ReferenceVideoUrl: undefined,
     });
     return ctx.editMessageText(
-      `🎬 *MiniMax H3*\n\nMode: *${data === 'mh3_mode_start_end' ? 'Start + End Frame' : 'Image to Video'}*\n\nPilih rasio:`,
+      `🎬 *MiniMax H3*\n\nMode: *${modeLabel}*\n\nPilih rasio:`,
       { parse_mode: 'Markdown', ...minimaxH3RatioKeyboard() }
     );
   }
@@ -4722,13 +4741,19 @@ bot.on('callback_query', async (ctx) => {
   if (data === 'mh3_res_4k') {
     const resolution: picsart.MinimaxH3OutputResolution = '4K';
     const session = getSession(userId);
+    const modeLabel =
+      session.minimaxH3InputMode === 'start_end'
+        ? 'Start + End Frame'
+        : session.minimaxH3InputMode === 'reference_video'
+          ? 'Gambar + Video Referensi'
+          : 'Image to Video';
     setSession(userId, {
       minimaxH3Resolution: resolution,
       mode: 'minimax_h3_wait_start_frame',
     });
     return ctx.editMessageText(
       `🎬 *MiniMax H3*\n\n` +
-      `Mode: *${session.minimaxH3InputMode === 'start_end' ? 'Start + End Frame' : 'Image to Video'}*\n` +
+      `Mode: *${modeLabel}*\n` +
       `Rasio: *${session.minimaxH3Ratio ?? '9:16'}* · Output: *${resolution}*\n\n` +
       '*Langkah berikutnya:* Kirim *foto frame awal*.',
       { parse_mode: 'Markdown' }
@@ -5458,6 +5483,16 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
         { parse_mode: 'Markdown' }
       );
     }
+    if (session.minimaxH3InputMode === 'reference_video') {
+      setSession(userId, {
+        minimaxH3StartFrameUrl: fileUrl,
+        mode: 'minimax_h3_wait_reference_video',
+      });
+      return ctx.reply(
+        '✅ Gambar acuan diterima!\n\n*Langkah berikutnya:* Kirim *video referensi* yang ingin diikuti.',
+        { parse_mode: 'Markdown' }
+      );
+    }
     setSession(userId, {
       minimaxH3StartFrameUrl: fileUrl,
       mode: 'minimax_h3_wait_prompt',
@@ -5773,6 +5808,24 @@ bot.on('video', async (ctx) => {
       '*Langkah 3 (opsional):* Kirim *1–5 foto acuan* untuk karakter/gaya yang ingin diterapkan, ' +
       'atau tekan tombol lewati.',
       { parse_mode: 'Markdown', ...seedance2EditOptionalImageKeyboard() }
+    );
+  }
+
+  if (session.mode === 'minimax_h3_wait_reference_video' && session.minimaxH3StartFrameUrl) {
+    if (vid.file_size && vid.file_size > MAX_VIDEO_BYTES) {
+      return ctx.reply(
+        `❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\n` +
+        'Maksimal 19MB. Kompres dulu atau kirim file lebih kecil.'
+      );
+    }
+    const fileLink = await ctx.telegram.getFileLink(vid.file_id);
+    setSession(userId, {
+      minimaxH3ReferenceVideoUrl: fileLink.href,
+      mode: 'minimax_h3_wait_prompt',
+    });
+    return ctx.reply(
+      '✅ Video referensi diterima!\n\n*Langkah terakhir:* Kirim *prompt teks* untuk mengarahkan hasil video.',
+      { parse_mode: 'Markdown' }
     );
   }
 
@@ -6451,6 +6504,9 @@ bot.on('text', async (ctx) => {
     if (session.minimaxH3InputMode === 'start_end' && !session.minimaxH3EndFrameUrl) {
       return ctx.reply('⚠️ Frame akhir belum ada. Kirim foto frame akhir terlebih dahulu.');
     }
+    if (session.minimaxH3InputMode === 'reference_video' && !session.minimaxH3ReferenceVideoUrl) {
+      return ctx.reply('⚠️ Video referensi belum ada. Kirim video referensi terlebih dahulu.');
+    }
     const cooldownMs = getCooldownRemainingMs(userId);
     if (cooldownMs > 0) {
       setSession(userId, { mode: 'idle' });
@@ -6463,6 +6519,7 @@ bot.on('text', async (ctx) => {
       inputMode: session.minimaxH3InputMode ?? 'i2v',
       startFrameUrl: session.minimaxH3StartFrameUrl,
       endFrameUrl: session.minimaxH3EndFrameUrl,
+      referenceVideoUrl: session.minimaxH3ReferenceVideoUrl,
       ratio: session.minimaxH3Ratio ?? '9:16',
       resolution: session.minimaxH3Resolution ?? '4K',
     } as const;
@@ -6832,6 +6889,9 @@ bot.on('text', async (ctx) => {
   if (session.mode === 'minimax_h3_wait_end_frame') {
     return ctx.reply('📸 Kirim *foto frame akhir* terlebih dahulu, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
+  if (session.mode === 'minimax_h3_wait_reference_video') {
+    return ctx.reply('🎥 Kirim *video referensi* terlebih dahulu, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+  }
   if (session.mode === 'picsart_i2v_wait_image') {
     return ctx.reply(
       session.picsartI2vModel === 'wan_v3'
@@ -7028,6 +7088,25 @@ bot.on('document', async (ctx) => {
 
   if (doc.mime_type?.startsWith('audio/') && session.mode === 'audio_wait_file') {
     return handleAudioTranscriptionFile(ctx, doc.file_id, doc.mime_type);
+  }
+
+  if (doc.mime_type?.startsWith('video/') && session.mode === 'minimax_h3_wait_reference_video' && session.minimaxH3StartFrameUrl) {
+    const MAX_VIDEO_BYTES = 19 * 1024 * 1024;
+    if (doc.file_size && doc.file_size > MAX_VIDEO_BYTES) {
+      return ctx.reply(
+        `❌ Video terlalu besar (${(doc.file_size / 1024 / 1024).toFixed(1)} MB).\n` +
+        'Maksimal 19MB. Kompres dulu atau kirim file lebih kecil.'
+      );
+    }
+    const fileLink = await ctx.telegram.getFileLink(doc.file_id);
+    setSession(userId, {
+      minimaxH3ReferenceVideoUrl: fileLink.href,
+      mode: 'minimax_h3_wait_prompt',
+    });
+    return ctx.reply(
+      '✅ Video referensi diterima!\n\n*Langkah terakhir:* Kirim *prompt teks* untuk mengarahkan hasil video.',
+      { parse_mode: 'Markdown' }
+    );
   }
 
   if (doc.mime_type?.startsWith('video/') && session.mode === 'gomni_wait_video' && session.gomniImageUrl) {
@@ -8399,9 +8478,10 @@ async function runMinimaxH3(
   statusMsgId: number,
   prompt: string,
   opts: {
-    inputMode: 'i2v' | 'start_end';
+    inputMode: 'i2v' | 'start_end' | 'reference_video';
     startFrameUrl: string;
     endFrameUrl?: string;
+    referenceVideoUrl?: string;
     ratio: picsart.MinimaxH3AspectRatio;
     resolution: picsart.MinimaxH3OutputResolution;
   }
@@ -8436,45 +8516,73 @@ async function runMinimaxH3(
         mime: endDownload.mime,
       };
     }
+    let referenceVideo: { buffer: Buffer; name: string; mime: string } | undefined;
+    if (opts.inputMode === 'reference_video' && opts.referenceVideoUrl) {
+      const videoDownload = await downloadBuffer(opts.referenceVideoUrl);
+      const videoType = detectVideoType(videoDownload.buf, opts.referenceVideoUrl);
+      referenceVideo = {
+        buffer: videoDownload.buf,
+        name: `reference-video.${videoType.ext}`,
+        mime: videoType.mime,
+      };
+    }
 
     console.log(
       `[${userId}] ${label} started — mode=${opts.inputMode} ratio=${opts.ratio} ` +
-      `resolution=${opts.resolution} frames=${endFrame ? 2 : 1}`
+      `resolution=${opts.resolution} refs=${referenceVideo ? 'image+video' : endFrame ? 'start+end' : 'image'}`
     );
     let lastEdit = 0;
-    const result = await picsart.generateMinimaxH3({
-      userId: dbUserId,
-      prompt,
-      startFrame,
-      endFrame,
-      aspectRatio: opts.ratio,
-      outputResolution: opts.resolution,
-      onStatus: (stage) => {
-        const text = stage === 'upload'
-          ? `⏳ ${label}: mengunggah frame... (1/4)`
-          : stage === 'submit'
-            ? `⏳ ${label}: mengirim perintah ke server... (2/4)`
-            : stage === 'export'
-              ? `⏳ ${label}: hampir selesai menyiapkan video... (4/4)`
-              : `⏳ ${label}: video sedang dibuat... (3/4)\n⏱️ Biasanya 3–15 menit.`;
-        lastEdit = Date.now();
-        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
-      },
-      onPoll: (elapsedSec) => {
-        if (Date.now() - lastEdit < 30_000) return;
-        lastEdit = Date.now();
-        const mins = Math.floor(elapsedSec / 60);
-        const secs = elapsedSec % 60;
-        bot.telegram.editMessageText(
-          chatId,
-          statusMsgId,
-          undefined,
-          `⏳ ${label}: video sedang disiapkan...\n⏱️ Sudah berjalan ${mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`}.`
-        ).catch(() => {});
-      },
-    });
+    const onStatus = (stage: 'upload' | 'submit' | 'poll' | 'export') => {
+      const text = stage === 'upload'
+        ? `⏳ ${label}: mengunggah media... (1/4)`
+        : stage === 'submit'
+          ? `⏳ ${label}: mengirim perintah ke server... (2/4)`
+          : stage === 'export'
+            ? `⏳ ${label}: hampir selesai menyiapkan video... (4/4)`
+            : `⏳ ${label}: video sedang dibuat... (3/4)\n⏱️ Biasanya 3–15 menit.`;
+      lastEdit = Date.now();
+      bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+    };
+    const onPoll = (elapsedSec: number) => {
+      if (Date.now() - lastEdit < 30_000) return;
+      lastEdit = Date.now();
+      const mins = Math.floor(elapsedSec / 60);
+      const secs = elapsedSec % 60;
+      bot.telegram.editMessageText(
+        chatId,
+        statusMsgId,
+        undefined,
+        `⏳ ${label}: video sedang disiapkan...\n⏱️ Sudah berjalan ${mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`}.`
+      ).catch(() => {});
+    };
+    const result = referenceVideo
+      ? await picsart.generateMinimaxH3ReferenceToVideo({
+          userId: dbUserId,
+          prompt,
+          referenceImage: startFrame,
+          referenceVideo,
+          aspectRatio: opts.ratio,
+          outputResolution: opts.resolution,
+          onStatus,
+          onPoll,
+        })
+      : await picsart.generateMinimaxH3({
+          userId: dbUserId,
+          prompt,
+          startFrame,
+          endFrame,
+          aspectRatio: opts.ratio,
+          outputResolution: opts.resolution,
+          onStatus,
+          onPoll,
+        });
 
-    const modeLabel = opts.inputMode === 'start_end' ? 'Start + End Frame' : 'Image to Video';
+    const modeLabel =
+      opts.inputMode === 'start_end'
+        ? 'Start + End Frame'
+        : opts.inputMode === 'reference_video'
+          ? 'Gambar + Video Referensi'
+          : 'Image to Video';
     const delivered = await sendResult(
       chatId,
       result.url,
