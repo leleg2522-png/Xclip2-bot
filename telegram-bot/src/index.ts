@@ -172,7 +172,7 @@ const MODEL_PRICES = {
   flora_image: 500,    // Semua model image generation service
   lipsync: 3000,       // Semua model lipsync
   audio: 3000,         // Semua model audio generation/transcription
-  topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 2× 60fps)
+  topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 2×)
   picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
   picsart_kling_omni: 3500, // Kling Omni 12s, delivered as 1K
   picsart_seedance_2_mini: 3500, // Seedance 2.0 Mini, delivered as 1080p
@@ -2296,7 +2296,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('✨ Gemini Omni', 'mode_gomni')],
     [Markup.button.callback('✨ Gemini Omni 1.2', 'mode_gomni12')],
     [Markup.button.callback('── 🔧 Video Tools ──', 'noop')],
-    [Markup.button.callback('🎞️ Topaz 4K Upscaler (60fps)', 'mode_topaz')],
+    [Markup.button.callback('🎞️ Topaz 4K Upscaler', 'mode_topaz')],
     [Markup.button.callback('🎙️ AI Lipsync (Rp3.000)', 'menu_lipsync')],
     [Markup.button.callback('🎧 AI Audio (Rp3.000)', 'menu_audio')],
     // ── Chat AI ──
@@ -2827,7 +2827,7 @@ function hargaText(): string {
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +
     `• Kling MC V3.0 PRO P3 — ${formatRupiah(MODEL_PRICES.kling_p3)} 🔥PROMO\n` +
-    `• Topaz 4K Upscaler (60fps) — ${formatRupiah(MODEL_PRICES.topaz)}\n` +
+    `• Topaz 4K Upscaler — ${formatRupiah(MODEL_PRICES.topaz)}\n` +
     `• AI Lipsync (semua model) — ${formatRupiah(MODEL_PRICES.lipsync)}\n\n` +
     `• AI Audio (semua model) — ${formatRupiah(MODEL_PRICES.audio)}\n\n` +
     '🎨 *Gambar*\n' +
@@ -9853,14 +9853,12 @@ async function runTopazVideo(
 
         // Step 4: Submit generate job
         await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-          '⏳ *Topaz 4K Upscaler* — memproses video (4K × 60fps)...\nBiasanya 3–5 menit, harap tunggu.', { parse_mode: 'Markdown' }
+          '⏳ *Topaz 4K Upscaler* — memproses video ke 4K...\nBiasanya 3–5 menit, harap tunggu.', { parse_mode: 'Markdown' }
         ).catch(() => {});
 
         const runId = await floraGenerate(apiKey, ws, 'video-upscaler-topaz', {
           video_url: videoUrl,
-          model: 'Proteus',
           upscale_factor: 2,
-          target_fps: 60,
         });
 
         // Step 5: Poll result
