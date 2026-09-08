@@ -840,11 +840,11 @@ async function floraGenerate(
   ws: FloraWorkspace,
   modelId: string,
   params: Record<string, any>,
-  prompt = 'upscale to 4K 60fps',
+  prompt = 'upscale video to 4K',
   type: 'video' | 'image' | 'audio' | 'text' = 'video'
 ): Promise<string> {
   const body: Record<string, any> = {
-    model_id: modelId,
+    model: modelId,
     workspace_id: ws.workspaceId,
     project_id: ws.projectId,
     type,

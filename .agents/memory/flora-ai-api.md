@@ -9,6 +9,7 @@ description: Working call format for Flora AI generate/upload, key-pool behavior
 
 ## Format request yang benar
 - Base: `https://app.flora.ai/api/v1`, auth `Bearer sk_live_...` per akun (1 akun = 1 workspace sendiri).
+- Flora API 2.18.0 memakai field top-level `model` untuk endpoint ID dari `GET /models`, bukan `model_id`. `model_id` dapat diabaikan sehingga workspace default yang berjalan dan params model tujuan ditolak.
 - Model motion control: `iv2v-kling-2.6-motion` (mixed-to-video).
 - Kling 2.5 Turbo Pro i2v = `i2v-kling-2.5`, format params sama (image_url + duration '5'|'10') — submit+validasi terverifikasi jalan.
 - Kling 2.1 Pro i2v = model `f2v-kling-2.1-pro` (first-frame-to-video): `params: { image_url, duration: '5'|'10' }` — terverifikasi jalan, output 10.04s. TIDAK ada model `i2v-kling-2.1-pro`; `i2v-kling-2.1` = Master. Submit TANPA image_url tetap diterima (charged $0.45) lalu failed GENERATION_INPUT_VALIDATION saat run — validasi input baru terjadi di run, bukan submit.
@@ -34,7 +35,7 @@ description: Working call format for Flora AI generate/upload, key-pool behavior
 - Auth key format: `ak_xxx` (not `sk_live_xxx`)
 
 ### /generate required fields (verified Aug 2026)
-- `model_id`, `workspace_id`, `project_id` (must start with `prj_`), `type` ("video"), `prompt` (min 1 char), `params`
+- `model`, `workspace_id`, `project_id` (must start with `prj_`), `type` ("video"), `prompt` (min 1 char), `params`
 - `project_id` TIDAK sama dengan `workspace_id` — fetch via GET /projects?workspace_id=xxx → projects[0].project_id
 - `prompt` tidak boleh kosong — pakai "upscale to 4K 60fps" sebagai default
 
