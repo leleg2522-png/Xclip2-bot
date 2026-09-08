@@ -27,6 +27,8 @@ description: Working call format for Flora AI generate/upload, key-pool behavior
 ## Topaz 4K Video Upscaler
 - model_id: `video-upscaler-topaz` (provider: fal, type: video)
 - Params: `upscale_factor` (float 1–4, NOT `scale`), `target_fps` (int 16–60)
+- Untuk input 1080p gunakan `upscale_factor: 2` agar hasil 4K. Faktor 4 meminta 8K dan bisa ditolak provider sebagai `GENERATION_INVALID_PARAMS`.
+- Kirim `model: "Proteus"` secara eksplisit agar tidak bergantung pada perubahan default model provider.
 - Actual cost: $0.13/run (~75s proses, bukan 165s)
 - Asset upload: POST /assets → GCS signed URL multipart → POST /assets/{id}/complete → `url` field
 - Auth key format: `ak_xxx` (not `sk_live_xxx`)

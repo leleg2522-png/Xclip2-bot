@@ -172,7 +172,7 @@ const MODEL_PRICES = {
   flora_image: 500,    // Semua model image generation service
   lipsync: 3000,       // Semua model lipsync
   audio: 3000,         // Semua model audio generation/transcription
-  topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 4× 60fps)
+  topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 2× 60fps)
   picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
   picsart_kling_omni: 3500, // Kling Omni 12s, delivered as 1K
   picsart_seedance_2_mini: 3500, // Seedance 2.0 Mini, delivered as 1080p
@@ -9858,7 +9858,8 @@ async function runTopazVideo(
 
         const runId = await floraGenerate(apiKey, ws, 'video-upscaler-topaz', {
           video_url: videoUrl,
-          upscale_factor: 4,
+          model: 'Proteus',
+          upscale_factor: 2,
           target_fps: 60,
         });
 
