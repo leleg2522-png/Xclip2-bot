@@ -1898,6 +1898,7 @@ export type PicsartI2vModelKey =
   | 'grok_imagine'
   | 'kling_v3_turbo'
   | 'kling_v26_pro'
+  | 'kling_v21_pro'
   | 'kling_v3'
   | 'kling_omni'
   | 'wan_v2'
@@ -1999,6 +2000,14 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
   kling_v26_pro: {
     label: 'Kling v2.6 Pro',
     settingsLabel: '9:16 · 10 detik · audio · Pro',
+    workflowPath: 'kling-image-to-video',
+    pool: 'p500',
+    strictPool: true,
+    pollAttempts: 180,
+  },
+  kling_v21_pro: {
+    label: 'Kling 2.1 Pro',
+    settingsLabel: '9:16 · 10 detik · tanpa audio · Pro',
     workflowPath: 'kling-image-to-video',
     pool: 'p500',
     strictPool: true,
@@ -2132,6 +2141,18 @@ export function buildPicsartI2vParams(
         model_name: 'kling-v2-6',
         image: imageUrl,
         sound: 'on',
+        mode: 'pro',
+        cfg_scale: 0.5,
+        options: {},
+      };
+    case 'kling_v21_pro':
+      return {
+        prompt,
+        aspect_ratio: '9:16',
+        duration: '10',
+        model_name: 'kling-v2-6',
+        image: imageUrl,
+        sound: 'off',
         mode: 'pro',
         cfg_scale: 0.5,
         options: {},

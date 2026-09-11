@@ -186,6 +186,7 @@ const expectedModels = [
   'grok_imagine',
   'kling_v3_turbo',
   'kling_v26_pro',
+  'kling_v21_pro',
   'kling_v3',
   'kling_omni',
   'wan_v2',
@@ -198,6 +199,8 @@ assert.equal('pika' in PICSART_I2V_MODELS, false);
 assert.equal(PICSART_I2V_MODELS.wan_v3.pool, 'p500');
 assert.equal(PICSART_I2V_MODELS.kling_v26_pro.pool, 'p500');
 assert.equal(PICSART_I2V_MODELS.kling_v26_pro.strictPool, true);
+assert.equal(PICSART_I2V_MODELS.kling_v21_pro.pool, 'p500');
+assert.equal(PICSART_I2V_MODELS.kling_v21_pro.strictPool, true);
 assert.equal(PICSART_I2V_MAX_IMAGES, 5);
 
 const botSource = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
@@ -205,7 +208,7 @@ assert.equal(botSource.includes('menu_picsart_i2v'), false);
 assert.equal(botSource.includes('Picsart I2V (8 Model)'), false);
 assert.equal(botSource.includes("Markup.button.callback('🧩 Picsart"), false);
 assert.equal(botSource.includes('`🧩 *Picsart'), false);
-for (const model of expectedModels) {
+for (const model of expectedModels.filter(model => model !== 'kling_v21_pro')) {
   assert.equal(botSource.includes(`mode_pi2v_${model}`), true);
 }
 
@@ -437,6 +440,19 @@ assert.deepEqual(klingPro, {
   model_name: 'kling-v2-6',
   image: imageUrl,
   sound: 'on',
+  mode: 'pro',
+  cfg_scale: 0.5,
+  options: {},
+});
+
+const kling21 = buildPicsartI2vParams('kling_v21_pro', prompt, imageUrl);
+assert.deepEqual(kling21, {
+  prompt,
+  aspect_ratio: '9:16',
+  duration: '10',
+  model_name: 'kling-v2-6',
+  image: imageUrl,
+  sound: 'off',
   mode: 'pro',
   cfg_scale: 0.5,
   options: {},

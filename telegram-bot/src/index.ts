@@ -66,7 +66,7 @@ const freepikHttp = axios.create({
   ...(freepikHttpsAgent ? { httpsAgent: freepikHttpsAgent } : {}),
 });
 
-// Leonardo AI HTTP client — untuk Kling 2.1 Pro dan Kling 2.6 Pro
+// Leonardo AI HTTP client — untuk model Leonardo, termasuk Kling 2.6 Pro legacy
 const leonardoHttp = axios.create({ timeout: 120_000 });
 
 // Flora AI HTTP client — untuk Topaz 4K Video Upscaler
@@ -7593,7 +7593,7 @@ async function runPicsartI2v(
     imageUrls: string[];
     ratio?: picsart.WanV3AspectRatio;
     displayLabel?: string;
-    priceKey?: 'picsart_seedance_25' | 'picsart_wan_v3';
+    priceKey?: 'picsart_seedance_25' | 'picsart_wan_v3' | 'kling_21_pro';
   }
 ) {
   const cfg = picsart.PICSART_I2V_MODELS[opts.model];
@@ -9270,7 +9270,7 @@ async function runGptImage(
   }
 }
 
-// ─── Background: Kling 2.1 Pro (10-second image-to-video) ────────────────────
+// ─── Background: Kling 2.1 Pro (Picsart backend, no audio) ───────────────────
 
 async function runKling21Pro(
   chatId: number,
@@ -9280,117 +9280,13 @@ async function runKling21Pro(
   imageUrl: string,
   prompt: string
 ) {
-  const label = 'Kling 2.1 Pro (10 detik)';
-  const PRICE = MODEL_PRICES.kling_21_pro;
-  const charge = await beginCharge(dbUserId, PRICE, 3);
-  if (!charge.ok) {
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
-    return;
-  }
-  let refund = true;
+  return runPicsartI2v(chatId, userId, dbUserId, statusMsgId, prompt, {
+    model: 'kling_v21_pro',
+    imageUrls: [imageUrl],
+    displayLabel: 'Kling 2.1 Pro (10 detik)',
+    priceKey: 'kling_21_pro',
+  });
 
-  try {
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `⏳ ${label}: mengunduh foto acuan...`
-    ).catch(() => {});
-    const image = await downloadBuffer(imageUrl);
-    const skippedKeys = new Set<string>();
-
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const apiKey = await getNextFloraKey(skippedKeys);
-      if (!apiKey) {
-        await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-          '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.\n\n/menu untuk kembali'
-        ).catch(() => {});
-        return;
-      }
-
-      let acceptedRunId: string | undefined;
-      try {
-        const ws = await floraGetWorkspace(apiKey);
-
-        await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-          `⏳ ${label}: mengunggah foto... (1/3)`
-        ).catch(() => {});
-        const assetUrl = await floraUploadImage(
-          apiKey,
-          ws.workspaceId,
-          image.buf,
-          `reference-${Date.now()}.${image.ext}`,
-          image.mime
-        );
-
-        await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-          `⏳ ${label}: membuat video 10 detik... (2/3)\n⏱️ Biasanya 5–15 menit. Jangan tutup chat ini.`
-        ).catch(() => {});
-        acceptedRunId = await floraGenerate(
-          apiKey,
-          ws,
-          'f2v-kling-2.1-pro',
-          { image_url: assetUrl, duration: '10' },
-          prompt
-        );
-
-        const resultUrl = await floraPollRun(apiKey, acceptedRunId, 20 * 60 * 1000);
-        const delivered = await sendResult(
-          chatId,
-          resultUrl,
-          `🎬 ${label} selesai!\n\n/menu untuk buat lagi`,
-          true
-        );
-        if (delivered) {
-          refund = false;
-          markGenSuccess(userId);
-          await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-          console.log(`[${userId}] ${label} done — run ${acceptedRunId}`);
-        }
-        return;
-      } catch (err: any) {
-        const desc = describeError(err);
-        console.error(`[${userId}] ${label} attempt ${attempt + 1} failed (key …${apiKey.slice(-8)}): ${desc}`);
-
-        // A paid job may already exist once Flora returns a run ID. Never replay
-        // upload+submit on another key after that point; refund instead.
-        if (acceptedRunId) {
-          if (isFloraKeyExhaustedError(desc)) {
-            await markFloraKeyDead(apiKey).catch(() => {});
-          }
-          const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
-          const friendly = contentRejected
-            ? '❌ Foto atau prompt tidak dapat diproses karena melanggar kebijakan konten.'
-            : '❌ Proses video tidak berhasil. Saldo akan dikembalikan.';
-          await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
-            .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
-          return;
-        }
-
-        if (isFloraKeyExhaustedError(desc)) {
-          await markFloraKeyDead(apiKey);
-          skippedKeys.add(apiKey);
-          continue;
-        }
-
-        const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
-        const friendly = contentRejected
-          ? '❌ Foto atau prompt tidak dapat diproses karena melanggar kebijakan konten.'
-          : '❌ Gagal memproses video. Coba lagi nanti.';
-        await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
-          .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
-        return;
-      }
-    }
-  } catch (err: any) {
-    console.error(`[${userId}] ${label} outer error: ${describeError(err)}`);
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      '❌ Gagal memproses video. Coba lagi nanti.\n\n/menu untuk coba lagi'
-    ).catch(() => bot.telegram.sendMessage(chatId, '❌ Gagal memproses video. Coba lagi nanti.\n\n/menu untuk coba lagi'));
-  } finally {
-    if (refund) {
-      await addSaldo(dbUserId, PRICE).catch(() => {});
-      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
-    }
-    releaseGenerating(dbUserId);
-  }
 }
 
 // ─── Background: Flora image generation ─────────────────────────────────────
