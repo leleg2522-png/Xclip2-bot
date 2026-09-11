@@ -243,11 +243,13 @@ export const KLING_MOTION_CONTROL_POOL: PicsartPool = 'p100';
 //    pool-matching account → reuse it.
 //  • Otherwise assign the available pool-matching account with the FEWEST users.
 //  • `exclude` lets the failover loop skip accounts that just failed.
+//  • `strictPool` excludes legacy accounts without a pool label.
 // Returns the credential id, or null when no usable account exists.
 async function acquireAccount(
   userId: number,
   poolFilter: PicsartPool | null = null,
-  exclude: number[] = []
+  exclude: number[] = [],
+  strictPool = false
 ): Promise<number | null> {
   const stickyKey = poolFilter ?? 'any';
   // Wildcard (pool IS NULL = legacy accounts) match every pool request so that
@@ -261,8 +263,8 @@ async function acquireAccount(
        JOIN picsart_credentials c ON c.id = a.credential_id
       WHERE a.user_id = $1 AND a.pool = $2 AND c.status = 'available'
         AND NOT (a.credential_id = ANY($3::int[]))
-        AND ($4::text IS NULL OR c.pool = $4 OR c.pool IS NULL)`,
-    [userId, stickyKey, exclude, poolFilter]
+        AND ($4::text IS NULL OR c.pool = $4 OR ($5::boolean AND c.pool IS NULL))`,
+    [userId, stickyKey, exclude, poolFilter, !strictPool]
   );
   if (existing.rows[0]) return existing.rows[0].id as number;
 
@@ -271,11 +273,11 @@ async function acquireAccount(
        FROM picsart_credentials c
        LEFT JOIN picsart_user_accounts a ON a.credential_id = c.id
       WHERE c.status = 'available' AND NOT (c.id = ANY($1::int[]))
-        AND ($2::text IS NULL OR c.pool = $2 OR c.pool IS NULL)
+        AND ($2::text IS NULL OR c.pool = $2 OR ($3::boolean AND c.pool IS NULL))
       GROUP BY c.id
       ORDER BY COUNT(a.user_id) ASC, c.updated_at ASC
       LIMIT 1`,
-    [exclude, poolFilter]
+    [exclude, poolFilter, !strictPool]
   );
   const credId = pick.rows[0]?.id as number | undefined;
   if (credId == null) return null;
@@ -343,7 +345,8 @@ async function handleCreditError(credId: number): Promise<'discard' | 'skip'> {
 async function runWithAccount<T>(
   userId: number,
   poolFilter: PicsartPool | null,
-  fn: (credId: number) => Promise<T>
+  fn: (credId: number) => Promise<T>,
+  options?: { strictPool?: boolean }
 ): Promise<T> {
   const tried: number[] = [];
   let lastErr: unknown = null;
@@ -353,7 +356,7 @@ async function runWithAccount<T>(
   const poolCount = await q(`SELECT COUNT(*)::int AS n FROM picsart_credentials`);
   const ceiling = Math.min(MAX_ACCOUNT_ATTEMPTS, Math.max(1, poolCount.rows[0]?.n ?? 1));
   for (let attempt = 0; attempt < ceiling; attempt++) {
-    const credId = await acquireAccount(userId, poolFilter, tried);
+    const credId = await acquireAccount(userId, poolFilter, tried, options?.strictPool ?? false);
     if (credId == null) break;
     tried.push(credId);
     try {
@@ -1953,6 +1956,7 @@ type PicsartI2vModelConfig = {
   settingsLabel: string;
   workflowPath: string;
   pool: PicsartPool | null;
+  strictPool?: boolean;
   pollAttempts: number;
 };
 
@@ -1996,7 +2000,8 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
     label: 'Kling v2.6 Pro',
     settingsLabel: '9:16 · 10 detik · audio · Pro',
     workflowPath: 'kling-image-to-video',
-    pool: null,
+    pool: 'p500',
+    strictPool: true,
     pollAttempts: 180,
   },
   kling_v3: {
@@ -2920,7 +2925,7 @@ export async function generatePicsartI2v(input: {
       }
       throw e;
     }
-  });
+  }, { strictPool: cfg.strictPool });
 }
 
 // ─── Seedream 2.7 4K & GPT Image 2 (image generation via Picsart workflows) ──
