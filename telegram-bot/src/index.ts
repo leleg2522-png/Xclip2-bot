@@ -181,7 +181,8 @@ const MODEL_PRICES = {
   picsart_seedance_2_video_edit: 4500, // Seedance 2 Video Edit, delivered as 1080p
   picsart_seedance_2: 4000, // Seedance 2.0 Mini/Fast/Standard, delivered as 1080p
   picsart_wan_v3: 5000, // Wan 3.0 30s, delivered as 1080p
-  picsart_seedance_25: 5000, // Public Seedance 2.5 label, routed through Picsart native gateway
+  picsart_seedance_25_480: 11000, // Public Seedance 2.5 native gateway, 480p
+  picsart_seedance_25_720: 16000, // Public Seedance 2.5 native gateway, 720p
   oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
 } as const;
@@ -1548,6 +1549,7 @@ type Mode =
   | 'seedance_2_edit_wait_video'
   | 'seedance_2_edit_wait_image'
   | 'seedance_2_edit_wait_prompt'
+  | 'oneover_wait_resolution'
   | 'oneover_wait_image'
   | 'oneover_wait_prompt'
   | 'kling21_wait_image'
@@ -1673,7 +1675,7 @@ interface Session {
   picsartI2vDisplayLabel?: string;
   picsartI2vImageUrl?: string;
   picsartI2vImageUrls?: string[];
-  picsartI2vPriceKey?: 'picsart_seedance_25' | 'picsart_wan_v3';
+  picsartI2vPriceKey?: 'picsart_wan_v3';
   // Separate Seedance 2 Mini Video Edit wizard state.
   seedanceMiniEditRatio?: picsart.WanV3AspectRatio;
   seedanceMiniEditVideoFileId?: string;
@@ -1694,6 +1696,7 @@ interface Session {
   seedance2EditImageFileIds?: string[];
   // Seedance 2.5 image wizard stores the Telegram file ID, not a bot-token download URL.
   oneoverImageUrl?: string;
+  seedance25Resolution?: '480p' | '720p';
   // Kling 2.1 Pro (10-second image-to-video) wizard state
   kling21ImageUrl?: string;
   // Chat AI wizard state (multi-turn conversation)
@@ -1783,7 +1786,7 @@ const GENERATION_DRAFT_MODES = new Set<Mode>([
   'seedance_fast_edit_wait_image', 'seedance_fast_edit_wait_prompt',
   'seedance_2_edit_wait_ratio', 'seedance_2_edit_wait_video',
   'seedance_2_edit_wait_image', 'seedance_2_edit_wait_prompt',
-  'oneover_wait_image', 'oneover_wait_prompt',
+  'oneover_wait_resolution', 'oneover_wait_image', 'oneover_wait_prompt',
   'kling21_wait_image', 'kling21_wait_prompt', 'topaz_wait_video',
   'img_wait_image', 'img_wait_prompt',
 ]);
@@ -1834,6 +1837,7 @@ function generationDraftKindForContinuation(data: string): GenerationDraftKind |
   if (data.startsWith('seedance_edit_')) return 'picsart_i2v';
   if (data.startsWith('seedance_fast_edit_')) return 'picsart_i2v';
   if (data.startsWith('seedance_2_edit_')) return 'picsart_i2v';
+  if (data.startsWith('seedance25_res_')) return 'oneover';
   if (data.startsWith('audio_voice_')) return 'audio';
   return undefined;
 }
