@@ -10130,27 +10130,6 @@ async function runTopazVideo(
 
 // ─── Background: ByteDance Video Upscaler 1K (Renderful AI) ──────────────────
 
-async function uploadRenderfulVideo(apiKey: string, videoBuf: Buffer): Promise<string> {
-  const form = new FormData();
-  form.append('file', videoBuf, {
-    filename: `bytedance-upscale-${Date.now()}.mp4`,
-    contentType: 'video/mp4',
-  });
-  const res = await bytedanceUpscalerHttp.post(`${RENDERFUL_BASE}/uploads`, form, {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      ...form.getHeaders(),
-    },
-    maxBodyLength: Infinity,
-    timeout: 180_000,
-  });
-  const url = res.data?.url;
-  if (typeof url !== 'string' || !url.startsWith('http')) {
-    throw new Error('Upload Renderful tidak mengembalikan URL video');
-  }
-  return url;
-}
-
 async function runByteDanceUpscale(
   chatId: number,
   userId: number,
@@ -10179,6 +10158,16 @@ async function runByteDanceUpscale(
     const fileLink = await bot.telegram.getFileLink(videoFileId);
     const dlRes = await telegramHttp.get(fileLink.href, { responseType: 'arraybuffer', timeout: 120_000 });
     const videoBuf = Buffer.from(dlRes.data);
+    await bot.telegram.editMessageText(
+      chatId,
+      statusMsgId,
+      undefined,
+      '⏳ *ByteDance Upscaler 1K* — menyiapkan video...',
+      { parse_mode: 'Markdown' }
+    ).catch(() => {});
+    // The current official OpenAPI has no upload endpoint. Host the Telegram
+    // bytes behind our temporary public link instead of leaking the bot-token URL.
+    const videoUrl = await publishMedia(videoBuf, true);
 
     for (let attempt = 0; attempt < 5; attempt++) {
       const apiKey = await getNextRenderfulPoolKey(skippedKeys);
@@ -10198,15 +10187,6 @@ async function runByteDanceUpscale(
           chatId,
           statusMsgId,
           undefined,
-          '⏳ *ByteDance Upscaler 1K* — mengunggah video...',
-          { parse_mode: 'Markdown' }
-        ).catch(() => {});
-        const videoUrl = await uploadRenderfulVideo(apiKey, videoBuf);
-
-        await bot.telegram.editMessageText(
-          chatId,
-          statusMsgId,
-          undefined,
           '⏳ *ByteDance Upscaler 1K* — meningkatkan resolusi video...\nHarap tunggu.',
           { parse_mode: 'Markdown' }
         ).catch(() => {});
@@ -10216,7 +10196,9 @@ async function runByteDanceUpscale(
             type: 'video-to-video',
             model: 'bytedance-video-upscaler',
             video_url: videoUrl,
-            resolution: '1k',
+            // Public product name remains "1K"; Renderful's supported API value
+            // for that tier is 1080p.
+            resolution: '1080p',
           },
           { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 120_000 }
         );
