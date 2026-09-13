@@ -2283,7 +2283,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🌊 Seedance 2.0 480p', 'mode_pi2v_seedance_2')],
     [Markup.button.callback('🌊 Seedance 2.5 I2V 480p', 'mode_oneover_seedance25')],
     [Markup.button.callback('🌌 Grok Imagine Video', 'mode_pi2v_grok_imagine')],
-    [Markup.button.callback('🎨 PixVerse v6 • 15 detik • 360p', 'mode_pi2v_pixverse_v6')],
+    [Markup.button.callback('🎨 PixVerse v6 • 15 detik • 720p', 'mode_pi2v_pixverse_v6')],
     [Markup.button.callback('⚡ Kling v3 Turbo', 'mode_pi2v_kling_v3_turbo')],
     [Markup.button.callback('🎭 Kling v2.6 Pro', 'mode_pi2v_kling_v26_pro')],
     [Markup.button.callback('🎞️ Kling v3 Standard', 'mode_pi2v_kling_v3')],
@@ -2825,7 +2825,7 @@ function hargaText(): string {
     `• Kling Omni (12 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_kling_omni)}\n` +
     `• Wan v2 Image-to-Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Wan 3.0 480p (30 detik) — ${formatRupiah(MODEL_PRICES.picsart_wan_v3)}\n` +
-    `• PixVerse v6 (15 detik · 360p) — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• PixVerse v6 (15 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling 2.1 Pro (10 detik) — ${formatRupiah(MODEL_PRICES.kling_21_pro)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +

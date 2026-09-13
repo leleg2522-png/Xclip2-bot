@@ -2064,7 +2064,7 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
   },
   pixverse_v6: {
     label: 'PixVerse v6',
-    settingsLabel: '15 detik · 360p native · audio',
+    settingsLabel: '15 detik · 720p native · audio',
     workflowPath: 'pixverse/v2/image-to-video',
     pool: null,
     pollAttempts: 240,
@@ -2273,7 +2273,7 @@ export function buildPicsartI2vParams(
       return {
         model: 'v6',
         prompt,
-        quality: '360p',
+        quality: '720p',
         duration: 15,
         generate_audio_switch: true,
         image_url: imageUrl,
@@ -2284,7 +2284,7 @@ export function buildPicsartI2vParams(
               model: 'pixverse-v6-image',
               aiSDKPayload: JSON.stringify({
                 prompt,
-                quality: '360p',
+                quality: '720p',
                 duration: 15,
                 generateAudio: true,
                 imageUrls: [imageUrl],

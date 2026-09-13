@@ -2,7 +2,7 @@
 - [Picsart AI Playground internal API](picsart-ai-playground-api.md) — undocumented upload→submit→poll flow; auth is fragile browser session cookie (expires); HAR sanitizes cookies, use Copy-as-cURL
 - [Picsart Wan 3.0 video](picsart-wan3-video.md) — Wan 3.0 delivers its native 480p result directly; no resize/export step.
 - [Picsart I2V native delivery](picsart-i2v-1080-delivery.md) — all separate export/upscale stages are disabled; deliver native results directly.
-- [Picsart PixVerse v6](picsart-pixverse-v6.md) — v6 delivers native 360p/15s; ratio is determined by the cropped source frame.
+- [Picsart PixVerse v6](picsart-pixverse-v6.md) — v6 requests direct 720p/15s without export; ratio is determined by the cropped source frame.
 - [Browser Use Cloud v2 proxy](browser-use-cloud-proxy.md) — "unusual activity" login block = proxy-region mismatch; set sessionSettings.proxyCountryCode to account's country (default proxy is US)
 - [Telegram bot self-hosted result links](telegram-bot-media-links.md) — big results bypass Telegram's ~50MB cap via /dl/:token on own Railway domain; storage is ephemeral tmpdir so links die on redeploy
 - [Picsart invite automation approach](picsart-invite-automation-approach.md) — cloud Browser Use proxies get "unusual activity" blocked; winning path is local-run on user's Windows PC via Surfshark + stealth Chrome

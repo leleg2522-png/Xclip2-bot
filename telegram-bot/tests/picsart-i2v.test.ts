@@ -587,7 +587,7 @@ assert.deepEqual(JSON.parse(wan3MultiDrive.attributes.aiSDKPayload).imageUrls, [
 const pixverse = buildPicsartI2vParams('pixverse_v6', prompt, imageUrl);
 assert.equal(pixverse.model, 'v6');
 assert.equal(pixverse.prompt, prompt);
-assert.equal(pixverse.quality, '360p');
+assert.equal(pixverse.quality, '720p');
 assert.equal(pixverse.duration, 15);
 assert.equal(pixverse.generate_audio_switch, true);
 assert.equal(pixverse.image_url, imageUrl);
@@ -599,7 +599,7 @@ assert.equal(pixverseDrive.attributes.appType, 'miniapp');
 assert.equal(pixverseDrive.folder.path, 'AI Playground');
 assert.deepEqual(JSON.parse(pixverseDrive.attributes.aiSDKPayload), {
   prompt,
-  quality: '360p',
+  quality: '720p',
   duration: 15,
   generateAudio: true,
   imageUrls: [imageUrl],
