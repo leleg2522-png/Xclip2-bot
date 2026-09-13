@@ -173,6 +173,7 @@ const MODEL_PRICES = {
   lipsync: 3000,       // Semua model lipsync
   audio: 3000,         // Semua model audio generation/transcription
   topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 2×)
+  bytedance_upscale: 500, // ByteDance Upscaler 1K (Renderful AI)
   picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
   picsart_kling_omni: 3500, // Kling Omni 12s, native 720p
   picsart_seedance_2_mini: 3500, // Seedance 2.0 Mini, native 480p
@@ -303,6 +304,28 @@ async function ensureBalanceSchema(): Promise<void> {
       dead_at    TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS renderful_key_pool (
+      id          SERIAL PRIMARY KEY,
+      api_key     TEXT NOT NULL UNIQUE,
+      status      TEXT NOT NULL DEFAULT 'available',
+      assigned_to INTEGER,
+      assigned_at TIMESTAMPTZ,
+      slot        INTEGER,
+      dead_at     TIMESTAMPTZ,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.query(`ALTER TABLE renderful_key_pool ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'available'`);
+  await db.query(`ALTER TABLE renderful_key_pool ADD COLUMN IF NOT EXISTS assigned_to INTEGER`);
+  await db.query(`ALTER TABLE renderful_key_pool ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ`);
+  await db.query(`ALTER TABLE renderful_key_pool ADD COLUMN IF NOT EXISTS slot INTEGER`);
+  await db.query(`ALTER TABLE renderful_key_pool ADD COLUMN IF NOT EXISTS dead_at TIMESTAMPTZ`);
+  await db.query(`ALTER TABLE renderful_key_pool ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+  await db.query(`
+    CREATE INDEX IF NOT EXISTS renderful_key_pool_status_idx
+    ON renderful_key_pool (status, id)
   `);
   await db.query(`
     CREATE TABLE IF NOT EXISTS referral_bonuses (
@@ -553,6 +576,30 @@ async function getPoolStats(): Promise<{ available: number; assigned: number; de
   const stats: any = { available: 0, assigned: 0, dead: 0 };
   for (const row of res.rows) stats[row.status] = parseInt(row.cnt);
   return stats;
+}
+
+let renderfulPoolRoundRobinIndex = 0;
+
+async function getNextRenderfulPoolKey(skipKeys?: Set<string>): Promise<string | null> {
+  const res = await dbq(
+    `SELECT api_key FROM renderful_key_pool WHERE status <> 'dead' ORDER BY id`
+  );
+  const available = skipKeys?.size
+    ? res.rows.filter((row: any) => !skipKeys.has(row.api_key))
+    : res.rows;
+  if (available.length === 0) return null;
+  const idx = renderfulPoolRoundRobinIndex % available.length;
+  renderfulPoolRoundRobinIndex = (renderfulPoolRoundRobinIndex + 1) % available.length;
+  return available[idx].api_key;
+}
+
+async function markRenderfulPoolKeyDead(apiKey: string): Promise<void> {
+  await dbq(
+    `UPDATE renderful_key_pool
+     SET status = 'dead', dead_at = NOW(), assigned_to = NULL, assigned_at = NULL, slot = NULL
+     WHERE api_key = $1`,
+    [apiKey]
+  );
 }
 
 async function isAdmin(dbUserId: number): Promise<boolean> {
@@ -1553,6 +1600,7 @@ type Mode =
   | 'kling21_wait_image'
   | 'kling21_wait_prompt'
   | 'topaz_wait_video'
+  | 'bytedance_upscale_wait_video'
   | 'img_wait_image'
   | 'img_wait_prompt'
   | 'topup_wait_custom';
@@ -1577,7 +1625,8 @@ type GenerationDraftKind =
   | 'flora_image'
   | 'lipsync'
   | 'audio'
-  | 'topaz';
+  | 'topaz'
+  | 'bytedance_upscale';
 
 interface Session {
   mode: Mode;
@@ -1787,7 +1836,7 @@ const GENERATION_DRAFT_MODES = new Set<Mode>([
   'seedance_2_edit_wait_ratio', 'seedance_2_edit_wait_video',
   'seedance_2_edit_wait_image', 'seedance_2_edit_wait_prompt',
   'oneover_wait_image', 'oneover_wait_prompt',
-  'kling21_wait_image', 'kling21_wait_prompt', 'topaz_wait_video',
+  'kling21_wait_image', 'kling21_wait_prompt', 'topaz_wait_video', 'bytedance_upscale_wait_video',
   'img_wait_image', 'img_wait_prompt',
 ]);
 
@@ -1818,6 +1867,7 @@ function generationDraftKindForStart(data: string): GenerationDraftKind | undefi
     mode_seedream: 'seedream',
     mode_gptimg: 'gptimg',
     mode_topaz: 'topaz',
+    mode_bytedance_upscale: 'bytedance_upscale',
   };
   return kinds[data];
 }
@@ -2245,11 +2295,12 @@ async function pollForResult(taskId: string, userId: number, apiKey: string, pol
     const res = await renderfulHttp.get(pollUrl, {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
-    const { status, output, error } = res.data;
+    const { status, output, outputs, error } = res.data;
     console.log(`[${userId}] Poll ${i + 1}: ${status}`);
     if (status === 'completed') {
-      if (!output) throw new Error('Completed tapi tidak ada output');
-      return extractOutputUrl(output);
+      const result = output ?? outputs?.[0];
+      if (!result) throw new Error('Completed tapi tidak ada output');
+      return extractOutputUrl(result);
     }
     if (status === 'failed') throw new Error(error || 'Generation gagal');
   }
@@ -2301,6 +2352,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('✨ Gemini Omni 1.2', 'mode_gomni12')],
     [Markup.button.callback('── 🔧 Video Tools ──', 'noop')],
     [Markup.button.callback('🎞️ Topaz 4K Upscaler', 'mode_topaz')],
+    [Markup.button.callback('⬆️ ByteDance Upscaler 1K • Rp500', 'mode_bytedance_upscale')],
     [Markup.button.callback('🎙️ AI Lipsync (Rp3.000)', 'menu_lipsync')],
     [Markup.button.callback('🎧 AI Audio (Rp3.000)', 'menu_audio')],
     // ── Chat AI ──
@@ -2831,6 +2883,7 @@ function hargaText(): string {
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +
     `• Kling MC V3.0 PRO P3 — ${formatRupiah(MODEL_PRICES.kling_p3)} 🔥PROMO\n` +
     `• Topaz 4K Upscaler — ${formatRupiah(MODEL_PRICES.topaz)}\n` +
+    `• ByteDance Upscaler 1K — ${formatRupiah(MODEL_PRICES.bytedance_upscale)}\n` +
     `• AI Lipsync (semua model) — ${formatRupiah(MODEL_PRICES.lipsync)}\n\n` +
     `• AI Audio (semua model) — ${formatRupiah(MODEL_PRICES.audio)}\n\n` +
     '🎨 *Gambar*\n' +
@@ -5337,6 +5390,18 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  if (data === 'mode_bytedance_upscale') {
+    setSession(userId, { mode: 'bytedance_upscale_wait_video' });
+    await ctx.answerCbQuery().catch(() => {});
+    return ctx.editMessageText(
+      `⬆️ *ByteDance Upscaler 1K*\n\nHarga: *${formatRupiah(MODEL_PRICES.bytedance_upscale)}* per video\n\n` +
+      `Video akan ditingkatkan langsung ke resolusi *1K*.\n\n` +
+      `📹 *Kirim videonya sekarang.*\n\n` +
+      `⚠️ Syarat:\n• Maksimal 19MB\n• Format MP4/video Telegram`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (data === 'back_main') {
     setSession(userId, { mode: 'idle', generationDraft: false, generationDraftKind: undefined });
     return ctx.editMessageText('Pilih mode generasi:', mainMenuKeyboard());
@@ -5998,6 +6063,17 @@ bot.on('video', async (ctx) => {
     const statusMsg = await ctx.reply('⏳ *Topaz 4K Upscaler* — memulai...', { parse_mode: 'Markdown' });
     const dbUserId = session.dbUserId!;
     runTopazVideo(ctx.chat.id, userId, dbUserId, statusMsg.message_id, vid.file_id);
+    return;
+  }
+
+  if (session.mode === 'bytedance_upscale_wait_video') {
+    if (!await requireLogin(ctx)) return;
+    if (vid.file_size && vid.file_size > MAX_VIDEO_BYTES) {
+      return ctx.reply(`❌ Video terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
+    }
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ *ByteDance Upscaler 1K* — memulai...', { parse_mode: 'Markdown' });
+    runByteDanceUpscale(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, vid.file_id);
     return;
   }
 
@@ -7294,6 +7370,18 @@ bot.on('document', async (ctx) => {
     setSession(userId, { mode: 'idle' });
     const statusMsg = await ctx.reply('⏳ *Topaz 4K Upscaler* — memulai...', { parse_mode: 'Markdown' });
     runTopazVideo(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, doc.file_id);
+    return;
+  }
+
+  if (doc.mime_type?.startsWith('video/') && session.mode === 'bytedance_upscale_wait_video') {
+    if (!await requireLogin(ctx)) return;
+    const MAX_VIDEO_BYTES = 19 * 1024 * 1024;
+    if (doc.file_size && doc.file_size > MAX_VIDEO_BYTES) {
+      return ctx.reply(`❌ Video terlalu besar (${(doc.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB. Kompres dulu atau kirim file lebih kecil.`);
+    }
+    setSession(userId, { mode: 'idle' });
+    const statusMsg = await ctx.reply('⏳ *ByteDance Upscaler 1K* — memulai...', { parse_mode: 'Markdown' });
+    runByteDanceUpscale(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, doc.file_id);
     return;
   }
 
@@ -9995,6 +10083,153 @@ async function runTopazVideo(
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
+// ─── Background: ByteDance Video Upscaler 1K (Renderful AI) ──────────────────
+
+async function uploadRenderfulVideo(apiKey: string, videoBuf: Buffer): Promise<string> {
+  const form = new FormData();
+  form.append('file', videoBuf, {
+    filename: `bytedance-upscale-${Date.now()}.mp4`,
+    contentType: 'video/mp4',
+  });
+  const res = await renderfulHttp.post(`${RENDERFUL_BASE}/uploads`, form, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      ...form.getHeaders(),
+    },
+    maxBodyLength: Infinity,
+    timeout: 180_000,
+  });
+  const url = res.data?.url;
+  if (typeof url !== 'string' || !url.startsWith('http')) {
+    throw new Error('Upload Renderful tidak mengembalikan URL video');
+  }
+  return url;
+}
+
+async function runByteDanceUpscale(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  videoFileId: string
+) {
+  const PRICE = MODEL_PRICES.bytedance_upscale;
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+
+  let refund = true;
+  const skippedKeys = new Set<string>();
+
+  try {
+    await bot.telegram.editMessageText(
+      chatId,
+      statusMsgId,
+      undefined,
+      '⏳ *ByteDance Upscaler 1K* — mengunduh video...',
+      { parse_mode: 'Markdown' }
+    ).catch(() => {});
+    const fileLink = await bot.telegram.getFileLink(videoFileId);
+    const dlRes = await telegramHttp.get(fileLink.href, { responseType: 'arraybuffer', timeout: 120_000 });
+    const videoBuf = Buffer.from(dlRes.data);
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const apiKey = await getNextRenderfulPoolKey(skippedKeys);
+      if (!apiKey) {
+        await bot.telegram.editMessageText(
+          chatId,
+          statusMsgId,
+          undefined,
+          '❌ Layanan ByteDance Upscaler sedang tidak tersedia. Pool API key kosong.\n\n/menu untuk kembali'
+        ).catch(() => {});
+        return;
+      }
+
+      let submitted = false;
+      try {
+        await bot.telegram.editMessageText(
+          chatId,
+          statusMsgId,
+          undefined,
+          '⏳ *ByteDance Upscaler 1K* — mengunggah video...',
+          { parse_mode: 'Markdown' }
+        ).catch(() => {});
+        const videoUrl = await uploadRenderfulVideo(apiKey, videoBuf);
+
+        await bot.telegram.editMessageText(
+          chatId,
+          statusMsgId,
+          undefined,
+          '⏳ *ByteDance Upscaler 1K* — meningkatkan resolusi video...\nHarap tunggu.',
+          { parse_mode: 'Markdown' }
+        ).catch(() => {});
+        const createRes = await renderfulHttp.post(
+          `${RENDERFUL_BASE}/generations`,
+          {
+            type: 'video-to-video',
+            model: 'bytedance-video-upscaler',
+            video_url: videoUrl,
+            resolution: '1k',
+          },
+          { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 120_000 }
+        );
+        const taskId = createRes.data?.id;
+        if (!taskId) throw new Error('Renderful tidak mengembalikan task id');
+        submitted = true;
+
+        const resultUrl = await pollForResult(taskId, userId, apiKey, createRes.data?.poll_url, 120);
+        const delivered = await sendResult(
+          chatId,
+          resultUrl,
+          '⬆️ *ByteDance Upscaler 1K* selesai!\n\n/menu untuk buat lagi',
+          true
+        );
+        if (delivered) {
+          refund = false;
+          markGenSuccess(userId);
+          await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+        }
+        return;
+      } catch (err: any) {
+        const desc = describeError(err);
+        console.error(`[${userId}] ByteDance Upscaler attempt ${attempt + 1} failed (key …${apiKey.slice(-8)}): ${desc}`);
+
+        // Hanya pindah key sebelum provider menerima job. Setelah task id diterima,
+        // jangan submit ulang karena job pertama mungkin tetap berbayar/berjalan.
+        if (!submitted && isKeyExhaustedError(desc)) {
+          await markRenderfulPoolKeyDead(apiKey);
+          skippedKeys.add(apiKey);
+          continue;
+        }
+
+        await bot.telegram.editMessageText(
+          chatId,
+          statusMsgId,
+          undefined,
+          '❌ ByteDance Upscaler 1K gagal. Video tidak berhasil dikirim.\n\n/menu untuk coba lagi'
+        ).catch(() => bot.telegram.sendMessage(chatId, '❌ ByteDance Upscaler 1K gagal.\n\n/menu'));
+        return;
+      }
+    }
+  } catch (err: any) {
+    console.error(`[${userId}] ByteDance Upscaler outer error: ${describeError(err)}`);
+    await bot.telegram.editMessageText(
+      chatId,
+      statusMsgId,
+      undefined,
+      '❌ ByteDance Upscaler 1K error tak terduga.\n\n/menu untuk coba lagi'
+    ).catch(() => {});
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (proses tidak berhasil).`).catch(() => {});
     }
     releaseGenerating(dbUserId);
   }

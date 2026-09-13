@@ -23,3 +23,4 @@
 - [Picsart Veo 3.1 Lite](picsart-veo31-4k.md) — Veo Lite delivers native 720p directly; no hidden 4K preparation.
 - [Picsart MiniMax H3](picsart-minimax-h3.md) — H3 Max delivers native 768p directly; first frame is image_url and optional last frame is end_image_url.
 - [Picsart Kling Omni](picsart-kling-omni.md) — verified I2V contract is Kling v3 Omni Standard, 9:16, 12s, native 720p with audio; completion uses result.url.
+- [Renderful ByteDance Upscaler](renderful-bytedance-upscaler.md) — public 1K/Rp500 tool uses a Railway DB key pool; rotate only before submit and refund every failed delivery.

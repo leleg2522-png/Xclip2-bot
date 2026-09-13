@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const source = fs.readFileSync(path.join(here, '../src/index.ts'), 'utf8');
+
+assert.match(source, /bytedance_upscale:\s*500/);
+assert.match(source, /mode_bytedance_upscale/);
+assert.match(source, /bytedance_upscale_wait_video/);
+assert.match(source, /ByteDance Upscaler 1K/);
+assert.match(source, /model:\s*'bytedance-video-upscaler'/);
+assert.match(source, /type:\s*'video-to-video'/);
+assert.match(source, /resolution:\s*'1k'/);
+assert.match(source, /`\$\{RENDERFUL_BASE\}\/uploads`/);
+assert.match(source, /`\$\{RENDERFUL_BASE\}\/generations`/);
+assert.match(source, /CREATE TABLE IF NOT EXISTS renderful_key_pool/);
+assert.match(source, /getNextRenderfulPoolKey/);
+assert.match(source, /markRenderfulPoolKeyDead/);
+assert.match(source, /if \(!submitted && isKeyExhaustedError\(desc\)\)/);
+assert.match(source, /if \(refund\)[\s\S]*addSaldo\(dbUserId, PRICE\)/);
+
+console.log('ByteDance Upscaler 1K Renderful pool contract checks passed.');
