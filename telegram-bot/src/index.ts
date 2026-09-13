@@ -56,6 +56,13 @@ const renderfulHttp = axios.create({
   ...(renderfulHttpsAgent ? { httpsAgent: renderfulHttpsAgent } : {}),
 });
 
+// ByteDance Upscaler must call the official API directly. Do not inherit the
+// legacy Decodo proxy used by other Renderful routes.
+const bytedanceUpscalerHttp = axios.create({
+  timeout: 180_000,
+  proxy: false,
+});
+
 // Freepik HTTP client — untuk Kling Motion Control (pakai proxy Decodo jika aktif)
 const freepikHttpsAgent = DECODO_PROXY_URL
   ? new HttpsProxyAgent(DECODO_PROXY_URL, { rejectUnauthorized: false })
@@ -2292,7 +2299,7 @@ async function pollForResult(taskId: string, userId: number, apiKey: string, pol
   console.log(`[${userId}] Polling: ${pollUrl}`);
   for (let i = 0; i < maxAttempts; i++) {
     await sleep(10_000);
-    const res = await renderfulHttp.get(pollUrl, {
+    const res = await bytedanceUpscalerHttp.get(pollUrl, {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
     const { status, output, outputs, error } = res.data;
@@ -10096,7 +10103,7 @@ async function uploadRenderfulVideo(apiKey: string, videoBuf: Buffer): Promise<s
     filename: `bytedance-upscale-${Date.now()}.mp4`,
     contentType: 'video/mp4',
   });
-  const res = await renderfulHttp.post(`${RENDERFUL_BASE}/uploads`, form, {
+  const res = await bytedanceUpscalerHttp.post(`${RENDERFUL_BASE}/uploads`, form, {
     headers: {
       Authorization: `Bearer ${apiKey}`,
       ...form.getHeaders(),
@@ -10170,7 +10177,7 @@ async function runByteDanceUpscale(
           '⏳ *ByteDance Upscaler 1K* — meningkatkan resolusi video...\nHarap tunggu.',
           { parse_mode: 'Markdown' }
         ).catch(() => {});
-        const createRes = await renderfulHttp.post(
+        const createRes = await bytedanceUpscalerHttp.post(
           `${RENDERFUL_BASE}/generations`,
           {
             type: 'video-to-video',

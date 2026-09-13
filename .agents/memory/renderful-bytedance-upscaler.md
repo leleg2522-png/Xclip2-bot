@@ -17,3 +17,6 @@ has not returned a task id. After task acceptance, never resubmit through anothe
 key. Charge only for a delivered result; all failure paths refund Rp500. Public
 buttons, progress, results, and errors may say only ByteDance Upscaler 1K; keep
 Renderful, API responses, endpoints, and pool status in admin/log surfaces.
+ByteDance upload, submit, and polling must bypass the legacy Decodo proxy and
+connect directly from Railway; proxy authentication failures otherwise surface
+as HTTP 407 before the provider receives the request.
