@@ -14,4 +14,6 @@ after submit could double-charge upstream.
 
 **How to apply:** Rotate and disable exhausted keys only when upload or submit
 has not returned a task id. After task acceptance, never resubmit through another
-key. Charge only for a delivered result; all failure paths refund Rp500.
+key. Charge only for a delivered result; all failure paths refund Rp500. Public
+buttons, progress, results, and errors may say only ByteDance Upscaler 1K; keep
+Renderful, API responses, endpoints, and pool status in admin/log surfaces.

@@ -20,5 +20,8 @@ assert.match(source, /getNextRenderfulPoolKey/);
 assert.match(source, /markRenderfulPoolKeyDead/);
 assert.match(source, /if \(!submitted && isKeyExhaustedError\(desc\)\)/);
 assert.match(source, /if \(refund\)[\s\S]*addSaldo\(dbUserId, PRICE\)/);
+assert.doesNotMatch(source, /Layanan ByteDance Upscaler sedang tidak tersedia\. Pool API key kosong/);
+assert.match(source, /ByteDance Upscaler sedang tidak tersedia\. Coba lagi nanti/);
+assert.match(source, /customerSafeModelLabel[\s\S]*Renderful/);
 
 console.log('ByteDance Upscaler 1K Renderful pool contract checks passed.');

@@ -10147,7 +10147,7 @@ async function runByteDanceUpscale(
           chatId,
           statusMsgId,
           undefined,
-          '❌ Layanan ByteDance Upscaler sedang tidak tersedia. Pool API key kosong.\n\n/menu untuk kembali'
+          '❌ ByteDance Upscaler sedang tidak tersedia. Coba lagi nanti.\n\n/menu untuk kembali'
         ).catch(() => {});
         return;
       }
