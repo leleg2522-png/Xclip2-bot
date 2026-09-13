@@ -17,7 +17,6 @@ Reverse-engineered from an AI Playground HAR. Follows the same access-token / `c
 - **Ref image upload:** same `POST upload.picsart.com/v2/files` (multipart, `type=editing-temp`) as other models; returns a `cdn-editing-temp.picsart.com` url.
 - **Options probe:** `POST /workflows/seedance/options` shows defaults `ratio:"16:9", duration:5, resolution:"720p", generate_audio:false` — the playground UI overrides these; our bot forces 480p and 15/30.
 
-**How to apply:** Keep this as protocol reference only; the public Seedance 2.5
-product is currently routed through the verified Wan 3.0 standard backend and must not silently
-switch back to this native contract. If the native model is intentionally restored,
-re-capture a real generation HAR before exposing it.
+**How to apply:** The public Seedance 2.5 route now intentionally uses this native
+gateway contract: 30s, 480p, 9:16, audio enabled, and p500 accounts. Keep the
+legacy Wan/bridge paths available only for unrelated or already-queued work.

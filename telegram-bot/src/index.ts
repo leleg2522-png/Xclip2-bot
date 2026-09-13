@@ -181,7 +181,7 @@ const MODEL_PRICES = {
   picsart_seedance_2_video_edit: 4500, // Seedance 2 Video Edit, delivered as 1080p
   picsart_seedance_2: 4000, // Seedance 2.0 Mini/Fast/Standard, delivered as 1080p
   picsart_wan_v3: 5000, // Wan 3.0 30s, delivered as 1080p
-  picsart_seedance_25: 5000, // Public Seedance 2.5 label, routed through Wan 3.0
+  picsart_seedance_25: 5000, // Public Seedance 2.5 label, routed through Picsart native gateway
   oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
 } as const;
@@ -1692,7 +1692,7 @@ interface Session {
   seedance2EditVideoMime?: string;
   seedance2EditImageFileId?: string;
   seedance2EditImageFileIds?: string[];
-  // Seedance 2.5 Bridge stores the Telegram file ID, not a bot-token download URL.
+  // Seedance 2.5 image wizard stores the Telegram file ID, not a bot-token download URL.
   oneoverImageUrl?: string;
   // Kling 2.1 Pro (10-second image-to-video) wizard state
   kling21ImageUrl?: string;
@@ -1798,7 +1798,7 @@ function generationDraftKindForStart(data: string): GenerationDraftKind | undefi
     mode_klingp2: 'klingp2',
     mode_klingp3: 'klingp3',
     mode_kling21: 'kling21',
-    mode_oneover_seedance25: 'picsart_i2v',
+    mode_oneover_seedance25: 'oneover',
     mode_seedance_mini_edit: 'picsart_i2v',
     mode_seedance_fast_edit: 'picsart_i2v',
     mode_seedance_2_edit: 'picsart_i2v',
@@ -2277,7 +2277,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🌊 Seedance 2 Video Edit 1080p', 'mode_seedance_2_edit')],
     [Markup.button.callback('🌊 Seedance 2.0 Fast 1080p', 'mode_pi2v_seedance_2_fast')],
     [Markup.button.callback('🌊 Seedance 2.0 1080p', 'mode_pi2v_seedance_2')],
-    [Markup.button.callback('🌊 Seedance 2.5 I2V 1080p', 'mode_oneover_seedance25')],
+    [Markup.button.callback('🌊 Seedance 2.5 I2V 480p', 'mode_oneover_seedance25')],
     [Markup.button.callback('🌌 Grok Imagine Video', 'mode_pi2v_grok_imagine')],
     [Markup.button.callback('🎨 PixVerse v6 • 15 detik • 1080p', 'mode_pi2v_pixverse_v6')],
     [Markup.button.callback('⚡ Kling v3 Turbo', 'mode_pi2v_kling_v3_turbo')],
@@ -2811,7 +2811,7 @@ function hargaText(): string {
     `• Seedance 2.0 Mini 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_mini'))}\n` +
     `• Seedance 2.0 Fast 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_fast'))}\n` +
     `• Seedance 2.0 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
-    `• Seedance 2.5 I2V 1080p — ${formatRupiah(MODEL_PRICES.picsart_seedance_25)}\n` +
+    `• Seedance 2.5 I2V 480p — ${formatRupiah(MODEL_PRICES.picsart_seedance_25)}\n` +
     `• Seedance 2 Mini Video Edit 1080p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_mini_edit)}\n` +
     `• Seedance 2 Fast Video Edit 1080p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_fast_edit)}\n` +
     `• Seedance 2 Video Edit 1080p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_video_edit)}\n` +
@@ -4287,20 +4287,15 @@ bot.on('callback_query', async (ctx) => {
 
   if (data === 'mode_oneover_seedance25') {
     setSession(userId, {
-      mode: 'picsart_i2v_wait_ratio',
-      picsartI2vModel: 'wan_v3',
-      picsartI2vRatio: undefined,
-      picsartI2vDisplayLabel: 'Seedance 2.5 I2V 1080p',
-      picsartI2vImageUrl: undefined,
-      picsartI2vImageUrls: undefined,
-      picsartI2vPriceKey: 'picsart_seedance_25',
+      mode: 'oneover_wait_image',
+      oneoverImageUrl: undefined,
     });
     return ctx.editMessageText(
-      `🌊 *Seedance 2.5 I2V 1080p*\n\n` +
-      `Durasi: *30 detik* • Output: *1080p*\n` +
+      `🌊 *Seedance 2.5 I2V 480p*\n\n` +
+      `Durasi: *30 detik* • Output: *480p* • Audio aktif\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_25)}* per video\n\n` +
-      '*Langkah 1:* Pilih rasio video:',
-      { parse_mode: 'Markdown', ...picsartI2vRatioKeyboard() }
+      '*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
+      { parse_mode: 'Markdown' }
     );
   }
 
@@ -6405,15 +6400,23 @@ bot.on('text', async (ctx) => {
     }
     // This synchronous state transition is the claim for this input. A duplicate
     // Telegram update now sees idle and cannot create a second paid provider job.
-    const imageUrl = activeDraft.oneoverImageUrl;
+    const imageFileId = activeDraft.oneoverImageUrl;
     const dbUserId = activeDraft.dbUserId;
+    let imageUrl: string;
+    try {
+      imageUrl = (await bot.telegram.getFileLink(imageFileId)).href;
+    } catch (error: any) {
+      setSession(userId, { mode: 'idle', oneoverImageUrl: undefined });
+      console.error(`[${userId}] Seedance 2.5 image-link error:`, error?.message ?? error);
+      return ctx.reply('❌ Foto acuan tidak bisa dibaca. Mulai ulang dari /menu.');
+    }
     setSession(userId, { mode: 'idle', oneoverImageUrl: undefined });
     const statusMsg = await ctx.reply(
-      '⏳ Memproses Seedance 2.5 I2V...\nHasil dikirim otomatis (biasanya 5–12 menit).',
+      '⏳ Memproses Seedance 2.5 I2V 480p...\nHasil dikirim otomatis (biasanya 5–12 menit).',
       { parse_mode: 'Markdown' }
     );
-    queueFreebeatBridgeSeedance25(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, imageUrl)
-      .catch(e => console.error(`[${userId}] Seedance 2.5 Bridge error:`, e.message));
+    runPicsartSeedance25(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, imageUrl)
+      .catch(e => console.error(`[${userId}] Seedance 2.5 Picsart error:`, e.message));
     return;
   }
 
@@ -7698,6 +7701,110 @@ async function runPicsartI2v(
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
+// ─── Background: Native Picsart Seedance 2.5 ─────────────────────────────────
+
+async function runPicsartSeedance25(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  imageUrl: string,
+) {
+  const label = 'Seedance 2.5 I2V 480p';
+  const settingsLabel = '9:16 · 30 detik · 480p · audio';
+  const PRICE = MODEL_PRICES.picsart_seedance_25;
+  let stage = 'charge';
+  const charge = await beginCharge(dbUserId, PRICE, MAX_PARALLEL_GENERATIONS_PER_USER);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+
+  try {
+    stage = 'download';
+    const image = await downloadBuffer(imageUrl);
+    stage = 'submit';
+    let lastEdit = 0;
+    const result = await picsart.generateSeedance({
+      userId: dbUserId,
+      prompt,
+      images: [{
+        buffer: image.buf,
+        name: `seedance-reference.${image.ext || 'jpg'}`,
+        mime: image.mime || 'image/jpeg',
+      }],
+      duration: 30,
+      ratio: '9:16',
+      resolution: '480p',
+      generateAudio: true,
+      onStatus: (providerStage) => {
+        stage = providerStage;
+        const text = providerStage === 'upload'
+          ? `⏳ ${label}: mengunggah foto ke server... (1/3)`
+          : providerStage === 'submit'
+            ? `⏳ ${label}: mengirim perintah ke server... (2/3)`
+            : `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Biasanya 5–12 menit. Jangan tutup chat ini.`;
+        lastEdit = Date.now();
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+      },
+      onPoll: (elapsedSec) => {
+        if (Date.now() - lastEdit < 30_000) return;
+        lastEdit = Date.now();
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = elapsedSec % 60;
+        const elapsed = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
+        bot.telegram.editMessageText(
+          chatId,
+          statusMsgId,
+          undefined,
+          `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Sudah berjalan ${elapsed}. Video akan dikirim otomatis.`
+        ).catch(() => {});
+      },
+    });
+
+    stage = 'delivery';
+    const delivered = await sendResult(
+      chatId,
+      result.url,
+      `🌊 ${label} (${settingsLabel})\n\n/menu untuk buat lagi`,
+      true
+    );
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[seedance-2.5] user=${userId} done usage=${newCount} credits=${result.credits ?? '?'}`);
+    }
+  } catch (err: any) {
+    const msg = describeError(err);
+    console.error(
+      `[seedance-2.5] user=${userId} dbUser=${dbUserId} stage=${stage} error=${msg}`,
+      err?.stack ? `\n${err.stack}` : ''
+    );
+    const friendly = msg.includes('PICSART_NO_CREDENTIAL') || msg.includes('PICSART_INSUFFICIENT_CREDITS')
+      ? '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.'
+      : msg.includes('PICSART_TIMEOUT')
+        ? '❌ Proses terlalu lama. Saldo kamu akan dikembalikan.'
+        : msg.includes('PICSART_UPLOAD_FAILED')
+          ? '❌ Foto tidak bisa diproses. Coba foto lain.'
+          : '❌ Gagal memproses video. Saldo kamu akan dikembalikan.';
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
+      .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(
+        chatId,
+        `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`
+      ).catch(() => {});
     }
     releaseGenerating(dbUserId);
   }

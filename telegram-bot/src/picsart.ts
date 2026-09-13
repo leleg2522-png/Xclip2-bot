@@ -646,13 +646,28 @@ export async function categorizeAccount(
   return { credits: c.credits, tierCredits: c.tierCredits, pool, renewDate: c.renewDate };
 }
 
-export async function uploadFile(credId: number, buf: Buffer, filename: string, contentType: string): Promise<string> {
+export async function uploadFile(
+  credId: number,
+  buf: Buffer,
+  filename: string,
+  contentType: string,
+  options?: { gateway?: boolean },
+): Promise<string> {
   const access = await getAccessToken(credId);
   const fd = new FormData();
   fd.append('file', buf, { filename, contentType });
   fd.append('type', 'editing-temp');
   const r = await http.post(`${UPLOAD_BASE}/v2/files`, fd, {
-    headers: commonHeaders({ ...fd.getHeaders(), authorization: `Bearer ${access}` }),
+    headers: commonHeaders({
+      ...fd.getHeaders(),
+      authorization: `Bearer ${access}`,
+      ...(options?.gateway
+        ? {
+            'x-app-authorization': X_APP_AUTHORIZATION,
+            'x-sub-package-id': 'subscription_pro_monthly',
+          }
+        : {}),
+    }),
     maxBodyLength: Infinity,
     maxContentLength: Infinity,
     validateStatus: () => true,
@@ -1708,8 +1723,8 @@ export async function generateMinimaxH3ReferenceToVideo(input: {
 
 
 // ─── Seedance 2.5 (ByteDance video: text + up to 5 reference images) ───────────
-// POST /workflows/seedance/submit          -> {response:{id}}
-// poll GET /workflows/seedance/{id}/result -> COMPLETED, result.video_url
+// POST /gw-v2/workflows/seedance/submit          -> {response:{id}}
+// poll GET /gw-v2/workflows/seedance/{id}/result -> COMPLETED, result.video_url
 // params: {model:"seedance_2_5", content:[{type:"image_url",image_url:{url},role:"reference_image"}..., {type:"text",text}],
 //          ratio:"9:16"|"16:9"|..., duration:15|30, resolution:"480p", generate_audio, output_format:"mp4"}
 export const SEEDANCE_MODEL = 'seedance_2_5';
@@ -1772,8 +1787,13 @@ export async function submitSeedance(credId: number, input: {
       },
     },
   };
-  const r = await http.post(`${API_BASE}/workflows/seedance/submit`, { params }, {
-    headers: commonHeaders({ 'content-type': 'application/json', authorization: `Bearer ${access}` }),
+  const r = await http.post(`${API_BASE}/gw-v2/workflows/seedance/submit`, { params }, {
+    headers: commonHeaders({
+      'content-type': 'application/json',
+      authorization: `Bearer ${access}`,
+      'x-app-authorization': X_APP_AUTHORIZATION,
+      'x-sub-package-id': 'subscription_pro_monthly',
+    }),
     validateStatus: () => true,
   });
   const id = r.data?.response?.id;
@@ -1796,8 +1816,12 @@ export async function pollSeedanceResult(
     await new Promise((res) => setTimeout(res, intervalMs));
     opts?.onTick?.(Date.now() - start);
     const access = await getAccessToken(credId);
-    const r = await http.get(`${API_BASE}/workflows/seedance/${id}/result`, {
-      headers: commonHeaders({ authorization: `Bearer ${access}` }),
+    const r = await http.get(`${API_BASE}/gw-v2/workflows/seedance/${id}/result`, {
+      headers: commonHeaders({
+        authorization: `Bearer ${access}`,
+        'x-app-authorization': X_APP_AUTHORIZATION,
+        'x-sub-package-id': 'subscription_pro_monthly',
+      }),
       validateStatus: () => true,
     });
     const ok = diag.note(r);
@@ -1866,7 +1890,8 @@ export async function generateSeedance(input: {
         credId,
         img.buffer,
         img.name || 'reference.jpg',
-        img.mime || 'image/jpeg'
+        img.mime || 'image/jpeg',
+        { gateway: true },
       );
       imageUrls.push(url);
     }
@@ -1880,10 +1905,25 @@ export async function generateSeedance(input: {
       generateAudio: input.generateAudio,
     });
     input.onStatus?.('poll');
-    return pollSeedanceResult(credId, id, {
-      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
-    });
-  });
+    try {
+      return await pollSeedanceResult(credId, id, {
+        onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+      });
+    } catch (e: any) {
+      if (isPicsartPostSubmitAuthFailure(e)) {
+        await q(
+          `UPDATE picsart_credentials SET status = 'dead', dead_at = NOW(), updated_at = NOW() WHERE id = $1`,
+          [credId]
+        );
+        notifyOwner(
+          `⚠️ Akun Picsart #${credId} ditolak saat polling Seedance 2.5 (${id}). ` +
+          'Job tidak diulang agar tidak membuat generate ganda.'
+        );
+        throw new Error(`PICSART_POST_SUBMIT_AUTH_LOST job=${id}`);
+      }
+      throw e;
+    }
+  }, { strictPool: true });
 }
 
 // ─── Picsart Image-to-Video models captured from the AI Playground HAR ───────
