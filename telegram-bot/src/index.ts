@@ -1753,6 +1753,7 @@ interface Session {
   seedance25ImageFileIds?: string[];
   seedance25VideoFileId?: string;
   seedance25VideoMime?: string;
+  seedance25Ratio?: picsart.SeedanceAspectRatio;
   // Kling 2.1 Pro (10-second image-to-video) wizard state
   kling21ImageUrl?: string;
   // Chat AI wizard state (multi-turn conversation)
@@ -1894,6 +1895,7 @@ function generationDraftKindForContinuation(data: string): GenerationDraftKind |
   if (data.startsWith('seedance_edit_')) return 'picsart_i2v';
   if (data.startsWith('seedance_fast_edit_')) return 'picsart_i2v';
   if (data.startsWith('seedance_2_edit_')) return 'picsart_i2v';
+  if (data.startsWith('seedance25_ratio_')) return 'oneover';
   if (data === 'seedance25_inputs_done') return 'oneover';
   if (data.startsWith('audio_voice_')) return 'audio';
   return undefined;
@@ -4350,7 +4352,27 @@ bot.on('callback_query', async (ctx) => {
 
   if (data === 'mode_oneover_seedance25') {
     setSession(userId, {
+      mode: 'idle',
+      oneoverImageUrl: undefined,
+      seedance25ImageFileIds: [],
+      seedance25VideoFileId: undefined,
+      seedance25VideoMime: undefined,
+      seedance25Ratio: undefined,
+    });
+    return ctx.editMessageText(
+      `🌊 *Seedance 2.5 I2V 480p*\n\n` +
+      `Durasi: *30 detik* • Audio aktif\n` +
+      `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_25_480)}* per video\n\n` +
+      '*Langkah 1:* Pilih rasio video:',
+      { parse_mode: 'Markdown', ...seedance25RatioKeyboard() }
+    );
+  }
+
+  if (data === 'seedance25_ratio_916' || data === 'seedance25_ratio_169') {
+    const ratio: picsart.SeedanceAspectRatio = data === 'seedance25_ratio_169' ? '16:9' : '9:16';
+    setSession(userId, {
       mode: 'oneover_wait_image',
+      seedance25Ratio: ratio,
       oneoverImageUrl: undefined,
       seedance25ImageFileIds: [],
       seedance25VideoFileId: undefined,
@@ -4358,9 +4380,8 @@ bot.on('callback_query', async (ctx) => {
     });
     return ctx.editMessageText(
       `🌊 *Seedance 2.5 I2V 480p*\n\n` +
-      `Durasi: *30 detik* • Rasio: *9:16* • Audio aktif\n` +
-      `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_25_480)}* per video\n\n` +
-      `*Langkah 1:* Kirim hingga *${picsart.SEEDANCE_MAX_REF_IMAGES} gambar* dan/atau *1 video referensi*.\n` +
+      `Rasio: *${ratio}* • Durasi: *30 detik* • Audio aktif\n\n` +
+      `*Langkah 2:* Kirim hingga *${picsart.SEEDANCE_MAX_REF_IMAGES} gambar* dan/atau *1 video referensi*.\n` +
       'Setelah selesai upload, tekan tombol lanjut.',
       { parse_mode: 'Markdown', ...seedance25InputKeyboard() }
     );
@@ -5433,6 +5454,15 @@ function picsartI2vAddPhotoKeyboard(count: number) {
 function seedance25InputKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('✅ Selesai Upload • Lanjut ke Prompt', 'seedance25_inputs_done')],
+  ]);
+}
+
+function seedance25RatioKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('📱 9:16', 'seedance25_ratio_916'),
+      Markup.button.callback('🖥️ 16:9', 'seedance25_ratio_169'),
+    ],
   ]);
 }
 
@@ -6569,18 +6599,20 @@ bot.on('text', async (ctx) => {
       return ctx.reply('❌ Gambar atau video referensi tidak bisa dibaca. Mulai ulang dari /menu.');
     }
     const videoMime = activeDraft.seedance25VideoMime;
+    const ratio = activeDraft.seedance25Ratio ?? '9:16';
     setSession(userId, {
       mode: 'idle',
       oneoverImageUrl: undefined,
       seedance25ImageFileIds: undefined,
       seedance25VideoFileId: undefined,
       seedance25VideoMime: undefined,
+      seedance25Ratio: undefined,
     });
     const statusMsg = await ctx.reply(
-      '⏳ Memproses Seedance 2.5 I2V 480p...\nHasil dikirim otomatis (biasanya 5–12 menit).',
+      `⏳ Memproses Seedance 2.5 I2V 480p (${ratio})...\nHasil dikirim otomatis (biasanya 5–12 menit).`,
       { parse_mode: 'Markdown' }
     );
-    runPicsartSeedance25(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, imageUrls, videoUrl, videoMime)
+    runPicsartSeedance25(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, imageUrls, ratio, videoUrl, videoMime)
       .catch(e => console.error(`[${userId}] Seedance 2.5 Picsart error:`, e.message));
     return;
   }
@@ -7892,11 +7924,12 @@ async function runPicsartSeedance25(
   statusMsgId: number,
   prompt: string,
   imageUrls: string[],
+  ratio: picsart.SeedanceAspectRatio,
   videoUrl?: string,
   videoMime?: string,
 ) {
   const label = 'Seedance 2.5 I2V 480p';
-  const settingsLabel = '9:16 · 30 detik · 480p · audio';
+  const settingsLabel = `${ratio} · 30 detik · 480p · audio`;
   const PRICE = MODEL_PRICES.picsart_seedance_25_480;
   let stage = 'charge';
   const charge = await beginCharge(dbUserId, PRICE, MAX_PARALLEL_GENERATIONS_PER_USER);
@@ -7931,7 +7964,7 @@ async function runPicsartSeedance25(
         mime: videoMime || video.mime || 'video/mp4',
       } : undefined,
       duration: 30,
-      ratio: '9:16',
+      ratio,
       resolution: '480p',
       generateAudio: true,
       onStatus: (providerStage) => {

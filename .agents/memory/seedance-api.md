@@ -18,7 +18,7 @@ Reverse-engineered from an AI Playground HAR. Follows the same access-token / `c
 - **Options probe:** `POST /gw-v2/workflows/seedance/options`; the HAR verifies both 480p and 720p with 30s audio.
 
 **How to apply:** The native contract supports 480p and 720p, but the public Seedance
-2.5 route intentionally exposes only 30s 480p, 9:16, audio enabled, up to 10 images
+2.5 route intentionally exposes only 30s 480p with a 9:16 or 16:9 choice, audio enabled, up to 10 images
 and one optional reference video, using p500 accounts. The supplied HAR verifies image
 references but not a submitted video; the video payload follows the existing Seedance
 gateway convention. Keep the

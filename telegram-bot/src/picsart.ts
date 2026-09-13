@@ -1686,6 +1686,7 @@ export async function generateMinimaxH3ReferenceToVideo(input: {
 export const SEEDANCE_MODEL = 'seedance_2_5';
 export const SEEDANCE_MAX_REF_IMAGES = 10;
 export type SeedanceResolution = '480p' | '720p';
+export type SeedanceAspectRatio = '9:16' | '16:9';
 // HAR options endpoint reports 120 credits for 480p/30s/audio and 210 credits
 // for 720p/30s/audio. Keep a small buffer before accepting a paid order.
 export const SEEDANCE_MIN_CREDITS: Record<SeedanceResolution, Record<number, number>> = {
@@ -1701,7 +1702,7 @@ export async function submitSeedance(credId: number, input: {
   imageUrls: string[];
   videoUrl?: string;
   duration: number; // 15 | 30
-  ratio: string; // label mis. "9:16", "16:9"
+  ratio: SeedanceAspectRatio;
   resolution?: SeedanceResolution; // default "480p"
   generateAudio?: boolean;
   outputName?: string;
@@ -1822,7 +1823,7 @@ export async function generateSeedance(input: {
   images: Array<{ buffer: Buffer; name?: string; mime?: string }>;
   video?: { buffer: Buffer; name?: string; mime?: string };
   duration: number; // 15 | 30
-  ratio: string; // "9:16" | "16:9" | ...
+  ratio: SeedanceAspectRatio;
   resolution?: SeedanceResolution; // default "480p"
   generateAudio?: boolean;
   onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
