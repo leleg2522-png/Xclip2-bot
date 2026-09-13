@@ -693,9 +693,8 @@ assert.match(
 );
 assert.match(botSource, /picsart_i2v_add_photo/);
 assert.match(botSource, /PICSART_I2V_MAX_IMAGES/);
-assert.match(botSource, /mode_oneover_seedance25[\s\S]*oneover_wait_resolution/);
-assert.match(botSource, /seedance25_res_480[\s\S]*oneover_wait_image/);
-assert.match(botSource, /seedance25_res_720[\s\S]*oneover_wait_image/);
+assert.match(botSource, /mode_oneover_seedance25[\s\S]*oneover_wait_image/);
+assert.doesNotMatch(botSource, /seedance25_res_720/);
 assert.match(botSource, /seedance_2_mini[\s\S]*picsart_i2v_wait_ratio/);
 assert.match(botSource, /seedance_2_fast[\s\S]*picsart_i2v_wait_ratio/);
 assert.match(botSource, /seedance_2[\s\S]*picsart_i2v_wait_ratio/);
