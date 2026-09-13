@@ -2281,7 +2281,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🌊 Seedance 2 Video Edit 1080p', 'mode_seedance_2_edit')],
     [Markup.button.callback('🌊 Seedance 2.0 Fast 1080p', 'mode_pi2v_seedance_2_fast')],
     [Markup.button.callback('🌊 Seedance 2.0 1080p', 'mode_pi2v_seedance_2')],
-    [Markup.button.callback('🌊 Seedance 2.5 I2V 480p', 'mode_oneover_seedance25')],
+    [Markup.button.callback('🌊 Seedance 2.5 I2V', 'mode_oneover_seedance25')],
     [Markup.button.callback('🌌 Grok Imagine Video', 'mode_pi2v_grok_imagine')],
     [Markup.button.callback('🎨 PixVerse v6 • 15 detik • 1080p', 'mode_pi2v_pixverse_v6')],
     [Markup.button.callback('⚡ Kling v3 Turbo', 'mode_pi2v_kling_v3_turbo')],
@@ -2339,6 +2339,14 @@ function picsartI2vRatioKeyboard() {
       Markup.button.callback('📱 9:16 (Portrait)', 'picsart_ratio_916'),
       Markup.button.callback('🖥️ 16:9 (Landscape)', 'picsart_ratio_169'),
     ],
+    [Markup.button.callback('« Kembali', 'back_main')],
+  ]);
+}
+
+function seedance25ResolutionKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('480p • Rp11.000', 'seedance25_res_480')],
+    [Markup.button.callback('720p • Rp16.000', 'seedance25_res_720')],
     [Markup.button.callback('« Kembali', 'back_main')],
   ]);
 }
@@ -2815,7 +2823,8 @@ function hargaText(): string {
     `• Seedance 2.0 Mini 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_mini'))}\n` +
     `• Seedance 2.0 Fast 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_fast'))}\n` +
     `• Seedance 2.0 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
-    `• Seedance 2.5 I2V 480p — ${formatRupiah(MODEL_PRICES.picsart_seedance_25)}\n` +
+    `• Seedance 2.5 I2V 480p — ${formatRupiah(MODEL_PRICES.picsart_seedance_25_480)}\n` +
+    `• Seedance 2.5 I2V 720p — ${formatRupiah(MODEL_PRICES.picsart_seedance_25_720)}\n` +
     `• Seedance 2 Mini Video Edit 1080p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_mini_edit)}\n` +
     `• Seedance 2 Fast Video Edit 1080p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_fast_edit)}\n` +
     `• Seedance 2 Video Edit 1080p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_video_edit)}\n` +
@@ -4291,13 +4300,36 @@ bot.on('callback_query', async (ctx) => {
 
   if (data === 'mode_oneover_seedance25') {
     setSession(userId, {
+      mode: 'oneover_wait_resolution',
+      oneoverImageUrl: undefined,
+      seedance25Resolution: undefined,
+    });
+    return ctx.editMessageText(
+      `🌊 *Seedance 2.5 I2V*\n\n` +
+      `Durasi: *30 detik* • Rasio: *9:16* • Audio aktif\n\n` +
+      '*Pilih resolusi output:*',
+      { parse_mode: 'Markdown', ...seedance25ResolutionKeyboard() }
+    );
+  }
+
+  if (data === 'seedance25_res_480' || data === 'seedance25_res_720') {
+    const session = getSession(userId);
+    if (session.mode !== 'oneover_wait_resolution') {
+      return ctx.reply('⚠️ Pilihan resolusi sudah tidak aktif. Mulai lagi dari /menu.');
+    }
+    const resolution: '480p' | '720p' = data === 'seedance25_res_720' ? '720p' : '480p';
+    const price = resolution === '720p'
+      ? MODEL_PRICES.picsart_seedance_25_720
+      : MODEL_PRICES.picsart_seedance_25_480;
+    setSession(userId, {
       mode: 'oneover_wait_image',
+      seedance25Resolution: resolution,
       oneoverImageUrl: undefined,
     });
     return ctx.editMessageText(
-      `🌊 *Seedance 2.5 I2V 480p*\n\n` +
-      `Durasi: *30 detik* • Output: *480p* • Audio aktif\n` +
-      `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_25)}* per video\n\n` +
+      `🌊 *Seedance 2.5 I2V ${resolution}*\n\n` +
+      `Durasi: *30 detik* • Rasio: *9:16* • Audio aktif\n` +
+      `Harga: *${formatRupiah(price)}* per video\n\n` +
       '*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
       { parse_mode: 'Markdown' }
     );
@@ -6393,9 +6425,9 @@ bot.on('text', async (ctx) => {
     if (!session.dbUserId && !await requireLogin(ctx)) return;
     const activeDraft = getSession(userId);
     if (activeDraft.mode !== 'oneover_wait_prompt') return;
-    if (!activeDraft.dbUserId || !activeDraft.oneoverImageUrl) {
+    if (!activeDraft.dbUserId || !activeDraft.oneoverImageUrl || !activeDraft.seedance25Resolution) {
       setSession(userId, { mode: 'idle' });
-      return ctx.reply('⚠️ Foto acuan tidak ditemukan. Mulai lagi dari /menu.');
+      return ctx.reply('⚠️ Foto acuan atau resolusi tidak ditemukan. Mulai lagi dari /menu.');
     }
     const cooldownMs = getCooldownRemainingMs(userId);
     if (cooldownMs > 0) {
@@ -6406,20 +6438,21 @@ bot.on('text', async (ctx) => {
     // Telegram update now sees idle and cannot create a second paid provider job.
     const imageFileId = activeDraft.oneoverImageUrl;
     const dbUserId = activeDraft.dbUserId;
+    const resolution = activeDraft.seedance25Resolution;
     let imageUrl: string;
     try {
       imageUrl = (await bot.telegram.getFileLink(imageFileId)).href;
     } catch (error: any) {
-      setSession(userId, { mode: 'idle', oneoverImageUrl: undefined });
+      setSession(userId, { mode: 'idle', oneoverImageUrl: undefined, seedance25Resolution: undefined });
       console.error(`[${userId}] Seedance 2.5 image-link error:`, error?.message ?? error);
       return ctx.reply('❌ Foto acuan tidak bisa dibaca. Mulai ulang dari /menu.');
     }
-    setSession(userId, { mode: 'idle', oneoverImageUrl: undefined });
+    setSession(userId, { mode: 'idle', oneoverImageUrl: undefined, seedance25Resolution: undefined });
     const statusMsg = await ctx.reply(
-      '⏳ Memproses Seedance 2.5 I2V 480p...\nHasil dikirim otomatis (biasanya 5–12 menit).',
+      `⏳ Memproses Seedance 2.5 I2V ${resolution}...\nHasil dikirim otomatis (biasanya 5–12 menit).`,
       { parse_mode: 'Markdown' }
     );
-    runPicsartSeedance25(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, imageUrl)
+    runPicsartSeedance25(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, imageUrl, resolution)
       .catch(e => console.error(`[${userId}] Seedance 2.5 Picsart error:`, e.message));
     return;
   }
@@ -7600,7 +7633,7 @@ async function runPicsartI2v(
     imageUrls: string[];
     ratio?: picsart.WanV3AspectRatio;
     displayLabel?: string;
-    priceKey?: 'picsart_seedance_25' | 'picsart_wan_v3' | 'kling_21_pro';
+    priceKey?: 'picsart_wan_v3' | 'kling_21_pro';
   }
 ) {
   const cfg = picsart.PICSART_I2V_MODELS[opts.model];
@@ -7719,10 +7752,13 @@ async function runPicsartSeedance25(
   statusMsgId: number,
   prompt: string,
   imageUrl: string,
+  resolution: '480p' | '720p',
 ) {
-  const label = 'Seedance 2.5 I2V 480p';
-  const settingsLabel = '9:16 · 30 detik · 480p · audio';
-  const PRICE = MODEL_PRICES.picsart_seedance_25;
+  const label = `Seedance 2.5 I2V ${resolution}`;
+  const settingsLabel = `9:16 · 30 detik · ${resolution} · audio`;
+  const PRICE = resolution === '720p'
+    ? MODEL_PRICES.picsart_seedance_25_720
+    : MODEL_PRICES.picsart_seedance_25_480;
   let stage = 'charge';
   const charge = await beginCharge(dbUserId, PRICE, MAX_PARALLEL_GENERATIONS_PER_USER);
   if (!charge.ok) {
@@ -7746,7 +7782,7 @@ async function runPicsartSeedance25(
       }],
       duration: 30,
       ratio: '9:16',
-      resolution: '480p',
+      resolution,
       generateAudio: true,
       onStatus: (providerStage) => {
         stage = providerStage;

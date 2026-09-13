@@ -40,9 +40,11 @@ assert.equal(
 assert.equal(resolveOneOverAccountId({ apiKey: 'test', authorization: 'opaque-token' }), null);
 
 assert.match(bot, /oneover_seedance_25: 6000/);
-assert.match(bot, /picsart_seedance_25: 5000/);
+assert.match(bot, /picsart_seedance_25_480: 11000/);
+assert.match(bot, /picsart_seedance_25_720: 16000/);
 assert.match(bot, /picsart_wan_v3: 5000/);
 assert.match(bot, /Seedance 2\.5 I2V 480p/);
+assert.match(bot, /Seedance 2\.5 I2V 720p/);
 assert.doesNotMatch(bot, /Provider: \*Freebeat Bridge\*/);
 assert.doesNotMatch(bot, /Seedance 2\.5 I2V • Bridge/);
 assert.doesNotMatch(bot, /Freebeat Bridge\\n\\n\/menu/);
@@ -53,14 +55,17 @@ const publicSeedance25Start = bot.indexOf("if (data === 'mode_oneover_seedance25
 const publicSeedance25End = bot.indexOf("if (data.startsWith('picsart_ratio_'))", publicSeedance25Start);
 assert.ok(publicSeedance25Start >= 0 && publicSeedance25End > publicSeedance25Start);
 const publicSeedance25Block = bot.slice(publicSeedance25Start, publicSeedance25End);
+assert.match(publicSeedance25Block, /mode: 'oneover_wait_resolution'/);
+assert.match(publicSeedance25Block, /seedance25_res_480/);
+assert.match(publicSeedance25Block, /seedance25_res_720/);
 assert.match(publicSeedance25Block, /mode: 'oneover_wait_image'/);
-assert.match(publicSeedance25Block, /Seedance 2\.5 I2V 480p/);
-assert.match(publicSeedance25Block, /MODEL_PRICES\.picsart_seedance_25/);
+assert.match(publicSeedance25Block, /MODEL_PRICES\.picsart_seedance_25_480/);
+assert.match(publicSeedance25Block, /MODEL_PRICES\.picsart_seedance_25_720/);
 assert.doesNotMatch(publicSeedance25Block, /queueFreebeatBridgeSeedance25/);
 assert.match(bot, /runPicsartSeedance25/);
 assert.match(bot, /generateSeedance/);
 assert.match(bot, /gw-v2\/workflows\/seedance\/submit/);
-assert.match(bot, /resolution: '480p'/);
+assert.match(bot, /resolution,/);
 assert.match(bot, /generateAudio: true/);
 assert.match(bot, /PICSART_I2V_MAX_IMAGES/);
 assert.match(bot, /picsart_i2v_photos_done/);

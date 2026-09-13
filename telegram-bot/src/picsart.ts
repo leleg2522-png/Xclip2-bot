@@ -1726,13 +1726,16 @@ export async function generateMinimaxH3ReferenceToVideo(input: {
 // POST /gw-v2/workflows/seedance/submit          -> {response:{id}}
 // poll GET /gw-v2/workflows/seedance/{id}/result -> COMPLETED, result.video_url
 // params: {model:"seedance_2_5", content:[{type:"image_url",image_url:{url},role:"reference_image"}..., {type:"text",text}],
-//          ratio:"9:16"|"16:9"|..., duration:15|30, resolution:"480p", generate_audio, output_format:"mp4"}
+//          ratio:"9:16"|"16:9"|..., duration:15|30, resolution:"480p"|"720p", generate_audio, output_format:"mp4"}
 export const SEEDANCE_MODEL = 'seedance_2_5';
 export const SEEDANCE_MAX_REF_IMAGES = 5;
-// Minimum credits an account must have before we even attempt a Seedance submit.
-// Based on observed consumption: ~120 credits for 30s, ~60 for 15s. We add a
-// small buffer so the account still has credits left for other models afterward.
-export const SEEDANCE_MIN_CREDITS: Record<number, number> = { 15: 70, 30: 130 };
+export type SeedanceResolution = '480p' | '720p';
+// HAR options endpoint reports 120 credits for 480p/30s/audio and 210 credits
+// for 720p/30s/audio. Keep a small buffer before accepting a paid order.
+export const SEEDANCE_MIN_CREDITS: Record<SeedanceResolution, Record<number, number>> = {
+  '480p': { 15: 70, 30: 130 },
+  '720p': { 15: 115, 30: 220 },
+};
 // Sentinel error thrown when a pre-submit credit check shows insufficient credits.
 // runWithAccount catches this and skips to the next account WITHOUT discarding.
 export const ERR_INSUFFICIENT_CREDITS = 'PICSART_INSUFFICIENT_CREDITS';
@@ -1742,7 +1745,7 @@ export async function submitSeedance(credId: number, input: {
   imageUrls: string[];
   duration: number; // 15 | 30
   ratio: string; // label mis. "9:16", "16:9"
-  resolution?: string; // default "480p"
+  resolution?: SeedanceResolution; // default "480p"
   generateAudio?: boolean;
   outputName?: string;
 }): Promise<string> {
@@ -1856,7 +1859,7 @@ export async function generateSeedance(input: {
   images: Array<{ buffer: Buffer; name?: string; mime?: string }>;
   duration: number; // 15 | 30
   ratio: string; // "9:16" | "16:9" | ...
-  resolution?: string; // default "480p"
+  resolution?: SeedanceResolution; // default "480p"
   generateAudio?: boolean;
   onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
   onPoll?: (elapsedSec: number) => void;
@@ -1866,7 +1869,9 @@ export async function generateSeedance(input: {
     // Pre-submit credit check: verify the account has enough credits BEFORE
     // uploading images or submitting. This is more reliable than parsing the
     // error message from a failed submit (which may vary by Picsart version).
-    const minRequired = SEEDANCE_MIN_CREDITS[input.duration] ?? SEEDANCE_MIN_CREDITS[30];
+    const resolution = input.resolution ?? '480p';
+    const creditThresholds = SEEDANCE_MIN_CREDITS[resolution];
+    const minRequired = creditThresholds[input.duration] ?? creditThresholds[30];
     try {
       const { credits } = await getCredits(credId);
       if (credits < minRequired) {
