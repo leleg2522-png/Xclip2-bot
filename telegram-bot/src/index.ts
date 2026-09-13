@@ -162,7 +162,7 @@ const MODEL_PRICES = {
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
   veo_fast: 1500,      // Veo 3.1 Fast Full HD (SnapGen)
   veo_lite: 1500,      // Veo 3.1 Lite Full HD (SnapGen, with audio)
-  picsart_veo31_4k: 2500, // Public Veo 3.1 4K label, routed through Picsart
+  picsart_veo31_4k: 2500, // Veo 3.1 Lite native 720p
   picsart_minimax_h3: 4000, // MiniMax H3 Max, 15s image-to-video / start-end frame
   nb_pro: 500,         // Nano Banana Pro (SnapGen image)
   nb_2: 500,           // Nano Banana 2 (SnapGen image)
@@ -174,13 +174,13 @@ const MODEL_PRICES = {
   audio: 3000,         // Semua model audio generation/transcription
   topaz: 1100,         // Topaz 4K Upscaler (Flora AI, video-upscaler-topaz, 2×)
   picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
-  picsart_kling_omni: 3500, // Kling Omni 12s, delivered as 1K
-  picsart_seedance_2_mini: 3500, // Seedance 2.0 Mini, delivered as 1080p
-  picsart_seedance_2_mini_edit: 3500, // Seedance 2.0 Mini Video Edit, delivered as 1080p
-  picsart_seedance_2_fast_edit: 4000, // Seedance 2.0 Fast Video Edit, delivered as 1080p
-  picsart_seedance_2_video_edit: 4500, // Seedance 2 Video Edit, delivered as 1080p
-  picsart_seedance_2: 4000, // Seedance 2.0 Mini/Fast/Standard, delivered as 1080p
-  picsart_wan_v3: 5000, // Wan 3.0 30s, delivered as 1080p
+  picsart_kling_omni: 3500, // Kling Omni 12s, native 720p
+  picsart_seedance_2_mini: 3500, // Seedance 2.0 Mini, native 480p
+  picsart_seedance_2_mini_edit: 3500, // Seedance 2.0 Mini Video Edit, native 480p
+  picsart_seedance_2_fast_edit: 4000, // Seedance 2.0 Fast Video Edit, native 480p
+  picsart_seedance_2_video_edit: 4500, // Seedance 2 Video Edit, native 480p
+  picsart_seedance_2: 4000, // Seedance 2.0 Mini/Fast/Standard, native 480p
+  picsart_wan_v3: 5000, // Wan 3.0 30s, native 480p
   picsart_seedance_25_480: 11000, // Public Seedance 2.5 native gateway, 480p
   oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
@@ -2275,27 +2275,27 @@ function mainMenuKeyboard() {
     // ── Generate Video ──
     [Markup.button.callback('── 🎬 Generate Video ──', 'noop')],
     [Markup.button.callback('🕹️ Kling Motion Control', 'menu_kling_list')],
-    [Markup.button.callback('🌊 Seedance 2.0 Mini 1080p', 'mode_pi2v_seedance_2_mini')],
-    [Markup.button.callback('🎬 Seedance 2 Mini Video Edit 1080p', 'mode_seedance_mini_edit')],
-    [Markup.button.callback('⚡ Seedance 2 Fast Video Edit 1080p', 'mode_seedance_fast_edit')],
-    [Markup.button.callback('🌊 Seedance 2 Video Edit 1080p', 'mode_seedance_2_edit')],
-    [Markup.button.callback('🌊 Seedance 2.0 Fast 1080p', 'mode_pi2v_seedance_2_fast')],
-    [Markup.button.callback('🌊 Seedance 2.0 1080p', 'mode_pi2v_seedance_2')],
+    [Markup.button.callback('🌊 Seedance 2.0 Mini 480p', 'mode_pi2v_seedance_2_mini')],
+    [Markup.button.callback('🎬 Seedance 2 Mini Video Edit 480p', 'mode_seedance_mini_edit')],
+    [Markup.button.callback('⚡ Seedance 2 Fast Video Edit 480p', 'mode_seedance_fast_edit')],
+    [Markup.button.callback('🌊 Seedance 2 Video Edit 480p', 'mode_seedance_2_edit')],
+    [Markup.button.callback('🌊 Seedance 2.0 Fast 480p', 'mode_pi2v_seedance_2_fast')],
+    [Markup.button.callback('🌊 Seedance 2.0 480p', 'mode_pi2v_seedance_2')],
     [Markup.button.callback('🌊 Seedance 2.5 I2V 480p', 'mode_oneover_seedance25')],
     [Markup.button.callback('🌌 Grok Imagine Video', 'mode_pi2v_grok_imagine')],
-    [Markup.button.callback('🎨 PixVerse v6 • 15 detik • 1080p', 'mode_pi2v_pixverse_v6')],
+    [Markup.button.callback('🎨 PixVerse v6 • 15 detik • 360p', 'mode_pi2v_pixverse_v6')],
     [Markup.button.callback('⚡ Kling v3 Turbo', 'mode_pi2v_kling_v3_turbo')],
     [Markup.button.callback('🎭 Kling v2.6 Pro', 'mode_pi2v_kling_v26_pro')],
     [Markup.button.callback('🎞️ Kling v3 Standard', 'mode_pi2v_kling_v3')],
-    [Markup.button.callback('🌐 Kling Omni • 12 detik • 1K', 'mode_pi2v_kling_omni')],
+    [Markup.button.callback('🌐 Kling Omni • 12 detik • 720p', 'mode_pi2v_kling_omni')],
     [Markup.button.callback('🌀 Wan v2 Image-to-Video', 'mode_pi2v_wan_v2')],
-    [Markup.button.callback('🌀 Wan 3.0 1080p • 30 detik', 'mode_pi2v_wan_v3')],
+    [Markup.button.callback('🌀 Wan 3.0 480p • 30 detik', 'mode_pi2v_wan_v3')],
     [Markup.button.callback('🎬 Kling 2.1 Pro (10 detik)', 'mode_kling21')],
     [Markup.button.callback('🚀 Runway Gen-4.5', 'mode_rw')],
     [Markup.button.callback('🎥 Sora 2 (OpenAI)', 'mode_sora')],
     [Markup.button.callback('⚡ Veo 3.1 Fast (Full HD)', 'mode_veofast')],
     [Markup.button.callback('🎞️ Veo 3.1 Lite (Full HD)', 'mode_veolite')],
-    [Markup.button.callback('🎞️ Veo 3.1 4K (Rp2.500)', 'mode_veo31')],
+    [Markup.button.callback('🎞️ Veo 3.1 Lite 720p (Rp2.500)', 'mode_veo31')],
     [Markup.button.callback('🎬 MiniMax H3 • 15 detik', 'mode_minimax_h3')],
     [Markup.button.callback('✨ Gemini Omni', 'mode_gomni')],
     [Markup.button.callback('✨ Gemini Omni 1.2', 'mode_gomni12')],
@@ -2805,28 +2805,27 @@ function hargaText(): string {
     `• Sora 2 — ${formatRupiah(MODEL_PRICES.sora)}\n` +
     `• Veo 3.1 Fast (Full HD) — ${formatRupiah(MODEL_PRICES.veo_fast)}\n` +
     `• Veo 3.1 Lite (Full HD) — ${formatRupiah(MODEL_PRICES.veo_lite)}\n` +
-    `• Veo 3.1 4K (8 detik) — ${formatRupiah(MODEL_PRICES.picsart_veo31_4k)}\n` +
+    `• Veo 3.1 Lite 720p (8 detik) — ${formatRupiah(MODEL_PRICES.picsart_veo31_4k)}\n` +
     `• MiniMax H3 (15 detik) — ${formatRupiah(MODEL_PRICES.picsart_minimax_h3)}\n` +
     `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
-    `• Gemini Omni 1.2 (1080p · 10 detik) — ${formatRupiah(MODEL_PRICES.gemini_omni_12)}\n` +
-    `• Gemini Omni 1.2 (4K · 10 detik) — ${formatRupiah(MODEL_PRICES.gemini_omni_12_4k)}\n` +
+    `• Gemini Omni 1.2 (360p native · 10 detik) — ${formatRupiah(MODEL_PRICES.gemini_omni_12)}\n` +
     `• Chat AI — ${formatRupiah(MODEL_PRICES.chat)}/pesan\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
-    `• Seedance 2.0 Mini 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_mini'))}\n` +
-    `• Seedance 2.0 Fast 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_fast'))}\n` +
-    `• Seedance 2.0 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
+    `• Seedance 2.0 Mini 480p — ${formatRupiah(getPicsartI2vPrice('seedance_2_mini'))}\n` +
+    `• Seedance 2.0 Fast 480p — ${formatRupiah(getPicsartI2vPrice('seedance_2_fast'))}\n` +
+    `• Seedance 2.0 480p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
     `• Seedance 2.5 I2V 480p — ${formatRupiah(MODEL_PRICES.picsart_seedance_25_480)}\n` +
-    `• Seedance 2 Mini Video Edit 1080p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_mini_edit)}\n` +
-    `• Seedance 2 Fast Video Edit 1080p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_fast_edit)}\n` +
-    `• Seedance 2 Video Edit 1080p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_video_edit)}\n` +
+    `• Seedance 2 Mini Video Edit 480p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_mini_edit)}\n` +
+    `• Seedance 2 Fast Video Edit 480p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_fast_edit)}\n` +
+    `• Seedance 2 Video Edit 480p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_video_edit)}\n` +
     `• Grok Imagine Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v3 Turbo — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v2.6 Pro — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v3 Standard — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
-    `• Kling Omni (12 detik · 1K) — ${formatRupiah(MODEL_PRICES.picsart_kling_omni)}\n` +
+    `• Kling Omni (12 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_kling_omni)}\n` +
     `• Wan v2 Image-to-Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
-    `• Wan 3.0 1080p (30 detik) — ${formatRupiah(MODEL_PRICES.picsart_wan_v3)}\n` +
-    `• PixVerse v6 (15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• Wan 3.0 480p (30 detik) — ${formatRupiah(MODEL_PRICES.picsart_wan_v3)}\n` +
+    `• PixVerse v6 (15 detik · 360p) — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling 2.1 Pro (10 detik) — ${formatRupiah(MODEL_PRICES.kling_21_pro)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +
@@ -4086,9 +4085,9 @@ bot.on('callback_query', async (ctx) => {
       seedanceMiniEditImageFileIds: undefined,
     });
     return ctx.editMessageText(
-      `🎬 *Seedance 2 Mini Video Edit 1080p*\n\n` +
+      `🎬 *Seedance 2 Mini Video Edit 480p*\n\n` +
       `Durasi hasil: *15 detik* • Audio: *aktif*\n` +
-      `Kualitas video disiapkan hingga *1080p*\n` +
+      `Kualitas video: *480p native*\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_2_mini_edit)}* per video\n\n` +
       '*Langkah 1:* Pilih rasio hasil:',
       { parse_mode: 'Markdown', ...seedanceMiniEditRatioKeyboard() }
@@ -4105,9 +4104,9 @@ bot.on('callback_query', async (ctx) => {
       seedanceFastEditImageFileIds: undefined,
     });
     return ctx.editMessageText(
-      `⚡ *Seedance 2 Fast Video Edit 1080p*\n\n` +
+      `⚡ *Seedance 2 Fast Video Edit 480p*\n\n` +
       `Durasi hasil: *15 detik* • Audio: *aktif*\n` +
-      `Kualitas video disiapkan hingga *1080p*\n` +
+      `Kualitas video: *480p native*\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_2_fast_edit)}* per video\n\n` +
       '*Langkah 1:* Pilih rasio hasil:',
       { parse_mode: 'Markdown', ...seedanceFastEditRatioKeyboard() }
@@ -4124,9 +4123,9 @@ bot.on('callback_query', async (ctx) => {
       seedance2EditImageFileIds: undefined,
     });
     return ctx.editMessageText(
-      `🌊 *Seedance 2 Video Edit 1080p*\n\n` +
+      `🌊 *Seedance 2 Video Edit 480p*\n\n` +
       `Durasi hasil: *15 detik* • Audio: *aktif*\n` +
-      `Kualitas video disiapkan hingga *1080p*\n` +
+      `Kualitas video: *480p native*\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_2_video_edit)}* per video\n\n` +
       '*Langkah 1:* Pilih rasio hasil:',
       { parse_mode: 'Markdown', ...seedance2EditRatioKeyboard() }
@@ -4147,8 +4146,8 @@ bot.on('callback_query', async (ctx) => {
       seedanceMiniEditImageFileId: undefined,
     });
     return ctx.editMessageText(
-      `🎬 *Seedance 2 Mini Video Edit 1080p*\n\n` +
-      `Parameter: *${ratio} · 15 detik · audio · output 1080p*\n\n` +
+      `🎬 *Seedance 2 Mini Video Edit 480p*\n\n` +
+      `Parameter: *${ratio} · 15 detik · audio · 480p native*\n\n` +
       '*Langkah 2:* Kirim *video referensi* yang ingin diedit.\n\n' +
       'Maksimal ukuran file: *19MB*.',
       { parse_mode: 'Markdown' }
@@ -4199,8 +4198,8 @@ bot.on('callback_query', async (ctx) => {
       seedanceFastEditImageFileId: undefined,
     });
     return ctx.editMessageText(
-      `⚡ *Seedance 2 Fast Video Edit 1080p*\n\n` +
-      `Parameter: *${ratio} · 15 detik · audio · output 1080p*\n\n` +
+      `⚡ *Seedance 2 Fast Video Edit 480p*\n\n` +
+      `Parameter: *${ratio} · 15 detik · audio · 480p native*\n\n` +
       '*Langkah 2:* Kirim *video referensi* yang ingin diedit.\n\n' +
       'Maksimal ukuran file: *19MB*.',
       { parse_mode: 'Markdown' }
@@ -4251,8 +4250,8 @@ bot.on('callback_query', async (ctx) => {
       seedance2EditImageFileId: undefined,
     });
     return ctx.editMessageText(
-      `🌊 *Seedance 2 Video Edit 1080p*\n\n` +
-      `Parameter: *${ratio} · 15 detik · audio · output 1080p*\n\n` +
+      `🌊 *Seedance 2 Video Edit 480p*\n\n` +
+      `Parameter: *${ratio} · 15 detik · audio · 480p native*\n\n` +
       '*Langkah 2:* Kirim *video referensi* yang ingin diedit.\n\n' +
       'Maksimal ukuran file: *19MB*.',
       { parse_mode: 'Markdown' }
@@ -4668,7 +4667,7 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
-  // ── Veo 3.1 4K wizard (Picsart Veo 3.1 Lite contract) ──
+  // ── Veo 3.1 Lite 720p wizard (native Picsart output) ──
   if (data === 'mode_veo31') {
     setSession(userId, {
       mode: 'idle',
@@ -4677,7 +4676,7 @@ bot.on('callback_query', async (ctx) => {
       veo31Ratio: undefined,
     });
     return ctx.editMessageText(
-      `🎞️ *Veo 3.1 4K*\n\nDurasi: *8 detik*\nHarga: *${formatRupiah(MODEL_PRICES.picsart_veo31_4k)}* per video\n\nPilih rasio video:`,
+      `🎞️ *Veo 3.1 Lite 720p*\n\nDurasi: *8 detik*\nHarga: *${formatRupiah(MODEL_PRICES.picsart_veo31_4k)}* per video\n\nPilih rasio video:`,
       { parse_mode: 'Markdown', ...veo31RatioKeyboard() }
     );
   }
@@ -4686,7 +4685,7 @@ bot.on('callback_query', async (ctx) => {
     const ratio: picsart.Veo31LiteAspectRatio = data === 'v31_ratio_169' ? '16:9' : '9:16';
     setSession(userId, { veo31Ratio: ratio });
     return ctx.editMessageText(
-      `🎞️ *Veo 3.1 4K*\n\nDurasi: *8 detik* · Rasio: *${ratio}* · Output: *4K*\n\nPilih cara membuat video:`,
+      `🎞️ *Veo 3.1 Lite 720p*\n\nDurasi: *8 detik* · Rasio: *${ratio}* · Output: *720p native*\n\nPilih cara membuat video:`,
       { parse_mode: 'Markdown', ...veo31InputKeyboard() }
     );
   }
@@ -4697,13 +4696,13 @@ bot.on('callback_query', async (ctx) => {
     if (inputMode === 'i2v') {
       setSession(userId, { veo31InputMode: 'i2v', mode: 'veo31_wait_image' });
       return ctx.editMessageText(
-        `🎞️ *Veo 3.1 4K*\n\nRasio: *${ratio}*\n\n*Langkah 1:* Kirim *foto acuan* untuk video kamu.`,
+        `🎞️ *Veo 3.1 Lite 720p*\n\nRasio: *${ratio}*\n\n*Langkah 1:* Kirim *foto acuan* untuk video kamu.`,
         { parse_mode: 'Markdown' }
       );
     }
     setSession(userId, { veo31InputMode: 't2v', mode: 'veo31_wait_prompt' });
     return ctx.editMessageText(
-      `🎞️ *Veo 3.1 4K*\n\nRasio: *${ratio}*\n\n*Langkah 1:* Kirim *prompt teks* untuk video kamu.`,
+      `🎞️ *Veo 3.1 Lite 720p*\n\nRasio: *${ratio}*\n\n*Langkah 1:* Kirim *prompt teks* untuk video kamu.`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -4754,10 +4753,15 @@ bot.on('callback_query', async (ctx) => {
 
   if (data === 'mh3_ratio_916' || data === 'mh3_ratio_169') {
     const ratio: picsart.MinimaxH3AspectRatio = data === 'mh3_ratio_169' ? '16:9' : '9:16';
-    setSession(userId, { minimaxH3Ratio: ratio });
+    setSession(userId, {
+      minimaxH3Ratio: ratio,
+      minimaxH3Resolution: '1K',
+      mode: 'minimax_h3_wait_start_frame',
+    });
     return ctx.editMessageText(
-      `🎬 *MiniMax H3*\n\nRasio: *${ratio}*\nDurasi: *15 detik*\n\nPilih resolusi hasil:`,
-      { parse_mode: 'Markdown', ...minimaxH3ResolutionKeyboard() }
+      `🎬 *MiniMax H3*\n\nRasio: *${ratio}* · Output: *768p native*\n\n` +
+      '*Langkah berikutnya:* Kirim *foto frame awal*.',
+      { parse_mode: 'Markdown' }
     );
   }
 
@@ -4777,7 +4781,7 @@ bot.on('callback_query', async (ctx) => {
     return ctx.editMessageText(
       `🎬 *MiniMax H3*\n\n` +
       `Mode: *${modeLabel}*\n` +
-      `Rasio: *${session.minimaxH3Ratio ?? '9:16'}* · Output: *${resolution}*\n\n` +
+      `Rasio: *${session.minimaxH3Ratio ?? '9:16'}* · Output: *768p native*\n\n` +
       '*Langkah berikutnya:* Kirim *foto frame awal*.',
       { parse_mode: 'Markdown' }
     );
@@ -4808,25 +4812,24 @@ bot.on('callback_query', async (ctx) => {
       gomniInputMode: undefined,
       gomniDuration: picsart.GEMINI_OMNI_12_DURATION_SECONDS,
       gomniRatio: undefined,
-      gomniResolution: undefined,
+      gomniResolution: '1080p',
       gomniImageUrl: undefined,
       gomniImageUrls: [],
       gomniVideoUrl: undefined,
     });
     return ctx.editMessageText(
-      `✨ *Gemini Omni 1.2*\n\nDurasi: *10 detik*\n\nPilih resolusi output:`,
-      { parse_mode: 'Markdown', ...gomni12ResolutionKeyboard() }
+      `✨ *Gemini Omni 1.2*\n\nDurasi: *10 detik* · Output: *360p native*\n` +
+      `Harga: *${formatRupiah(MODEL_PRICES.gemini_omni_12)}* per video\n\nPilih cara membuat video:`,
+      { parse_mode: 'Markdown', ...gomniInputKeyboard(true) }
     );
   }
 
   if (data === 'go12_res_1080' || data === 'go12_res_4k') {
     const resolution: picsart.PicsartExportResolution = data === 'go12_res_4k' ? '4K' : '1080p';
-    const price = resolution === '4K'
-      ? MODEL_PRICES.gemini_omni_12_4k
-      : MODEL_PRICES.gemini_omni_12;
+    const price = MODEL_PRICES.gemini_omni_12;
     setSession(userId, { gomniModel: '1.2', gomniResolution: resolution });
     return ctx.editMessageText(
-      `✨ *Gemini Omni 1.2*\n\nOutput: *${resolution} · 10 detik*\nHarga: *${formatRupiah(price)}* per video\n\nPilih cara membuat video:`,
+      `✨ *Gemini Omni 1.2*\n\nOutput: *360p native · 10 detik*\nHarga: *${formatRupiah(price)}* per video\n\nPilih cara membuat video:`,
       { parse_mode: 'Markdown', ...gomniInputKeyboard(true) }
     );
   }
@@ -4834,7 +4837,6 @@ bot.on('callback_query', async (ctx) => {
   if (data === 'go_in_i2v' || data === 'go_in_t2v' || data === 'go_in_v2v') {
     const inputMode = data === 'go_in_i2v' ? 'i2v' : data === 'go_in_v2v' ? 'v2v' : 't2v';
     const is12 = getSession(userId).gomniModel === '1.2';
-    const resolution = getSession(userId).gomniResolution ?? '1080p';
     setSession(userId, {
       gomniInputMode: inputMode,
       gomniDuration: is12 ? picsart.GEMINI_OMNI_12_DURATION_SECONDS : undefined,
@@ -4844,7 +4846,7 @@ bot.on('callback_query', async (ctx) => {
     });
     if (is12) {
       return ctx.editMessageText(
-        `✨ *Gemini Omni 1.2*\n\nDurasi: *10 detik* · Output: *${resolution}*\n\n*Langkah 1:* Pilih rasio layar:`,
+        `✨ *Gemini Omni 1.2*\n\nDurasi: *10 detik* · Output: *360p native*\n\n*Langkah 1:* Pilih rasio layar:`,
         { parse_mode: 'Markdown', ...gomniRatioKeyboard() }
       );
     }
@@ -4866,7 +4868,6 @@ bot.on('callback_query', async (ctx) => {
   if (data.startsWith('go_ratio_')) {
     const ratio = SD_RATIO_MAP[data.replace('go_ratio_', '')] ?? '9:16';
     const session = getSession(userId);
-    const resolution = session.gomniResolution ?? '1080p';
     if (session.gomniInputMode === 'i2v' || session.gomniInputMode === 'v2v') {
       setSession(userId, {
         gomniRatio: ratio,
@@ -4876,7 +4877,7 @@ bot.on('callback_query', async (ctx) => {
       });
       return ctx.editMessageText(
         session.gomniModel === '1.2'
-          ? `✨ *Gemini Omni 1.2*\n\nRasio: *${ratio}* · ${resolution} · 10 detik\n\n*Langkah 2:* Kirim *1–${picsart.GEMINI_OMNI_12_MAX_IMAGES} foto acuan* untuk video kamu.`
+          ? `✨ *Gemini Omni 1.2*\n\nRasio: *${ratio}* · 360p native · 10 detik\n\n*Langkah 2:* Kirim *1–${picsart.GEMINI_OMNI_12_MAX_IMAGES} foto acuan* untuk video kamu.`
           : `✨ *Gemini Omni*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Kirim *foto acuan* untuk video kamu.`,
         { parse_mode: 'Markdown' }
       );
@@ -4884,7 +4885,7 @@ bot.on('callback_query', async (ctx) => {
     setSession(userId, { gomniRatio: ratio, mode: 'gomni_wait_prompt' });
     return ctx.editMessageText(
       session.gomniModel === '1.2'
-        ? `✨ *Gemini Omni 1.2*\n\nRasio: *${ratio}* · ${resolution} · 10 detik\n\n*Langkah 2:* Kirim *prompt teks* untuk video kamu.`
+        ? `✨ *Gemini Omni 1.2*\n\nRasio: *${ratio}* · 360p native · 10 detik\n\n*Langkah 2:* Kirim *prompt teks* untuk video kamu.`
         : `✨ *Gemini Omni*\n\nRasio: *${ratio}*\n\n*Langkah 3:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).`,
       { parse_mode: 'Markdown' }
     );
@@ -6245,7 +6246,7 @@ bot.on('text', async (ctx) => {
     }
 
     const statusMsg = await ctx.reply(
-      '⏳ Memproses Seedance 2 Mini Video Edit 1080p...\n' +
+      '⏳ Memproses Seedance 2 Mini Video Edit 480p...\n' +
       'Hasil dikirim otomatis setelah video selesai disiapkan.',
       { parse_mode: 'Markdown' }
     );
@@ -6307,7 +6308,7 @@ bot.on('text', async (ctx) => {
     }
 
     const statusMsg = await ctx.reply(
-      '⏳ Memproses Seedance 2 Fast Video Edit 1080p...\n' +
+      '⏳ Memproses Seedance 2 Fast Video Edit 480p...\n' +
       'Hasil dikirim otomatis setelah video selesai disiapkan.',
       { parse_mode: 'Markdown' }
     );
@@ -6369,7 +6370,7 @@ bot.on('text', async (ctx) => {
     }
 
     const statusMsg = await ctx.reply(
-      '⏳ Memproses Seedance 2 Video Edit 1080p...\n' +
+      '⏳ Memproses Seedance 2 Video Edit 480p...\n' +
       'Hasil dikirim otomatis setelah video selesai disiapkan.',
       { parse_mode: 'Markdown' }
     );
@@ -6615,7 +6616,7 @@ bot.on('text', async (ctx) => {
     } as const;
     setSession(userId, { mode: 'idle' });
     const statusMsg = await ctx.reply(
-      `⏳ Memproses MiniMax H3 ${opts.resolution}...\nHasil dikirim otomatis setelah video selesai disiapkan.`,
+      '⏳ Memproses MiniMax H3 768p native...\nHasil dikirim otomatis setelah video selesai.',
       { parse_mode: 'Markdown' }
     );
     runMinimaxH3(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
@@ -6671,7 +6672,7 @@ bot.on('text', async (ctx) => {
     return;
   }
 
-  // ── Veo 3.1 4K prompt (Picsart) ──
+  // ── Veo 3.1 Lite 720p prompt (Picsart native output) ──
   if (session.mode === 'veo31_wait_prompt') {
     if (!await requireLogin(ctx)) return;
     const prompt = ctx.message.text.trim();
@@ -6690,11 +6691,11 @@ bot.on('text', async (ctx) => {
     };
     setSession(userId, { mode: 'idle' });
     const statusMsg = await ctx.reply(
-      '⏳ Memproses Veo 3.1 4K...\nHasil dikirim otomatis setelah video selesai disiapkan.',
+      '⏳ Memproses Veo 3.1 Lite 720p...\nHasil dikirim otomatis setelah video selesai.',
       { parse_mode: 'Markdown' }
     );
     runPicsartVeo31(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
-      .catch((e) => console.error(`[${userId}] Veo 3.1 4K gen error:`, e.message));
+      .catch((e) => console.error(`[${userId}] Veo 3.1 Lite 720p gen error:`, e.message));
     return;
   }
 
@@ -6727,7 +6728,6 @@ bot.on('text', async (ctx) => {
       videoUrl: session.gomniVideoUrl,
       duration: session.gomniModel === '1.2' ? picsart.GEMINI_OMNI_12_DURATION_SECONDS : session.gomniDuration ?? 10,
       ratio: session.gomniRatio ?? '9:16',
-      exportResolution: session.gomniResolution ?? '1080p',
     };
     setSession(userId, { mode: 'idle' });
     const label = session.gomniModel === '1.2' ? 'Gemini Omni 1.2' : 'Gemini Omni';
@@ -7726,9 +7726,7 @@ async function runPicsartI2v(
           ? `⏳ ${label}: mengunggah foto ke server... (1/3)`
           : providerStage === 'submit'
             ? `⏳ ${label}: mengirim perintah ke server... (2/3)`
-            : providerStage === 'export'
-              ? `⏳ ${label}: menyiapkan hasil 1080p... (selangkah lagi)`
-              : `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Biasanya 3–10 menit. Jangan tutup chat ini.`;
+            : `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Biasanya 3–10 menit. Jangan tutup chat ini.`;
         stage = providerStage;
         console.log(`[picsart-i2v] user=${userId} model=${opts.model} label="${label}" stage=${providerStage}`);
         lastEdit = Date.now();
@@ -7929,11 +7927,11 @@ async function runSeedanceVideoEdit(
   const isStandard = opts.variant === 'standard';
   const logPrefix = isFast ? 'seedance-fast-edit' : isStandard ? 'seedance-2-edit' : 'seedance-mini-edit';
   const label = isFast
-    ? 'Seedance 2 Fast Video Edit 1080p'
+    ? 'Seedance 2 Fast Video Edit 480p'
     : isStandard
-      ? 'Seedance 2 Video Edit 1080p'
-      : 'Seedance 2 Mini Video Edit 1080p';
-  const settingsLabel = `${opts.ratio} · 15 detik · audio · output 1080p`;
+      ? 'Seedance 2 Video Edit 480p'
+      : 'Seedance 2 Mini Video Edit 480p';
+  const settingsLabel = `${opts.ratio} · 15 detik · audio · 480p native`;
   const PRICE = isFast
     ? MODEL_PRICES.picsart_seedance_2_fast_edit
     : isStandard
@@ -7990,9 +7988,7 @@ async function runSeedanceVideoEdit(
           ? `⏳ ${label}: mengunggah media referensi... (1/4)`
           : providerStage === 'submit'
             ? `⏳ ${label}: mengirim perintah video edit... (2/4)`
-            : providerStage === 'export'
-              ? `⏳ ${label}: menyiapkan video akhir 1080p... (4/4)`
-              : `⏳ ${label}: video sedang dibuat... (3/4)\n⏱️ Biasanya 3–10 menit.`;
+            : `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Biasanya 3–10 menit.`;
         stage = providerStage;
         lastEdit = Date.now();
         bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
@@ -8003,9 +7999,7 @@ async function runSeedanceVideoEdit(
         const mins = Math.floor(elapsedSec / 60);
         const secs = elapsedSec % 60;
         const elapsed = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
-        const text = stage === 'export'
-          ? `⏳ ${label}: menyiapkan video akhir 1080p...\n⏱️ Sudah berjalan ${elapsed}.`
-          : `⏳ ${label}: video sedang dibuat...\n⏱️ Sudah berjalan ${elapsed}.`;
+        const text = `⏳ ${label}: video sedang dibuat...\n⏱️ Sudah berjalan ${elapsed}.`;
         bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
       },
     });
@@ -8040,8 +8034,6 @@ async function runSeedanceVideoEdit(
       friendly = '❌ Media referensi tidak bisa diproses. Coba file lain.';
     } else if (msg.includes('PICSART_NO_CREDENTIAL') || msg.includes('PICSART_INSUFFICIENT_CREDITS')) {
       friendly = '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.';
-    } else if (stage === 'export') {
-      friendly = '❌ Hasil belum berhasil diekspor ke 1080p. Saldo akan dikembalikan.';
     }
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
       .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
@@ -8050,7 +8042,7 @@ async function runSeedanceVideoEdit(
       await addSaldo(dbUserId, PRICE).catch(() => {});
       await bot.telegram.sendMessage(
         chatId,
-        `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (video 1080p tidak berhasil dikirim).`
+        `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (video tidak berhasil dikirim).`
       ).catch(() => {});
     }
     releaseGenerating(dbUserId);
@@ -8744,12 +8736,10 @@ async function runMinimaxH3(
     let lastEdit = 0;
     const onStatus = (stage: 'upload' | 'submit' | 'poll' | 'export') => {
       const text = stage === 'upload'
-        ? `⏳ ${label}: mengunggah media... (1/4)`
+        ? `⏳ ${label}: mengunggah media... (1/3)`
         : stage === 'submit'
-          ? `⏳ ${label}: mengirim perintah ke server... (2/4)`
-          : stage === 'export'
-            ? `⏳ ${label}: hampir selesai menyiapkan video... (4/4)`
-            : `⏳ ${label}: video sedang dibuat... (3/4)\n⏱️ Biasanya 3–15 menit.`;
+          ? `⏳ ${label}: mengirim perintah ke server... (2/3)`
+          : `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Biasanya 3–15 menit.`;
       lastEdit = Date.now();
       bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
     };
@@ -8796,7 +8786,7 @@ async function runMinimaxH3(
     const delivered = await sendResult(
       chatId,
       result.url,
-      `🎬 ${label} (${modeLabel} · 15s · ${opts.ratio} · ${opts.resolution})\n\n/menu untuk buat lagi`,
+      `🎬 ${label} (${modeLabel} · 15s · ${opts.ratio} · 768p native)\n\n/menu untuk buat lagi`,
       true
     );
     if (delivered) {
@@ -8832,7 +8822,7 @@ async function runMinimaxH3(
   }
 }
 
-// ─── Background: Veo 3.1 4K (Picsart gateway) ────────────────────────────────
+// ─── Background: Veo 3.1 Lite 720p (Picsart gateway) ─────────────────────────
 async function runPicsartVeo31(
   chatId: number,
   userId: number,
@@ -8846,7 +8836,7 @@ async function runPicsartVeo31(
   }
 ) {
   const PRICE = MODEL_PRICES.picsart_veo31_4k;
-  const label = 'Veo 3.1 4K';
+  const label = 'Veo 3.1 Lite 720p';
   console.log(`[${userId}] ${label} started — mode: ${opts.inputMode}, ratio: ${opts.ratio}`);
 
   const charge = await beginCharge(dbUserId, PRICE, 3);
@@ -8876,12 +8866,10 @@ async function runPicsartVeo31(
       aspectRatio: opts.ratio,
       onStatus: (stage) => {
         const text = stage === 'upload'
-          ? `⏳ ${label}: mengunggah foto acuan... (1/4)`
+          ? `⏳ ${label}: mengunggah foto acuan... (1/3)`
           : stage === 'submit'
-            ? `⏳ ${label}: mengirim perintah ke server... (2/4)`
-            : stage === 'export'
-              ? `⏳ ${label}: menyiapkan video akhir 4K... (4/4)`
-              : `⏳ ${label}: video sedang dibuat... (3/4)\n⏱️ Mohon tunggu, biasanya 3–15 menit.`;
+            ? `⏳ ${label}: mengirim perintah ke server... (2/3)`
+            : `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 3–15 menit.`;
         lastEdit = Date.now();
         bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
       },
@@ -9195,19 +9183,14 @@ async function runGeminiOmni(
     videoUrl?: string;
     duration: number;
     ratio: string;
-    exportResolution: picsart.PicsartExportResolution;
   }
 ) {
   const is12 = opts.model === '1.2';
   const label = is12 ? 'Gemini Omni 1.2' : 'Gemini Omni';
-  const outputResolution = is12 ? opts.exportResolution : 'native';
+  const outputResolution = is12 ? '360p-native' : 'native';
   console.log(`[${userId}] ${label} started — mode: ${opts.inputMode}, refs: ${opts.imageUrls.length}, dur: ${opts.duration}s, ratio: ${opts.ratio}, output=${outputResolution}`);
 
-  const PRICE = is12
-    ? opts.exportResolution === '4K'
-      ? MODEL_PRICES.gemini_omni_12_4k
-      : MODEL_PRICES.gemini_omni_12
-    : MODEL_PRICES.gemini_omni;
+  const PRICE = is12 ? MODEL_PRICES.gemini_omni_12 : MODEL_PRICES.gemini_omni;
   const charge = await beginCharge(dbUserId, PRICE, 3);
   if (!charge.ok) {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
@@ -9242,8 +9225,6 @@ async function runGeminiOmni(
           ? `⏳ ${label}: mengunggah foto/video ke server... (1/3)`
           : stage === 'submit'
             ? `⏳ ${label}: mengirim perintah ke server... (2/3)`
-            : stage === 'export'
-              ? `⏳ ${label}: menyiapkan video akhir ${opts.exportResolution}... (selangkah lagi)`
             : `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Mohon tunggu, biasanya 3–8 menit. Jangan tutup chat ini.`;
         lastEdit = Date.now();
         bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
@@ -9269,7 +9250,6 @@ async function runGeminiOmni(
           videoName,
           videoMime,
           aspectRatio: opts.ratio as picsart.GeminiOmni12AspectRatio,
-          exportResolution: opts.exportResolution,
           ...callbacks,
         })
       : await picsart.generateGeminiOmni({
@@ -9289,7 +9269,7 @@ async function runGeminiOmni(
     const delivered = await sendResult(
       chatId,
       result.url,
-      `✨ ${label} (${is12 ? `${opts.exportResolution} · 10s` : `${opts.duration}s`} · ${opts.ratio})\n\n/menu untuk buat lagi`,
+      `✨ ${label} (${is12 ? '360p native · 10s' : `${opts.duration}s`} · ${opts.ratio})\n\n/menu untuk buat lagi`,
       true
     );
     if (delivered) {

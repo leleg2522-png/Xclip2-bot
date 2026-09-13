@@ -13,6 +13,5 @@ metadata in addition to core generation parameters. PixVerse has no ratio field:
 the source image aspect ratio determines its output shape.
 
 **How to apply:** For 9:16 or 16:9 product choices, center-crop and upload a
-matching input frame, then use the separate 1080 export only after PixVerse has
-completed. Validate each ratio with one controlled live run after deployment;
-HAR construction tests do not prove upstream acceptance.
+matching input frame, then deliver the native 360p result directly. Do not run a
+separate export. Validate each ratio with one controlled live run.

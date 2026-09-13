@@ -1,6 +1,6 @@
 ---
 name: Picsart Wan 3.0 video
-description: Verified Wan 3.0 gateway contract and the product's separate exact-ratio 1080 delivery policy.
+description: Verified Wan 3.0 gateway contract with direct native 480p delivery.
 ---
 
 Wan 3.0 uses the standard model through the Picsart gateway v3 video workflow.
@@ -9,12 +9,10 @@ The captured successful submission uses model `wan3.0-video`, resolution
 enabled, and watermark disabled. The Drive metadata model is `wan-3.0-video`.
 
 The capture contains generation and polling only. Completion uses `result.url`
-and reports 60 credits. The product performs separate 1080 delivery preparation.
+and reports 60 credits. Deliver that native result directly.
 
-**Why:** A newer successful HAR superseded the former Prime contract. “1080p”
-remains a delivery step, not the native generation setting.
+**Why:** A newer successful HAR superseded the former Prime contract, and the
+user later disabled all separate export/upscale stages.
 
-**How to apply:** Route Wan through the p500 account pool, accept one reference
-image, then deliver exact 1080×1920 / 1920×1080 output only after its 480P job
-completes. The public Seedance 2.5 product uses this same backend contract. The
-successful HAR run is 9:16; it does not independently verify a 16:9 generation.
+**How to apply:** Route Wan through the p500 account pool and deliver native 480p.
+The successful HAR run is 9:16; it does not independently verify 16:9.

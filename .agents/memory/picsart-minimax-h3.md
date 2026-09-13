@@ -6,7 +6,7 @@ description: Undocumented Picsart gateway contract for MiniMax H3 image-to-video
 MiniMax H3 Max uses the Picsart gateway workflow
 `minimax/h3-max/image-to-video`. The captured HAR originally showed a 15-second
 480p request, but the product is intentionally configured to generate from a
-768p base before 4K delivery. It uses `image_url` as the first frame, balanced
+768p native output. It uses `image_url` as the first frame, balanced
 prompt expansion, and the safety checker.
 Completed polling responses expose the media URL as `result.video.url`, not the
 older `result.video_url` shape used by several other Picsart workflows.
@@ -27,7 +27,5 @@ the H3 schema resolves the otherwise-missing final-frame field. Keeping the
 verification boundary explicit prevents untested provider behavior from being
 treated as proven.
 
-**How to apply:** Keep MiniMax H3 on p500 and preserve native 768p generation.
-Deliver only 1K through the 1080p preparation path, at exact portrait or
-landscape dimensions. Never retry an accepted paid job through another account;
-refund any failed delivery.
+**How to apply:** Keep MiniMax H3 on p500 and deliver native 768p directly.
+Never retry an accepted paid job through another account; refund failed delivery.

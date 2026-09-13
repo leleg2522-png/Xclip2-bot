@@ -1199,7 +1199,6 @@ export async function generateGeminiOmni12(input: {
   videoName?: string;
   videoMime?: string;
   aspectRatio: GeminiOmni12AspectRatio;
-  exportResolution?: PicsartExportResolution;
   onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
@@ -1226,25 +1225,13 @@ export async function generateGeminiOmni12(input: {
       aspectRatio: input.aspectRatio,
     });
     input.onStatus?.('poll');
-    const rawResult = await pollGeminiOmni12Result(credId, id, {
+    return pollGeminiOmni12Result(credId, id, {
       onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
     });
-    input.onStatus?.('export');
-    const exportId = await submitPicsartI2vExport(
-      credId,
-      rawResult.url,
-      input.aspectRatio,
-      input.exportResolution ?? '1080p'
-    );
-    const exported = await pollPicsartI2vExportResult(credId, exportId, {
-      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
-      useGateway: input.exportResolution === '4K',
-    });
-    return { ...rawResult, url: exported.url };
   });
 }
 
-// ─── Veo 3.1 Lite (Picsart gateway, customer branding: Veo 3.1 4K) ──────────
+// ─── Veo 3.1 Lite (Picsart gateway, native 720p delivery) ───────────────────
 export const VEO_31_LITE_MODEL = 'veo-3.1-lite-generate-preview';
 export const VEO_31_LITE_DURATION_SECONDS = 8;
 export const VEO_31_LITE_RESOLUTION = '720p';
@@ -1343,16 +1330,9 @@ export async function generateVeo31Lite4K(input: {
       aspectRatio: input.aspectRatio,
     });
     input.onStatus?.('poll');
-    const rawResult = await pollVeo31LiteResult(credId, id, {
+    return pollVeo31LiteResult(credId, id, {
       onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
     });
-    input.onStatus?.('export');
-    const exportId = await submitPicsartI2vExport(credId, rawResult.url, input.aspectRatio, '4K');
-    const exported = await pollPicsartI2vExportResult(credId, exportId, {
-      onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
-      useGateway: true,
-    });
-    return { ...rawResult, url: exported.url };
   });
 }
 
@@ -1511,21 +1491,9 @@ export async function generateMinimaxH3(input: {
     });
     input.onStatus?.('poll');
     try {
-      const rawResult = await pollMinimaxH3Result(credId, id, {
+      return await pollMinimaxH3Result(credId, id, {
         onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
       });
-      input.onStatus?.('export');
-      const exportId = await submitPicsartI2vExport(
-        credId,
-        rawResult.url,
-        input.aspectRatio,
-        '1080p'
-      );
-      const exported = await pollPicsartI2vExportResult(credId, exportId, {
-        onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
-        useGateway: true,
-      });
-      return { ...rawResult, url: exported.url };
     } catch (e: any) {
       if (isPicsartPostSubmitAuthFailure(e)) {
         await q(
@@ -1689,21 +1657,9 @@ export async function generateMinimaxH3ReferenceToVideo(input: {
     });
     input.onStatus?.('poll');
     try {
-      const rawResult = await pollMinimaxH3ReferenceResult(credId, id, {
+      return await pollMinimaxH3ReferenceResult(credId, id, {
         onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
       });
-      input.onStatus?.('export');
-      const exportId = await submitPicsartI2vExport(
-        credId,
-        rawResult.url,
-        input.aspectRatio,
-        '1080p'
-      );
-      const exported = await pollPicsartI2vExportResult(credId, exportId, {
-        onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
-        useGateway: true,
-      });
-      return { ...rawResult, url: exported.url };
     } catch (e: any) {
       if (isPicsartPostSubmitAuthFailure(e)) {
         await q(
@@ -2028,22 +1984,22 @@ type PicsartI2vModelConfig = {
 
 export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfig> = {
   seedance_2_mini: {
-    label: 'Seedance 2.0 Mini 1080p',
-    settingsLabel: '15 detik · 1080p · audio',
+    label: 'Seedance 2.0 Mini 480p',
+    settingsLabel: '15 detik · 480p native · audio',
     workflowPath: 'seedance',
     pool: 'p500',
     pollAttempts: 300,
   },
   seedance_2_fast: {
-    label: 'Seedance 2.0 Fast 1080p',
-    settingsLabel: '15 detik · 1080p · audio',
+    label: 'Seedance 2.0 Fast 480p',
+    settingsLabel: '15 detik · 480p native · audio',
     workflowPath: 'seedance',
     pool: 'p500',
     pollAttempts: 300,
   },
   seedance_2: {
-    label: 'Seedance 2.0 1080p',
-    settingsLabel: '15 detik · 1080p · audio',
+    label: 'Seedance 2.0 480p',
+    settingsLabel: '15 detik · 480p native · audio',
     workflowPath: 'seedance',
     pool: 'p500',
     pollAttempts: 300,
@@ -2086,8 +2042,8 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
     pollAttempts: 180,
   },
   kling_omni: {
-    label: 'Kling Omni 1K',
-    settingsLabel: '12 detik · output 1K · audio · Standard',
+    label: 'Kling Omni 720p',
+    settingsLabel: '12 detik · 720p native · audio · Standard',
     workflowPath: 'kling-omni-video',
     pool: 'p100',
     pollAttempts: 240,
@@ -2100,15 +2056,15 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
     pollAttempts: 180,
   },
   wan_v3: {
-    label: 'Wan 3.0 1080p',
-    settingsLabel: '30 detik · 1080p',
+    label: 'Wan 3.0 480p',
+    settingsLabel: '30 detik · 480p native',
     workflowPath: 'wan/v3/video',
     pool: 'p500',
     pollAttempts: 240,
   },
   pixverse_v6: {
     label: 'PixVerse v6',
-    settingsLabel: '15 detik · generate 360p → output 1080p · audio',
+    settingsLabel: '15 detik · 360p native · audio',
     workflowPath: 'pixverse/v2/image-to-video',
     pool: null,
     pollAttempts: 240,
@@ -2514,13 +2470,8 @@ export function getPicsartExportSize(
 }
 
 export function shouldExportPicsartI2v(model: PicsartI2vModelKey): boolean {
-  return model === 'seedance_2_mini'
-    || model === 'seedance_2_fast'
-    || model === 'seedance_2'
-    || model === 'grok_imagine'
-    || model === 'kling_omni'
-    || model === 'wan_v3'
-    || model === 'pixverse_v6';
+  void model;
+  return false;
 }
 
 async function cropImageToAspectRatio(
@@ -2552,86 +2503,6 @@ async function cropImageToAspectRatio(
     .extract({ left, top, width, height })
     .jpeg({ quality: 95 })
     .toBuffer();
-}
-
-async function submitPicsartI2vExport(
-  credId: number,
-  rawVideoUrl: string,
-  ratio: WanV3AspectRatio,
-  resolution: PicsartExportResolution = '1080p'
-): Promise<string> {
-  const access = await getAccessToken(credId);
-  const useGateway = resolution === '4K';
-  const r = await http.post(
-    `${API_BASE}${useGateway ? '/gw-v2' : ''}/workflows/media-platform/v1/videos/edit/submit`,
-    {
-      params: {
-        params: {
-          video_url: rawVideoUrl,
-          resize: getPicsartExportSize(ratio, resolution),
-        },
-        export_config: { mediaType: 'mp4' },
-      },
-    },
-    {
-      headers: commonHeaders({
-        'content-type': 'application/json',
-        authorization: `Bearer ${access}`,
-        ...(useGateway
-          ? {
-              'x-app-authorization': X_APP_AUTHORIZATION,
-              'x-sub-package-id': 'subscription_pro_monthly',
-            }
-          : {}),
-      }),
-      validateStatus: () => true,
-    }
-  );
-  const id = r.data?.response?.id;
-  if (!ok2xx(r.status) || !id) {
-    throw new Error(`PICSART_I2V_EXPORT_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
-  }
-  return id;
-}
-
-async function pollPicsartI2vExportResult(
-  credId: number,
-  id: string,
-  opts?: { intervalMs?: number; onTick?: (elapsedMs: number) => void; useGateway?: boolean }
-): Promise<{ url: string }> {
-  const intervalMs = opts?.intervalMs ?? 5000;
-  const start = Date.now();
-  const diag = new PollDiag();
-  for (let i = 0; i < 120; i++) {
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-    opts?.onTick?.(Date.now() - start);
-    const access = await getAccessToken(credId);
-    const r = await http.get(`${API_BASE}${opts?.useGateway ? '/gw-v2' : ''}/workflows/media-platform/v1/videos/edit/${id}/result`, {
-      headers: commonHeaders({
-        authorization: `Bearer ${access}`,
-        ...(opts?.useGateway
-          ? {
-              'x-app-authorization': X_APP_AUTHORIZATION,
-              'x-sub-package-id': 'subscription_pro_monthly',
-            }
-          : {}),
-      }),
-      validateStatus: () => true,
-    });
-    const ok = diag.note(r);
-    if (!ok) continue;
-    const response = r.data?.response ?? r.data;
-    const status = String(response?.status ?? '').toUpperCase();
-    if (status === 'COMPLETED' || status === 'SUCCESS') {
-      const url = extractPicsartVideoUrl(response);
-      if (!url) throw new Error(`PICSART_I2V_EXPORT_NO_RESULT_URL: ${JSON.stringify(response).slice(0, 250)}`);
-      return { url };
-    }
-    if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
-      throw new Error(`PICSART_I2V_EXPORT_FAILED: ${JSON.stringify(response).slice(0, 250)}`);
-    }
-  }
-  throw diag.timeoutError();
 }
 
 export function extractPicsartVideoUrl(response: any): string | null {
@@ -2837,15 +2708,9 @@ async function generateSeedanceVideoEdit(input: {
     }, input.config);
     input.onStatus?.('poll');
     try {
-      const rawResult = await pollSeedanceVideoEditResult(credId, id, {
+      return await pollSeedanceVideoEditResult(credId, id, {
         onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
       });
-      input.onStatus?.('export');
-      const exportId = await submitPicsartI2vExport(credId, rawResult.url, input.ratio);
-      const exported = await pollPicsartI2vExportResult(credId, exportId, {
-        onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
-      });
-      return { ...rawResult, url: exported.url };
     } catch (e: any) {
       // Once the paid provider job is accepted, never submit it through another
       // account. The caller refunds this whole attempt instead.
@@ -2982,16 +2847,7 @@ export async function generatePicsartI2v(input: {
         onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
       });
       console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=generation-complete job=${id}`);
-      if (!shouldExportPicsartI2v(input.model)) return rawResult;
-      input.onStatus?.('export');
-      console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=export-submit job=${id} ratio=${input.ratio ?? '9:16'}`);
-      const exportId = await submitPicsartI2vExport(credId, rawResult.url, input.ratio ?? '9:16');
-      console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=export-accepted job=${id} exportJob=${exportId}`);
-      const exported = await pollPicsartI2vExportResult(credId, exportId, {
-        onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
-      });
-      console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=export-complete job=${id} exportJob=${exportId}`);
-      return { ...rawResult, url: exported.url };
+      return rawResult;
     } catch (e: any) {
       // An accepted provider job must never be replayed. runWithAccount normally
       // fails over after PICSART_AUTH_DEAD, but at this point a second account

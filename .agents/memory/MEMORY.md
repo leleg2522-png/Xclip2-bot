@@ -1,8 +1,8 @@
 - [Leonardo AI i2v endpoint](leonardo-i2v.md) — correct image-to-video endpoint is /generations-image-to-video with model strings KLING2_1/KLING2_5; Kling 2.6 does not exist on Leonardo AI
 - [Picsart AI Playground internal API](picsart-ai-playground-api.md) — undocumented upload→submit→poll flow; auth is fragile browser session cookie (expires); HAR sanitizes cookies, use Copy-as-cURL
-- [Picsart Wan 3.0 video](picsart-wan3-video.md) — Wan 3.0 generates 480P then uses a separate verified 1080-width resize/export step.
-- [Picsart I2V 1080 delivery](picsart-i2v-1080-delivery.md) — selected I2V models generate natively, then deliver only after a separate 1080 export.
-- [Picsart PixVerse v6](picsart-pixverse-v6.md) — v6 uses a gateway-specific 360p/15s contract; ratio is determined by the cropped source frame.
+- [Picsart Wan 3.0 video](picsart-wan3-video.md) — Wan 3.0 delivers its native 480p result directly; no resize/export step.
+- [Picsart I2V native delivery](picsart-i2v-1080-delivery.md) — all separate export/upscale stages are disabled; deliver native results directly.
+- [Picsart PixVerse v6](picsart-pixverse-v6.md) — v6 delivers native 360p/15s; ratio is determined by the cropped source frame.
 - [Browser Use Cloud v2 proxy](browser-use-cloud-proxy.md) — "unusual activity" login block = proxy-region mismatch; set sessionSettings.proxyCountryCode to account's country (default proxy is US)
 - [Telegram bot self-hosted result links](telegram-bot-media-links.md) — big results bypass Telegram's ~50MB cap via /dl/:token on own Railway domain; storage is ephemeral tmpdir so links die on redeploy
 - [Picsart invite automation approach](picsart-invite-automation-approach.md) — cloud Browser Use proxies get "unusual activity" blocked; winning path is local-run on user's Windows PC via Surfshark + stealth Chrome
@@ -19,7 +19,7 @@
 - [Freebeat Windows Bridge](freebeat-windows-bridge.md) — legacy completion only; do not enqueue new public Seedance 2.5 orders.
 - [Public provider labels](public-provider-labels.md) — customer Telegram copy is model-led; provider and bridge names stay internal.
 - [Standalone Telegram bot package](telegram-bot-deps.md) — install the nested bot with pnpm --ignore-workspace before running its tests or build
-- [Gemini Omni model separation](gemini-omni-model-separation.md) — Omni 1.2 is a separate paid model; never replace or repoint the legacy Omni route.
-- [Picsart Veo 3.1 4K](picsart-veo31-4k.md) — public Veo 3.1 4K uses the Picsart Veo Lite gateway contract, then a separate hidden 4K preparation step.
-- [Picsart MiniMax H3](picsart-minimax-h3.md) — H3 Max uses the gateway I2V route; first frame is image_url, optional last frame is end_image_url, native HAR mode is 480p/15s.
+- [Gemini Omni model separation](gemini-omni-model-separation.md) — Omni 1.2 stays separate and delivers native 360p; never repoint the legacy route.
+- [Picsart Veo 3.1 Lite](picsart-veo31-4k.md) — Veo Lite delivers native 720p directly; no hidden 4K preparation.
+- [Picsart MiniMax H3](picsart-minimax-h3.md) — H3 Max delivers native 768p directly; first frame is image_url and optional last frame is end_image_url.
 - [Picsart Kling Omni](picsart-kling-omni.md) — verified I2V contract is Kling v3 Omni Standard, 9:16, 12s, native 720p with audio; completion uses result.url.
