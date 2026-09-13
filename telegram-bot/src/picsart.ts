@@ -1722,13 +1722,13 @@ export async function generateMinimaxH3ReferenceToVideo(input: {
 }
 
 
-// ─── Seedance 2.5 (ByteDance video: text + up to 5 reference images) ───────────
+// ─── Seedance 2.5 (ByteDance video: text + reference media) ───────────────────
 // POST /gw-v2/workflows/seedance/submit          -> {response:{id}}
 // poll GET /gw-v2/workflows/seedance/{id}/result -> COMPLETED, result.video_url
 // params: {model:"seedance_2_5", content:[{type:"image_url",image_url:{url},role:"reference_image"}..., {type:"text",text}],
 //          ratio:"9:16"|"16:9"|..., duration:15|30, resolution:"480p"|"720p", generate_audio, output_format:"mp4"}
 export const SEEDANCE_MODEL = 'seedance_2_5';
-export const SEEDANCE_MAX_REF_IMAGES = 5;
+export const SEEDANCE_MAX_REF_IMAGES = 10;
 export type SeedanceResolution = '480p' | '720p';
 // HAR options endpoint reports 120 credits for 480p/30s/audio and 210 credits
 // for 720p/30s/audio. Keep a small buffer before accepting a paid order.
@@ -1743,6 +1743,7 @@ export const ERR_INSUFFICIENT_CREDITS = 'PICSART_INSUFFICIENT_CREDITS';
 export async function submitSeedance(credId: number, input: {
   prompt: string;
   imageUrls: string[];
+  videoUrl?: string;
   duration: number; // 15 | 30
   ratio: string; // label mis. "9:16", "16:9"
   resolution?: SeedanceResolution; // default "480p"
@@ -1753,6 +1754,11 @@ export async function submitSeedance(credId: number, input: {
   const resolution = input.resolution || '480p';
   const generateAudio = input.generateAudio ?? true;
   const content: Array<Record<string, unknown>> = [
+    ...(input.videoUrl ? [{
+      type: 'video_url',
+      video_url: { url: input.videoUrl },
+      role: 'reference_video',
+    }] : []),
     ...input.imageUrls.map((url) => ({
       type: 'image_url',
       image_url: { url },
@@ -1782,6 +1788,7 @@ export async function submitSeedance(credId: number, input: {
             returnLastFrame: false,
             outputFormat: 'mp4',
             imageUrls: input.imageUrls,
+            ...(input.videoUrl ? { videoUrl: input.videoUrl } : {}),
           }),
           appId: 'com.picsart.ai-playground',
           appType: 'miniapp',
@@ -1852,11 +1859,12 @@ export async function pollSeedanceResult(
   throw diag.timeoutError();
 }
 
-// High-level orchestrator: upload up to 5 reference images -> submit -> poll -> result URL.
+// High-level orchestrator: upload up to 10 images and one optional reference video.
 export async function generateSeedance(input: {
   userId: number;
   prompt: string;
   images: Array<{ buffer: Buffer; name?: string; mime?: string }>;
+  video?: { buffer: Buffer; name?: string; mime?: string };
   duration: number; // 15 | 30
   ratio: string; // "9:16" | "16:9" | ...
   resolution?: SeedanceResolution; // default "480p"
@@ -1887,6 +1895,17 @@ export async function generateSeedance(input: {
       throw new Error(ERR_INSUFFICIENT_CREDITS);
     }
 
+    let videoUrl: string | undefined;
+    if (input.video) {
+      input.onStatus?.('upload');
+      videoUrl = await uploadFile(
+        credId,
+        input.video.buffer,
+        input.video.name || 'reference.mp4',
+        input.video.mime || 'video/mp4',
+        { gateway: true },
+      );
+    }
     const imgs = (input.images || []).slice(0, SEEDANCE_MAX_REF_IMAGES);
     const imageUrls: string[] = [];
     for (const img of imgs) {
@@ -1904,6 +1923,7 @@ export async function generateSeedance(input: {
     const id = await submitSeedance(credId, {
       prompt: input.prompt,
       imageUrls,
+      videoUrl,
       duration: input.duration,
       ratio: input.ratio,
       resolution: input.resolution,

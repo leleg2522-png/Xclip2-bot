@@ -1692,8 +1692,11 @@ interface Session {
   seedance2EditVideoMime?: string;
   seedance2EditImageFileId?: string;
   seedance2EditImageFileIds?: string[];
-  // Seedance 2.5 image wizard stores the Telegram file ID, not a bot-token download URL.
+  // Seedance 2.5 media wizard stores Telegram file IDs, not bot-token download URLs.
   oneoverImageUrl?: string;
+  seedance25ImageFileIds?: string[];
+  seedance25VideoFileId?: string;
+  seedance25VideoMime?: string;
   // Kling 2.1 Pro (10-second image-to-video) wizard state
   kling21ImageUrl?: string;
   // Chat AI wizard state (multi-turn conversation)
@@ -1834,6 +1837,7 @@ function generationDraftKindForContinuation(data: string): GenerationDraftKind |
   if (data.startsWith('seedance_edit_')) return 'picsart_i2v';
   if (data.startsWith('seedance_fast_edit_')) return 'picsart_i2v';
   if (data.startsWith('seedance_2_edit_')) return 'picsart_i2v';
+  if (data === 'seedance25_inputs_done') return 'oneover';
   if (data.startsWith('audio_voice_')) return 'audio';
   return undefined;
 }
@@ -4289,12 +4293,30 @@ bot.on('callback_query', async (ctx) => {
     setSession(userId, {
       mode: 'oneover_wait_image',
       oneoverImageUrl: undefined,
+      seedance25ImageFileIds: [],
+      seedance25VideoFileId: undefined,
+      seedance25VideoMime: undefined,
     });
     return ctx.editMessageText(
       `🌊 *Seedance 2.5 I2V 480p*\n\n` +
       `Durasi: *30 detik* • Rasio: *9:16* • Audio aktif\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_25_480)}* per video\n\n` +
-      '*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
+      `*Langkah 1:* Kirim hingga *${picsart.SEEDANCE_MAX_REF_IMAGES} gambar* dan/atau *1 video referensi*.\n` +
+      'Setelah selesai upload, tekan tombol lanjut.',
+      { parse_mode: 'Markdown', ...seedance25InputKeyboard() }
+    );
+  }
+
+  if (data === 'seedance25_inputs_done') {
+    const session = getSession(userId);
+    const imageCount = session.seedance25ImageFileIds?.length ?? 0;
+    if (session.mode !== 'oneover_wait_image' || (imageCount === 0 && !session.seedance25VideoFileId)) {
+      return ctx.reply('⚠️ Kirim minimal 1 gambar atau 1 video referensi terlebih dahulu.');
+    }
+    setSession(userId, { mode: 'oneover_wait_prompt' });
+    return ctx.editMessageText(
+      `✅ Referensi diterima: *${imageCount} gambar*${session.seedance25VideoFileId ? ' + *1 video*' : ''}.\n\n` +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu.',
       { parse_mode: 'Markdown' }
     );
   }
@@ -5335,6 +5357,12 @@ function picsartI2vAddPhotoKeyboard(count: number) {
   ]);
 }
 
+function seedance25InputKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('✅ Selesai Upload • Lanjut ke Prompt', 'seedance25_inputs_done')],
+  ]);
+}
+
 // Label model gambar berdasarkan session aktif (dipakai di beberapa langkah wizard).
 function imgLabelFor(userId: number): string {
   const model = getSession(userId).imgModel;
@@ -5566,11 +5594,25 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
 
   if (session.mode === 'oneover_wait_image') {
     if (!fileId) return ctx.reply('⚠️ Foto tidak bisa dibaca. Kirim ulang foto JPG atau PNG.');
-    setSession(userId, { oneoverImageUrl: fileId, mode: 'oneover_wait_prompt' });
+    const imageFileIds = [...(session.seedance25ImageFileIds ?? []), fileId]
+      .slice(0, picsart.SEEDANCE_MAX_REF_IMAGES);
+    const reachedLimit = imageFileIds.length >= picsart.SEEDANCE_MAX_REF_IMAGES;
+    setSession(userId, {
+      oneoverImageUrl: imageFileIds[0],
+      seedance25ImageFileIds: imageFileIds,
+      mode: 'oneover_wait_image',
+    });
+    if (reachedLimit) {
+      return ctx.reply(
+        `✅ ${picsart.SEEDANCE_MAX_REF_IMAGES} gambar acuan diterima (maksimal).\n\n` +
+        'Kirim 1 video referensi jika diperlukan, atau tekan tombol lanjut.',
+        { parse_mode: 'Markdown', ...seedance25InputKeyboard() }
+      );
+    }
     return ctx.reply(
-      '✅ Foto acuan diterima!\n\n' +
-      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
-      { parse_mode: 'Markdown' }
+      `✅ Gambar acuan ke-${imageFileIds.length} diterima.\n\n` +
+      `Kirim gambar berikutnya (maksimal ${picsart.SEEDANCE_MAX_REF_IMAGES}), kirim 1 video referensi, atau tekan tombol lanjut.`,
+      { parse_mode: 'Markdown', ...seedance25InputKeyboard() }
     );
   }
 
@@ -5743,6 +5785,22 @@ bot.on('video', async (ctx) => {
     return ctx.reply(
       '✅ Video diterima!\n\n*Langkah terakhir:* Kirim *file audio* (MP3, M4A, WAV, atau voice note) untuk sinkronisasi bibir.',
       { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'oneover_wait_image') {
+    if (vid.file_size && vid.file_size > MAX_VIDEO_BYTES) {
+      return ctx.reply(`❌ Video referensi terlalu besar (${(vid.file_size / 1024 / 1024).toFixed(1)} MB).\nMaksimal 19MB.`);
+    }
+    setSession(userId, {
+      seedance25VideoFileId: vid.file_id,
+      seedance25VideoMime: vid.mime_type || 'video/mp4',
+    });
+    const imageCount = session.seedance25ImageFileIds?.length ?? 0;
+    return ctx.reply(
+      `✅ Video referensi diterima${imageCount ? ` bersama ${imageCount} gambar` : ''}.\n\n` +
+      `Kirim gambar tambahan (maksimal ${picsart.SEEDANCE_MAX_REF_IMAGES}) atau tekan tombol lanjut.`,
+      { parse_mode: 'Markdown', ...seedance25InputKeyboard() }
     );
   }
 
@@ -6389,9 +6447,14 @@ bot.on('text', async (ctx) => {
     if (!session.dbUserId && !await requireLogin(ctx)) return;
     const activeDraft = getSession(userId);
     if (activeDraft.mode !== 'oneover_wait_prompt') return;
-    if (!activeDraft.dbUserId || !activeDraft.oneoverImageUrl) {
+    const imageFileIds = activeDraft.seedance25ImageFileIds?.length
+      ? activeDraft.seedance25ImageFileIds
+      : activeDraft.oneoverImageUrl
+        ? [activeDraft.oneoverImageUrl]
+        : [];
+    if (!activeDraft.dbUserId || (imageFileIds.length === 0 && !activeDraft.seedance25VideoFileId)) {
       setSession(userId, { mode: 'idle' });
-      return ctx.reply('⚠️ Foto acuan tidak ditemukan. Mulai lagi dari /menu.');
+      return ctx.reply('⚠️ Gambar atau video referensi tidak ditemukan. Mulai lagi dari /menu.');
     }
     const cooldownMs = getCooldownRemainingMs(userId);
     if (cooldownMs > 0) {
@@ -6400,22 +6463,40 @@ bot.on('text', async (ctx) => {
     }
     // This synchronous state transition is the claim for this input. A duplicate
     // Telegram update now sees idle and cannot create a second paid provider job.
-    const imageFileId = activeDraft.oneoverImageUrl;
     const dbUserId = activeDraft.dbUserId;
-    let imageUrl: string;
+    let imageUrls: string[];
+    let videoUrl: string | undefined;
     try {
-      imageUrl = (await bot.telegram.getFileLink(imageFileId)).href;
+      imageUrls = await Promise.all(
+        imageFileIds.map(async (fileId) => (await bot.telegram.getFileLink(fileId)).href)
+      );
+      videoUrl = activeDraft.seedance25VideoFileId
+        ? (await bot.telegram.getFileLink(activeDraft.seedance25VideoFileId)).href
+        : undefined;
     } catch (error: any) {
-      setSession(userId, { mode: 'idle', oneoverImageUrl: undefined });
-      console.error(`[${userId}] Seedance 2.5 image-link error:`, error?.message ?? error);
-      return ctx.reply('❌ Foto acuan tidak bisa dibaca. Mulai ulang dari /menu.');
+      setSession(userId, {
+        mode: 'idle',
+        oneoverImageUrl: undefined,
+        seedance25ImageFileIds: undefined,
+        seedance25VideoFileId: undefined,
+        seedance25VideoMime: undefined,
+      });
+      console.error(`[${userId}] Seedance 2.5 media-link error:`, error?.message ?? error);
+      return ctx.reply('❌ Gambar atau video referensi tidak bisa dibaca. Mulai ulang dari /menu.');
     }
-    setSession(userId, { mode: 'idle', oneoverImageUrl: undefined });
+    const videoMime = activeDraft.seedance25VideoMime;
+    setSession(userId, {
+      mode: 'idle',
+      oneoverImageUrl: undefined,
+      seedance25ImageFileIds: undefined,
+      seedance25VideoFileId: undefined,
+      seedance25VideoMime: undefined,
+    });
     const statusMsg = await ctx.reply(
       '⏳ Memproses Seedance 2.5 I2V 480p...\nHasil dikirim otomatis (biasanya 5–12 menit).',
       { parse_mode: 'Markdown' }
     );
-    runPicsartSeedance25(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, imageUrl)
+    runPicsartSeedance25(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, imageUrls, videoUrl, videoMime)
       .catch(e => console.error(`[${userId}] Seedance 2.5 Picsart error:`, e.message));
     return;
   }
@@ -6946,7 +7027,10 @@ bot.on('text', async (ctx) => {
     );
   }
   if (session.mode === 'oneover_wait_image') {
-    return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
+    return ctx.reply(
+      `📎 Kirim hingga *${picsart.SEEDANCE_MAX_REF_IMAGES} gambar* dan/atau *1 video referensi*, lalu tekan tombol lanjut.`,
+      { parse_mode: 'Markdown', ...seedance25InputKeyboard() }
+    );
   }
   if (session.mode === 'veofast_wait_image' || session.mode === 'veolite_wait_image' || session.mode === 'veo31_wait_image') {
     return ctx.reply('📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.', { parse_mode: 'Markdown' });
@@ -7714,7 +7798,9 @@ async function runPicsartSeedance25(
   dbUserId: number,
   statusMsgId: number,
   prompt: string,
-  imageUrl: string,
+  imageUrls: string[],
+  videoUrl?: string,
+  videoMime?: string,
 ) {
   const label = 'Seedance 2.5 I2V 480p';
   const settingsLabel = '9:16 · 30 detik · 480p · audio';
@@ -7729,17 +7815,28 @@ async function runPicsartSeedance25(
 
   try {
     stage = 'download';
-    const image = await downloadBuffer(imageUrl);
+    const images = await Promise.all(
+      imageUrls.slice(0, picsart.SEEDANCE_MAX_REF_IMAGES).map(async (imageUrl, index) => {
+        const image = await downloadBuffer(imageUrl);
+        return {
+          buffer: image.buf,
+          name: `seedance-reference-${index + 1}.${image.ext || 'jpg'}`,
+          mime: image.mime || 'image/jpeg',
+        };
+      })
+    );
+    const video = videoUrl ? await downloadBuffer(videoUrl) : undefined;
     stage = 'submit';
     let lastEdit = 0;
     const result = await picsart.generateSeedance({
       userId: dbUserId,
       prompt,
-      images: [{
-        buffer: image.buf,
-        name: `seedance-reference.${image.ext || 'jpg'}`,
-        mime: image.mime || 'image/jpeg',
-      }],
+      images,
+      video: video ? {
+        buffer: video.buf,
+        name: `seedance-video-reference.${video.ext || 'mp4'}`,
+        mime: videoMime || video.mime || 'video/mp4',
+      } : undefined,
       duration: 30,
       ratio: '9:16',
       resolution: '480p',
