@@ -5,17 +5,17 @@ description: Hidden Kling Motion variants, observed upstream routing, and fragil
 
 # Kling Motion variants = edanbot.digital (hidden)
 
-The Telegram bot's Kling Motion models are internally powered by **edanbot.digital**. The HAR-verified S4 variant shown to customers as **"Kling MC V3 PRO P2"** uses public model key `kling-motion-26-pro--secondary`; the existing P3 variant uses `kling-motion-26-pro`. Both resolve internally to Kling Motion 2.6 Pro.
+The Telegram bot's Kling Motion P2 and P3 models are internally powered by **edanbot.digital**. Both now submit the September 2026 HAR-verified public model key `kling-motion-26-pro`, which resolves internally to Kling Motion 2.6 Pro.
 
 **Hard rule:** never let any user-facing string (reply/caption/error/filename) leak `edanbot`/`roboneo`/`wavespeed`/`openart`/`meitu`/`meitudata`, and never send the raw `result_url` as a link — always re-upload bytes.
 
 ## Model variants
-- S4 / P2 uses public model key `kling-motion-26-pro--secondary`; P3 uses `kling-motion-26-pro`. Keep these keys distinct.
-- A September 2026 P3 HAR reported `provider: "wavespeed"` for `kling-motion-26-pro`; upstream routing is not fixed to Roboneo. Treat the job response as current evidence, not a permanent provider contract.
+- P2 and P3 both use public model key `kling-motion-26-pro`; the old `--secondary` P2 route is no longer used.
+- A September 2026 HAR reported `provider: "wavespeed"` for `kling-motion-26-pro`; upstream routing is not fixed to Roboneo. Treat the job response as current evidence, not a permanent provider contract.
 
-**Why:** A successful S4 HAR returned the secondary model key and the backend reports the primary and secondary keys as separate variants.
+**Why:** The user explicitly replaced both public P2 and P3 backends with the newly supplied HAR flow and model key.
 
-**How to apply:** When adding or repairing P2, submit the secondary key while retaining the primary key for P3; customer-facing text must not expose either key.
+**How to apply:** Submit `kling-motion-26-pro` for both P2 and P3 while preserving their separate public labels and prices; customer-facing text must not expose the key.
 
 ## API flow (single shared account)
 - Auth: `EDANBOT_COOKIE` secret. It is the value of a Flask **signed** `session=` cookie. Normalize: prepend `session=` if missing (users often paste only the value → 401 without the prefix).

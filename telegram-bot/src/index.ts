@@ -85,7 +85,7 @@ const telegramHttp = axios.create({ timeout: 60_000 });
 
 // Direct HTTP client untuk Kling MC V3.0 PRO P3 — TANPA proxy. Cookie session-nya
 // tidak terikat IP, dan lewat proxy Decodo malah kena 407 (proxy auth) di Railway.
-const edanbotHttp = axios.create({ timeout: 120_000 });
+const edanbotHttp = axios.create({ timeout: 120_000, proxy: false });
 const EDANBOT_JOB_TIMEOUT_MS = 20 * 60 * 1000;
 
 
@@ -165,7 +165,7 @@ const MODEL_PRICES = {
   chat: 100,           // Chat AI per pesan
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
   kling_p3: 3000,      // Kling MC V3.0 PRO P3 (Edanbot, kling-motion-26-pro)
-  kling_p2: 3500,      // Kling MC V3 PRO P2 (Edanbot, kling-motion-26-pro--secondary)
+  kling_p2: 3500,      // Kling MC V3 PRO P2 (same HAR-verified Edanbot backend)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
   veo_fast: 1500,      // Veo 3.1 Fast Full HD (SnapGen)
   veo_lite: 1500,      // Veo 3.1 Lite Full HD (SnapGen, with audio)
@@ -1650,7 +1650,7 @@ interface Session {
   characterUrl?: string;
   klingCharacterFileId?: string;
   klingVideoFileId?: string;
-  // Kling MC V3 PRO P2 wizard state (edanbot kling-motion-26-pro--secondary)
+  // Kling MC V3 PRO P2 wizard state (edanbot kling-motion-26-pro)
   characterUrlP2?: string;
   klingP2VideoFileId?: string;
   klingP2VideoDuration?: number;
@@ -7573,7 +7573,12 @@ async function uploadToEdanbot(cookie: string, buf: Buffer, filename: string, mi
   const form = new FormData();
   form.append('file', buf, { filename, contentType: mimeType });
   const res = await edanbotHttp.post('https://edanbot.digital/api/uploads', form, {
-    headers: { ...form.getHeaders(), cookie },
+    headers: {
+      ...form.getHeaders(),
+      cookie,
+      origin: 'https://edanbot.digital',
+      referer: 'https://edanbot.digital/dashboard',
+    },
   });
   const { url, asset } = res.data;
   return { url, name: asset.name, size: asset.size, type: asset.type };
@@ -7585,7 +7590,10 @@ async function pollEdanbotJob(cookie: string, jobId: string, maxMs = 600_000): P
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 10_000));
     const res = await edanbotHttp.get(`https://edanbot.digital/api/jobs/${jobId}`, {
-      headers: { cookie },
+      headers: {
+        cookie,
+        referer: 'https://edanbot.digital/dashboard',
+      },
     });
     const { status, result_url, error } = res.data;
     if (status !== lastStatus) { lastStatus = status; console.log(`[Edanbot] job ${jobId}: ${status} ${result_url || ''}`); }
@@ -7672,7 +7680,14 @@ async function runKlingEdanbot(
             character_orientation: 'video',
             keep_original_sound: true,
           },
-        }, { headers: { cookie, 'Content-Type': 'application/json' } });
+        }, {
+          headers: {
+            cookie,
+            'Content-Type': 'application/json',
+            origin: 'https://edanbot.digital',
+            referer: 'https://edanbot.digital/dashboard',
+          },
+        });
 
         const jobId: string = genRes.data?.job_id;
         if (!jobId) throw new Error(`EDANBOT_NO_JOB_ID: ${JSON.stringify(genRes.data).slice(0, 200)}`);
@@ -7766,7 +7781,7 @@ async function runKlingP2(
     prompt,
     {
       label: 'Kling MC V3 PRO P2',
-      model: 'kling-motion-26-pro--secondary',
+      model: 'kling-motion-26-pro',
       price: MODEL_PRICES.kling_p2,
     }
   );
