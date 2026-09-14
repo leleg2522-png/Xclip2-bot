@@ -1,16 +1,17 @@
 ---
-name: edanbot Kling Motion (hidden provider)
-description: Hidden Kling Motion variants, S4 model key, and fragile session-cookie auth
+name: edanbot Kling Motion (hidden suppliers)
+description: Hidden Kling Motion variants, observed upstream routing, and fragile session-cookie auth
 ---
 
 # Kling Motion variants = edanbot.digital (hidden)
 
 The Telegram bot's Kling Motion models are internally powered by **edanbot.digital**. The HAR-verified S4 variant shown to customers as **"Kling MC V3 PRO P2"** uses public model key `kling-motion-26-pro--secondary`; the existing P3 variant uses `kling-motion-26-pro`. Both resolve internally to Kling Motion 2.6 Pro.
 
-**Hard rule:** never let any user-facing string (reply/caption/error/filename) leak `edanbot`/`roboneo`/`meitu`/`meitudata`, and never send the raw `result_url` as a link — always re-upload bytes.
+**Hard rule:** never let any user-facing string (reply/caption/error/filename) leak `edanbot`/`roboneo`/`wavespeed`/`openart`/`meitu`/`meitudata`, and never send the raw `result_url` as a link — always re-upload bytes.
 
 ## Model variants
 - S4 / P2 uses public model key `kling-motion-26-pro--secondary`; P3 uses `kling-motion-26-pro`. Keep these keys distinct.
+- A September 2026 P3 HAR reported `provider: "wavespeed"` for `kling-motion-26-pro`; upstream routing is not fixed to Roboneo. Treat the job response as current evidence, not a permanent provider contract.
 
 **Why:** A successful S4 HAR returned the secondary model key and the backend reports the primary and secondary keys as separate variants.
 
