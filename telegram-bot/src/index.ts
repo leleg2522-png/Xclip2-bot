@@ -164,8 +164,8 @@ const MODEL_PRICES = {
   gemini_omni_12_4k: 4000,
   chat: 100,           // Chat AI per pesan
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
-  kling_p3: 3000,      // Kling MC V3.0 PRO P3 (Edanbot, kling-motion-26-pro)
-  kling_p2: 3500,      // Kling MC V3 PRO P2 (same HAR-verified Edanbot backend)
+  kling_p3: 4000,      // Kling MC V3.0 PRO P3 (Edanbot, kling-motion-26-pro)
+  kling_p2: 4000,      // Kling MC V3 PRO P2 (same HAR-verified Edanbot backend)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
   veo_fast: 1500,      // Veo 3.1 Fast Full HD (SnapGen)
   veo_lite: 1500,      // Veo 3.1 Lite Full HD (SnapGen, with audio)
@@ -4575,6 +4575,7 @@ bot.on('callback_query', async (ctx) => {
     setSession(userId, { mode: 'klingp3_wait_image', characterUrlP3: undefined, klingP3VideoFileId: undefined, klingP3VideoDuration: undefined });
     return ctx.editMessageText(
       `🎭 *Kling MC V3.0 PRO P3*\n\n` +
+      `Harga: *${formatRupiah(MODEL_PRICES.kling_p3)}* per video\n\n` +
       '*Langkah 1:* Kirim *foto karakter* yang ingin dianimasikan.\n\n' +
       '⚠️ *Syarat foto:*\n' +
       '• Tampilkan seluruh tubuh dari depan\n' +
