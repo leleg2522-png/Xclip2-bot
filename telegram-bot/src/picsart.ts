@@ -19,7 +19,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import axios from 'axios';
+import { createHash } from 'crypto';
 import FormData from 'form-data';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import sharp from 'sharp';
 import type { Pool, QueryResult, QueryResultRow } from 'pg';
 
@@ -34,7 +36,26 @@ const DEVICE_ID = process.env.PICSART_DEVICE_ID || "a.c.mq6gtspz.7f0f162c-5ab2-4
 const USER_AGENT = process.env.PICSART_UA ||
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
 
-const http = axios.create({ timeout: 120_000 });
+// Route every Picsart HTTPS request through the private VPS proxy when its
+// secret is configured. The proxy itself stores only this deterministic,
+// URL-safe derivative, never the Replit secret's original value.
+const PICSART_PROXY_SECRET = process.env.PICSART_VPS_PROXY_PASSWORD?.trim();
+const picsartProxyAgent = PICSART_PROXY_SECRET
+  ? new HttpsProxyAgent(
+      `http://${encodeURIComponent(process.env.PICSART_VPS_PROXY_USER || 'picsart_proxy')}:` +
+      `${createHash('sha256').update(PICSART_PROXY_SECRET).digest('hex').slice(0, 32)}@` +
+      `${process.env.PICSART_VPS_PROXY_HOST || '157.230.35.95'}:` +
+      `${process.env.PICSART_VPS_PROXY_PORT || '3128'}`
+    )
+  : undefined;
+
+const http = axios.create({
+  timeout: 120_000,
+  proxy: false,
+  ...(picsartProxyAgent
+    ? { httpAgent: picsartProxyAgent, httpsAgent: picsartProxyAgent }
+    : {}),
+});
 
 // Picsart returns any 2xx (e.g. 200 OK or 201 Created) on success.
 const ok2xx = (s: number) => s >= 200 && s < 300;

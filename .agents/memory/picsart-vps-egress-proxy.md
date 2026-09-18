@@ -1,0 +1,20 @@
+---
+name: Picsart VPS egress proxy
+description: Durable security and deployment rules for routing Picsart traffic through the private VPS proxy
+---
+
+# Picsart VPS egress proxy
+
+**Rule:** Route only the Picsart client through the authenticated HTTPS CONNECT proxy. Keep Telegram, Edanbot, ByteDance Upscaler, and unrelated providers on their existing network paths.
+
+**Why:** The proxy is a dedicated Picsart egress path. Applying it globally would couple unrelated providers to one VPS and could break routes that intentionally require direct connections.
+
+**How to apply:** The bot derives a URL-safe proxy credential from `PICSART_VPS_PROXY_PASSWORD`; configure the same secret in every runtime that hosts the bot. Replit Secrets do not automatically propagate to Railway.
+
+**Rule:** Never reuse the VPS root password as the proxy password, and rotate any credential pasted into chat before use.
+
+**Why:** Proxy credentials are used frequently by the application and should not grant administrative access to the VPS.
+
+**How to apply:** Store root and proxy credentials separately in secret managers. The VPS proxy accepts authenticated HTTPS CONNECT traffic on port 3128 and does not proxy plain HTTP.
+
+**Compatibility note:** Tinyproxy is used because the installed Squid NCSA helper rejected password hashes that Apache's own verifier accepted. Tinyproxy stores only a deterministic SHA-256-derived proxy credential, not the original secret.
