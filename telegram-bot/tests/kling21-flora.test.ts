@@ -8,7 +8,7 @@ assert.match(source, /Markup\.button\.callback\('🎬 Kling 2\.1 Pro \(10 detik\
 assert.match(source, /mode:\s*'kling21_wait_image'/);
 assert.match(source, /mode:\s*'kling21_wait_prompt'/);
 const runnerStart = source.indexOf('async function runKling21Pro');
-const runnerEnd = source.indexOf('\n// ─── Background: Flora image generation', runnerStart);
+const runnerEnd = source.indexOf('\n// ─── Background: Kling 2.1 P2', runnerStart);
 const runner = source.slice(runnerStart, runnerEnd);
 assert.match(runner, /model:\s*'kling_v21_pro'/);
 assert.match(runner, /priceKey:\s*'kling_21_pro'/);
