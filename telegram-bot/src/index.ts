@@ -888,12 +888,14 @@ async function floraUploadAsset(
     maxBodyLength: Infinity,
   });
 
-  // 3. Complete upload
-  await floraHttp.post(`${FLORA_BASE}/assets/${asset_id}/complete`, {}, {
+  // 3. Complete upload. Prefer the finalized URL returned by Flora because
+  // some providers validate the completed asset rather than the reservation
+  // URL returned before the multipart upload.
+  const completeRes = await floraHttp.post(`${FLORA_BASE}/assets/${asset_id}/complete`, {}, {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
 
-  return assetUrl;
+  return completeRes.data?.url || assetUrl;
 }
 
 async function floraUploadVideo(apiKey: string, workspaceId: string, buf: Buffer, name: string): Promise<string> {
@@ -9802,6 +9804,11 @@ async function runKling21P2(
   let refund = true;
   try {
     const image = await downloadBuffer(imageUrl);
+    const normalizedImage = await sharp(image.buf)
+      .rotate()
+      .flatten({ background: '#ffffff' })
+      .jpeg({ quality: 95 })
+      .toBuffer();
 
     for (let attempt = 0; attempt < 5; attempt++) {
       const apiKey = await getNextFloraKey(skippedKeys);
@@ -9827,9 +9834,9 @@ async function runKling21P2(
         const uploadedImageUrl = await floraUploadImage(
           apiKey,
           ws.workspaceId,
-          image.buf,
-          `kling-reference-${Date.now()}.${image.ext}`,
-          image.mime
+          normalizedImage,
+          `kling-reference-${Date.now()}.jpg`,
+          'image/jpeg'
         );
 
         await bot.telegram.editMessageText(
@@ -9841,8 +9848,8 @@ async function runKling21P2(
         acceptedRunId = await floraGenerate(
           apiKey,
           ws,
-          'f2v-kling-2.5-pro',
-          { image_urls: [uploadedImageUrl], duration: '10' },
+          'i2v-kling-2.5',
+          { image_url: uploadedImageUrl, duration: '10' },
           prompt,
           'video'
         );
@@ -9864,7 +9871,7 @@ async function runKling21P2(
           refund = false;
           markGenSuccess(userId);
           await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-          console.log(`[${userId}] ${LABEL} done — internal model f2v-kling-2.5-pro run ${acceptedRunId}`);
+          console.log(`[${userId}] ${LABEL} done — internal model i2v-kling-2.5 run ${acceptedRunId}`);
         }
         return;
       } catch (err: any) {

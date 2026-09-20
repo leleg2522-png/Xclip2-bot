@@ -11,7 +11,7 @@ description: Working call format for Flora AI generate/upload, key-pool behavior
 - Base: `https://app.flora.ai/api/v1`, auth `Bearer sk_live_...` per akun (1 akun = 1 workspace sendiri).
 - Flora API 2.18.0 memakai field top-level `model` untuk endpoint ID dari `GET /models`, bukan `model_id`. `model_id` dapat diabaikan sehingga workspace default yang berjalan dan params model tujuan ditolak.
 - Model motion control: `iv2v-kling-2.6-motion` (mixed-to-video).
-- Kling 2.5 Turbo Pro first-frame route saat ini = `f2v-kling-2.5-pro`, params `{ image_urls: [url], duration: '5'|'10' }`. Pada 20 September 2026, `i2v-kling-2.5` + `image_url` selalu ditolak sebelum run dengan HTTP 400 `input_validation_error: Server Error`.
+- Kling 2.5 satu-foto I2V = `i2v-kling-2.5` with `{ image_url, duration: '5'|'10' }`; live capability says `image-to-video`. Do not use `f2v-kling-2.5-pro` for one photo: it is `first-last-frame-to-video` and expects `image_urls`.
 - Kling 2.1 Pro i2v = model `f2v-kling-2.1-pro` (first-frame-to-video): `params: { image_url, duration: '5'|'10' }` — terverifikasi jalan, output 10.04s. TIDAK ada model `i2v-kling-2.1-pro`; `i2v-kling-2.1` = Master. Submit TANPA image_url tetap diterima (charged $0.45) lalu failed GENERATION_INPUT_VALIDATION saat run — validasi input baru terjadi di run, bukan submit.
 - `GET /models` (butuh Bearer key) = daftar lengkap model_id + params resmi — selalu cek ini dulu sebelum nebak model id.
 - Untuk katalog UI, ambil `/models?type=image` per akun lalu cocokkan nama tampilan katalog dengan respons live dan simpan `model_id` hasilnya di sesi; jangan bentuk ID dari nama tampilan.
