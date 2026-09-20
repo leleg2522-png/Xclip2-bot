@@ -257,7 +257,7 @@ async function loadCredential(credId: number): Promise<CredRow | null> {
 // Uncategorized accounts (pool IS NULL, i.e. all pre-existing accounts) are a
 // WILDCARD: they match every pool request, so routing never starves them.
 export type PicsartPool = 'p500' | 'p100';
-export const KLING_MOTION_CONTROL_POOL: PicsartPool = 'p100';
+export const KLING_MOTION_CONTROL_POOL: PicsartPool = 'p500';
 
 // Pick the account for a user (sticky 1-user-1-account, now PER pool key).
 //  • If the user already has an assignment for this pool to an available,

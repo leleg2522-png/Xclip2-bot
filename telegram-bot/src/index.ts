@@ -193,7 +193,7 @@ const MODEL_PRICES = {
   picsart_seedance_25_480: 11000, // Public Seedance 2.5 native gateway, 480p
   oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
-  kling_21_p2: 3000,   // Public Kling 2.1 P2; Flora i2v-kling-2.5 backend
+  kling_21_p2: 3000,   // Public Kling 2.1 P2; Flora Kling 2.5 first-frame backend
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
 
@@ -9841,8 +9841,8 @@ async function runKling21P2(
         acceptedRunId = await floraGenerate(
           apiKey,
           ws,
-          'i2v-kling-2.5',
-          { image_url: uploadedImageUrl, duration: '10' },
+          'f2v-kling-2.5-pro',
+          { image_urls: [uploadedImageUrl], duration: '10' },
           prompt,
           'video'
         );
@@ -9864,7 +9864,7 @@ async function runKling21P2(
           refund = false;
           markGenSuccess(userId);
           await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-          console.log(`[${userId}] ${LABEL} done — internal model i2v-kling-2.5 run ${acceptedRunId}`);
+          console.log(`[${userId}] ${LABEL} done — internal model f2v-kling-2.5-pro run ${acceptedRunId}`);
         }
         return;
       } catch (err: any) {

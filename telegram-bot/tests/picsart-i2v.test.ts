@@ -140,7 +140,7 @@ assert.deepEqual(buildVeo31LiteParams({
     durationSeconds: 8,
   },
 });
-assert.equal(KLING_MOTION_CONTROL_POOL, 'p100');
+assert.equal(KLING_MOTION_CONTROL_POOL, 'p500');
 assert.equal(PICSART_I2V_MODELS.seedance_2_mini.pool, 'p500');
 assert.equal(PICSART_I2V_MODELS.seedance_2_fast.pool, 'p500');
 assert.equal(PICSART_I2V_MODELS.seedance_2.pool, 'p500');

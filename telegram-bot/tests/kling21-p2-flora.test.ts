@@ -14,8 +14,8 @@ const runnerEnd = source.indexOf('\n// ─── Background: Gemini Omni Flash 1
 assert.ok(runnerStart > 0 && runnerEnd > runnerStart, 'Kling 2.1 P2 runner block missing');
 const runner = source.slice(runnerStart, runnerEnd);
 
-assert.match(runner, /'i2v-kling-2\.5'/);
-assert.match(runner, /\{\s*image_url:\s*uploadedImageUrl,\s*duration:\s*'10'\s*\}/);
+assert.match(runner, /'f2v-kling-2\.5-pro'/);
+assert.match(runner, /\{\s*image_urls:\s*\[uploadedImageUrl\],\s*duration:\s*'10'\s*\}/);
 assert.match(runner, /const PRICE = MODEL_PRICES\.kling_21_p2/);
 assert.match(runner, /beginCharge\(dbUserId, PRICE, 3\)/);
 assert.match(runner, /floraUploadImage/);
