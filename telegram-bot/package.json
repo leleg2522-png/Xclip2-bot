@@ -9,6 +9,7 @@
     "test:picsart-i2v": "tsx tests/picsart-i2v.test.ts",
     "test:kling21": "tsx tests/kling21-flora.test.ts",
     "test:kling21p2": "tsx tests/kling21-p2-flora.test.ts",
+    "test:gomni11flora": "tsx tests/gemini-omni-11-flora.test.ts",
     "test:klingp2": "tsx tests/kling-p2-s4.test.ts",
     "test:floraimage": "tsx tests/flora-image-generation.test.ts",
     "test:lipsync": "tsx tests/lipsync.test.ts",

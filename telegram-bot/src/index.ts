@@ -162,6 +162,7 @@ const MODEL_PRICES = {
   gemini_omni: 2500,
   gemini_omni_12: 3500,
   gemini_omni_12_4k: 4000,
+  gemini_omni_11_flora: 3000,
   chat: 100,           // Chat AI per pesan
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
   kling_p3: 4000,      // Kling MC V3.0 PRO P3 (Edanbot, kling-motion-26-pro)
@@ -1609,6 +1610,9 @@ type Mode =
   | 'kling21_wait_prompt'
   | 'kling21p2_wait_image'
   | 'kling21p2_wait_prompt'
+  | 'gomni11_flora_wait_ratio'
+  | 'gomni11_flora_wait_image'
+  | 'gomni11_flora_wait_prompt'
   | 'topaz_wait_video'
   | 'bytedance_upscale_wait_video'
   | 'img_wait_image'
@@ -1637,7 +1641,8 @@ type GenerationDraftKind =
   | 'audio'
   | 'topaz'
   | 'bytedance_upscale'
-  | 'kling21p2';
+  | 'kling21p2'
+  | 'gomni11_flora';
 
 interface Session {
   mode: Mode;
@@ -1762,6 +1767,9 @@ interface Session {
   kling21ImageUrl?: string;
   // Public Kling 2.1 P2 (Flora Kling 2.5, 10-second image-to-video) wizard state
   kling21P2ImageUrl?: string;
+  // Flora Gemini Omni Flash 1.1 (10-second 1080p image-to-video) wizard state
+  gomni11FloraRatio?: '9:16' | '16:9';
+  gomni11FloraImageUrl?: string;
   // Chat AI wizard state (multi-turn conversation)
   chatModel?: string;
   chatHistory?: Array<{ role: string; content: string }>;
@@ -1852,6 +1860,7 @@ const GENERATION_DRAFT_MODES = new Set<Mode>([
   'oneover_wait_image', 'oneover_wait_prompt',
   'kling21_wait_image', 'kling21_wait_prompt',
   'kling21p2_wait_image', 'kling21p2_wait_prompt',
+  'gomni11_flora_wait_ratio', 'gomni11_flora_wait_image', 'gomni11_flora_wait_prompt',
   'topaz_wait_video', 'bytedance_upscale_wait_video',
   'img_wait_image', 'img_wait_prompt',
 ]);
@@ -1867,6 +1876,7 @@ function generationDraftKindForStart(data: string): GenerationDraftKind | undefi
     mode_klingp3: 'klingp3',
     mode_kling21: 'kling21',
     mode_kling21p2: 'kling21p2',
+    mode_gomni11_flora: 'gomni11_flora',
     mode_oneover_seedance25: 'oneover',
     mode_seedance_mini_edit: 'picsart_i2v',
     mode_seedance_fast_edit: 'picsart_i2v',
@@ -2361,6 +2371,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🌀 Wan 3.0 480p • 30 detik', 'mode_pi2v_wan_v3')],
     [Markup.button.callback('🎬 Kling 2.1 Pro (10 detik)', 'mode_kling21')],
     [Markup.button.callback('🎬 Kling 2.1 P2 (10 detik)', 'mode_kling21p2')],
+    [Markup.button.callback('✨ Gemini Omni Flash 1.1 • 10 detik • 1080p', 'mode_gomni11_flora')],
     [Markup.button.callback('🚀 Runway Gen-4.5', 'mode_rw')],
     [Markup.button.callback('🎥 Sora 2 (OpenAI)', 'mode_sora')],
     [Markup.button.callback('⚡ Veo 3.1 Fast (Full HD)', 'mode_veofast')],
@@ -2899,6 +2910,7 @@ function hargaText(): string {
     `• PixVerse v6 (15 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling 2.1 Pro (10 detik) — ${formatRupiah(MODEL_PRICES.kling_21_pro)}\n` +
     `• Kling 2.1 P2 (10 detik) — ${formatRupiah(MODEL_PRICES.kling_21_p2)}\n` +
+    `• Gemini Omni Flash 1.1 (10 detik · 1080p) — ${formatRupiah(MODEL_PRICES.gemini_omni_11_flora)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +
     `• Kling MC V3.0 PRO P3 — ${formatRupiah(MODEL_PRICES.kling_p3)} 🔥PROMO\n` +
@@ -4155,6 +4167,45 @@ bot.on('callback_query', async (ctx) => {
       `🎬 *Kling 2.1 P2 (10 detik)*\n\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.kling_21_p2)}* per video\n\n` +
       '*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data === 'mode_gomni11_flora') {
+    if (!await requireLogin(ctx)) return;
+    setSession(userId, {
+      mode: 'gomni11_flora_wait_ratio',
+      gomni11FloraRatio: undefined,
+      gomni11FloraImageUrl: undefined,
+    });
+    return ctx.editMessageText(
+      `✨ *Gemini Omni Flash 1.1*\n\n` +
+      `Image to Video · *10 detik* · *1080p*\n` +
+      `Harga: *${formatRupiah(MODEL_PRICES.gemini_omni_11_flora)}* per video\n\n` +
+      '*Langkah 1:* Pilih rasio video:',
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [
+            Markup.button.callback('📱 9:16', 'go11f_ratio_916'),
+            Markup.button.callback('🖥️ 16:9', 'go11f_ratio_169'),
+          ],
+          [Markup.button.callback('« Kembali', 'back_main')],
+        ]),
+      }
+    );
+  }
+
+  if (data === 'go11f_ratio_916' || data === 'go11f_ratio_169') {
+    const ratio: '9:16' | '16:9' = data === 'go11f_ratio_916' ? '9:16' : '16:9';
+    setSession(userId, {
+      mode: 'gomni11_flora_wait_image',
+      gomni11FloraRatio: ratio,
+      gomni11FloraImageUrl: undefined,
+    });
+    return ctx.editMessageText(
+      `✨ *Gemini Omni Flash 1.1*\n\nRasio: *${ratio}* · 10 detik · 1080p\n\n` +
+      '*Langkah 2:* Kirim *foto acuan* untuk video kamu.',
       { parse_mode: 'Markdown' }
     );
   }
@@ -5760,6 +5811,15 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     );
   }
 
+  if (session.mode === 'gomni11_flora_wait_image') {
+    setSession(userId, { gomni11FloraImageUrl: fileUrl, mode: 'gomni11_flora_wait_prompt' });
+    return ctx.reply(
+      `✅ Foto acuan diterima! (Rasio: ${session.gomni11FloraRatio ?? '16:9'})\n\n` +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (session.mode === 'sora_wait_image') {
     setSession(userId, { soraImageUrl: fileUrl, mode: 'sora_wait_prompt' });
     return ctx.reply(
@@ -6699,6 +6759,38 @@ bot.on('text', async (ctx) => {
     );
     runKling21P2(ctx.chat.id, userId, dbUserId, statusMsg.message_id, imageUrl, prompt)
       .catch(e => console.error(`[${userId}] Kling 2.1 P2 error:`, e.message));
+    return;
+  }
+
+  // ── Gemini Omni Flash 1.1 (Flora, 10-second 1080p image-to-video) prompt ──
+  if (session.mode === 'gomni11_flora_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) {
+      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
+    }
+    if (!session.gomni11FloraImageUrl) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply('⚠️ Foto acuan tidak ditemukan. Mulai lagi dari /menu.');
+    }
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle', gomni11FloraImageUrl: undefined });
+      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+    }
+    const imageUrl = session.gomni11FloraImageUrl;
+    const ratio = session.gomni11FloraRatio ?? '16:9';
+    const dbUserId = session.dbUserId!;
+    setSession(userId, {
+      mode: 'idle',
+      gomni11FloraImageUrl: undefined,
+      gomni11FloraRatio: undefined,
+    });
+    const statusMsg = await ctx.reply(
+      `⏳ Memproses Gemini Omni Flash 1.1 (${ratio} · 10 detik · 1080p)...\nHasil dikirim otomatis.`
+    );
+    runGeminiOmni11Flora(ctx.chat.id, userId, dbUserId, statusMsg.message_id, imageUrl, prompt, ratio)
+      .catch(e => console.error(`[${userId}] Gemini Omni Flash 1.1 error:`, e.message));
     return;
   }
 
@@ -9768,6 +9860,148 @@ async function runKling21P2(
 
         // A run ID means the upstream job may already be billable. Never submit
         // it again with another key; refund the user instead.
+        if (acceptedRunId) {
+          if (isFloraKeyExhaustedError(desc)) await markFloraKeyDead(apiKey).catch(() => {});
+          const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
+          const friendly = contentRejected
+            ? '❌ Input tidak dapat diproses karena melanggar kebijakan konten.'
+            : '❌ Proses video tidak berhasil. Saldo akan dikembalikan.';
+          await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
+            .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+          return;
+        }
+
+        if (isFloraKeyExhaustedError(desc)) {
+          await markFloraKeyDead(apiKey).catch(() => {});
+          skippedKeys.add(apiKey);
+          continue;
+        }
+
+        const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
+        const friendly = contentRejected
+          ? '❌ Input tidak dapat diproses karena melanggar kebijakan konten.'
+          : '❌ Gagal memproses video. Coba lagi nanti.';
+        await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
+          .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+        return;
+      }
+    }
+  } catch (err: any) {
+    console.error(`[${userId}] ${LABEL} outer error: ${describeError(err)}`);
+    await bot.telegram.editMessageText(
+      chatId,
+      statusMsgId,
+      undefined,
+      '❌ Gagal memproses video. Coba lagi nanti.\n\n/menu untuk coba lagi'
+    ).catch(() => bot.telegram.sendMessage(chatId, '❌ Gagal memproses video. Coba lagi nanti.\n\n/menu untuk coba lagi'));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
+// ─── Background: Gemini Omni Flash 1.1 (Flora, 1080p I2V) ───────────────────
+
+async function runGeminiOmni11Flora(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  imageUrl: string,
+  prompt: string,
+  ratio: '9:16' | '16:9'
+) {
+  const LABEL = 'Gemini Omni Flash 1.1';
+  const PRICE = MODEL_PRICES.gemini_omni_11_flora;
+  const skippedKeys = new Set<string>();
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+
+  let refund = true;
+  try {
+    const image = await downloadBuffer(imageUrl);
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const apiKey = await getNextFloraKey(skippedKeys);
+      if (!apiKey) {
+        await bot.telegram.editMessageText(
+          chatId,
+          statusMsgId,
+          undefined,
+          '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.\n\n/menu untuk kembali'
+        ).catch(() => {});
+        return;
+      }
+
+      let acceptedRunId: string | undefined;
+      try {
+        const ws = await floraGetWorkspace(apiKey);
+        await bot.telegram.editMessageText(
+          chatId,
+          statusMsgId,
+          undefined,
+          `⏳ ${LABEL}: mengunggah foto... (1/3)`
+        ).catch(() => {});
+        const uploadedImageUrl = await floraUploadImage(
+          apiKey,
+          ws.workspaceId,
+          image.buf,
+          `gemini-omni-reference-${Date.now()}.${image.ext}`,
+          image.mime
+        );
+
+        await bot.telegram.editMessageText(
+          chatId,
+          statusMsgId,
+          undefined,
+          `⏳ ${LABEL}: mengirim perintah... (2/3)`
+        ).catch(() => {});
+        acceptedRunId = await floraGenerate(
+          apiKey,
+          ws,
+          'i2v-gengateway-omni-1-1-flash-gg',
+          {
+            image_urls: [uploadedImageUrl],
+            aspect_ratio: ratio,
+            resolution: '1080p',
+            duration: '10',
+          },
+          prompt,
+          'video'
+        );
+
+        await bot.telegram.editMessageText(
+          chatId,
+          statusMsgId,
+          undefined,
+          `⏳ ${LABEL}: video sedang dibuat... (3/3)\nOutput 1080p · 10 detik. Hasil dikirim otomatis.`
+        ).catch(() => {});
+        const resultUrl = await floraPollRun(apiKey, acceptedRunId, 20 * 60 * 1000);
+        const delivered = await sendResult(
+          chatId,
+          resultUrl,
+          `✨ ${LABEL} (${ratio} · 10 detik · 1080p)\n\n/menu untuk buat lagi`,
+          true
+        );
+        if (delivered) {
+          refund = false;
+          markGenSuccess(userId);
+          await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+          console.log(`[${userId}] ${LABEL} done — internal run ${acceptedRunId}`);
+        }
+        return;
+      } catch (err: any) {
+        const desc = describeError(err);
+        console.error(`[${userId}] ${LABEL} attempt ${attempt + 1} failed (key …${apiKey.slice(-8)}): ${desc}`);
+
+        // Once a run is accepted it may already be billable. Never submit a
+        // second upstream job; refund the customer instead.
         if (acceptedRunId) {
           if (isFloraKeyExhaustedError(desc)) await markFloraKeyDead(apiKey).catch(() => {});
           const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
