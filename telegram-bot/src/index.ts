@@ -809,6 +809,19 @@ function isFloraKeyExhaustedError(raw: string): boolean {
     || lower.includes('billing');
 }
 
+function isFloraRetryablePreSubmitError(raw: string): boolean {
+  const lower = raw.toLowerCase();
+  return lower.includes('server error')
+    || lower.includes('internal server error')
+    || lower.includes('status code 500')
+    || lower.includes('status code 502')
+    || lower.includes('status code 503')
+    || lower.includes('status code 504')
+    || lower.includes('econnreset')
+    || lower.includes('etimedout')
+    || lower.includes('socket hang up');
+}
+
 interface FloraWorkspace { workspaceId: string; projectId: string; }
 const floraWorkspaceCache = new Map<string, FloraWorkspace>();
 
@@ -9877,6 +9890,15 @@ async function runKling21P2(
           continue;
         }
 
+        // Flora sometimes wraps an upstream/provider outage as HTTP 400
+        // input_validation_error with the generic message "Server Error".
+        // No run ID exists yet, so trying another account cannot duplicate a
+        // billable generation.
+        if (isFloraRetryablePreSubmitError(desc)) {
+          skippedKeys.add(apiKey);
+          continue;
+        }
+
         const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
         const friendly = contentRejected
           ? '❌ Input tidak dapat diproses karena melanggar kebijakan konten.'
@@ -9886,6 +9908,12 @@ async function runKling21P2(
         return;
       }
     }
+    await bot.telegram.editMessageText(
+      chatId,
+      statusMsgId,
+      undefined,
+      '❌ Layanan model ini sedang mengalami gangguan. Saldo akan dikembalikan.\n\n/menu untuk coba lagi'
+    ).catch(() => {});
   } catch (err: any) {
     console.error(`[${userId}] ${LABEL} outer error: ${describeError(err)}`);
     await bot.telegram.editMessageText(

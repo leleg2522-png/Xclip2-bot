@@ -10,7 +10,7 @@ assert.match(source, /mode:\s*'kling21p2_wait_prompt'/);
 assert.match(source, /Harga: \*\$\{formatRupiah\(MODEL_PRICES\.kling_21_p2\)\}\*/);
 
 const runnerStart = source.indexOf('async function runKling21P2');
-const runnerEnd = source.indexOf('\n// ─── Background: Flora image generation', runnerStart);
+const runnerEnd = source.indexOf('\n// ─── Background: Gemini Omni Flash 1.1', runnerStart);
 assert.ok(runnerStart > 0 && runnerEnd > runnerStart, 'Kling 2.1 P2 runner block missing');
 const runner = source.slice(runnerStart, runnerEnd);
 
@@ -22,6 +22,7 @@ assert.match(runner, /floraUploadImage/);
 assert.match(runner, /floraGenerate/);
 assert.match(runner, /floraPollRun\(apiKey, acceptedRunId, 20 \* 60 \* 1000\)/);
 assert.match(runner, /if \(acceptedRunId\)[\s\S]*return;/);
+assert.match(runner, /isFloraRetryablePreSubmitError\(desc\)/);
 assert.match(runner, /if \(refund\)[\s\S]*addSaldo\(dbUserId, PRICE\)/);
 assert.equal(runner.includes('Flora AI'), false, 'provider name must not appear in customer-facing runner text');
 

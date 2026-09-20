@@ -51,5 +51,6 @@ description: Working call format for Flora AI generate/upload, key-pool behavior
 ## Perilaku key/akun
 - **Klaim "1 API key = 1 task" TERBUKTI SALAH**: 1 key free menerima 4 task ($0.471 flat/video), termasuk 2 berjalan paralel — semuanya sukses.
 - **Tidak ada endpoint saldo credits** di API publik — satu-satunya sinyal key habis adalah error saat submit (401/402/403/insufficient). Run yang failed karena validasi tetap tercatat charged.
+- Flora kadang membungkus gangguan upstream sebagai HTTP 400 `input_validation_error` dengan pesan generik `Server Error`. Jika belum ada `run_id`, aman mencoba key lain; setelah ada `run_id`, jangan pernah resubmit.
 - Bot XclipAI pakai pool `flora_key_pool` (clone pola leonardo_key_pool) dengan rotasi round-robin; **why:** user pakai banyak akun free sekali pakai, key mati dideteksi dari error submit, bukan cek saldo.
 - **How to apply:** klasifikasi error key-dead harus ketat — hanya FLORA_AUTH/SUBMIT/UPLOAD failure dengan sinyal 401/402/403/quota; FLORA_RUN_FAILED = error konten, jangan matikan key.
