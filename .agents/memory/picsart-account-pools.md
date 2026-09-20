@@ -14,18 +14,18 @@ Accounts are split by their **current credit balance AT ADD-TIME** (owner's expl
 - **NULL pool = wildcard**: a legacy NULL account matches *every* pool request (`pool = $req OR pool IS NULL`). This is a deliberate backward-compat transition policy so routing never starves the ~259 pre-existing uncategorized accounts. Downside accepted: a legacy account that is actually tier-500 can still be consumed by p100 requests until it is (re)categorized.
 - New accounts are inserted with provisional `pool='p100'` (NOT null), so a NEW account whose categorization API call fails stays scoped to p100 instead of becoming an all-pools wildcard. The wildcard exception is for legacy rows only.
 
-**Model → pool routing:** Kling Motion Control Picsart, Gemini Omni 1.2, all Seedance 2 variants, and all Wan models = p500. Kling Omni, Runway, and Sora = p100. Kling P2/P3 bridge routes use their own pool.
+**Model → pool routing:** Kling Motion Control Picsart = any pool (p100, p500, or legacy NULL). Gemini Omni 1.2, all Seedance 2 variants, and all Wan models = p500. Kling Omni, Runway, and Sora = p100. Kling P2/P3 bridge routes use their own pool.
 
-**Why:** the owner explicitly requested that Kling Motion Control Picsart, Gemini Omni Flash 1.2, all Seedance 2 variants, and all Wan models consume only premium p500 accounts.
+**Why:** the owner explicitly requested that Kling Motion Control Picsart may use both 5–100 and 500-credit accounts. Premium video routes remain restricted to p500.
 
-**How to apply:** use p500 for Kling Motion Control Picsart, Gemini Omni 1.2, every Seedance 2 route, and both Wan model routes. Keep Kling Omni/Runway/Sora on p100 and bridge routes separate.
+**How to apply:** use unrestricted routing for Kling Motion Control Picsart; use p500 for Gemini Omni 1.2, every Seedance 2 route, and both Wan model routes. Keep Kling Omni/Runway/Sora on p100 and bridge routes separate.
 
 **p500 excludes legacy wildcards**: `acquireAccount` only picks `c.pool = 'p500'` accounts for p500 requests — legacy NULL-pool accounts are excluded. This prevents old ~50-credit accounts from being assigned to expensive models. NULL wildcards still apply for null and p100 pool requests.
 
 **Why:** user buys from two sellers delivering different credit tiers and wants to manage credit per generation-model.
 
 ## Sticky assignment is per (user_id, pool)
-`picsart_user_accounts` PK migrated from `user_id` to composite `(user_id, pool)`. A user can hold one sticky account per pool key (`'p100'` for Runway/Sora and `'p500'` for Kling Motion Control Picsart and premium routes). Legacy rows default to pool `'any'`.
+`picsart_user_accounts` PK migrated from `user_id` to composite `(user_id, pool)`. A user can hold one sticky account per pool key (`'p100'`, `'p500'`, or `'any'`; Kling Motion Control Picsart uses `'any'`). Legacy rows default to pool `'any'`.
 
 **Migration must be one-time & guarded**, not repeated DDL on every boot. The guard reads the live PK columns from `pg_index`/`pg_attribute` and only DROP/ADD the PK when it isn't already `user_id,pool`. Repeated DROP/ADD PRIMARY KEY on every startup takes an exclusive lock, rebuilds the unique index, and can interleave/fail across concurrent bot instances.
 
