@@ -23,6 +23,7 @@ assert.match(runner, /floraGenerate/);
 assert.match(runner, /floraPollRun\(apiKey, acceptedRunId, 20 \* 60 \* 1000\)/);
 assert.match(runner, /if \(acceptedRunId\)[\s\S]*return;/);
 assert.match(runner, /isFloraRetryablePreSubmitError\(desc\)/);
+assert.match(runner, /setTimeout\(resolve,\s*3_000\)/);
 assert.match(runner, /if \(refund\)[\s\S]*addSaldo\(dbUserId, PRICE\)/);
 assert.equal(runner.includes('Flora AI'), false, 'provider name must not appear in customer-facing runner text');
 

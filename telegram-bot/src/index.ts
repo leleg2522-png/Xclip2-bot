@@ -9895,7 +9895,7 @@ async function runKling21P2(
         // No run ID exists yet, so trying another account cannot duplicate a
         // billable generation.
         if (isFloraRetryablePreSubmitError(desc)) {
-          skippedKeys.add(apiKey);
+          await new Promise(resolve => setTimeout(resolve, 3_000));
           continue;
         }
 
