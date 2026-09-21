@@ -19,9 +19,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import axios from 'axios';
-import { createHash } from 'crypto';
 import FormData from 'form-data';
-import { HttpsProxyAgent } from 'https-proxy-agent';
 import sharp from 'sharp';
 import type { Pool, QueryResult, QueryResultRow } from 'pg';
 
@@ -36,34 +34,9 @@ const DEVICE_ID = process.env.PICSART_DEVICE_ID || "a.c.mq6gtspz.7f0f162c-5ab2-4
 const USER_AGENT = process.env.PICSART_UA ||
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
 
-// Route every Picsart HTTPS request through the private VPS proxy when its
-// secret is configured. The proxy itself stores only this deterministic,
-// URL-safe derivative, never the Replit secret's original value.
-const PICSART_PROXY_SECRET = process.env.PICSART_VPS_PROXY_PASSWORD?.trim();
-const picsartProxyAgent = PICSART_PROXY_SECRET
-  ? new HttpsProxyAgent(
-      `http://${encodeURIComponent(process.env.PICSART_VPS_PROXY_USER || 'picsart_proxy')}:` +
-      `${createHash('sha256').update(PICSART_PROXY_SECRET).digest('hex').slice(0, 32)}@` +
-      `${process.env.PICSART_VPS_PROXY_HOST || '168.144.141.146'}:` +
-      `${process.env.PICSART_VPS_PROXY_PORT || '3129'}`
-    )
-  : undefined;
-
-const picsartFallbackProxyAgent = PICSART_PROXY_SECRET
-  ? new HttpsProxyAgent(
-      `http://${encodeURIComponent(process.env.PICSART_VPS_PROXY_USER || 'picsart_proxy')}:` +
-      `${createHash('sha256').update(PICSART_PROXY_SECRET).digest('hex').slice(0, 32)}@` +
-      `${process.env.PICSART_VPS_FALLBACK_HOST || '157.230.35.95'}:` +
-      `${process.env.PICSART_VPS_FALLBACK_PORT || '3129'}`
-    )
-  : undefined;
-
 const http = axios.create({
   timeout: 120_000,
   proxy: false,
-  ...(picsartProxyAgent
-    ? { httpAgent: picsartProxyAgent, httpsAgent: picsartProxyAgent }
-    : {}),
 });
 
 // Picsart returns any 2xx (e.g. 200 OK or 201 Created) on success.
@@ -703,9 +676,6 @@ export async function uploadFile(
     fd.append('file', buf, { filename, contentType });
     fd.append('type', 'editing-temp');
     try {
-      const uploadAgent = attempt === 2 && picsartFallbackProxyAgent
-        ? picsartFallbackProxyAgent
-        : picsartProxyAgent;
       const r = await http.post(`${UPLOAD_BASE}/v2/files`, fd, {
         headers: commonHeaders({
           ...fd.getHeaders(),
@@ -718,13 +688,10 @@ export async function uploadFile(
             : {}),
         }),
         // Motion-control driver videos can take longer than the client's
-        // 120-second default when sent through the VPS proxy.
+        // 120-second default on slower network paths.
         timeout: 300_000,
         maxBodyLength: Infinity,
         maxContentLength: Infinity,
-        ...(uploadAgent
-          ? { httpAgent: uploadAgent, httpsAgent: uploadAgent }
-          : {}),
         validateStatus: () => true,
       });
       const url = r.data?.response?.url;
@@ -738,8 +705,8 @@ export async function uploadFile(
         || /ETIMEDOUT|ECONNRESET|EPIPE|socket hang up|timeout/i.test(msg);
       if (attempt < 2 && transient) {
         console.log(
-          `[picsart:upload] ${filename} primary VPS attempt failed; ` +
-          `retrying once through the backup VPS: ${msg}`
+          `[picsart:upload] ${filename} direct attempt failed; ` +
+          `retrying once directly from Railway: ${msg}`
         );
         await new Promise((resolve) => setTimeout(resolve, 2_000));
         continue;
