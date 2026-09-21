@@ -19,8 +19,8 @@ description: Durable security and deployment rules for routing Picsart traffic t
 
 **Compatibility note:** Squid is the primary proxy because it is more reliable for multipart uploads. Its NCSA password file must be generated from the same deterministic SHA-256-derived credential used by the bot. Never add a direct-upload fallback: all Picsart traffic must retain VPS egress.
 
-**Rule:** Keep Squid egress pinned to the VPS IPv4 address; do not allow automatic IPv6 selection for Picsart/Cloudflare endpoints.
+**Rule:** Keep IPv6 disabled at kernel level on the dedicated Picsart proxy VPS; Squid configuration and resolver preference alone do not prevent IPv6 Cloudflare tunnels.
 
-**Why:** Squid intermittently selected Cloudflare IPv6 destinations and production upload/poll tunnels ended with `socket hang up`. Pinning `tcp_outgoing_address` to the VPS IPv4 produced 50/50 successful TLS tunnels, all on IPv4, plus two successful 25 MB uploads.
+**Why:** Squid still selected Cloudflare IPv6 destinations despite `tcp_outgoing_address` and `/etc/gai.conf`; production upload/poll tunnels then ended with `socket hang up`. Kernel-level IPv6 disable produced 50/50 successful TLS tunnels and two successful 25 MB uploads, all on IPv4.
 
-**How to apply:** Preserve the Squid IPv4 outgoing-address rule and the Linux IPv4 resolver preference when editing proxy networking. After changes, verify the `HIER_DIRECT` address family in Squid access logs, not just HTTP success.
+**How to apply:** Preserve `/etc/sysctl.d/99-picsart-ipv4-only.conf`, the Squid IPv4 outgoing-address rule, and resolver preference. After changes or reboot, verify both sysctl disable flags and the `HIER_DIRECT` address family in Squid access logs.
