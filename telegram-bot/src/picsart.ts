@@ -44,7 +44,7 @@ const picsartProxyAgent = PICSART_PROXY_SECRET
   ? new HttpsProxyAgent(
       `http://${encodeURIComponent(process.env.PICSART_VPS_PROXY_USER || 'picsart_proxy')}:` +
       `${createHash('sha256').update(PICSART_PROXY_SECRET).digest('hex').slice(0, 32)}@` +
-      `${process.env.PICSART_VPS_PROXY_HOST || '157.230.35.95'}:` +
+      `${process.env.PICSART_VPS_PROXY_HOST || '168.144.141.146'}:` +
       `${process.env.PICSART_VPS_PROXY_PORT || '3129'}`
     )
   : undefined;
