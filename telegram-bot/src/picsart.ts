@@ -678,29 +678,50 @@ export async function uploadFile(
   options?: { gateway?: boolean },
 ): Promise<string> {
   const access = await getAccessToken(credId);
-  const fd = new FormData();
-  fd.append('file', buf, { filename, contentType });
-  fd.append('type', 'editing-temp');
-  const r = await http.post(`${UPLOAD_BASE}/v2/files`, fd, {
-    headers: commonHeaders({
-      ...fd.getHeaders(),
-      authorization: `Bearer ${access}`,
-      ...(options?.gateway
-        ? {
-            'x-app-authorization': X_APP_AUTHORIZATION,
-            'x-sub-package-id': 'subscription_pro_monthly',
-          }
-        : {}),
-    }),
-    maxBodyLength: Infinity,
-    maxContentLength: Infinity,
-    validateStatus: () => true,
-  });
-  const url = r.data?.response?.url;
-  if (!ok2xx(r.status) || !url) {
-    throw new Error(`PICSART_UPLOAD_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 200)}`);
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    // FormData streams cannot be safely reused after a failed request, so build
+    // a fresh body for the one allowed pre-submit retry.
+    const fd = new FormData();
+    fd.append('file', buf, { filename, contentType });
+    fd.append('type', 'editing-temp');
+    try {
+      const r = await http.post(`${UPLOAD_BASE}/v2/files`, fd, {
+        headers: commonHeaders({
+          ...fd.getHeaders(),
+          authorization: `Bearer ${access}`,
+          ...(options?.gateway
+            ? {
+                'x-app-authorization': X_APP_AUTHORIZATION,
+                'x-sub-package-id': 'subscription_pro_monthly',
+              }
+            : {}),
+        }),
+        // Motion-control driver videos can take longer than the client's
+        // 120-second default when sent through the VPS proxy.
+        timeout: 300_000,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+        validateStatus: () => true,
+      });
+      const url = r.data?.response?.url;
+      if (!ok2xx(r.status) || !url) {
+        throw new Error(`PICSART_UPLOAD_FAILED ${filename} status ${r.status}: ${JSON.stringify(r.data).slice(0, 200)}`);
+      }
+      return url;
+    } catch (e: any) {
+      const msg = String(e?.message ?? e);
+      const transient = e?.code === 'ECONNABORTED'
+        || /ETIMEDOUT|ECONNRESET|EPIPE|socket hang up|timeout/i.test(msg);
+      if (attempt < 2 && transient) {
+        console.warn(`[picsart:upload] ${filename} attempt ${attempt} timed out; retrying once: ${msg}`);
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        continue;
+      }
+      if (msg.includes('PICSART_UPLOAD_FAILED')) throw e;
+      throw new Error(`PICSART_UPLOAD_FAILED ${filename}: ${msg}`);
+    }
   }
-  return url;
+  throw new Error(`PICSART_UPLOAD_FAILED ${filename}: retry exhausted`);
 }
 
 export async function submitKlingMotionControl(credId: number, input: {
