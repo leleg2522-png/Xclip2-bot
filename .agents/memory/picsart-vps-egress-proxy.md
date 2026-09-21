@@ -17,6 +17,12 @@ description: Durable security and deployment rules for routing Picsart traffic t
 
 **How to apply:** Store root and proxy credentials separately in secret managers. The primary Squid proxy runs on the Premium Intel VPS at `168.144.141.146:3129` and accepts authenticated HTTPS CONNECT traffic only. The previous VPS is rollback-only.
 
+**Rule:** Use the previous VPS as the upload-only transient fallback, never a direct Railway-to-Picsart fallback.
+
+**Why:** Even healthy IPv4 Cloudflare tunnels may occasionally close with `socket hang up`. Retrying through an independent VPS path avoids repeating the same network fault while preserving Railway IP isolation.
+
+**How to apply:** First upload attempt uses the Premium VPS; one safe pre-submit retry uses the previous VPS. Submit and polling remain on the primary VPS, and no post-submit request may create a second paid job.
+
 **Compatibility note:** Squid is the primary proxy because it is more reliable for multipart uploads. Its NCSA password file must be generated from the same deterministic SHA-256-derived credential used by the bot. Never add a direct-upload fallback: all Picsart traffic must retain VPS egress.
 
 **Rule:** Keep IPv6 disabled at kernel level on the dedicated Picsart proxy VPS; Squid configuration and resolver preference alone do not prevent IPv6 Cloudflare tunnels.
