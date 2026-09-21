@@ -45,7 +45,7 @@ const picsartProxyAgent = PICSART_PROXY_SECRET
       `http://${encodeURIComponent(process.env.PICSART_VPS_PROXY_USER || 'picsart_proxy')}:` +
       `${createHash('sha256').update(PICSART_PROXY_SECRET).digest('hex').slice(0, 32)}@` +
       `${process.env.PICSART_VPS_PROXY_HOST || '157.230.35.95'}:` +
-      `${process.env.PICSART_VPS_PROXY_PORT || '3128'}`
+      `${process.env.PICSART_VPS_PROXY_PORT || '3129'}`
     )
   : undefined;
 
@@ -55,14 +55,6 @@ const http = axios.create({
   ...(picsartProxyAgent
     ? { httpAgent: picsartProxyAgent, httpsAgent: picsartProxyAgent }
     : {}),
-});
-
-// Uploads are safe to send directly as a fallback: they only create temporary
-// media and do not submit a billable generation. Keep API/refresh/poll traffic
-// on the VPS, but avoid failing users when the proxy tunnel drops mid-upload.
-const directUploadHttp = axios.create({
-  timeout: 300_000,
-  proxy: false,
 });
 
 // Picsart returns any 2xx (e.g. 200 OK or 201 Created) on success.
@@ -702,8 +694,7 @@ export async function uploadFile(
     fd.append('file', buf, { filename, contentType });
     fd.append('type', 'editing-temp');
     try {
-      const uploadClient = attempt === 2 && picsartProxyAgent ? directUploadHttp : http;
-      const r = await uploadClient.post(`${UPLOAD_BASE}/v2/files`, fd, {
+      const r = await http.post(`${UPLOAD_BASE}/v2/files`, fd, {
         headers: commonHeaders({
           ...fd.getHeaders(),
           authorization: `Bearer ${access}`,
@@ -732,8 +723,8 @@ export async function uploadFile(
         || /ETIMEDOUT|ECONNRESET|EPIPE|socket hang up|timeout/i.test(msg);
       if (attempt < 2 && transient) {
         console.log(
-          `[picsart:upload] ${filename} proxy attempt failed; ` +
-          `retrying once via direct upload: ${msg}`
+          `[picsart:upload] ${filename} Squid attempt failed; ` +
+          `retrying once through the VPS: ${msg}`
         );
         await new Promise((resolve) => setTimeout(resolve, 2_000));
         continue;

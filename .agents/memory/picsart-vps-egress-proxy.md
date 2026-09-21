@@ -15,6 +15,6 @@ description: Durable security and deployment rules for routing Picsart traffic t
 
 **Why:** Proxy credentials are used frequently by the application and should not grant administrative access to the VPS.
 
-**How to apply:** Store root and proxy credentials separately in secret managers. The VPS proxy accepts authenticated HTTPS CONNECT traffic on port 3128 and does not proxy plain HTTP.
+**How to apply:** Store root and proxy credentials separately in secret managers. Squid accepts authenticated HTTPS CONNECT traffic on port 3129 and does not proxy plain HTTP. Tinyproxy remains temporarily available on 3128 for rollback only.
 
-**Compatibility note:** Tinyproxy is used because the installed Squid NCSA helper rejected password hashes that Apache's own verifier accepted. Tinyproxy stores only a deterministic SHA-256-derived proxy credential, not the original secret.
+**Compatibility note:** Squid is the primary proxy because it is more reliable for multipart uploads. Its NCSA password file must be generated from the same deterministic SHA-256-derived credential used by the bot. Never add a direct-upload fallback: all Picsart traffic must retain VPS egress.
