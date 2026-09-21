@@ -18,3 +18,9 @@ description: Durable security and deployment rules for routing Picsart traffic t
 **How to apply:** Store root and proxy credentials separately in secret managers. Squid accepts authenticated HTTPS CONNECT traffic on port 3129 and does not proxy plain HTTP. Tinyproxy remains temporarily available on 3128 for rollback only.
 
 **Compatibility note:** Squid is the primary proxy because it is more reliable for multipart uploads. Its NCSA password file must be generated from the same deterministic SHA-256-derived credential used by the bot. Never add a direct-upload fallback: all Picsart traffic must retain VPS egress.
+
+**Rule:** Keep Squid egress pinned to the VPS IPv4 address; do not allow automatic IPv6 selection for Picsart/Cloudflare endpoints.
+
+**Why:** Squid intermittently selected Cloudflare IPv6 destinations and production upload/poll tunnels ended with `socket hang up`. Pinning `tcp_outgoing_address` to the VPS IPv4 produced 50/50 successful TLS tunnels, all on IPv4, plus two successful 25 MB uploads.
+
+**How to apply:** Preserve the Squid IPv4 outgoing-address rule and the Linux IPv4 resolver preference when editing proxy networking. After changes, verify the `HIER_DIRECT` address family in Squid access logs, not just HTTP success.
