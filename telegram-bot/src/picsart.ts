@@ -60,6 +60,15 @@ const http = axios.create({
 // Picsart returns any 2xx (e.g. 200 OK or 201 Created) on success.
 const ok2xx = (s: number) => s >= 200 && s < 300;
 
+function isTransientPicsartNetworkError(error: unknown): boolean {
+  const e = error as any;
+  const msg = String(e?.message ?? error ?? '');
+  return e?.code === 'ECONNABORTED'
+    || e?.code === 'ECONNRESET'
+    || e?.code === 'ETIMEDOUT'
+    || /socket hang up|before secure TLS connection|network socket disconnected|EPIPE|timeout/i.test(msg);
+}
+
 // Poll diagnostics: melacak status HTTP terakhir selama polling supaya
 // PICSART_TIMEOUT membawa konteks (bukan cuma "timeout" tanpa penjelasan).
 // Juga fail-fast kalau polling terus-menerus kena 401/403 (akun/token mati)
@@ -783,11 +792,21 @@ export async function pollKlingResult(
   const diag = new PollDiag();
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((res) => setTimeout(res, intervalMs));
-    const access = await getAccessToken(credId);
-    const r = await http.get(`${API_BASE}/workflows/kling-motion-control/${id}/result`, {
-      headers: commonHeaders({ authorization: `Bearer ${access}` }),
-      validateStatus: () => true,
-    });
+    let r;
+    try {
+      const access = await getAccessToken(credId);
+      r = await http.get(`${API_BASE}/workflows/kling-motion-control/${id}/result`, {
+        headers: commonHeaders({ authorization: `Bearer ${access}` }),
+        validateStatus: () => true,
+      });
+    } catch (error) {
+      if (!isTransientPicsartNetworkError(error)) throw error;
+      console.log(
+        `[picsart:poll] Kling Motion Control transient network error; ` +
+        `continuing poll ${i + 1}/${maxAttempts}: ${String((error as any)?.message ?? error)}`
+      );
+      continue;
+    }
     if (!diag.note(r)) continue;
     const resp = r.data?.response;
     const status = String(resp?.status ?? '').toUpperCase();
@@ -2589,23 +2608,33 @@ async function pollPicsartI2vResult(
   for (let i = 0; i < cfg.pollAttempts; i++) {
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
     opts?.onTick?.(Date.now() - start);
-    const access = await getAccessToken(credId);
     const usesGateway = model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni';
     const workflowBase = usesGateway
       ? `${API_BASE}/gw-v2/workflows/${cfg.workflowPath}`
       : `${API_BASE}/workflows/${cfg.workflowPath}`;
-    const r = await http.get(`${workflowBase}/${id}/result`, {
-      headers: commonHeaders({
-        authorization: `Bearer ${access}`,
-        ...(usesGateway
-          ? {
-              'x-app-authorization': X_APP_AUTHORIZATION,
-              'x-sub-package-id': 'subscription_pro_monthly',
-            }
-          : {}),
-      }),
-      validateStatus: () => true,
-    });
+    let r;
+    try {
+      const access = await getAccessToken(credId);
+      r = await http.get(`${workflowBase}/${id}/result`, {
+        headers: commonHeaders({
+          authorization: `Bearer ${access}`,
+          ...(usesGateway
+            ? {
+                'x-app-authorization': X_APP_AUTHORIZATION,
+                'x-sub-package-id': 'subscription_pro_monthly',
+              }
+            : {}),
+        }),
+        validateStatus: () => true,
+      });
+    } catch (error) {
+      if (!isTransientPicsartNetworkError(error)) throw error;
+      console.log(
+        `[picsart-i2v:poll] model=${model} transient network error; ` +
+        `continuing poll ${i + 1}/${cfg.pollAttempts}: ${String((error as any)?.message ?? error)}`
+      );
+      continue;
+    }
     const ok = diag.note(r);
     if (!ok) {
       const topStatus = String((r.data as any)?.status ?? '').toLowerCase();
