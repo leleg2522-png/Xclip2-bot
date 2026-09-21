@@ -20,6 +20,7 @@
 
 import axios from 'axios';
 import FormData from 'form-data';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import sharp from 'sharp';
 import type { Pool, QueryResult, QueryResultRow } from 'pg';
 
@@ -34,9 +35,30 @@ const DEVICE_ID = process.env.PICSART_DEVICE_ID || "a.c.mq6gtspz.7f0f162c-5ab2-4
 const USER_AGENT = process.env.PICSART_UA ||
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
 
+const DECODO_PROXY_USERNAME = process.env.DECODO_PROXY_USERNAME?.trim();
+const DECODO_PROXY_PASSWORD = process.env.DECODO_PROXY_PASSWORD?.trim();
+if (!DECODO_PROXY_USERNAME || !DECODO_PROXY_PASSWORD) {
+  throw new Error(
+    'DECODO_PROXY_CONFIG_MISSING: DECODO_PROXY_USERNAME dan DECODO_PROXY_PASSWORD wajib diisi; ' +
+    'Picsart direct egress sengaja dinonaktifkan'
+  );
+}
+
+function createDecodoProxyAgent(port: string): HttpsProxyAgent<string> {
+  return new HttpsProxyAgent(
+    `http://${encodeURIComponent(DECODO_PROXY_USERNAME!)}:` +
+    `${encodeURIComponent(DECODO_PROXY_PASSWORD!)}@` +
+    `${process.env.DECODO_PROXY_HOST || 'isp.decodo.com'}:${port}`
+  );
+}
+
+const decodoPrimaryAgent = createDecodoProxyAgent(process.env.DECODO_PROXY_PORT || '10001');
+
 const http = axios.create({
   timeout: 120_000,
   proxy: false,
+  httpAgent: decodoPrimaryAgent,
+  httpsAgent: decodoPrimaryAgent,
 });
 
 // Picsart returns any 2xx (e.g. 200 OK or 201 Created) on success.
@@ -705,8 +727,8 @@ export async function uploadFile(
         || /ETIMEDOUT|ECONNRESET|EPIPE|socket hang up|timeout/i.test(msg);
       if (attempt < 2 && transient) {
         console.log(
-          `[picsart:upload] ${filename} direct attempt failed; ` +
-          `retrying once directly from Railway: ${msg}`
+          `[picsart:upload] ${filename} Decodo ISP attempt failed; ` +
+          `retrying once through the same static ISP IP: ${msg}`
         );
         await new Promise((resolve) => setTimeout(resolve, 2_000));
         continue;

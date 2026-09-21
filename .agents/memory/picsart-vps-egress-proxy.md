@@ -1,12 +1,12 @@
 ---
-name: Picsart direct egress
-description: Decision to connect Picsart directly from Railway instead of through retained VPS proxies
+name: Picsart Decodo ISP egress
+description: Rules for hiding Railway behind static Decodo ISP proxy endpoints
 ---
 
-# Picsart direct egress
+# Picsart Decodo ISP egress
 
-**Rule:** Connect all Picsart refresh, upload, submit, and poll requests directly from Railway. Do not attach either retained VPS proxy to the Picsart HTTP client.
+**Rule:** Route every Picsart refresh, upload, submit, and poll request through the static Decodo ISP proxy. Fail closed when Decodo credentials are missing; never silently expose Railway with direct egress.
 
-**Why:** Both proxy paths produced intermittent `socket hang up` failures in production. The user explicitly accepted that Picsart can see Railway's egress IP in exchange for removing the proxy dependency.
+**Why:** Self-hosted VPS CONNECT tunnels were intermittently reset, while direct Railway egress exposed the hosting IP. Decodo's ISP endpoints provide managed intermediary IPs without the VPS tunnel dependency.
 
-**How to apply:** Keep `proxy: false` with no custom proxy agents. Safe pre-submit upload retries and safe GET polling retries remain enabled, but both attempts use direct Railway egress. The VPS servers may remain available administratively but are not application fallbacks.
+**How to apply:** Use one stable Decodo endpoint for all accounts and all retries; do not rotate ports. Safe pre-submit upload retries reuse the same ISP IP. Never resubmit because a poll failed. Credentials belong only in runtime secrets.
