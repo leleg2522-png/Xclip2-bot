@@ -264,8 +264,8 @@ async function deductSaldo(dbUserId: number, amount: number): Promise<boolean> {
   return (res.rowCount ?? 0) > 0;
 }
 
-// Bonus referral: pengundang dapat 10% dari SETIAP top-up user undangannya,
-// langsung masuk saldo utama. Anti-dobel via UNIQUE(order_id) di referral_bonuses.
+// Bonus referral: pengundang dapat 10% hanya dari TOP-UP PERTAMA user
+// undangannya, langsung masuk saldo utama.
 const REFERRAL_RATE = 0.10;
 
 // Tambah/kembalikan saldo (top-up sukses ATAU refund saat generate gagal).
@@ -345,6 +345,23 @@ async function ensureBalanceSchema(): Promise<void> {
       amount      BIGINT NOT NULL,
       created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS referral_first_topup_claims (
+      referred_id INTEGER PRIMARY KEY,
+      order_id    TEXT NOT NULL UNIQUE,
+      claimed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  // Users who already produced any historical referral bonus have already
+  // consumed their one-time first-top-up bonus. Preserve old bonus history
+  // while preventing all future top-ups from paying another commission.
+  await db.query(`
+    INSERT INTO referral_first_topup_claims (referred_id, order_id, claimed_at)
+    SELECT DISTINCT ON (referred_id) referred_id, order_id, created_at
+      FROM referral_bonuses
+     ORDER BY referred_id, created_at ASC, id ASC
+    ON CONFLICT (referred_id) DO NOTHING
   `);
 
   // One-time cutover credit — di-guard pakai bot_migrations biar TAK PERNAH
@@ -441,20 +458,25 @@ async function markTopupPaidAndCredit(
       [row.db_user_id, row.amount]
     );
 
-    // Bonus referral 10% ke pengundang — dalam transaksi yang sama biar atomik.
-    // UNIQUE(order_id) menjamin bonus per order cuma sekali walau ada balapan.
+    // Bonus referral 10% hanya untuk top-up pertama user undangan. Klaim dan
+    // pembayaran bonus berada dalam transaksi yang sama agar atomik.
     let referral: { referrerTelegramId: number | null; bonus: number } | null = null;
     const ref = await client.query(`SELECT referred_by FROM users WHERE id = $1`, [row.db_user_id]);
     const referrerId = ref.rows[0]?.referred_by;
     if (referrerId && Number(referrerId) !== Number(row.db_user_id)) {
       const bonus = Math.floor(Number(row.amount) * REFERRAL_RATE);
       if (bonus > 0) {
-        const ins = await client.query(
-          `INSERT INTO referral_bonuses (referrer_id, referred_id, order_id, amount)
-           VALUES ($1, $2, $3, $4) ON CONFLICT (order_id) DO NOTHING RETURNING id`,
-          [referrerId, row.db_user_id, orderId, bonus]
+        const claim = await client.query(
+          `INSERT INTO referral_first_topup_claims (referred_id, order_id)
+           VALUES ($1, $2) ON CONFLICT (referred_id) DO NOTHING RETURNING referred_id`,
+          [row.db_user_id, orderId]
         );
-        if ((ins.rowCount ?? 0) > 0) {
+        if ((claim.rowCount ?? 0) > 0) {
+          await client.query(
+            `INSERT INTO referral_bonuses (referrer_id, referred_id, order_id, amount)
+             VALUES ($1, $2, $3, $4)`,
+            [referrerId, row.db_user_id, orderId, bonus]
+          );
           const r2 = await client.query(
             `UPDATE users SET saldo = saldo + $2 WHERE id = $1 RETURNING telegram_id`,
             [referrerId, bonus]
@@ -3174,7 +3196,7 @@ async function buildReferralView(ctx: any) {
   ]);
   const text =
     `🎁 Program Referral\n\n` +
-    `Ajak teman pakai link di bawah. Setiap mereka top-up, kamu dapat bonus 10% dari nominalnya — langsung masuk saldo, berlaku selamanya.\n\n` +
+    `Ajak teman pakai link di bawah. Saat mereka melakukan top-up pertama, kamu dapat bonus 10% dari nominalnya — langsung masuk saldo.\n\n` +
     `🔗 Link kamu:\n${link}\n\n` +
     `👥 Teman diundang: ${cnt.rows[0]?.n ?? 0}\n` +
     `💰 Total bonus diterima: ${formatRupiah(Number(sum.rows[0]?.total ?? 0))}`;
@@ -4010,7 +4032,7 @@ bot.help((ctx) => {
     '*Perintah:*\n' +
     '/start — Menu utama\n' +
     '/menu — Tampilkan menu\n' +
-    '/referral — Ajak teman, dapat bonus 10% tiap mereka top-up\n' +
+    '/referral — Ajak teman, dapat bonus 10% dari top-up pertama\n' +
     '/cancel — Batalkan proses\n\n' +
     '*🕹️ Kling Motion Control:*\n' +
     '• Transfer gerakan dari video referensi ke karakter dengan kualitas sinematik\n' +
