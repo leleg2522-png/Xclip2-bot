@@ -7806,7 +7806,7 @@ async function runKlingEdanbot(
     price: number;
   } = {
     label: 'Kling MC V3.0 PRO P3',
-    model: 'kling-motion-26-pro',
+    model: 'kling-motion-26-pro--secondary',
     price: MODEL_PRICES.kling_p3,
   }
 ) {
@@ -7969,7 +7969,7 @@ async function runKlingP2(
     prompt,
     {
       label: 'Kling MC V3 PRO P2',
-      model: 'kling-motion-26-pro',
+      model: 'kling-motion-26-pro--secondary',
       price: MODEL_PRICES.kling_p2,
     }
   );
