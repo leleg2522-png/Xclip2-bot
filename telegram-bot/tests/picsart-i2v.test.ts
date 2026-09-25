@@ -181,6 +181,7 @@ assert.deepEqual(buildGeminiOmni12Params({
 
 const expectedModels = [
   'ltx_pro',
+  'ltx_fast',
   'creatify_boreal',
   'seedance_2_mini',
   'seedance_2_fast',
@@ -207,6 +208,55 @@ assert.equal(PICSART_I2V_MAX_IMAGES, 5);
 assert.equal(PICSART_I2V_MODELS.ltx_pro.workflowPath, 'lightricks/ltx-2.5/image-to-video/pro');
 assert.equal(PICSART_I2V_MODELS.ltx_pro.pollWorkflowPath, 'lightricks/ltx-2.5/text-to-video/pro');
 assert.equal(PICSART_I2V_MODELS.ltx_pro.pool, null);
+assert.equal(PICSART_I2V_MODELS.ltx_fast.workflowPath, 'lightricks/ltx-2.5/image-to-video/fast');
+assert.equal(PICSART_I2V_MODELS.ltx_fast.pollWorkflowPath, 'lightricks/ltx-2.5/text-to-video/fast');
+assert.equal(PICSART_I2V_MODELS.ltx_fast.pool, null);
+const ltxFast = buildPicsartI2vParams('ltx_fast', prompt, imageUrl, {
+  ratio: '9:16',
+  outputName: 'ltx-fast-test.mp4',
+}) as any;
+assert.deepEqual(ltxFast, {
+  prompt,
+  image_url: imageUrl,
+  duration: 20,
+  resolution: '1080p',
+  aspect_ratio: '9:16',
+  fps: 25,
+  generate_audio: true,
+  options: {
+    inputs_transformation: { downscale_oversized_images: true },
+    drive: {
+      name: 'ltx-fast-test.mp4',
+      attributes: {
+        model: 'ltx-v2.5-fast',
+        aiSDKPayload: JSON.stringify({
+          prompt,
+          duration: 20,
+          resolution: '1080p',
+          aspectRatio: '9:16',
+          fps: 25,
+          cameraMotion: 'none',
+          generateAudio: true,
+          startFrame: imageUrl,
+        }),
+        appId: 'com.picsart.ai-playground',
+        appType: 'miniapp',
+      },
+      folder: { path: 'AI Playground' },
+    },
+  },
+});
+const ltxFastLandscape = buildPicsartI2vParams('ltx_fast', prompt, imageUrl, {
+  ratio: '16:9',
+}) as any;
+assert.equal(ltxFastLandscape.aspect_ratio, '16:9');
+assert.equal(JSON.parse(ltxFastLandscape.options.drive.attributes.aiSDKPayload).aspectRatio, '16:9');
+assert.equal(ltxFastLandscape.fps, 25);
+assert.equal(ltxFastLandscape.duration, 20);
+assert.equal(
+  extractPicsartVideoUrl({ status: 'COMPLETED', result: { video: { url: 'https://gcdn.picsart.com/editing-temp/ltx-fast.mp4' } } }),
+  'https://gcdn.picsart.com/editing-temp/ltx-fast.mp4'
+);
 const ltxPro = buildPicsartI2vParams('ltx_pro', prompt, imageUrl, {
   ratio: '9:16',
   outputName: 'ltx-pro-test.mp4',
@@ -305,9 +355,11 @@ assert.equal(
 const botSource = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 assert.match(botSource, /picsart_ltx_pro:\s*2500/);
 assert.match(botSource, /model === 'ltx_pro'\) return MODEL_PRICES\.picsart_ltx_pro/);
+assert.match(botSource, /picsart_ltx_fast:\s*3000/);
+assert.match(botSource, /model === 'ltx_fast'\) return MODEL_PRICES\.picsart_ltx_fast/);
 assert.match(botSource, /model === 'ltx_pro'[\s\S]*mode: 'picsart_i2v_wait_ratio'/);
-assert.match(botSource, /'ltx_pro',\s*'creatify_boreal'/);
-assert.match(botSource, /opts\.model === 'ltx_pro' \|\| opts\.model === 'creatify_boreal'/);
+assert.match(botSource, /'ltx_pro',\s*'ltx_fast',\s*'creatify_boreal'/);
+assert.match(botSource, /opts\.model === 'ltx_pro' \|\| opts\.model === 'ltx_fast' \|\| opts\.model === 'creatify_boreal'/);
 assert.match(botSource, /picsart_creatify_boreal:\s*2500/);
 assert.match(botSource, /model === 'creatify_boreal'\) return MODEL_PRICES\.picsart_creatify_boreal/);
 assert.match(botSource, /model === 'creatify_boreal'[\s\S]*mode: 'picsart_i2v_wait_ratio'/);

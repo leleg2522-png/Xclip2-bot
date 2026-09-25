@@ -61,6 +61,10 @@ Host: `https://api.picsart.com`, uploads on `https://upload.picsart.com`, result
 - **Important:** The captured browser submitted to **image-to-video/pro** but polled the same job ID under **text-to-video/pro/{id}/result**, where completion is `response.result.video.url` (native 1080p). The text-to-video/pro `/options` calls had fps 25 and showed 16:9/9:16, but no successful text-only submit was captured. Do not substitute their 25fps for the image-to-video submit's 50fps.
 - **Why:** Reusing submit path for polling would miss the captured completed job. **How to apply:** Keep separate submit and poll paths for this model; do not claim text-only or 16:9 image-to-video was verified by this HAR.
 
+## LTX 2.5 Fast (captured successful image-to-video job)
+- Submit `/gw-v2/workflows/lightricks/ltx-2.5/image-to-video/fast/submit` with `prompt`, uploaded `image_url`, `duration:20`, `resolution:"1080p"`, `aspect_ratio:"9:16"`, `fps:25`, `generate_audio:true`, `options.inputs_transformation.downscale_oversized_images:true`, and Drive `model:"ltx-v2.5-fast"`; aiSDKPayload mirrors settings and includes cameraMotion `"none"` and `startFrame` but **not** outputMegapixels. Poll the *text-to-video/fast* `/{id}/result`; completed result is `response.result.video.url`, native 1080×1920/25fps with 20 provider credits.
+- **Why:** Fast uses different duration/FPS and Drive payload from Pro, though both share the submit/poll endpoint mismatch. **How to apply:** Keep them as separate model variants. Bot offers 16:9 as requested for LTX family, but only the 9:16 image-to-video run was completed in the captured HAR; do not claim 16:9 Fast is live-verified.
+
 ## Seedance 2.0 (image/text-to-video)
 - Submit: POST `/workflows/seedance/submit` with `{params:{model:"seedance_2_0", content:[...], ratio, duration(NUMBER), resolution, generate_audio}}`.
 - content: i2v = `[{type:"image_url",image_url:{url},role:"reference_image"},{type:"text",text}]`; t2v = text item only.

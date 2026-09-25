@@ -1986,6 +1986,7 @@ export async function generateSeedance(input: {
 // captured browser traffic, and every variant has a different payload shape.
 export type PicsartI2vModelKey =
   | 'ltx_pro'
+  | 'ltx_fast'
   | 'creatify_boreal'
   | 'seedance_2_mini'
   | 'seedance_2_fast'
@@ -2064,6 +2065,15 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
     workflowPath: 'lightricks/ltx-2.5/image-to-video/pro',
     // The captured i2v submit was polled through the t2v endpoint for the same job ID.
     pollWorkflowPath: 'lightricks/ltx-2.5/text-to-video/pro',
+    pool: null,
+    pollAttempts: 240,
+  },
+  ltx_fast: {
+    label: 'LTX 2.5 Fast',
+    settingsLabel: '20 detik · 1080p native · audio',
+    workflowPath: 'lightricks/ltx-2.5/image-to-video/fast',
+    // The captured fast i2v submit is likewise polled on its t2v endpoint.
+    pollWorkflowPath: 'lightricks/ltx-2.5/text-to-video/fast',
     pool: null,
     pollAttempts: 240,
   },
@@ -2169,6 +2179,38 @@ export function buildPicsartI2vParams(
   options?: { ratio?: WanV3AspectRatio; outputName?: string; imageUrls?: string[] }
 ): Record<string, unknown> {
   switch (model) {
+    case 'ltx_fast':
+      return {
+        prompt,
+        image_url: imageUrl,
+        duration: 20,
+        resolution: '1080p',
+        aspect_ratio: options?.ratio ?? '9:16',
+        fps: 25,
+        generate_audio: true,
+        options: {
+          inputs_transformation: { downscale_oversized_images: true },
+          drive: {
+            name: options?.outputName || 'ltx-2-5-fast-ai-playground.mp4',
+            attributes: {
+              model: 'ltx-v2.5-fast',
+              aiSDKPayload: JSON.stringify({
+                prompt,
+                duration: 20,
+                resolution: '1080p',
+                aspectRatio: options?.ratio ?? '9:16',
+                fps: 25,
+                cameraMotion: 'none',
+                generateAudio: true,
+                startFrame: imageUrl,
+              }),
+              appId: 'com.picsart.ai-playground',
+              appType: 'miniapp',
+            },
+            folder: { path: 'AI Playground' },
+          },
+        },
+      };
     case 'ltx_pro':
       return {
         prompt,
@@ -2564,8 +2606,10 @@ async function submitPicsartI2v(
 ): Promise<string> {
   const cfg = PICSART_I2V_MODELS[model];
   const access = await getAccessToken(credId);
-  const usesGateway = model === 'ltx_pro' || model === 'creatify_boreal' || model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni';
-  const outputNamePrefix = model === 'ltx_pro'
+  const usesGateway = model === 'ltx_pro' || model === 'ltx_fast' || model === 'creatify_boreal' || model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni';
+  const outputNamePrefix = model === 'ltx_fast'
+    ? 'ltx-2-5-fast-ai-playground'
+    : model === 'ltx_pro'
     ? 'ltx-2-5-pro-ai-playground'
     : model === 'creatify_boreal'
     ? 'creatify-boreal-ai-playground'
@@ -2702,7 +2746,7 @@ async function pollPicsartI2vResult(
   for (let i = 0; i < cfg.pollAttempts; i++) {
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
     opts?.onTick?.(Date.now() - start);
-    const usesGateway = model === 'ltx_pro' || model === 'creatify_boreal' || model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni';
+    const usesGateway = model === 'ltx_pro' || model === 'ltx_fast' || model === 'creatify_boreal' || model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni';
     const workflowBase = usesGateway
       ? `${API_BASE}/gw-v2/workflows/${cfg.pollWorkflowPath ?? cfg.workflowPath}`
       : `${API_BASE}/workflows/${cfg.pollWorkflowPath ?? cfg.workflowPath}`;
@@ -2996,7 +3040,7 @@ export async function generatePicsartI2v(input: {
           ? 'pixverse-reference.jpg'
           : (image.name || `reference-${index + 1}.jpg`),
         input.model === 'pixverse_v6' ? 'image/jpeg' : (image.mime || 'image/jpeg'),
-        { gateway: input.model === 'ltx_pro' || input.model === 'creatify_boreal' }
+        { gateway: input.model === 'ltx_pro' || input.model === 'ltx_fast' || input.model === 'creatify_boreal' }
       );
       imageUrls.push(imageUrl);
       console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=upload-complete image=${index + 1}/${imagesToUpload.length}`);

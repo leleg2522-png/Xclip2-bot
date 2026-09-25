@@ -186,6 +186,7 @@ const MODEL_PRICES = {
   picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
   picsart_creatify_boreal: 2500, // Creatify Boreal 20s, native 1080p
   picsart_ltx_pro: 2500, // LTX 2.5 Pro 10s, native 1080p
+  picsart_ltx_fast: 3000, // LTX 2.5 Fast 20s, native 1080p
   picsart_kling_omni: 3500, // Kling Omni 12s, native 720p
   picsart_seedance_2_mini: 3500, // Seedance 2.0 Mini, native 480p
   picsart_seedance_2_mini_edit: 3500, // Seedance 2.0 Mini Video Edit, native 480p
@@ -202,6 +203,7 @@ type ModelKey = keyof typeof MODEL_PRICES;
 
 function getPicsartI2vPrice(model: picsart.PicsartI2vModelKey): number {
   if (model === 'ltx_pro') return MODEL_PRICES.picsart_ltx_pro;
+  if (model === 'ltx_fast') return MODEL_PRICES.picsart_ltx_fast;
   if (model === 'creatify_boreal') return MODEL_PRICES.picsart_creatify_boreal;
   if (model === 'wan_v3') return MODEL_PRICES.picsart_wan_v3;
   if (model === 'kling_omni') return MODEL_PRICES.picsart_kling_omni;
@@ -2409,6 +2411,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🌌 Grok Imagine Video', 'mode_pi2v_grok_imagine')],
     [Markup.button.callback('🎬 Creatify Boreal • 20 detik • 1080p', 'mode_pi2v_creatify_boreal')],
     [Markup.button.callback('🎬 LTX 2.5 PRO • 10 detik • 1080p', 'mode_pi2v_ltx_pro')],
+    [Markup.button.callback('⚡ LTX 2.5 Fast • 20 detik • 1080p', 'mode_pi2v_ltx_fast')],
     [Markup.button.callback('🎨 PixVerse v6 • 15 detik • 720p', 'mode_pi2v_pixverse_v6')],
     [Markup.button.callback('⚡ Kling v3 Turbo', 'mode_pi2v_kling_v3_turbo')],
     [Markup.button.callback('🎭 Kling v2.6 Pro', 'mode_pi2v_kling_v26_pro')],
@@ -2967,6 +2970,7 @@ function hargaText(): string {
     `• Grok Imagine Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Creatify Boreal (20 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_creatify_boreal)}\n` +
     `• LTX 2.5 PRO (10 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_ltx_pro)}\n` +
+    `• LTX 2.5 Fast (20 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_ltx_fast)}\n` +
     `• Kling v3 Turbo — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v2.6 Pro — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v3 Standard — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
@@ -4551,6 +4555,7 @@ bot.on('callback_query', async (ctx) => {
     const session = getSession(userId);
     const ratioModels: picsart.PicsartI2vModelKey[] = [
       'ltx_pro',
+      'ltx_fast',
       'creatify_boreal',
       'seedance_2_mini',
       'seedance_2_fast',
@@ -4633,6 +4638,7 @@ bot.on('callback_query', async (ctx) => {
     const cfg = picsart.PICSART_I2V_MODELS[model];
     if (
       model === 'ltx_pro'
+      || model === 'ltx_fast'
       || model === 'creatify_boreal'
       || model === 'seedance_2_mini'
       || model === 'seedance_2_fast'
@@ -5836,6 +5842,7 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     const displayLabel = session.picsartI2vDisplayLabel ?? cfg.label;
     const settingsLabel = (
       model === 'ltx_pro'
+      || model === 'ltx_fast'
       || model === 'creatify_boreal'
       || model === 'seedance_2_mini'
       || model === 'seedance_2_fast'
@@ -6728,7 +6735,7 @@ bot.on('text', async (ctx) => {
     }
     const cfg = picsart.PICSART_I2V_MODELS[model];
     const ratio = activeDraft.picsartI2vRatio;
-    if ((model === 'ltx_pro' || model === 'creatify_boreal') && !ratio) {
+    if ((model === 'ltx_pro' || model === 'ltx_fast' || model === 'creatify_boreal') && !ratio) {
       setSession(userId, { mode: 'idle' });
       return ctx.reply('⚠️ Rasio video belum dipilih. Mulai lagi dari /menu.');
     }
@@ -8104,7 +8111,7 @@ async function runPicsartI2v(
 ) {
   const cfg = picsart.PICSART_I2V_MODELS[opts.model];
   const label = customerSafeModelLabel(opts.displayLabel ?? cfg.label, cfg.label);
-  const settingsLabel = (opts.model === 'ltx_pro' || opts.model === 'creatify_boreal' || opts.model === 'wan_v3' || opts.model === 'pixverse_v6') && opts.ratio
+  const settingsLabel = (opts.model === 'ltx_pro' || opts.model === 'ltx_fast' || opts.model === 'creatify_boreal' || opts.model === 'wan_v3' || opts.model === 'pixverse_v6') && opts.ratio
     ? `${opts.ratio} · ${cfg.settingsLabel}`
     : cfg.settingsLabel;
   const PRICE = opts.priceKey ? MODEL_PRICES[opts.priceKey] : getPicsartI2vPrice(opts.model);
