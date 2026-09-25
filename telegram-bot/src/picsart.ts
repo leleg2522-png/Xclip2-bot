@@ -1985,6 +1985,7 @@ export async function generateSeedance(input: {
 // above. The current bot UI exposes the exact I2V variants observed in the
 // captured browser traffic, and every variant has a different payload shape.
 export type PicsartI2vModelKey =
+  | 'creatify_boreal'
   | 'seedance_2_mini'
   | 'seedance_2_fast'
   | 'seedance_2'
@@ -2055,6 +2056,13 @@ type PicsartI2vModelConfig = {
 };
 
 export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfig> = {
+  creatify_boreal: {
+    label: 'Creatify Boreal',
+    settingsLabel: '9:16 · 20 detik · 1080p native',
+    workflowPath: 'creatify/boreal',
+    pool: null,
+    pollAttempts: 240,
+  },
   seedance_2_mini: {
     label: 'Seedance 2.0 Mini 480p',
     settingsLabel: '15 detik · 480p native · audio',
@@ -2150,6 +2158,37 @@ export function buildPicsartI2vParams(
   options?: { ratio?: WanV3AspectRatio; outputName?: string; imageUrls?: string[] }
 ): Record<string, unknown> {
   switch (model) {
+    case 'creatify_boreal':
+      return {
+        prompt,
+        image_url: imageUrl,
+        negative_prompt: '',
+        resolution: '1080p',
+        aspect_ratio: '9:16',
+        duration: 20,
+        manifest_disclosure: false,
+        options: {
+          inputs_transformation: { downscale_oversized_images: true },
+          drive: {
+            name: options?.outputName || 'creatify-boreal-ai-playground.mp4',
+            attributes: {
+              model: 'creatify-boreal',
+              aiSDKPayload: JSON.stringify({
+                prompt,
+                resolution: '1080p',
+                aspectRatio: '9:16',
+                duration: 20,
+                manifestDisclosure: false,
+                imageUrls: [imageUrl],
+                outputMegapixels: 1.032192,
+              }),
+              appId: 'com.picsart.ai-playground',
+              appType: 'miniapp',
+            },
+            folder: { path: 'AI Playground' },
+          },
+        },
+      };
     case 'seedance_2_mini':
       const seedanceMiniReferenceUrls = (options?.imageUrls?.length ? options.imageUrls : [imageUrl])
         .slice(0, PICSART_I2V_MAX_IMAGES);
@@ -2481,8 +2520,10 @@ async function submitPicsartI2v(
 ): Promise<string> {
   const cfg = PICSART_I2V_MODELS[model];
   const access = await getAccessToken(credId);
-  const usesGateway = model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni';
-  const outputNamePrefix = model === 'wan_v3'
+  const usesGateway = model === 'creatify_boreal' || model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni';
+  const outputNamePrefix = model === 'creatify_boreal'
+    ? 'creatify-boreal-ai-playground'
+    : model === 'wan_v3'
     ? 'storyboard-creation-wan-3-0-ai-playground'
     : model === 'kling_omni'
       ? 'storyboard-creation-kling-v3-omni-ai-playground'
@@ -2615,7 +2656,7 @@ async function pollPicsartI2vResult(
   for (let i = 0; i < cfg.pollAttempts; i++) {
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
     opts?.onTick?.(Date.now() - start);
-    const usesGateway = model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni';
+    const usesGateway = model === 'creatify_boreal' || model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni';
     const workflowBase = usesGateway
       ? `${API_BASE}/gw-v2/workflows/${cfg.workflowPath}`
       : `${API_BASE}/workflows/${cfg.workflowPath}`;
@@ -2908,7 +2949,8 @@ export async function generatePicsartI2v(input: {
         input.model === 'pixverse_v6'
           ? 'pixverse-reference.jpg'
           : (image.name || `reference-${index + 1}.jpg`),
-        input.model === 'pixverse_v6' ? 'image/jpeg' : (image.mime || 'image/jpeg')
+        input.model === 'pixverse_v6' ? 'image/jpeg' : (image.mime || 'image/jpeg'),
+        { gateway: input.model === 'creatify_boreal' }
       );
       imageUrls.push(imageUrl);
       console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=upload-complete image=${index + 1}/${imagesToUpload.length}`);

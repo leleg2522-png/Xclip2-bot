@@ -180,6 +180,7 @@ assert.deepEqual(buildGeminiOmni12Params({
 });
 
 const expectedModels = [
+  'creatify_boreal',
   'seedance_2_mini',
   'seedance_2_fast',
   'seedance_2',
@@ -202,8 +203,50 @@ assert.equal(PICSART_I2V_MODELS.kling_v26_pro.strictPool, true);
 assert.equal(PICSART_I2V_MODELS.kling_v21_pro.pool, 'p500');
 assert.equal(PICSART_I2V_MODELS.kling_v21_pro.strictPool, true);
 assert.equal(PICSART_I2V_MAX_IMAGES, 5);
+assert.equal(PICSART_I2V_MODELS.creatify_boreal.workflowPath, 'creatify/boreal');
+assert.equal(PICSART_I2V_MODELS.creatify_boreal.pool, null);
+const creatify = buildPicsartI2vParams('creatify_boreal', prompt, imageUrl, {
+  outputName: 'creatify-test.mp4',
+}) as any;
+assert.deepEqual(creatify, {
+  prompt,
+  image_url: imageUrl,
+  negative_prompt: '',
+  resolution: '1080p',
+  aspect_ratio: '9:16',
+  duration: 20,
+  manifest_disclosure: false,
+  options: {
+    inputs_transformation: { downscale_oversized_images: true },
+    drive: {
+      name: 'creatify-test.mp4',
+      attributes: {
+        model: 'creatify-boreal',
+        aiSDKPayload: JSON.stringify({
+          prompt,
+          resolution: '1080p',
+          aspectRatio: '9:16',
+          duration: 20,
+          manifestDisclosure: false,
+          imageUrls: [imageUrl],
+          outputMegapixels: 1.032192,
+        }),
+        appId: 'com.picsart.ai-playground',
+        appType: 'miniapp',
+      },
+      folder: { path: 'AI Playground' },
+    },
+  },
+});
+assert.equal(
+  extractPicsartVideoUrl({ status: 'COMPLETED', result: { video: { url: 'https://gcdn.picsart.com/editing-temp/creatify.mp4' } } }),
+  'https://gcdn.picsart.com/editing-temp/creatify.mp4'
+);
 
 const botSource = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
+assert.match(botSource, /picsart_creatify_boreal:\s*2500/);
+assert.match(botSource, /model === 'creatify_boreal'\) return MODEL_PRICES\.picsart_creatify_boreal/);
+assert.match(botSource, /Kirim \*prompt teks\* untuk video kamu/);
 assert.equal(botSource.includes('menu_picsart_i2v'), false);
 assert.equal(botSource.includes('Picsart I2V (8 Model)'), false);
 assert.equal(botSource.includes("Markup.button.callback('🧩 Picsart"), false);

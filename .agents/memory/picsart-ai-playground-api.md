@@ -49,6 +49,11 @@ Host: `https://api.picsart.com`, uploads on `https://upload.picsart.com`, result
 - Credits: `GET /guard/credits` → `{credits, tierCredits, addonCredits, renewDate}`.
 - Library list: `GET /cloud-storage/v1/me/files?...`; spaces: `GET /cloud-storage/v1/me/storages`.
 
+## Creatify Boreal (captured successful image-to-video job)
+- Gateway workflow `/gw-v2/workflows/creatify/boreal`: submit `params` with `prompt`, uploaded `image_url` string, `negative_prompt:""`, `resolution:"1080p"`, `aspect_ratio:"9:16"`, `duration:20`, `manifest_disclosure:false`, and `options.inputs_transformation.downscale_oversized_images:true` plus Drive attributes model `creatify-boreal`, appId/appType, and aiSDKPayload mirroring those parameters, imageUrls array, outputMegapixels `1.032192`.
+- Gateway requests use app authorization and subscription package headers. Poll the same path with `/{id}/result`; completion video URL is `response.result.video.url`, native 1080p. The HAR showed 20 credits for 20s; this is the provider's cost, not the bot's Rupiah price.
+- **Why:** This workflow returns a nested video object (not the flat result URL used by some other models), and its submit path and headers are gateway-specific. Preserve native result delivery without an export step.
+
 ## Seedance 2.0 (image/text-to-video)
 - Submit: POST `/workflows/seedance/submit` with `{params:{model:"seedance_2_0", content:[...], ratio, duration(NUMBER), resolution, generate_audio}}`.
 - content: i2v = `[{type:"image_url",image_url:{url},role:"reference_image"},{type:"text",text}]`; t2v = text item only.
