@@ -184,6 +184,7 @@ const MODEL_PRICES = {
   bytedance_upscale: 500, // ByteDance Upscaler 1K (Renderful AI)
   picsart_i2v: 3000,   // New I2V models captured from AI Playground HAR
   picsart_creatify_boreal: 2500, // Creatify Boreal 20s, native 1080p
+  picsart_ltx_pro: 2500, // LTX 2.5 Pro 10s, native 1080p
   picsart_kling_omni: 3500, // Kling Omni 12s, native 720p
   picsart_seedance_2_mini: 3500, // Seedance 2.0 Mini, native 480p
   picsart_seedance_2_mini_edit: 3500, // Seedance 2.0 Mini Video Edit, native 480p
@@ -199,6 +200,7 @@ const MODEL_PRICES = {
 type ModelKey = keyof typeof MODEL_PRICES;
 
 function getPicsartI2vPrice(model: picsart.PicsartI2vModelKey): number {
+  if (model === 'ltx_pro') return MODEL_PRICES.picsart_ltx_pro;
   if (model === 'creatify_boreal') return MODEL_PRICES.picsart_creatify_boreal;
   if (model === 'wan_v3') return MODEL_PRICES.picsart_wan_v3;
   if (model === 'kling_omni') return MODEL_PRICES.picsart_kling_omni;
@@ -2402,6 +2404,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🌊 Seedance 2.5 I2V 480p', 'mode_oneover_seedance25')],
     [Markup.button.callback('🌌 Grok Imagine Video', 'mode_pi2v_grok_imagine')],
     [Markup.button.callback('🎬 Creatify Boreal • 20 detik • 1080p', 'mode_pi2v_creatify_boreal')],
+    [Markup.button.callback('🎬 LTX 2.5 PRO • 10 detik • 1080p', 'mode_pi2v_ltx_pro')],
     [Markup.button.callback('🎨 PixVerse v6 • 15 detik • 720p', 'mode_pi2v_pixverse_v6')],
     [Markup.button.callback('⚡ Kling v3 Turbo', 'mode_pi2v_kling_v3_turbo')],
     [Markup.button.callback('🎭 Kling v2.6 Pro', 'mode_pi2v_kling_v26_pro')],
@@ -2942,6 +2945,7 @@ function hargaText(): string {
     `• Seedance 2 Video Edit 480p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_video_edit)}\n` +
     `• Grok Imagine Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Creatify Boreal (20 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_creatify_boreal)}\n` +
+    `• LTX 2.5 PRO (10 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_ltx_pro)}\n` +
     `• Kling v3 Turbo — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v2.6 Pro — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v3 Standard — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +

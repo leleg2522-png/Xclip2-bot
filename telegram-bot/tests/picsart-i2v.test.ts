@@ -180,6 +180,7 @@ assert.deepEqual(buildGeminiOmni12Params({
 });
 
 const expectedModels = [
+  'ltx_pro',
   'creatify_boreal',
   'seedance_2_mini',
   'seedance_2_fast',
@@ -203,6 +204,48 @@ assert.equal(PICSART_I2V_MODELS.kling_v26_pro.strictPool, true);
 assert.equal(PICSART_I2V_MODELS.kling_v21_pro.pool, 'p500');
 assert.equal(PICSART_I2V_MODELS.kling_v21_pro.strictPool, true);
 assert.equal(PICSART_I2V_MAX_IMAGES, 5);
+assert.equal(PICSART_I2V_MODELS.ltx_pro.workflowPath, 'lightricks/ltx-2.5/image-to-video/pro');
+assert.equal(PICSART_I2V_MODELS.ltx_pro.pollWorkflowPath, 'lightricks/ltx-2.5/text-to-video/pro');
+assert.equal(PICSART_I2V_MODELS.ltx_pro.pool, null);
+const ltxPro = buildPicsartI2vParams('ltx_pro', prompt, imageUrl, {
+  outputName: 'ltx-pro-test.mp4',
+}) as any;
+assert.deepEqual(ltxPro, {
+  prompt,
+  image_url: imageUrl,
+  duration: 10,
+  resolution: '1080p',
+  aspect_ratio: '9:16',
+  fps: 50,
+  generate_audio: true,
+  options: {
+    inputs_transformation: { downscale_oversized_images: true },
+    drive: {
+      name: 'ltx-pro-test.mp4',
+      attributes: {
+        model: 'ltx-v2.5-pro',
+        aiSDKPayload: JSON.stringify({
+          prompt,
+          duration: 10,
+          resolution: '1080p',
+          aspectRatio: '9:16',
+          fps: 50,
+          cameraMotion: 'none',
+          generateAudio: true,
+          startFrame: imageUrl,
+          outputMegapixels: 1.032192,
+        }),
+        appId: 'com.picsart.ai-playground',
+        appType: 'miniapp',
+      },
+      folder: { path: 'AI Playground' },
+    },
+  },
+});
+assert.equal(
+  extractPicsartVideoUrl({ status: 'COMPLETED', result: { video: { url: 'https://gcdn.picsart.com/editing-temp/ltx-pro.mp4' } } }),
+  'https://gcdn.picsart.com/editing-temp/ltx-pro.mp4'
+);
 assert.equal(PICSART_I2V_MODELS.creatify_boreal.workflowPath, 'creatify/boreal');
 assert.equal(PICSART_I2V_MODELS.creatify_boreal.pool, null);
 const creatify = buildPicsartI2vParams('creatify_boreal', prompt, imageUrl, {
@@ -252,6 +295,8 @@ assert.equal(
 );
 
 const botSource = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
+assert.match(botSource, /picsart_ltx_pro:\s*2500/);
+assert.match(botSource, /model === 'ltx_pro'\) return MODEL_PRICES\.picsart_ltx_pro/);
 assert.match(botSource, /picsart_creatify_boreal:\s*2500/);
 assert.match(botSource, /model === 'creatify_boreal'\) return MODEL_PRICES\.picsart_creatify_boreal/);
 assert.match(botSource, /model === 'creatify_boreal'[\s\S]*mode: 'picsart_i2v_wait_ratio'/);

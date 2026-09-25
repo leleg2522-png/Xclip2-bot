@@ -55,6 +55,11 @@ Host: `https://api.picsart.com`, uploads on `https://upload.picsart.com`, result
 - Gateway requests use app authorization and subscription package headers. Poll the same path with `/{id}/result`; completion video URL is `response.result.video.url`, native 1080p. The HAR showed 20 credits for 20s; this is the provider's cost, not the bot's Rupiah price.
 - **Why:** This workflow returns a nested video object (not the flat result URL used by some other models), and its submit path and headers are gateway-specific. Preserve native result delivery without an export step.
 
+## LTX 2.5 Pro (captured successful image-to-video job)
+- Submit via gateway `/gw-v2/workflows/lightricks/ltx-2.5/image-to-video/pro/submit` with `params:{prompt,image_url,duration:10,resolution:"1080p",aspect_ratio:"9:16",fps:50,generate_audio:true,options:{inputs_transformation:{downscale_oversized_images:true},drive:{name,attributes:{model:"ltx-v2.5-pro",aiSDKPayload,appId,appType},folder:{path:"AI Playground"}}}}`. aiSDKPayload mirrors prompt, duration, resolution, aspectRatio, fps, generateAudio, startFrame URL, and includes cameraMotion `"none"` and outputMegapixels `1.032192`.
+- **Important:** The captured browser submitted to **image-to-video/pro** but polled the same job ID under **text-to-video/pro/{id}/result**, where completion is `response.result.video.url` (native 1080p). The text-to-video/pro `/options` calls had fps 25 and showed 16:9/9:16, but no successful text-only submit was captured. Do not substitute their 25fps for the image-to-video submit's 50fps.
+- **Why:** Reusing submit path for polling would miss the captured completed job. **How to apply:** Keep separate submit and poll paths for this model; do not claim text-only or 16:9 image-to-video was verified by this HAR.
+
 ## Seedance 2.0 (image/text-to-video)
 - Submit: POST `/workflows/seedance/submit` with `{params:{model:"seedance_2_0", content:[...], ratio, duration(NUMBER), resolution, generate_audio}}`.
 - content: i2v = `[{type:"image_url",image_url:{url},role:"reference_image"},{type:"text",text}]`; t2v = text item only.
