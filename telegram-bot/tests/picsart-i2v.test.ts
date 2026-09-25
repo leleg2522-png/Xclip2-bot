@@ -206,6 +206,7 @@ assert.equal(PICSART_I2V_MAX_IMAGES, 5);
 assert.equal(PICSART_I2V_MODELS.creatify_boreal.workflowPath, 'creatify/boreal');
 assert.equal(PICSART_I2V_MODELS.creatify_boreal.pool, null);
 const creatify = buildPicsartI2vParams('creatify_boreal', prompt, imageUrl, {
+  ratio: '9:16',
   outputName: 'creatify-test.mp4',
 }) as any;
 assert.deepEqual(creatify, {
@@ -238,6 +239,13 @@ assert.deepEqual(creatify, {
     },
   },
 });
+const creatifyLandscape = buildPicsartI2vParams('creatify_boreal', prompt, imageUrl, {
+  ratio: '16:9',
+}) as any;
+assert.equal(creatifyLandscape.aspect_ratio, '16:9');
+assert.equal(JSON.parse(creatifyLandscape.options.drive.attributes.aiSDKPayload).aspectRatio, '16:9');
+assert.equal(creatifyLandscape.image_url, imageUrl);
+assert.equal(creatifyLandscape.duration, 20);
 assert.equal(
   extractPicsartVideoUrl({ status: 'COMPLETED', result: { video: { url: 'https://gcdn.picsart.com/editing-temp/creatify.mp4' } } }),
   'https://gcdn.picsart.com/editing-temp/creatify.mp4'
@@ -246,6 +254,9 @@ assert.equal(
 const botSource = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 assert.match(botSource, /picsart_creatify_boreal:\s*2500/);
 assert.match(botSource, /model === 'creatify_boreal'\) return MODEL_PRICES\.picsart_creatify_boreal/);
+assert.match(botSource, /model === 'creatify_boreal'[\s\S]*mode: 'picsart_i2v_wait_ratio'/);
+assert.match(botSource, /'creatify_boreal',\s*'seedance_2_mini'/);
+assert.match(botSource, /opts\.model === 'creatify_boreal' \|\| opts\.model === 'wan_v3'/);
 assert.match(botSource, /Kirim \*prompt teks\* untuk video kamu/);
 assert.equal(botSource.includes('menu_picsart_i2v'), false);
 assert.equal(botSource.includes('Picsart I2V (8 Model)'), false);

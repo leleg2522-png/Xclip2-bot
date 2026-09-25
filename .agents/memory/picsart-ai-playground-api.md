@@ -51,6 +51,7 @@ Host: `https://api.picsart.com`, uploads on `https://upload.picsart.com`, result
 
 ## Creatify Boreal (captured successful image-to-video job)
 - Gateway workflow `/gw-v2/workflows/creatify/boreal`: submit `params` with `prompt`, uploaded `image_url` string, `negative_prompt:""`, `resolution:"1080p"`, `aspect_ratio:"9:16"`, `duration:20`, `manifest_disclosure:false`, and `options.inputs_transformation.downscale_oversized_images:true` plus Drive attributes model `creatify-boreal`, appId/appType, and aiSDKPayload mirroring those parameters, imageUrls array, outputMegapixels `1.032192`.
+- Bot also offers user-selected 16:9, mirrored in both `aspect_ratio` and Drive `aiSDKPayload.aspectRatio`; only 9:16 was captured in the supplied HAR, so 16:9 is not yet live-verified. **Why:** The user explicitly requested both ratio choices. **How to apply:** Keep the two fields in sync and do not describe the 16:9 result as HAR-verified.
 - Gateway requests use app authorization and subscription package headers. Poll the same path with `/{id}/result`; completion video URL is `response.result.video.url`, native 1080p. The HAR showed 20 credits for 20s; this is the provider's cost, not the bot's Rupiah price.
 - **Why:** This workflow returns a nested video object (not the flat result URL used by some other models), and its submit path and headers are gateway-specific. Preserve native result delivery without an export step.
 

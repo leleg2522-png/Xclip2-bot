@@ -2058,7 +2058,7 @@ type PicsartI2vModelConfig = {
 export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfig> = {
   creatify_boreal: {
     label: 'Creatify Boreal',
-    settingsLabel: '9:16 · 20 detik · 1080p native',
+    settingsLabel: '20 detik · 1080p native',
     workflowPath: 'creatify/boreal',
     pool: null,
     pollAttempts: 240,
@@ -2164,7 +2164,7 @@ export function buildPicsartI2vParams(
         image_url: imageUrl,
         negative_prompt: '',
         resolution: '1080p',
-        aspect_ratio: '9:16',
+        aspect_ratio: options?.ratio ?? '9:16',
         duration: 20,
         manifest_disclosure: false,
         options: {
@@ -2176,7 +2176,7 @@ export function buildPicsartI2vParams(
               aiSDKPayload: JSON.stringify({
                 prompt,
                 resolution: '1080p',
-                aspectRatio: '9:16',
+                aspectRatio: options?.ratio ?? '9:16',
                 duration: 20,
                 manifestDisclosure: false,
                 imageUrls: [imageUrl],
