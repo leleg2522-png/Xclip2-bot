@@ -208,6 +208,7 @@ assert.equal(PICSART_I2V_MODELS.ltx_pro.workflowPath, 'lightricks/ltx-2.5/image-
 assert.equal(PICSART_I2V_MODELS.ltx_pro.pollWorkflowPath, 'lightricks/ltx-2.5/text-to-video/pro');
 assert.equal(PICSART_I2V_MODELS.ltx_pro.pool, null);
 const ltxPro = buildPicsartI2vParams('ltx_pro', prompt, imageUrl, {
+  ratio: '9:16',
   outputName: 'ltx-pro-test.mp4',
 }) as any;
 assert.deepEqual(ltxPro, {
@@ -242,6 +243,13 @@ assert.deepEqual(ltxPro, {
     },
   },
 });
+const ltxProLandscape = buildPicsartI2vParams('ltx_pro', prompt, imageUrl, {
+  ratio: '16:9',
+}) as any;
+assert.equal(ltxProLandscape.aspect_ratio, '16:9');
+assert.equal(JSON.parse(ltxProLandscape.options.drive.attributes.aiSDKPayload).aspectRatio, '16:9');
+assert.equal(ltxProLandscape.fps, 50);
+assert.equal(ltxProLandscape.duration, 10);
 assert.equal(
   extractPicsartVideoUrl({ status: 'COMPLETED', result: { video: { url: 'https://gcdn.picsart.com/editing-temp/ltx-pro.mp4' } } }),
   'https://gcdn.picsart.com/editing-temp/ltx-pro.mp4'
@@ -297,6 +305,9 @@ assert.equal(
 const botSource = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 assert.match(botSource, /picsart_ltx_pro:\s*2500/);
 assert.match(botSource, /model === 'ltx_pro'\) return MODEL_PRICES\.picsart_ltx_pro/);
+assert.match(botSource, /model === 'ltx_pro'[\s\S]*mode: 'picsart_i2v_wait_ratio'/);
+assert.match(botSource, /'ltx_pro',\s*'creatify_boreal'/);
+assert.match(botSource, /opts\.model === 'ltx_pro' \|\| opts\.model === 'creatify_boreal'/);
 assert.match(botSource, /picsart_creatify_boreal:\s*2500/);
 assert.match(botSource, /model === 'creatify_boreal'\) return MODEL_PRICES\.picsart_creatify_boreal/);
 assert.match(botSource, /model === 'creatify_boreal'[\s\S]*mode: 'picsart_i2v_wait_ratio'/);

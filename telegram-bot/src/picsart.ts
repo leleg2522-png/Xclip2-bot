@@ -2060,7 +2060,7 @@ type PicsartI2vModelConfig = {
 export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfig> = {
   ltx_pro: {
     label: 'LTX 2.5 PRO',
-    settingsLabel: '9:16 · 10 detik · 1080p native · audio',
+    settingsLabel: '10 detik · 1080p native · audio',
     workflowPath: 'lightricks/ltx-2.5/image-to-video/pro',
     // The captured i2v submit was polled through the t2v endpoint for the same job ID.
     pollWorkflowPath: 'lightricks/ltx-2.5/text-to-video/pro',
@@ -2175,7 +2175,7 @@ export function buildPicsartI2vParams(
         image_url: imageUrl,
         duration: 10,
         resolution: '1080p',
-        aspect_ratio: '9:16',
+        aspect_ratio: options?.ratio ?? '9:16',
         fps: 50,
         generate_audio: true,
         options: {
@@ -2188,7 +2188,7 @@ export function buildPicsartI2vParams(
                 prompt,
                 duration: 10,
                 resolution: '1080p',
-                aspectRatio: '9:16',
+                aspectRatio: options?.ratio ?? '9:16',
                 fps: 50,
                 cameraMotion: 'none',
                 generateAudio: true,

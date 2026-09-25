@@ -4527,6 +4527,7 @@ bot.on('callback_query', async (ctx) => {
     const ratio = ratioMap[data];
     const session = getSession(userId);
     const ratioModels: picsart.PicsartI2vModelKey[] = [
+      'ltx_pro',
       'creatify_boreal',
       'seedance_2_mini',
       'seedance_2_fast',
@@ -4608,7 +4609,8 @@ bot.on('callback_query', async (ctx) => {
     }
     const cfg = picsart.PICSART_I2V_MODELS[model];
     if (
-      model === 'creatify_boreal'
+      model === 'ltx_pro'
+      || model === 'creatify_boreal'
       || model === 'seedance_2_mini'
       || model === 'seedance_2_fast'
       || model === 'seedance_2'
@@ -5776,7 +5778,8 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     const cfg = picsart.PICSART_I2V_MODELS[model];
     const displayLabel = session.picsartI2vDisplayLabel ?? cfg.label;
     const settingsLabel = (
-      model === 'creatify_boreal'
+      model === 'ltx_pro'
+      || model === 'creatify_boreal'
       || model === 'seedance_2_mini'
       || model === 'seedance_2_fast'
       || model === 'seedance_2'
@@ -6664,7 +6667,7 @@ bot.on('text', async (ctx) => {
     }
     const cfg = picsart.PICSART_I2V_MODELS[model];
     const ratio = activeDraft.picsartI2vRatio;
-    if (model === 'creatify_boreal' && !ratio) {
+    if ((model === 'ltx_pro' || model === 'creatify_boreal') && !ratio) {
       setSession(userId, { mode: 'idle' });
       return ctx.reply('⚠️ Rasio video belum dipilih. Mulai lagi dari /menu.');
     }
@@ -8030,7 +8033,7 @@ async function runPicsartI2v(
 ) {
   const cfg = picsart.PICSART_I2V_MODELS[opts.model];
   const label = customerSafeModelLabel(opts.displayLabel ?? cfg.label, cfg.label);
-  const settingsLabel = (opts.model === 'creatify_boreal' || opts.model === 'wan_v3' || opts.model === 'pixverse_v6') && opts.ratio
+  const settingsLabel = (opts.model === 'ltx_pro' || opts.model === 'creatify_boreal' || opts.model === 'wan_v3' || opts.model === 'pixverse_v6') && opts.ratio
     ? `${opts.ratio} · ${cfg.settingsLabel}`
     : cfg.settingsLabel;
   const PRICE = opts.priceKey ? MODEL_PRICES[opts.priceKey] : getPicsartI2vPrice(opts.model);
