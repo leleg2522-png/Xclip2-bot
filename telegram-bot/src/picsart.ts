@@ -3050,7 +3050,7 @@ async function pollPicsartImageResult(
   credId: number,
   workflowPath: string, // e.g. 'seedream' or 'openai-image-editing'
   id: string,
-  opts?: { maxAttempts?: number; intervalMs?: number; onTick?: (elapsedMs: number) => void }
+  opts?: { maxAttempts?: number; intervalMs?: number; onTick?: (elapsedMs: number) => void; gateway?: boolean }
 ): Promise<{ url: string; credits?: number }> {
   const maxAttempts = opts?.maxAttempts ?? 120; // ~10 min at 5s
   const intervalMs = opts?.intervalMs ?? 5000;
@@ -3060,8 +3060,15 @@ async function pollPicsartImageResult(
     await new Promise((res) => setTimeout(res, intervalMs));
     opts?.onTick?.(Date.now() - start);
     const access = await getAccessToken(credId);
-    const r = await http.get(`${API_BASE}/workflows/${workflowPath}/${id}/result`, {
-      headers: commonHeaders({ authorization: `Bearer ${access}` }),
+    const base = opts?.gateway ? 'gw-v2/workflows' : 'workflows';
+    const r = await http.get(`${API_BASE}/${base}/${workflowPath}/${id}/result`, {
+      headers: commonHeaders({
+        authorization: `Bearer ${access}`,
+        ...(opts?.gateway ? {
+          'x-app-authorization': X_APP_AUTHORIZATION,
+          'x-sub-package-id': 'subscription_pro_monthly',
+        } : {}),
+      }),
       validateStatus: () => true,
     });
     const ok = diag.note(r);
@@ -3207,6 +3214,107 @@ export async function generateGptImage(input: {
     return pollPicsartImageResult(credId, 'openai-image-editing', id, {
       onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
     });
+  });
+}
+
+export type GptImage25Model = 'gpt-image-2.5-sunburst' | 'gpt-image-2.5-flare';
+export type GptImage25Ratio = '1:1' | '9:16' | '16:9';
+export const GPT_IMAGE_25_MAX_REFS = 10;
+
+export function buildGptImage25Params(input: {
+  model: GptImage25Model;
+  prompt: string;
+  imageUrls: string[];
+  ratio: GptImage25Ratio;
+  outputName?: string;
+}): Record<string, unknown> {
+  if (input.imageUrls.length > GPT_IMAGE_25_MAX_REFS) throw new Error('PICSART_TOO_MANY_REFERENCE_IMAGES');
+  const size = input.ratio === '9:16' ? '1024x1824'
+    : input.ratio === '16:9' ? '1824x1024' : '1024x1024';
+  return {
+    prompt: input.prompt,
+    model: input.model,
+    ...(input.imageUrls.length ? { images: input.imageUrls } : {}),
+    n: 1,
+    size,
+    quality: 'high',
+    background: 'opaque',
+    output_format: 'png',
+    options: {
+      inputs_transformation: { downscale_oversized_images: true },
+      drive: {
+        name: input.outputName ?? `${input.model}-${Date.now()}.png`,
+        attributes: {
+          model: input.model,
+          aiSDKPayload: JSON.stringify({
+            prompt: input.prompt,
+            aspectRatio: input.ratio,
+            quality: 'high',
+            background: 'opaque',
+            outputFormat: 'png',
+            count: 1,
+            ...(input.imageUrls.length ? { imageUrls: input.imageUrls } : {}),
+          }),
+          appId: 'com.picsart.ai-playground',
+          appType: 'miniapp',
+        },
+        folder: { path: 'AI Playground' },
+      },
+    },
+  };
+}
+
+export async function generateGptImage25(input: {
+  userId: number;
+  model: GptImage25Model;
+  prompt: string;
+  images: Array<{ buffer: Buffer; name?: string; mime?: string }>;
+  ratio: GptImage25Ratio;
+  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  if (input.images.length > GPT_IMAGE_25_MAX_REFS) throw new Error('PICSART_TOO_MANY_REFERENCE_IMAGES');
+  return runWithAccount(input.userId, null, async (credId) => {
+    const imageUrls: string[] = [];
+    for (const [index, img] of input.images.entries()) {
+      input.onStatus?.('upload');
+      imageUrls.push(await uploadFile(credId, img.buffer, img.name || `reference-${index + 1}.jpg`, img.mime || 'image/jpeg', { gateway: true }));
+    }
+    input.onStatus?.('submit');
+    const access = await getAccessToken(credId);
+    const workflow = imageUrls.length ? 'openai-image-editing' : 'openai-images-generate';
+    const r = await http.post(
+      `${API_BASE}/gw-v2/workflows/${workflow}/submit`,
+      { params: buildGptImage25Params({ model: input.model, prompt: input.prompt, imageUrls, ratio: input.ratio }) },
+      {
+        headers: commonHeaders({
+          'content-type': 'application/json',
+          authorization: `Bearer ${access}`,
+          'x-app-authorization': X_APP_AUTHORIZATION,
+          'x-sub-package-id': 'subscription_pro_monthly',
+        }),
+        validateStatus: () => true,
+      }
+    );
+    const id = r.data?.response?.id;
+    if (!ok2xx(r.status) || !id) {
+      throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
+    }
+    input.onStatus?.('poll');
+    try {
+      // The captured image-editing jobs were polled through images-generate, not image-editing.
+      return await pollPicsartImageResult(credId, 'openai-images-generate', id, {
+        gateway: true,
+        onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
+      });
+    } catch (e) {
+      if (isPicsartPostSubmitAuthFailure(e)) {
+        await q(`UPDATE picsart_credentials SET status = 'dead', dead_at = NOW(), updated_at = NOW() WHERE id = $1`, [credId]);
+        notifyOwner(`⚠️ Akun Picsart #${credId} ditolak saat polling GPT Image 2.5. Job ${id} tidak diulang agar tidak membuat generate ganda.`);
+        throw new Error(`PICSART_POST_SUBMIT_AUTH_LOST job=${id}`);
+      }
+      throw e;
+    }
   });
 }
 
