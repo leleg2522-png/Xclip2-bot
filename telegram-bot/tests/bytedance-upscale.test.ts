@@ -28,4 +28,20 @@ assert.doesNotMatch(source, /Layanan ByteDance Upscaler sedang tidak tersedia\. 
 assert.match(source, /ByteDance Upscaler sedang tidak tersedia\. Coba lagi nanti/);
 assert.match(source, /customerSafeModelLabel[\s\S]*Renderful/);
 
+// Only the three requested generation routes get an automatic finishing pass.
+assert.match(source, /opts\.model === 'wan_v3'\s*\?\s*await upscaleGeneratedVideo\(result\.url, userId, chatId, statusMsgId\)/);
+assert.match(source, /async function runPicsartSeedance25\([\s\S]*?const finalVideo = await upscaleGeneratedVideo\(result\.url, userId, chatId, statusMsgId\)/);
+assert.match(source, /async function runMinimaxH3\([\s\S]*?const finalVideo = await upscaleGeneratedVideo\(result\.url, userId, chatId, statusMsgId\)/);
+const autoUpscale = source.slice(
+  source.indexOf('async function upscaleGeneratedVideo('),
+  source.indexOf('// ─── Keyboards ───')
+);
+assert.match(autoUpscale, /const original = \{ url: sourceUrl, upscaled: false \}/);
+assert.match(autoUpscale, /publishMedia\(Buffer\.from\(res\.data\), true, sourceUrl\)/);
+assert.match(autoUpscale, /resolution: '1080p'/);
+assert.match(autoUpscale, /submitted = true/);
+assert.match(autoUpscale, /if \(!submitted && \[401, 402, 403\]\.includes\(status\)\)/);
+assert.match(autoUpscale, /return original/);
+assert.match(source, /if \(!delivered && finalVideo\.upscaled\)/);
+
 console.log('ByteDance Upscaler 1K Renderful pool contract checks passed.');

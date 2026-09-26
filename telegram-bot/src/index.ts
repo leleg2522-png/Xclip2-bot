@@ -2382,6 +2382,68 @@ async function pollForResult(taskId: string, userId: number, apiKey: string, pol
   throw new Error('Timeout: proses terlalu lama (>10 menit)');
 }
 
+// Best-effort finishing step for selected generated videos. A completed
+// generation is never submitted again if this optional step fails.
+async function upscaleGeneratedVideo(
+  sourceUrl: string,
+  userId: number,
+  chatId: number,
+  statusMsgId: number
+): Promise<{ url: string; upscaled: boolean }> {
+  const original = { url: sourceUrl, upscaled: false };
+  try {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      '⏳ Video selesai dibuat. Menyiapkan hasil akhir...').catch(() => {});
+    const skippedKeys = new Set<string>();
+    let hostedUrl: string | undefined;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const apiKey = await getNextRenderfulPoolKey(skippedKeys);
+      if (!apiKey) {
+        console.warn(`[${userId}] Final video upscale skipped: no available key`);
+        return original;
+      }
+      let submitted = false;
+      try {
+        if (!hostedUrl) {
+          // Renderful fetches a public URL. Host our own copy, not a provider
+          // URL or a Telegram link containing the bot token.
+          const res = await telegramHttp.get(sourceUrl, { responseType: 'arraybuffer', timeout: 300_000 });
+          hostedUrl = await publishMedia(Buffer.from(res.data), true, sourceUrl);
+        }
+        const createRes = await bytedanceUpscalerHttp.post(
+          `${RENDERFUL_BASE}/generations`,
+          {
+            type: 'video-to-video',
+            model: 'bytedance-video-upscaler',
+            video_url: hostedUrl,
+            resolution: '1080p', // Renderful's API value for the public 1K tier.
+          },
+          { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 120_000 }
+        );
+        const taskId = createRes.data?.id;
+        // Missing task id is ambiguous: do not resubmit a possibly billed job.
+        if (!taskId) throw new Error('Upscaler accepted response without task id');
+        submitted = true;
+        const url = await pollForResult(taskId, userId, apiKey, createRes.data?.poll_url, 120);
+        return { url, upscaled: true };
+      } catch (err: any) {
+        const status = err?.response?.status;
+        console.error(`[${userId}] Final video upscale failed: ${describeError(err)}`);
+        // Only an explicit auth/credit rejection proves no job was accepted.
+        if (!submitted && [401, 402, 403].includes(status)) {
+          await markRenderfulPoolKeyDead(apiKey).catch(() => {});
+          skippedKeys.add(apiKey);
+          continue;
+        }
+        return original;
+      }
+    }
+  } catch (err: any) {
+    console.error(`[${userId}] Final video upscale unavailable: ${describeError(err)}`);
+  }
+  return original;
+}
+
 // ─── Keyboards ────────────────────────────────────────────────────────────────
 
 function mainMenuKeyboard() {
@@ -2407,7 +2469,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🌊 Seedance 2 Video Edit 480p', 'mode_seedance_2_edit')],
     [Markup.button.callback('🌊 Seedance 2.0 Fast 480p', 'mode_pi2v_seedance_2_fast')],
     [Markup.button.callback('🌊 Seedance 2.0 480p', 'mode_pi2v_seedance_2')],
-    [Markup.button.callback('🌊 Seedance 2.5 I2V 480p', 'mode_oneover_seedance25')],
+    [Markup.button.callback('🌊 Seedance 2.5 I2V • hingga 1K', 'mode_oneover_seedance25')],
     [Markup.button.callback('🌌 Grok Imagine Video', 'mode_pi2v_grok_imagine')],
     [Markup.button.callback('🎬 Creatify Boreal • 20 detik • 1080p', 'mode_pi2v_creatify_boreal')],
     [Markup.button.callback('🎬 LTX 2.5 PRO • 10 detik • 1080p', 'mode_pi2v_ltx_pro')],
@@ -2418,7 +2480,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🎞️ Kling v3 Standard', 'mode_pi2v_kling_v3')],
     [Markup.button.callback('🌐 Kling Omni • 12 detik • 720p', 'mode_pi2v_kling_omni')],
     [Markup.button.callback('🌀 Wan v2 Image-to-Video', 'mode_pi2v_wan_v2')],
-    [Markup.button.callback('🌀 Wan 3.0 480p • 30 detik', 'mode_pi2v_wan_v3')],
+    [Markup.button.callback('🌀 Wan 3.0 • 30 detik • hingga 1K', 'mode_pi2v_wan_v3')],
     [Markup.button.callback('🎬 Kling 2.1 Pro (10 detik)', 'mode_kling21')],
     [Markup.button.callback('🎬 Kling 2.1 P2 (10 detik)', 'mode_kling21p2')],
     [Markup.button.callback('✨ Gemini Omni Flash 1.1 • 10 detik • 1080p', 'mode_gomni11_flora')],
@@ -2955,7 +3017,7 @@ function hargaText(): string {
     `• Veo 3.1 Fast (Full HD) — ${formatRupiah(MODEL_PRICES.veo_fast)}\n` +
     `• Veo 3.1 Lite (Full HD) — ${formatRupiah(MODEL_PRICES.veo_lite)}\n` +
     `• Veo 3.1 Lite 720p (8 detik) — ${formatRupiah(MODEL_PRICES.picsart_veo31_4k)}\n` +
-    `• MiniMax H3 (15 detik) — ${formatRupiah(MODEL_PRICES.picsart_minimax_h3)}\n` +
+    `• MiniMax H3 (15 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.picsart_minimax_h3)}\n` +
     `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
     `• Gemini Omni 1.2 (360p native · 10 detik) — ${formatRupiah(MODEL_PRICES.gemini_omni_12)}\n` +
     `• Chat AI — ${formatRupiah(MODEL_PRICES.chat)}/pesan\n` +
@@ -2963,7 +3025,7 @@ function hargaText(): string {
     `• Seedance 2.0 Mini 480p — ${formatRupiah(getPicsartI2vPrice('seedance_2_mini'))}\n` +
     `• Seedance 2.0 Fast 480p — ${formatRupiah(getPicsartI2vPrice('seedance_2_fast'))}\n` +
     `• Seedance 2.0 480p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
-    `• Seedance 2.5 I2V 480p — ${formatRupiah(MODEL_PRICES.picsart_seedance_25_480)}\n` +
+    `• Seedance 2.5 I2V (hingga 1K) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25_480)}\n` +
     `• Seedance 2 Mini Video Edit 480p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_mini_edit)}\n` +
     `• Seedance 2 Fast Video Edit 480p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_fast_edit)}\n` +
     `• Seedance 2 Video Edit 480p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_video_edit)}\n` +
@@ -2976,7 +3038,7 @@ function hargaText(): string {
     `• Kling v3 Standard — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling Omni (12 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_kling_omni)}\n` +
     `• Wan v2 Image-to-Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
-    `• Wan 3.0 480p (30 detik) — ${formatRupiah(MODEL_PRICES.picsart_wan_v3)}\n` +
+    `• Wan 3.0 (30 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.picsart_wan_v3)}\n` +
     `• PixVerse v6 (15 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling 2.1 Pro (10 detik) — ${formatRupiah(MODEL_PRICES.kling_21_pro)}\n` +
     `• Kling 2.1 P2 (10 detik) — ${formatRupiah(MODEL_PRICES.kling_21_p2)}\n` +
@@ -4505,7 +4567,7 @@ bot.on('callback_query', async (ctx) => {
       seedance25Ratio: undefined,
     });
     return ctx.editMessageText(
-      `🌊 *Seedance 2.5 I2V 480p*\n\n` +
+      `🌊 *Seedance 2.5 I2V · hingga 1K*\n\n` +
       `Durasi: *30 detik* • Audio aktif\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_25_480)}* per video\n\n` +
       '*Langkah 1:* Pilih rasio video:',
@@ -4524,7 +4586,7 @@ bot.on('callback_query', async (ctx) => {
       seedance25VideoMime: undefined,
     });
     return ctx.editMessageText(
-      `🌊 *Seedance 2.5 I2V 480p*\n\n` +
+      `🌊 *Seedance 2.5 I2V · hingga 1K*\n\n` +
       `Rasio: *${ratio}* • Durasi: *30 detik* • Audio aktif\n\n` +
       `*Langkah 2:* Kirim hingga *${picsart.SEEDANCE_MAX_REF_IMAGES} gambar* dan/atau *1 video referensi*.\n` +
       'Setelah selesai upload, tekan tombol lanjut.',
@@ -4579,7 +4641,7 @@ bot.on('callback_query', async (ctx) => {
     });
     return ctx.editMessageText(
       `🌀 *${displayLabel}*\n\n` +
-      `Parameter: *${ratio} · ${cfg.settingsLabel}*\n` +
+      `Parameter: *${ratio} · ${model === 'wan_v3' ? '30 detik · hasil hingga 1K' : cfg.settingsLabel}*\n` +
       `Harga: *${formatRupiah(getPicsartI2vPrice(model))}* per video\n\n` +
       (model === 'wan_v3'
         ? `*Langkah 1:* Kirim *1–${picsart.PICSART_I2V_MAX_IMAGES} foto acuan* untuk video kamu.`
@@ -4651,14 +4713,14 @@ bot.on('callback_query', async (ctx) => {
         mode: 'picsart_i2v_wait_ratio',
         picsartI2vModel: model,
         picsartI2vRatio: undefined,
-        picsartI2vDisplayLabel: undefined,
+        picsartI2vDisplayLabel: model === 'wan_v3' ? 'Wan 3.0' : undefined,
         picsartI2vImageUrl: undefined,
         picsartI2vImageUrls: undefined,
         picsartI2vPriceKey: undefined,
       });
       return ctx.editMessageText(
-        `🌀 *${cfg.label}*\n\n` +
-        `${cfg.settingsLabel}\n\n` +
+        `🌀 *${model === 'wan_v3' ? 'Wan 3.0' : cfg.label}*\n\n` +
+        `${model === 'wan_v3' ? '30 detik · hasil hingga 1K' : cfg.settingsLabel}\n\n` +
         '*Langkah 1:* Pilih rasio video:',
         { parse_mode: 'Markdown', ...picsartI2vRatioKeyboard() }
       );
@@ -4992,7 +5054,7 @@ bot.on('callback_query', async (ctx) => {
       mode: 'minimax_h3_wait_start_frame',
     });
     return ctx.editMessageText(
-      `🎬 *MiniMax H3*\n\nRasio: *${ratio}* · Output: *768p native*\n\n` +
+      `🎬 *MiniMax H3*\n\nRasio: *${ratio}* · Hasil: *hingga 1K*\n\n` +
       '*Langkah berikutnya:* Kirim *foto frame awal*.',
       { parse_mode: 'Markdown' }
     );
@@ -5014,7 +5076,7 @@ bot.on('callback_query', async (ctx) => {
     return ctx.editMessageText(
       `🎬 *MiniMax H3*\n\n` +
       `Mode: *${modeLabel}*\n` +
-      `Rasio: *${session.minimaxH3Ratio ?? '9:16'}* · Output: *768p native*\n\n` +
+      `Rasio: *${session.minimaxH3Ratio ?? '9:16'}* · Hasil: *hingga 1K*\n\n` +
       '*Langkah berikutnya:* Kirim *foto frame awal*.',
       { parse_mode: 'Markdown' }
     );
@@ -5852,6 +5914,9 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     ) && session.picsartI2vRatio
       ? `${session.picsartI2vRatio} · ${cfg.settingsLabel}`
       : cfg.settingsLabel;
+    const publicSettingsLabel = model === 'wan_v3'
+      ? settingsLabel.replace('480p native', 'hasil hingga 1K')
+      : settingsLabel;
     if (supportsMultiplePicsartI2vImages(model)) {
       const imageUrls = [...(session.picsartI2vImageUrls ?? []), fileUrl]
         .slice(0, picsart.PICSART_I2V_MAX_IMAGES);
@@ -5864,7 +5929,7 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
       if (reachedLimit) {
         return ctx.reply(
           `✅ ${picsart.PICSART_I2V_MAX_IMAGES} foto acuan untuk *${displayLabel}* diterima (maksimal ${picsart.PICSART_I2V_MAX_IMAGES}).\n\n` +
-          `Parameter: *${settingsLabel}*\n\n` +
+          `Parameter: *${publicSettingsLabel}*\n\n` +
           '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
           { parse_mode: 'Markdown' }
         );
@@ -5878,7 +5943,7 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     setSession(userId, { picsartI2vImageUrl: fileUrl, mode: 'picsart_i2v_wait_prompt' });
     return ctx.reply(
       `✅ Foto acuan untuk *${displayLabel}* diterima!\n\n` +
-      `Parameter: *${settingsLabel}*\n\n` +
+      `Parameter: *${publicSettingsLabel}*\n\n` +
       '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
       { parse_mode: 'Markdown' }
     );
@@ -6824,7 +6889,7 @@ bot.on('text', async (ctx) => {
       seedance25Ratio: undefined,
     });
     const statusMsg = await ctx.reply(
-      `⏳ Memproses Seedance 2.5 I2V 480p (${ratio})...\nHasil dikirim otomatis (biasanya 5–12 menit).`,
+      `⏳ Memproses Seedance 2.5 I2V (${ratio})...\nHasil dikirim otomatis setelah selesai.`,
       { parse_mode: 'Markdown' }
     );
     runPicsartSeedance25(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, imageUrls, ratio, videoUrl, videoMime)
@@ -7005,7 +7070,7 @@ bot.on('text', async (ctx) => {
     } as const;
     setSession(userId, { mode: 'idle' });
     const statusMsg = await ctx.reply(
-      '⏳ Memproses MiniMax H3 768p native...\nHasil dikirim otomatis setelah video selesai.',
+      '⏳ Memproses MiniMax H3...\nHasil dikirim otomatis setelah video selesai.',
       { parse_mode: 'Markdown' }
     );
     runMinimaxH3(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
@@ -8174,12 +8239,19 @@ async function runPicsartI2v(
     });
 
     stage = 'delivery';
-    const delivered = await sendResult(
+    const finalVideo = opts.model === 'wan_v3'
+      ? await upscaleGeneratedVideo(result.url, userId, chatId, statusMsgId)
+      : { url: result.url, upscaled: false };
+    let delivered = await sendResult(
       chatId,
-      result.url,
-      `🧩 ${label} (${settingsLabel})\n\n/menu untuk buat lagi`,
+      finalVideo.url,
+      `🧩 ${opts.model === 'wan_v3' && finalVideo.upscaled ? 'Wan 3.0' : label} (${opts.model === 'wan_v3' ? settingsLabel.replace('480p native', finalVideo.upscaled ? 'hasil 1K' : '480p asli') : settingsLabel})\n\n/menu untuk buat lagi`,
       true
     );
+    if (!delivered && finalVideo.upscaled) {
+      delivered = await sendResult(chatId, result.url,
+        `🧩 ${label} (${settingsLabel} · hasil asli)\n\n/menu untuk buat lagi`, true);
+    }
     if (delivered) {
       refund = false;
       const newCount = await incrementKlingUsage(dbUserId);
@@ -8227,7 +8299,7 @@ async function runPicsartSeedance25(
   videoUrl?: string,
   videoMime?: string,
 ) {
-  const label = 'Seedance 2.5 I2V 480p';
+  const label = 'Seedance 2.5 I2V';
   const settingsLabel = `${ratio} · 30 detik · 480p · audio`;
   const PRICE = MODEL_PRICES.picsart_seedance_25_480;
   let stage = 'charge';
@@ -8292,12 +8364,17 @@ async function runPicsartSeedance25(
     });
 
     stage = 'delivery';
-    const delivered = await sendResult(
+    const finalVideo = await upscaleGeneratedVideo(result.url, userId, chatId, statusMsgId);
+    let delivered = await sendResult(
       chatId,
-      result.url,
-      `🌊 ${label} (${settingsLabel})\n\n/menu untuk buat lagi`,
+      finalVideo.url,
+      `🌊 ${label} (${ratio} · 30 detik · ${finalVideo.upscaled ? 'hasil 1K' : '480p asli'} · audio)\n\n/menu untuk buat lagi`,
       true
     );
+    if (!delivered && finalVideo.upscaled) {
+      delivered = await sendResult(chatId, result.url,
+        `🌊 ${label} (${settingsLabel} · hasil asli)\n\n/menu untuk buat lagi`, true);
+    }
     if (delivered) {
       refund = false;
       const newCount = await incrementKlingUsage(dbUserId);
@@ -9210,12 +9287,17 @@ async function runMinimaxH3(
         : opts.inputMode === 'reference_video'
           ? 'Gambar + Video Referensi'
           : 'Image to Video';
-    const delivered = await sendResult(
+    const finalVideo = await upscaleGeneratedVideo(result.url, userId, chatId, statusMsgId);
+    let delivered = await sendResult(
       chatId,
-      result.url,
-      `🎬 ${label} (${modeLabel} · 15s · ${opts.ratio} · 768p native)\n\n/menu untuk buat lagi`,
+      finalVideo.url,
+      `🎬 ${label} (${modeLabel} · 15s · ${opts.ratio} · ${finalVideo.upscaled ? 'hasil 1K' : '768p asli'})\n\n/menu untuk buat lagi`,
       true
     );
+    if (!delivered && finalVideo.upscaled) {
+      delivered = await sendResult(chatId, result.url,
+        `🎬 ${label} (${modeLabel} · 15s · ${opts.ratio} · 768p asli)\n\n/menu untuk buat lagi`, true);
+    }
     if (delivered) {
       refund = false;
       const newCount = await incrementKlingUsage(dbUserId);
