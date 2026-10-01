@@ -11,8 +11,9 @@ provider-facing label. If it fails, send the native result instead and label
 that result accurately; never discard a successfully generated video.
 
 The separate Flora MiniMax H3 15-second 480p and Wan 3.0 30-second 480p
-options deliberately deliver native 480p. Matching a model name is not enough
-to apply the automatic 1K exception; it belongs to the original public routes.
+options also automatically attempt the same Renderful 1K finishing pass.
+Their upstream generation stays at 480p; do not silently change that contract.
+Keep these separate public choices from the original routes.
 
 Seedance 2 Mini Video Edit and Seedance 2 Fast Video Edit stay separate from
 each other and from their image-to-video variants. Each Video Edit route
@@ -23,11 +24,12 @@ five-image limit. Never merge or silently substitute these routes.
 **Why:** The user previously disabled all separate export/upscale stages, then
 explicitly requested a seamless automatic 1K pass for only these three models.
 The exception should not silently expand to other models or revive the old
-export workflow. The user subsequently added separate Flora options explicitly
-at 480p, preserving the existing routes.
+export workflow. The user subsequently added separate Flora options with 480p
+generation, then explicitly requested that those results also be upscaled
+before customer delivery.
 
 **How to apply:** Keep the original generation resolution unchanged and run the
 finishing pass only after a successful generation. Public labels should describe
 the delivered quality, not falsely claim native 1K. Keep delivery-based charging
-and refunds unchanged; an accepted
-upscale job must not be resubmitted after polling or delivery failure.
+and refunds unchanged; an accepted upscale job must not be resubmitted after
+polling or delivery failure.

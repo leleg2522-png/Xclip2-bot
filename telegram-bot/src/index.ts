@@ -2509,8 +2509,8 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🌐 Kling Omni • 12 detik • 720p', 'mode_pi2v_kling_omni')],
     [Markup.button.callback('🌀 Wan v2 Image-to-Video', 'mode_pi2v_wan_v2')],
     [Markup.button.callback('🌀 Wan 3.0 • 30 detik • hingga 1K', 'mode_pi2v_wan_v3')],
-    [Markup.button.callback('MiniMax H3 •15 detik•480p', 'mode_flora_minimax_h3_480')],
-    [Markup.button.callback('Wan3.0 •30 detik•480p', 'mode_flora_wan_v3_480')],
+    [Markup.button.callback('MiniMax H3 P2 • 15 detik • hingga 1K', 'mode_flora_minimax_h3_480')],
+    [Markup.button.callback('Wan 3.0 P2 • 30 detik • hingga 1K', 'mode_flora_wan_v3_480')],
     [Markup.button.callback('🎬 Kling 2.1 Pro (10 detik)', 'mode_kling21')],
     [Markup.button.callback('🎬 Kling 2.1 P2 (10 detik)', 'mode_kling21p2')],
     [Markup.button.callback('✨ Gemini Omni Flash 1.1 • 10 detik • 1080p', 'mode_gomni11_flora')],
@@ -3073,8 +3073,8 @@ function hargaText(): string {
     `• Kling 2.1 Pro (10 detik) — ${formatRupiah(MODEL_PRICES.kling_21_pro)}\n` +
     `• Kling 2.1 P2 (10 detik) — ${formatRupiah(MODEL_PRICES.kling_21_p2)}\n` +
     `• Gemini Omni Flash 1.1 (10 detik · 1080p) — ${formatRupiah(MODEL_PRICES.gemini_omni_11_flora)}\n` +
-    `• MiniMax H3 (15 detik · native 480p) — ${formatRupiah(MODEL_PRICES.flora_minimax_h3_480)}\n` +
-    `• Wan3.0 (30 detik · native 480p) — ${formatRupiah(MODEL_PRICES.flora_wan_v3_480)}\n` +
+    `• MiniMax H3 P2 (15 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.flora_minimax_h3_480)}\n` +
+    `• Wan 3.0 P2 (30 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.flora_wan_v3_480)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +
     `• Kling MC V3.0 PRO P3 — ${formatRupiah(MODEL_PRICES.kling_p3)} 🔥PROMO\n` +
@@ -4380,7 +4380,7 @@ bot.on('callback_query', async (ctx) => {
     const minimax = data === 'mode_flora_minimax_h3_480';
     const modelKey: Flora480VideoModelKey = minimax ? 'minimax_h3_480' : 'wan_v3_480';
     const config = FLORA_480_VIDEO_MODELS[modelKey];
-    const displayLabel = minimax ? 'MiniMax H3' : 'Wan3.0';
+    const displayLabel = config.label;
     setSession(userId, minimax
       ? {
           mode: 'flora_minimax_h3_480_wait_ratio',
@@ -4393,8 +4393,8 @@ bot.on('callback_query', async (ctx) => {
           floraWanV3480ImageUrl: undefined,
         });
     return ctx.editMessageText(
-      `🎬 *${displayLabel} •${config.durationSeconds} detik•480p*\n\n` +
-      `Image to Video · *${config.durationSeconds} detik* · *480p native*\n` +
+      `🎬 *${displayLabel} • ${config.durationSeconds} detik • hingga 1K*\n\n` +
+      `Image to Video · *${config.durationSeconds} detik* · *hasil hingga 1K*\n` +
       `Harga: *${formatRupiah(minimax ? MODEL_PRICES.flora_minimax_h3_480 : MODEL_PRICES.flora_wan_v3_480)}* per video\n\n` +
       '*Langkah 1:* Pilih rasio video:',
       {
@@ -4423,13 +4423,13 @@ bot.on('callback_query', async (ctx) => {
     }
     const ratio: Flora480AspectRatio = data.endsWith('_169') ? '16:9' : '9:16';
     const config = FLORA_480_VIDEO_MODELS[minimax ? 'minimax_h3_480' : 'wan_v3_480'];
-    const displayLabel = minimax ? 'MiniMax H3' : 'Wan3.0';
+    const displayLabel = config.label;
     setSession(userId, minimax
       ? { mode: 'flora_minimax_h3_480_wait_image', floraMinimaxH3480Ratio: ratio, floraMinimaxH3480ImageUrl: undefined }
       : { mode: 'flora_wan_v3_480_wait_image', floraWanV3480Ratio: ratio, floraWanV3480ImageUrl: undefined });
     return ctx.editMessageText(
-      `🎬 *${displayLabel} •${config.durationSeconds} detik•480p*\n\n` +
-      `Rasio: *${ratio}* · ${config.durationSeconds} detik · 480p native\n\n` +
+      `🎬 *${displayLabel} • ${config.durationSeconds} detik • hingga 1K*\n\n` +
+      `Rasio: *${ratio}* · ${config.durationSeconds} detik · hasil hingga 1K\n\n` +
       '*Langkah 2:* Kirim *foto acuan* untuk video kamu.',
       { parse_mode: 'Markdown' }
     );
@@ -7141,9 +7141,9 @@ bot.on('text', async (ctx) => {
       : { mode: 'idle', floraWanV3480Ratio: undefined, floraWanV3480ImageUrl: undefined });
 
     const config = FLORA_480_VIDEO_MODELS[modelKey];
-    const displayLabel = minimax ? 'MiniMax H3' : 'Wan3.0';
+    const displayLabel = config.label;
     const statusMsg = await ctx.reply(
-      `⏳ Memproses ${displayLabel} •${config.durationSeconds} detik•480p (${ratio})...\nHasil dikirim otomatis setelah selesai.`
+      `⏳ Memproses ${displayLabel} • ${config.durationSeconds} detik • hingga 1K (${ratio})...\nHasil dikirim otomatis setelah selesai.`
     );
     runFlora480Video(ctx.chat.id, userId, dbUserId, statusMsg.message_id, modelKey, imageUrl, prompt, ratio)
       .catch(() => console.error(`[${userId}] ${displayLabel} generation failed; provider details withheld`));
@@ -10457,7 +10457,7 @@ async function runGeminiOmni11Flora(
   }
 }
 
-// ─── Background: native 480p Flora image-to-video routes ──────────────────────
+// ─── Background: Flora 480p generation with automatic 1K delivery ──────────────
 
 function isExplicitFlora480KeyRejection(err: any): boolean {
   const status = Number(err?.response?.status);
@@ -10480,7 +10480,7 @@ async function runFlora480Video(
   ratio: Flora480AspectRatio
 ): Promise<void> {
   const config = FLORA_480_VIDEO_MODELS[modelKey];
-  const LABEL = modelKey === 'minimax_h3_480' ? 'MiniMax H3' : 'Wan3.0';
+  const LABEL = config.label;
   const PRICE = modelKey === 'minimax_h3_480'
     ? MODEL_PRICES.flora_minimax_h3_480
     : MODEL_PRICES.flora_wan_v3_480;
@@ -10550,21 +10550,31 @@ async function runFlora480Video(
             chatId,
             statusMsgId,
             undefined,
-            `⏳ ${LABEL}: video sedang dibuat... (3/3)\nOutput ${config.durationSeconds} detik · 480p native. Hasil dikirim otomatis.`
+            `⏳ ${LABEL}: video sedang dibuat... (3/3)\n${config.durationSeconds} detik · hasil hingga 1K. Hasil dikirim otomatis.`
           ).catch(() => {});
           stage = 'poll';
           const resultUrl = await floraPollRun(apiKey, acceptedRunId, 20 * 60 * 1000);
-          const delivered = await sendResult(
+          stage = 'delivery';
+          const finalVideo = await upscaleGeneratedVideo(resultUrl, userId, chatId, statusMsgId);
+          let delivered = await sendResult(
             chatId,
-            resultUrl,
-            `✨ ${LABEL} (${ratio} · ${config.durationSeconds} detik · 480p native)\n\n/menu untuk buat lagi`,
+            finalVideo.url,
+            `✨ ${LABEL} (${ratio} · ${config.durationSeconds} detik · ${finalVideo.upscaled ? 'hasil 1K' : '480p asli'})\n\n/menu untuk buat lagi`,
             true
-          );
+          ).catch(() => false);
+          if (!delivered && finalVideo.upscaled) {
+            delivered = await sendResult(
+              chatId,
+              resultUrl,
+              `✨ ${LABEL} (${ratio} · ${config.durationSeconds} detik · 480p asli)\n\n/menu untuk buat lagi`,
+              true
+            ).catch(() => false);
+          }
           if (delivered) {
             refund = false;
             markGenSuccess(userId);
             await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-            console.log(`[${userId}] ${LABEL} native 480p video delivered`);
+            console.log(`[${userId}] ${LABEL} video delivered`);
           }
           return;
         } catch (err: any) {

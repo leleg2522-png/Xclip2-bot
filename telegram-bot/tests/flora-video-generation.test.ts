@@ -14,7 +14,8 @@ const start = source.indexOf('function isExplicitFlora480KeyRejection');
 const end = source.indexOf('// ─── Background: Flora image generation', start);
 assert.ok(start > 0 && end > start);
 const runnerSource = source.slice(start, end);
-assert.doesNotMatch(runnerSource, /upscaleGeneratedVideo|result\.url/);
+assert.match(runnerSource, /await upscaleGeneratedVideo\(resultUrl, userId, chatId, statusMsgId\)/);
+assert.match(runnerSource, /if \(!delivered && finalVideo\.upscaled\)/);
 assert.match(source, /flora_minimax_h3_480:\s*3500/);
 assert.match(source, /flora_wan_v3_480:\s*5000/);
 for (const route of ['flora_minimax_h3_480', 'flora_wan_v3_480']) {
@@ -54,7 +55,9 @@ type Options = {
   catalog?: (key: string, attempt: number) => unknown;
   submit?: (key: string, prompt: string) => string;
   poll?: (runId: string) => string;
-  deliver?: boolean;
+  deliver?: boolean | ((url: string) => boolean);
+  upscale?: boolean;
+  sendThrows?: (url: string) => boolean;
   refundFails?: boolean;
 };
 
@@ -69,6 +72,8 @@ function harness(options: Options = {}) {
     messages: [] as string[],
     successes: [] as number[],
     polls: [] as string[],
+    upscales: [] as Array<{ sourceUrl: string; userId: number; chatId: number; statusMsgId: number }>,
+    order: [] as string[],
     catalogCalls: 0,
   };
   const keys = options.keys ?? ['key-a', 'key-b'];
@@ -108,12 +113,22 @@ function harness(options: Options = {}) {
     floraPollRun: async (_: string, runId: string, maxMs: number) => {
       assert.equal(maxMs, 20 * 60 * 1000);
       events.polls.push(runId);
+      events.order.push('poll');
       return options.poll ? options.poll(runId) : `https://provider.example.test/${runId}.mp4`;
+    },
+    upscaleGeneratedVideo: async (sourceUrl: string, userId: number, chatId: number, statusMsgId: number) => {
+      events.upscales.push({ sourceUrl, userId, chatId, statusMsgId });
+      events.order.push('upscale');
+      return options.upscale === false
+        ? { url: sourceUrl, upscaled: false }
+        : { url: sourceUrl.replace('.mp4', '-1k.mp4'), upscaled: true };
     },
     sendResult: async (chatId: number, url: string, caption: string, video: boolean) => {
       assert.equal(video, true);
       events.deliveries.push({ chatId, url, caption });
-      return options.deliver !== false;
+      events.order.push('deliver');
+      if (options.sendThrows?.(url)) throw new Error('Telegram delivery failed');
+      return typeof options.deliver === 'function' ? options.deliver(url) : options.deliver !== false;
     },
     markGenSuccess: (userId: number) => { events.successes.push(userId); },
     addSaldo: async (_: number, price: number) => {
@@ -153,8 +168,44 @@ async function main() {
     assert.equal(events.submissions[0].params.aspect_ratio, '16:9');
     assert.deepEqual(events.refunds, []);
     assert.deepEqual(events.releases, [1]);
-    assert.match(events.deliveries[0].caption, /480p native/);
-    assert.doesNotMatch(events.messages.join(' ') + events.deliveries[0].caption, /Flora|gateway|key-|1K|1080/i);
+    assert.match(events.deliveries[0].caption, /hasil 1K/);
+    assert.match(events.deliveries[0].url, /-1k\.mp4$/);
+    assert.deepEqual(events.order, ['poll', 'upscale', 'deliver']);
+    assert.deepEqual(events.upscales, [{
+      sourceUrl: 'https://provider.example.test/run-fixture.mp4',
+      userId: 1, chatId: 1, statusMsgId: 10,
+    }]);
+    assert.doesNotMatch(events.messages.join(' ') + events.deliveries[0].caption, /Flora|Renderful|ByteDance|gateway|key-|1080/i);
+  }
+
+  for (const key of ['minimax_h3_480', 'wan_v3_480'] as const) {
+    const fallback = harness({ upscale: false });
+    await fallback.run(key);
+    assert.equal(fallback.events.submissions.length, 1);
+    assert.equal(fallback.events.upscales.length, 1);
+    assert.equal(fallback.events.deliveries.length, 1);
+    assert.equal(fallback.events.deliveries[0].url, 'https://provider.example.test/run-fixture.mp4');
+    assert.match(fallback.events.deliveries[0].caption, /480p asli/);
+    assert.doesNotMatch(fallback.events.deliveries[0].caption, /1K/);
+    assert.deepEqual(fallback.events.refunds, []);
+  }
+
+  for (const key of ['minimax_h3_480', 'wan_v3_480'] as const) {
+    for (const throwOnUpscaled of [false, true]) {
+      const fallback = harness({
+        deliver: url => !url.includes('-1k.mp4'),
+        sendThrows: throwOnUpscaled ? url => url.includes('-1k.mp4') : undefined,
+      });
+      await fallback.run(key);
+      assert.equal(fallback.events.submissions.length, 1);
+      assert.equal(fallback.events.upscales.length, 1, 'do not resubmit the finishing pass after delivery failure');
+      assert.equal(fallback.events.deliveries.length, 2);
+      assert.match(fallback.events.deliveries[0].caption, /hasil 1K/);
+      assert.match(fallback.events.deliveries[1].caption, /480p asli/);
+      assert.equal(fallback.events.deliveries[1].url, 'https://provider.example.test/run-fixture.mp4');
+      assert.deepEqual(fallback.events.refunds, []);
+      assert.deepEqual(fallback.events.successes, [1]);
+    }
   }
 
   const rotated = harness({ catalog: key => {
@@ -213,6 +264,7 @@ async function main() {
     const failed = harness({ poll: () => { throw error; } });
     await failed.run('minimax_h3_480');
     assert.equal(failed.events.submissions.length, 1, 'accepted job must never be resubmitted');
+    assert.equal(failed.events.upscales.length, 0, 'a failed generation must not be upscaled');
     assert.deepEqual(failed.events.refunds, [3500]);
     assert.deepEqual(failed.events.releases, [1]);
     assert.equal(failed.events.dead.length, /BILLING|Unauthorized/.test(error.message) ? 1 : 0);
@@ -222,6 +274,7 @@ async function main() {
   const deliveryFailed = harness({ deliver: false });
   await deliveryFailed.run('wan_v3_480');
   assert.equal(deliveryFailed.events.submissions.length, 1);
+  assert.equal(deliveryFailed.events.deliveries.length, 2, 'failed 1K delivery must attempt the original before refund');
   assert.deepEqual(deliveryFailed.events.refunds, [5000]);
   assert.deepEqual(deliveryFailed.events.successes, []);
 
@@ -260,11 +313,11 @@ async function main() {
     parallel.run('wan_v3_480', 22, 'wan'),
   ]);
   assert.equal(parallel.events.submissions.length, 2);
-  assert.equal(parallel.events.deliveries.find(d => d.chatId === 11)?.url, 'https://provider.example.test/run-minimax.mp4');
-  assert.equal(parallel.events.deliveries.find(d => d.chatId === 22)?.url, 'https://provider.example.test/run-wan.mp4');
+  assert.equal(parallel.events.deliveries.find(d => d.chatId === 11)?.url, 'https://provider.example.test/run-minimax-1k.mp4');
+  assert.equal(parallel.events.deliveries.find(d => d.chatId === 22)?.url, 'https://provider.example.test/run-wan-1k.mp4');
   assert.deepEqual(parallel.events.refunds, []);
   assert.deepEqual(parallel.events.releases.sort(), [11, 22]);
-  console.log('Flora 480p video flow, key rotation, refunds, no-resubmit and parallel-isolation simulations passed.');
+  console.log('Flora 480p generation, automatic 1K delivery, native fallback, refunds and parallel-isolation simulations passed.');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

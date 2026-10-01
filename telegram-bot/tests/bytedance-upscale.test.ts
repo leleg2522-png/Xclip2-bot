@@ -28,10 +28,11 @@ assert.doesNotMatch(source, /Layanan ByteDance Upscaler sedang tidak tersedia\. 
 assert.match(source, /ByteDance Upscaler sedang tidak tersedia\. Coba lagi nanti/);
 assert.match(source, /customerSafeModelLabel[\s\S]*Renderful/);
 
-// Only the three requested generation routes get an automatic finishing pass.
+// The requested Picsart routes and the two new Flora variants get the finishing pass.
 assert.match(source, /opts\.model === 'wan_v3'\s*\?\s*await upscaleGeneratedVideo\(result\.url, userId, chatId, statusMsgId\)/);
 assert.match(source, /async function runPicsartSeedance25\([\s\S]*?const finalVideo = await upscaleGeneratedVideo\(result\.url, userId, chatId, statusMsgId\)/);
 assert.match(source, /async function runMinimaxH3\([\s\S]*?const finalVideo = await upscaleGeneratedVideo\(result\.url, userId, chatId, statusMsgId\)/);
+assert.match(source, /async function runFlora480Video\([\s\S]*?const finalVideo = await upscaleGeneratedVideo\(resultUrl, userId, chatId, statusMsgId\)/);
 const autoUpscale = source.slice(
   source.indexOf('async function upscaleGeneratedVideo('),
   source.indexOf('// ─── Keyboards ───')

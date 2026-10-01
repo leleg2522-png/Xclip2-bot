@@ -1,7 +1,7 @@
 - [Leonardo AI i2v endpoint](leonardo-i2v.md) — correct image-to-video endpoint is /generations-image-to-video with model strings KLING2_1/KLING2_5; Kling 2.6 does not exist on Leonardo AI
 - [Picsart AI Playground internal API](picsart-ai-playground-api.md) — undocumented upload→submit→poll flow; auth is fragile browser session cookie (expires); HAR sanitizes cookies, use Copy-as-cURL
 - [Picsart Wan 3.0 video](picsart-wan3-video.md) — Wan 3.0 delivers its native 480p result directly; no resize/export step.
-- [Picsart video delivery](picsart-i2v-1080-delivery.md) — native delivery by default; Wan 3.0, public Seedance 2.5, and MiniMax H3 automatically try 1K with native fallback.
+- [Video delivery](picsart-i2v-1080-delivery.md) — Wan 3.0, public Seedance 2.5, MiniMax H3, and the Flora H3/Wan variants try automatic 1K with native fallback.
 - [Picsart PixVerse v6](picsart-pixverse-v6.md) — v6 requests direct 720p/15s without export; ratio is determined by the cropped source frame.
 - [Browser Use Cloud v2 proxy](browser-use-cloud-proxy.md) — "unusual activity" login block = proxy-region mismatch; set sessionSettings.proxyCountryCode to account's country (default proxy is US)
 - [Telegram bot self-hosted result links](telegram-bot-media-links.md) — big results bypass Telegram's ~50MB cap via /dl/:token on own Railway domain; storage is ephemeral tmpdir so links die on redeploy

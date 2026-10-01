@@ -1,15 +1,15 @@
-/** Native 480p routes. Keep them separate from the existing automatic-1K routes. */
+/** Native 480p generation contracts; delivery applies the automatic 1K pass. */
 export type Flora480VideoModelKey = 'minimax_h3_480' | 'wan_v3_480';
 export type Flora480AspectRatio = '9:16' | '16:9';
 
 export const FLORA_480_VIDEO_MODELS = {
   minimax_h3_480: {
-    label: 'MiniMax H3',
+    label: 'MiniMax H3 P2',
     durationSeconds: 15,
     resolution: '480P',
   },
   wan_v3_480: {
-    label: 'Wan 3.0',
+    label: 'Wan 3.0 P2',
     durationSeconds: 30,
     resolution: '480p',
   },
