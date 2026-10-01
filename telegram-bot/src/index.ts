@@ -12,6 +12,13 @@ import crypto from 'crypto';
 import * as picsart from './picsart';
 import * as klikqris from './klikqris';
 import * as oneover from './oneover';
+import {
+  FLORA_480_VIDEO_MODELS,
+  buildFlora480VideoParams,
+  resolveFlora480VideoModel,
+  type Flora480AspectRatio,
+  type Flora480VideoModelKey,
+} from './flora-video-models';
 import { FreebeatBridgeQueue, type BridgeAgent, type BridgeJob } from './freebeat-bridge';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -163,6 +170,8 @@ const MODEL_PRICES = {
   gemini_omni_12: 3500,
   gemini_omni_12_4k: 4000,
   gemini_omni_11_flora: 3000,
+  flora_minimax_h3_480: 3500,
+  flora_wan_v3_480: 5000,
   chat: 100,           // Chat AI per pesan
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
   kling_p3: 4000,      // Kling MC V3.0 PRO P3 (Edanbot, kling-motion-26-pro)
@@ -1657,6 +1666,12 @@ type Mode =
   | 'gomni11_flora_wait_ratio'
   | 'gomni11_flora_wait_image'
   | 'gomni11_flora_wait_prompt'
+  | 'flora_minimax_h3_480_wait_ratio'
+  | 'flora_minimax_h3_480_wait_image'
+  | 'flora_minimax_h3_480_wait_prompt'
+  | 'flora_wan_v3_480_wait_ratio'
+  | 'flora_wan_v3_480_wait_image'
+  | 'flora_wan_v3_480_wait_prompt'
   | 'topaz_wait_video'
   | 'bytedance_upscale_wait_video'
   | 'img_wait_image'
@@ -1686,7 +1701,9 @@ type GenerationDraftKind =
   | 'topaz'
   | 'bytedance_upscale'
   | 'kling21p2'
-  | 'gomni11_flora';
+  | 'gomni11_flora'
+  | 'flora_minimax_h3_480'
+  | 'flora_wan_v3_480';
 
 interface Session {
   mode: Mode;
@@ -1815,6 +1832,11 @@ interface Session {
   // Flora Gemini Omni Flash 1.1 (10-second 1080p image-to-video) wizard state
   gomni11FloraRatio?: '9:16' | '16:9';
   gomni11FloraImageUrl?: string;
+  // Independent Flora native 480p image-to-video wizard state.
+  floraMinimaxH3480Ratio?: Flora480AspectRatio;
+  floraMinimaxH3480ImageUrl?: string;
+  floraWanV3480Ratio?: Flora480AspectRatio;
+  floraWanV3480ImageUrl?: string;
   // Chat AI wizard state (multi-turn conversation)
   chatModel?: string;
   chatHistory?: Array<{ role: string; content: string }>;
@@ -1906,6 +1928,8 @@ const GENERATION_DRAFT_MODES = new Set<Mode>([
   'kling21_wait_image', 'kling21_wait_prompt',
   'kling21p2_wait_image', 'kling21p2_wait_prompt',
   'gomni11_flora_wait_ratio', 'gomni11_flora_wait_image', 'gomni11_flora_wait_prompt',
+  'flora_minimax_h3_480_wait_ratio', 'flora_minimax_h3_480_wait_image', 'flora_minimax_h3_480_wait_prompt',
+  'flora_wan_v3_480_wait_ratio', 'flora_wan_v3_480_wait_image', 'flora_wan_v3_480_wait_prompt',
   'topaz_wait_video', 'bytedance_upscale_wait_video',
   'img_wait_image', 'img_wait_prompt',
 ]);
@@ -1922,6 +1946,8 @@ function generationDraftKindForStart(data: string): GenerationDraftKind | undefi
     mode_kling21: 'kling21',
     mode_kling21p2: 'kling21p2',
     mode_gomni11_flora: 'gomni11_flora',
+    mode_flora_minimax_h3_480: 'flora_minimax_h3_480',
+    mode_flora_wan_v3_480: 'flora_wan_v3_480',
     mode_oneover_seedance25: 'oneover',
     mode_seedance_mini_edit: 'picsart_i2v',
     mode_seedance_fast_edit: 'picsart_i2v',
@@ -1964,6 +1990,8 @@ function generationDraftKindForContinuation(data: string): GenerationDraftKind |
   if (data.startsWith('seedance25_ratio_')) return 'oneover';
   if (data === 'seedance25_inputs_done') return 'oneover';
   if (data.startsWith('audio_voice_')) return 'audio';
+  if (data.startsWith('flora480_minimax_')) return 'flora_minimax_h3_480';
+  if (data.startsWith('flora480_wan_')) return 'flora_wan_v3_480';
   return undefined;
 }
 
@@ -2481,6 +2509,8 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🌐 Kling Omni • 12 detik • 720p', 'mode_pi2v_kling_omni')],
     [Markup.button.callback('🌀 Wan v2 Image-to-Video', 'mode_pi2v_wan_v2')],
     [Markup.button.callback('🌀 Wan 3.0 • 30 detik • hingga 1K', 'mode_pi2v_wan_v3')],
+    [Markup.button.callback('MiniMax H3 •15 detik•480p', 'mode_flora_minimax_h3_480')],
+    [Markup.button.callback('Wan3.0 •30 detik•480p', 'mode_flora_wan_v3_480')],
     [Markup.button.callback('🎬 Kling 2.1 Pro (10 detik)', 'mode_kling21')],
     [Markup.button.callback('🎬 Kling 2.1 P2 (10 detik)', 'mode_kling21p2')],
     [Markup.button.callback('✨ Gemini Omni Flash 1.1 • 10 detik • 1080p', 'mode_gomni11_flora')],
@@ -3043,6 +3073,8 @@ function hargaText(): string {
     `• Kling 2.1 Pro (10 detik) — ${formatRupiah(MODEL_PRICES.kling_21_pro)}\n` +
     `• Kling 2.1 P2 (10 detik) — ${formatRupiah(MODEL_PRICES.kling_21_p2)}\n` +
     `• Gemini Omni Flash 1.1 (10 detik · 1080p) — ${formatRupiah(MODEL_PRICES.gemini_omni_11_flora)}\n` +
+    `• MiniMax H3 (15 detik · native 480p) — ${formatRupiah(MODEL_PRICES.flora_minimax_h3_480)}\n` +
+    `• Wan3.0 (30 detik · native 480p) — ${formatRupiah(MODEL_PRICES.flora_wan_v3_480)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +
     `• Kling MC V3.0 PRO P3 — ${formatRupiah(MODEL_PRICES.kling_p3)} 🔥PROMO\n` +
@@ -4339,6 +4371,65 @@ bot.on('callback_query', async (ctx) => {
     });
     return ctx.editMessageText(
       `✨ *Gemini Omni Flash 1.1*\n\nRasio: *${ratio}* · 10 detik · 1080p\n\n` +
+      '*Langkah 2:* Kirim *foto acuan* untuk video kamu.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data === 'mode_flora_minimax_h3_480' || data === 'mode_flora_wan_v3_480') {
+    const minimax = data === 'mode_flora_minimax_h3_480';
+    const modelKey: Flora480VideoModelKey = minimax ? 'minimax_h3_480' : 'wan_v3_480';
+    const config = FLORA_480_VIDEO_MODELS[modelKey];
+    const displayLabel = minimax ? 'MiniMax H3' : 'Wan3.0';
+    setSession(userId, minimax
+      ? {
+          mode: 'flora_minimax_h3_480_wait_ratio',
+          floraMinimaxH3480Ratio: undefined,
+          floraMinimaxH3480ImageUrl: undefined,
+        }
+      : {
+          mode: 'flora_wan_v3_480_wait_ratio',
+          floraWanV3480Ratio: undefined,
+          floraWanV3480ImageUrl: undefined,
+        });
+    return ctx.editMessageText(
+      `🎬 *${displayLabel} •${config.durationSeconds} detik•480p*\n\n` +
+      `Image to Video · *${config.durationSeconds} detik* · *480p native*\n` +
+      `Harga: *${formatRupiah(minimax ? MODEL_PRICES.flora_minimax_h3_480 : MODEL_PRICES.flora_wan_v3_480)}* per video\n\n` +
+      '*Langkah 1:* Pilih rasio video:',
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [
+            Markup.button.callback('📱 9:16', minimax ? 'flora480_minimax_ratio_916' : 'flora480_wan_ratio_916'),
+            Markup.button.callback('🖥️ 16:9', minimax ? 'flora480_minimax_ratio_169' : 'flora480_wan_ratio_169'),
+          ],
+          [Markup.button.callback('« Kembali', 'back_main')],
+        ]),
+      }
+    );
+  }
+
+  if (
+    data === 'flora480_minimax_ratio_916' || data === 'flora480_minimax_ratio_169'
+    || data === 'flora480_wan_ratio_916' || data === 'flora480_wan_ratio_169'
+  ) {
+    const minimax = data.startsWith('flora480_minimax_');
+    const expectedMode: Mode = minimax
+      ? 'flora_minimax_h3_480_wait_ratio'
+      : 'flora_wan_v3_480_wait_ratio';
+    if (getSession(userId).mode !== expectedMode) {
+      return ctx.reply('⚠️ Pilihan rasio sudah tidak aktif. Mulai lagi dari /menu.');
+    }
+    const ratio: Flora480AspectRatio = data.endsWith('_169') ? '16:9' : '9:16';
+    const config = FLORA_480_VIDEO_MODELS[minimax ? 'minimax_h3_480' : 'wan_v3_480'];
+    const displayLabel = minimax ? 'MiniMax H3' : 'Wan3.0';
+    setSession(userId, minimax
+      ? { mode: 'flora_minimax_h3_480_wait_image', floraMinimaxH3480Ratio: ratio, floraMinimaxH3480ImageUrl: undefined }
+      : { mode: 'flora_wan_v3_480_wait_image', floraWanV3480Ratio: ratio, floraWanV3480ImageUrl: undefined });
+    return ctx.editMessageText(
+      `🎬 *${displayLabel} •${config.durationSeconds} detik•480p*\n\n` +
+      `Rasio: *${ratio}* · ${config.durationSeconds} detik · 480p native\n\n` +
       '*Langkah 2:* Kirim *foto acuan* untuk video kamu.',
       { parse_mode: 'Markdown' }
     );
@@ -6000,6 +6091,30 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     );
   }
 
+  if (session.mode === 'flora_minimax_h3_480_wait_image') {
+    setSession(userId, {
+      floraMinimaxH3480ImageUrl: fileUrl,
+      mode: 'flora_minimax_h3_480_wait_prompt',
+    });
+    return ctx.reply(
+      `✅ Foto acuan diterima! (Rasio: ${session.floraMinimaxH3480Ratio ?? '9:16'})\n\n` +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (session.mode === 'flora_wan_v3_480_wait_image') {
+    setSession(userId, {
+      floraWanV3480ImageUrl: fileUrl,
+      mode: 'flora_wan_v3_480_wait_prompt',
+    });
+    return ctx.reply(
+      `✅ Foto acuan diterima! (Rasio: ${session.floraWanV3480Ratio ?? '9:16'})\n\n` +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (session.mode === 'sora_wait_image') {
     setSession(userId, { soraImageUrl: fileUrl, mode: 'sora_wait_prompt' });
     return ctx.reply(
@@ -6979,6 +7094,59 @@ bot.on('text', async (ctx) => {
     );
     runGeminiOmni11Flora(ctx.chat.id, userId, dbUserId, statusMsg.message_id, imageUrl, prompt, ratio)
       .catch(e => console.error(`[${userId}] Gemini Omni Flash 1.1 error:`, e.message));
+    return;
+  }
+
+  if (
+    session.mode === 'flora_minimax_h3_480_wait_prompt'
+    || session.mode === 'flora_wan_v3_480_wait_prompt'
+  ) {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
+
+    const activeDraft = getSession(userId);
+    const minimax = activeDraft.mode === 'flora_minimax_h3_480_wait_prompt';
+    if (!minimax && activeDraft.mode !== 'flora_wan_v3_480_wait_prompt') return;
+    const imageUrl = minimax
+      ? activeDraft.floraMinimaxH3480ImageUrl
+      : activeDraft.floraWanV3480ImageUrl;
+    if (!imageUrl || !activeDraft.dbUserId) {
+      setSession(userId, minimax
+        ? { mode: 'idle', floraMinimaxH3480Ratio: undefined, floraMinimaxH3480ImageUrl: undefined }
+        : { mode: 'idle', floraWanV3480Ratio: undefined, floraWanV3480ImageUrl: undefined });
+      return ctx.reply('⚠️ Foto acuan tidak ditemukan. Mulai lagi dari /menu.');
+    }
+
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, minimax
+        ? { mode: 'idle', floraMinimaxH3480Ratio: undefined, floraMinimaxH3480ImageUrl: undefined }
+        : { mode: 'idle', floraWanV3480Ratio: undefined, floraWanV3480ImageUrl: undefined });
+      return ctx.reply(
+        `⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+
+    // Snapshot every draft value before returning the session to idle. Duplicate
+    // message updates then cannot submit the same paid generation twice.
+    const modelKey: Flora480VideoModelKey = minimax ? 'minimax_h3_480' : 'wan_v3_480';
+    const ratio = minimax
+      ? activeDraft.floraMinimaxH3480Ratio ?? '9:16'
+      : activeDraft.floraWanV3480Ratio ?? '9:16';
+    const dbUserId = activeDraft.dbUserId;
+    setSession(userId, minimax
+      ? { mode: 'idle', floraMinimaxH3480Ratio: undefined, floraMinimaxH3480ImageUrl: undefined }
+      : { mode: 'idle', floraWanV3480Ratio: undefined, floraWanV3480ImageUrl: undefined });
+
+    const config = FLORA_480_VIDEO_MODELS[modelKey];
+    const displayLabel = minimax ? 'MiniMax H3' : 'Wan3.0';
+    const statusMsg = await ctx.reply(
+      `⏳ Memproses ${displayLabel} •${config.durationSeconds} detik•480p (${ratio})...\nHasil dikirim otomatis setelah selesai.`
+    );
+    runFlora480Video(ctx.chat.id, userId, dbUserId, statusMsg.message_id, modelKey, imageUrl, prompt, ratio)
+      .catch(() => console.error(`[${userId}] ${displayLabel} generation failed; provider details withheld`));
     return;
   }
 
@@ -10286,6 +10454,212 @@ async function runGeminiOmni11Flora(
       await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
     }
     releaseGenerating(dbUserId);
+  }
+}
+
+// ─── Background: native 480p Flora image-to-video routes ──────────────────────
+
+function isExplicitFlora480KeyRejection(err: any): boolean {
+  const status = Number(err?.response?.status);
+  if ([401, 402, 403].includes(status)) return true;
+  // A gateway/transport failure may mention quota or auth in its text even
+  // after the paid request was accepted. It is never proof of rejection.
+  if (status >= 500 || (!err?.response && err?.isAxiosError)) return false;
+  const raw = describeError(err).toLowerCase();
+  return /\b(unauthorized|invalid api key|invalid_credentials|quota exhausted|quota exceeded|quota_exceeded|limit exceeded|insufficient credits|insufficient_credits|billing_not_enough_credits|payment required|forbidden)\b/.test(raw);
+}
+
+async function runFlora480Video(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  modelKey: Flora480VideoModelKey,
+  imageUrl: string,
+  prompt: string,
+  ratio: Flora480AspectRatio
+): Promise<void> {
+  const config = FLORA_480_VIDEO_MODELS[modelKey];
+  const LABEL = modelKey === 'minimax_h3_480' ? 'MiniMax H3' : 'Wan3.0';
+  const PRICE = modelKey === 'minimax_h3_480'
+    ? MODEL_PRICES.flora_minimax_h3_480
+    : MODEL_PRICES.flora_wan_v3_480;
+  const skippedKeys = new Set<string>();
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+
+  let refund = true;
+  try {
+    const image = await downloadBuffer(imageUrl);
+    for (let keyAttempt = 0; keyAttempt < 5; keyAttempt++) {
+      const apiKey = await getNextFloraKey(skippedKeys);
+      if (!apiKey) break;
+      let skipAccount = false;
+
+      // Catalog/workspace/upload failures are safely retryable before submit.
+      // An ambiguous /generate result must never be submitted again.
+      for (let preparationAttempt = 0; preparationAttempt < 3; preparationAttempt++) {
+        let acceptedRunId: string | undefined;
+        let submitting = false;
+        let stage = 'catalog';
+        try {
+          const modelsRes = await floraHttp.get(`${FLORA_BASE}/models`, {
+            headers: { Authorization: `Bearer ${apiKey}` },
+          });
+          let modelId: string;
+          try {
+            modelId = resolveFlora480VideoModel(modelKey, modelsRes.data);
+          } catch (catalogError: any) {
+            const code = String(catalogError?.message ?? '');
+            if (code === 'FLORA_MODEL_UNAVAILABLE' || code === 'FLORA_MODEL_UNSUPPORTED_PARAMETERS') {
+              console.warn(`[${userId}] ${LABEL}: skipping account with incompatible live model catalog`);
+              skippedKeys.add(apiKey);
+              skipAccount = true;
+              break;
+            }
+            throw catalogError;
+          }
+
+          stage = 'workspace';
+          const ws = await floraGetWorkspace(apiKey);
+          await bot.telegram.editMessageText(
+            chatId, statusMsgId, undefined, `⏳ ${LABEL}: mengunggah foto... (1/3)`
+          ).catch(() => {});
+          stage = 'upload';
+          const uploadedImageUrl = await floraUploadImage(
+            apiKey,
+            ws.workspaceId,
+            image.buf,
+            `${modelKey}-reference-${Date.now()}.${image.ext}`,
+            image.mime
+          );
+
+          const params = buildFlora480VideoParams(modelKey, uploadedImageUrl, ratio);
+          await bot.telegram.editMessageText(
+            chatId, statusMsgId, undefined, `⏳ ${LABEL}: mengirim perintah... (2/3)`
+          ).catch(() => {});
+          stage = 'submit';
+          submitting = true;
+          acceptedRunId = await floraGenerate(apiKey, ws, modelId, params, prompt, 'video');
+          submitting = false;
+
+          await bot.telegram.editMessageText(
+            chatId,
+            statusMsgId,
+            undefined,
+            `⏳ ${LABEL}: video sedang dibuat... (3/3)\nOutput ${config.durationSeconds} detik · 480p native. Hasil dikirim otomatis.`
+          ).catch(() => {});
+          stage = 'poll';
+          const resultUrl = await floraPollRun(apiKey, acceptedRunId, 20 * 60 * 1000);
+          const delivered = await sendResult(
+            chatId,
+            resultUrl,
+            `✨ ${LABEL} (${ratio} · ${config.durationSeconds} detik · 480p native)\n\n/menu untuk buat lagi`,
+            true
+          );
+          if (delivered) {
+            refund = false;
+            markGenSuccess(userId);
+            await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+            console.log(`[${userId}] ${LABEL} native 480p video delivered`);
+          }
+          return;
+        } catch (err: any) {
+          if (acceptedRunId) {
+            if (isExplicitFlora480KeyRejection(err)) await markFloraKeyDead(apiKey).catch(() => {});
+            console.error(`[${userId}] ${LABEL} failed after an accepted run; no resubmission will be attempted`);
+            const contentRejected = /MODERATED|content policy|PROMPT_MODERATED/i.test(describeError(err));
+            const message = contentRejected
+              ? '❌ Input tidak dapat diproses karena melanggar kebijakan konten.'
+              : '❌ Proses video tidak berhasil. Saldo akan dikembalikan.';
+            await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${message}\n\n/menu untuk coba lagi`)
+              .catch(() => bot.telegram.sendMessage(chatId, `${message}\n\n/menu untuk coba lagi`));
+            return;
+          }
+
+          const submitRejected = !submitting
+            || [400, 401, 402, 403, 422].includes(Number(err?.response?.status));
+          if (submitRejected && isExplicitFlora480KeyRejection(err)) {
+            await markFloraKeyDead(apiKey).catch(() => {});
+            skippedKeys.add(apiKey);
+            skipAccount = true;
+            break;
+          }
+
+          const errorMessage = String(err?.message ?? '');
+          if (errorMessage === 'FLORA_MODEL_UNAVAILABLE' || errorMessage === 'FLORA_MODEL_UNSUPPORTED_PARAMETERS') {
+            console.warn(`[${userId}] ${LABEL}: skipping account with incompatible live model catalog`);
+            skippedKeys.add(apiKey);
+            skipAccount = true;
+            break;
+          }
+
+          // The POST may have been accepted upstream even if its response was
+          // lost or the server returned a generic error. Never retry it.
+          if (submitting || stage === 'submit') {
+            console.error(`[${userId}] ${LABEL} submit response was ambiguous; refusing to resubmit`);
+            await bot.telegram.editMessageText(
+              chatId, statusMsgId, undefined,
+              '❌ Status pengiriman video tidak dapat dipastikan. Saldo akan dikembalikan demi keamanan.\n\n/menu untuk coba lagi'
+            ).catch(() => {});
+            return;
+          }
+
+          const desc = describeError(err);
+          if (preparationAttempt < 2 && isFloraRetryablePreSubmitError(desc)) {
+            await new Promise(resolve => setTimeout(resolve, (preparationAttempt + 1) * 1_500));
+            continue;
+          }
+
+          const contentRejected = /MODERATED|content policy|PROMPT_MODERATED/i.test(desc);
+          const message = contentRejected
+            ? '❌ Input tidak dapat diproses karena melanggar kebijakan konten.'
+            : '❌ Gagal memproses video. Coba lagi nanti.';
+          await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${message}\n\n/menu untuk coba lagi`)
+            .catch(() => bot.telegram.sendMessage(chatId, `${message}\n\n/menu untuk coba lagi`));
+          console.error(`[${userId}] ${LABEL} failed before an accepted run (${stage}); provider details withheld`);
+          return;
+        }
+      }
+      if (!skipAccount) break;
+    }
+
+    await bot.telegram.editMessageText(
+      chatId,
+      statusMsgId,
+      undefined,
+      '❌ Layanan model ini sedang tidak tersedia. Saldo akan dikembalikan.\n\n/menu untuk coba lagi'
+    ).catch(() => {});
+  } catch {
+    console.error(`[${userId}] ${LABEL} runner failed; provider details withheld`);
+    await bot.telegram.editMessageText(
+      chatId, statusMsgId, undefined,
+      '❌ Gagal memproses video. Coba lagi nanti.\n\n/menu untuk coba lagi'
+    ).catch(() => bot.telegram.sendMessage(chatId, '❌ Gagal memproses video. Coba lagi nanti.\n\n/menu untuk coba lagi'));
+  } finally {
+    try {
+      if (refund) {
+        try {
+          await addSaldo(dbUserId, PRICE);
+          await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+        } catch {
+          // Do not blindly retry an increment after an ambiguous DB response:
+          // it could double-credit. Retain a reconciliation reference instead
+          // of falsely telling the customer their balance was restored.
+          const reference = `video-${chatId}-${statusMsgId}`;
+          console.error(`[REFUND_UNCONFIRMED] ref=${reference} dbUserId=${dbUserId} model=${modelKey} amount=${PRICE}; verify saldo before retrying credit`);
+          await bot.telegram.sendMessage(
+            chatId,
+            `⚠️ Pengembalian saldo ${formatRupiah(PRICE)} belum dapat dikonfirmasi karena gangguan saldo. Hubungi admin dengan kode ${reference} agar diperiksa.`
+          ).catch(() => {});
+        }
+      }
+    } finally {
+      releaseGenerating(dbUserId);
+    }
   }
 }
 
