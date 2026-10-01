@@ -4,12 +4,12 @@ export type Flora480AspectRatio = '9:16' | '16:9';
 
 export const FLORA_480_VIDEO_MODELS = {
   minimax_h3_480: {
-    label: 'MiniMax H3 P2',
+    label: 'MiniMax H3 Uncensored',
     durationSeconds: 15,
     resolution: '480P',
   },
   wan_v3_480: {
-    label: 'Wan 3.0 P2',
+    label: 'Wan 3.0 Uncensored',
     durationSeconds: 30,
     resolution: '480p',
   },

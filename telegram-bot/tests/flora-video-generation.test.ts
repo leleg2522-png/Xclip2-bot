@@ -18,6 +18,11 @@ assert.match(runnerSource, /await upscaleGeneratedVideo\(resultUrl, userId, chat
 assert.match(runnerSource, /if \(!delivered && finalVideo\.upscaled\)/);
 assert.match(source, /flora_minimax_h3_480:\s*3500/);
 assert.match(source, /flora_wan_v3_480:\s*5000/);
+assert.equal(FLORA_480_VIDEO_MODELS.minimax_h3_480.label, 'MiniMax H3 Uncensored');
+assert.equal(FLORA_480_VIDEO_MODELS.wan_v3_480.label, 'Wan 3.0 Uncensored');
+assert.match(source, /MiniMax H3 Uncensored • 15 detik • hingga 1K/);
+assert.match(source, /Wan 3\.0 Uncensored • 30 detik • hingga 1K/);
+assert.doesNotMatch(source, /MiniMax H3 P2|Wan 3\.0 P2|Video selesai dibuat\. Menyiapkan hasil akhir/);
 for (const route of ['flora_minimax_h3_480', 'flora_wan_v3_480']) {
   for (const mode of ['wait_ratio', 'wait_image', 'wait_prompt']) {
     assert.match(source, new RegExp(`'${route}_${mode}'`));
@@ -168,14 +173,15 @@ async function main() {
     assert.equal(events.submissions[0].params.aspect_ratio, '16:9');
     assert.deepEqual(events.refunds, []);
     assert.deepEqual(events.releases, [1]);
-    assert.match(events.deliveries[0].caption, /hasil 1K/);
+    assert.match(events.deliveries[0].caption, /· 1K\)/);
+    assert.match(events.deliveries[0].caption, /Uncensored/);
     assert.match(events.deliveries[0].url, /-1k\.mp4$/);
     assert.deepEqual(events.order, ['poll', 'upscale', 'deliver']);
     assert.deepEqual(events.upscales, [{
       sourceUrl: 'https://provider.example.test/run-fixture.mp4',
       userId: 1, chatId: 1, statusMsgId: 10,
     }]);
-    assert.doesNotMatch(events.messages.join(' ') + events.deliveries[0].caption, /Flora|Renderful|ByteDance|gateway|key-|1080/i);
+    assert.doesNotMatch(events.messages.join(' ') + events.deliveries[0].caption, /upscal|Flora|Renderful|ByteDance|gateway|key-|1080/i);
   }
 
   for (const key of ['minimax_h3_480', 'wan_v3_480'] as const) {
@@ -185,8 +191,8 @@ async function main() {
     assert.equal(fallback.events.upscales.length, 1);
     assert.equal(fallback.events.deliveries.length, 1);
     assert.equal(fallback.events.deliveries[0].url, 'https://provider.example.test/run-fixture.mp4');
-    assert.match(fallback.events.deliveries[0].caption, /480p asli/);
-    assert.doesNotMatch(fallback.events.deliveries[0].caption, /1K/);
+    assert.match(fallback.events.deliveries[0].caption, /· 480p\)/);
+    assert.doesNotMatch(fallback.events.deliveries[0].caption, /1K|asli|native|upscal|renderful/i);
     assert.deepEqual(fallback.events.refunds, []);
   }
 
@@ -200,8 +206,9 @@ async function main() {
       assert.equal(fallback.events.submissions.length, 1);
       assert.equal(fallback.events.upscales.length, 1, 'do not resubmit the finishing pass after delivery failure');
       assert.equal(fallback.events.deliveries.length, 2);
-      assert.match(fallback.events.deliveries[0].caption, /hasil 1K/);
-      assert.match(fallback.events.deliveries[1].caption, /480p asli/);
+      assert.match(fallback.events.deliveries[0].caption, /· 1K\)/);
+      assert.match(fallback.events.deliveries[1].caption, /· 480p\)/);
+      assert.doesNotMatch(fallback.events.deliveries[1].caption, /asli|native|upscal|renderful/i);
       assert.equal(fallback.events.deliveries[1].url, 'https://provider.example.test/run-fixture.mp4');
       assert.deepEqual(fallback.events.refunds, []);
       assert.deepEqual(fallback.events.successes, [1]);

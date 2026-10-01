@@ -2421,7 +2421,7 @@ async function upscaleGeneratedVideo(
   const original = { url: sourceUrl, upscaled: false };
   try {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      '⏳ Video selesai dibuat. Menyiapkan hasil akhir...').catch(() => {});
+      '⏳ Video sedang diproses. Hasil akan dikirim otomatis.').catch(() => {});
     const skippedKeys = new Set<string>();
     let hostedUrl: string | undefined;
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -2509,8 +2509,8 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🌐 Kling Omni • 12 detik • 720p', 'mode_pi2v_kling_omni')],
     [Markup.button.callback('🌀 Wan v2 Image-to-Video', 'mode_pi2v_wan_v2')],
     [Markup.button.callback('🌀 Wan 3.0 • 30 detik • hingga 1K', 'mode_pi2v_wan_v3')],
-    [Markup.button.callback('MiniMax H3 P2 • 15 detik • hingga 1K', 'mode_flora_minimax_h3_480')],
-    [Markup.button.callback('Wan 3.0 P2 • 30 detik • hingga 1K', 'mode_flora_wan_v3_480')],
+    [Markup.button.callback('MiniMax H3 Uncensored • 15 detik • hingga 1K', 'mode_flora_minimax_h3_480')],
+    [Markup.button.callback('Wan 3.0 Uncensored • 30 detik • hingga 1K', 'mode_flora_wan_v3_480')],
     [Markup.button.callback('🎬 Kling 2.1 Pro (10 detik)', 'mode_kling21')],
     [Markup.button.callback('🎬 Kling 2.1 P2 (10 detik)', 'mode_kling21p2')],
     [Markup.button.callback('✨ Gemini Omni Flash 1.1 • 10 detik • 1080p', 'mode_gomni11_flora')],
@@ -3073,8 +3073,8 @@ function hargaText(): string {
     `• Kling 2.1 Pro (10 detik) — ${formatRupiah(MODEL_PRICES.kling_21_pro)}\n` +
     `• Kling 2.1 P2 (10 detik) — ${formatRupiah(MODEL_PRICES.kling_21_p2)}\n` +
     `• Gemini Omni Flash 1.1 (10 detik · 1080p) — ${formatRupiah(MODEL_PRICES.gemini_omni_11_flora)}\n` +
-    `• MiniMax H3 P2 (15 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.flora_minimax_h3_480)}\n` +
-    `• Wan 3.0 P2 (30 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.flora_wan_v3_480)}\n` +
+    `• MiniMax H3 Uncensored (15 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.flora_minimax_h3_480)}\n` +
+    `• Wan 3.0 Uncensored (30 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.flora_wan_v3_480)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +
     `• Kling MC V3.0 PRO P3 — ${formatRupiah(MODEL_PRICES.kling_p3)} 🔥PROMO\n` +
@@ -10559,14 +10559,14 @@ async function runFlora480Video(
           let delivered = await sendResult(
             chatId,
             finalVideo.url,
-            `✨ ${LABEL} (${ratio} · ${config.durationSeconds} detik · ${finalVideo.upscaled ? 'hasil 1K' : '480p asli'})\n\n/menu untuk buat lagi`,
+            `✨ ${LABEL} (${ratio} · ${config.durationSeconds} detik · ${finalVideo.upscaled ? '1K' : '480p'})\n\n/menu untuk buat lagi`,
             true
           ).catch(() => false);
           if (!delivered && finalVideo.upscaled) {
             delivered = await sendResult(
               chatId,
               resultUrl,
-              `✨ ${LABEL} (${ratio} · ${config.durationSeconds} detik · 480p asli)\n\n/menu untuk buat lagi`,
+              `✨ ${LABEL} (${ratio} · ${config.durationSeconds} detik · 480p)\n\n/menu untuk buat lagi`,
               true
             ).catch(() => false);
           }
