@@ -15,6 +15,10 @@ options also automatically attempt the same Renderful 1K finishing pass.
 Their upstream generation stays at 480p; do not silently change that contract.
 Keep these separate public choices from the original routes.
 
+Seedance 2, Seedance 2 Fast, and Seedance 2 Mini image-to-video also use the
+same automatic finishing pass, advertised as 1080p. Keep generation parameters
+and prices unchanged. This does not include their separate Video Edit routes.
+
 Seedance 2 Mini Video Edit and Seedance 2 Fast Video Edit stay separate from
 each other and from their image-to-video variants. Each Video Edit route
 requires a reference video, accepts up to five optional reference images, and
@@ -26,7 +30,8 @@ explicitly requested a seamless automatic 1K pass for only these three models.
 The exception should not silently expand to other models or revive the old
 export workflow. The user subsequently added separate Flora options with 480p
 generation, then explicitly requested that those results also be upscaled
-before customer delivery.
+before customer delivery. The user later expanded the exception to Seedance 2,
+Fast, and Mini image-to-video and requested 1080p menu labels.
 
 **How to apply:** Keep the original generation resolution unchanged and run the
 finishing pass only after a successful generation. Public labels should describe

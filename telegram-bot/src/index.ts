@@ -2491,12 +2491,12 @@ function mainMenuKeyboard() {
     // ── Generate Video ──
     [Markup.button.callback('── 🎬 Generate Video ──', 'noop')],
     [Markup.button.callback('🕹️ Kling Motion Control', 'menu_kling_list')],
-    [Markup.button.callback('🌊 Seedance 2.0 Mini 480p', 'mode_pi2v_seedance_2_mini')],
+    [Markup.button.callback('🌊 Seedance 2.0 Mini 1080p', 'mode_pi2v_seedance_2_mini')],
     [Markup.button.callback('🎬 Seedance 2 Mini Video Edit 480p', 'mode_seedance_mini_edit')],
     [Markup.button.callback('⚡ Seedance 2 Fast Video Edit 480p', 'mode_seedance_fast_edit')],
     [Markup.button.callback('🌊 Seedance 2 Video Edit 480p', 'mode_seedance_2_edit')],
-    [Markup.button.callback('🌊 Seedance 2.0 Fast 480p', 'mode_pi2v_seedance_2_fast')],
-    [Markup.button.callback('🌊 Seedance 2.0 480p', 'mode_pi2v_seedance_2')],
+    [Markup.button.callback('🌊 Seedance 2.0 Fast 1080p', 'mode_pi2v_seedance_2_fast')],
+    [Markup.button.callback('🌊 Seedance 2.0 1080p', 'mode_pi2v_seedance_2')],
     [Markup.button.callback('🌊 Seedance 2.5 I2V • hingga 1K', 'mode_oneover_seedance25')],
     [Markup.button.callback('🌌 Grok Imagine Video', 'mode_pi2v_grok_imagine')],
     [Markup.button.callback('🎬 Creatify Boreal • 20 detik • 1080p', 'mode_pi2v_creatify_boreal')],
@@ -2550,6 +2550,16 @@ const SD_RATIO_MAP: Record<string, string> = {
 
 function isPicsartI2vModelKey(value: string): value is picsart.PicsartI2vModelKey {
   return Object.prototype.hasOwnProperty.call(picsart.PICSART_I2V_MODELS, value);
+}
+
+function isSeedance2I2vModel(model: picsart.PicsartI2vModelKey): boolean {
+  return model === 'seedance_2_mini' || model === 'seedance_2_fast' || model === 'seedance_2';
+}
+
+function picsartI2vPublicSettings(model: picsart.PicsartI2vModelKey, settings: string): string {
+  if (isSeedance2I2vModel(model)) return settings.replace('480p native', '1080p');
+  if (model === 'wan_v3') return settings.replace('480p native', 'hasil hingga 1K');
+  return settings;
 }
 
 function supportsMultiplePicsartI2vImages(model?: picsart.PicsartI2vModelKey): boolean {
@@ -3052,9 +3062,9 @@ function hargaText(): string {
     `• Gemini Omni 1.2 (360p native · 10 detik) — ${formatRupiah(MODEL_PRICES.gemini_omni_12)}\n` +
     `• Chat AI — ${formatRupiah(MODEL_PRICES.chat)}/pesan\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
-    `• Seedance 2.0 Mini 480p — ${formatRupiah(getPicsartI2vPrice('seedance_2_mini'))}\n` +
-    `• Seedance 2.0 Fast 480p — ${formatRupiah(getPicsartI2vPrice('seedance_2_fast'))}\n` +
-    `• Seedance 2.0 480p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
+    `• Seedance 2.0 Mini 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_mini'))}\n` +
+    `• Seedance 2.0 Fast 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_fast'))}\n` +
+    `• Seedance 2.0 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
     `• Seedance 2.5 I2V (hingga 1K) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25_480)}\n` +
     `• Seedance 2 Mini Video Edit 480p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_mini_edit)}\n` +
     `• Seedance 2 Fast Video Edit 480p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_fast_edit)}\n` +
@@ -4732,7 +4742,7 @@ bot.on('callback_query', async (ctx) => {
     });
     return ctx.editMessageText(
       `🌀 *${displayLabel}*\n\n` +
-      `Parameter: *${ratio} · ${model === 'wan_v3' ? '30 detik · hasil hingga 1K' : cfg.settingsLabel}*\n` +
+      `Parameter: *${ratio} · ${picsartI2vPublicSettings(model, cfg.settingsLabel)}*\n` +
       `Harga: *${formatRupiah(getPicsartI2vPrice(model))}* per video\n\n` +
       (model === 'wan_v3'
         ? `*Langkah 1:* Kirim *1–${picsart.PICSART_I2V_MAX_IMAGES} foto acuan* untuk video kamu.`
@@ -4811,7 +4821,7 @@ bot.on('callback_query', async (ctx) => {
       });
       return ctx.editMessageText(
         `🌀 *${model === 'wan_v3' ? 'Wan 3.0' : cfg.label}*\n\n` +
-        `${model === 'wan_v3' ? '30 detik · hasil hingga 1K' : cfg.settingsLabel}\n\n` +
+        `${picsartI2vPublicSettings(model, cfg.settingsLabel)}\n\n` +
         '*Langkah 1:* Pilih rasio video:',
         { parse_mode: 'Markdown', ...picsartI2vRatioKeyboard() }
       );
@@ -6005,9 +6015,7 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     ) && session.picsartI2vRatio
       ? `${session.picsartI2vRatio} · ${cfg.settingsLabel}`
       : cfg.settingsLabel;
-    const publicSettingsLabel = model === 'wan_v3'
-      ? settingsLabel.replace('480p native', 'hasil hingga 1K')
-      : settingsLabel;
+    const publicSettingsLabel = picsartI2vPublicSettings(model, settingsLabel);
     if (supportsMultiplePicsartI2vImages(model)) {
       const imageUrls = [...(session.picsartI2vImageUrls ?? []), fileUrl]
         .slice(0, picsart.PICSART_I2V_MAX_IMAGES);
@@ -8344,7 +8352,8 @@ async function runPicsartI2v(
 ) {
   const cfg = picsart.PICSART_I2V_MODELS[opts.model];
   const label = customerSafeModelLabel(opts.displayLabel ?? cfg.label, cfg.label);
-  const settingsLabel = (opts.model === 'ltx_pro' || opts.model === 'ltx_fast' || opts.model === 'creatify_boreal' || opts.model === 'wan_v3' || opts.model === 'pixverse_v6') && opts.ratio
+  const seedance1080 = isSeedance2I2vModel(opts.model);
+  const settingsLabel = (seedance1080 || opts.model === 'ltx_pro' || opts.model === 'ltx_fast' || opts.model === 'creatify_boreal' || opts.model === 'wan_v3' || opts.model === 'pixverse_v6') && opts.ratio
     ? `${opts.ratio} · ${cfg.settingsLabel}`
     : cfg.settingsLabel;
   const PRICE = opts.priceKey ? MODEL_PRICES[opts.priceKey] : getPicsartI2vPrice(opts.model);
@@ -8407,18 +8416,29 @@ async function runPicsartI2v(
     });
 
     stage = 'delivery';
-    const finalVideo = opts.model === 'wan_v3'
+    const finalVideo = (opts.model === 'wan_v3' || seedance1080)
       ? await upscaleGeneratedVideo(result.url, userId, chatId, statusMsgId)
       : { url: result.url, upscaled: false };
+    const deliveredLabel = seedance1080
+      ? label.replace('1080p', finalVideo.upscaled ? '1080p' : '480p')
+      : opts.model === 'wan_v3' && finalVideo.upscaled ? 'Wan 3.0' : label;
+    const deliveredSettings = seedance1080
+      ? settingsLabel.replace('480p native', finalVideo.upscaled ? '1080p' : '480p')
+      : opts.model === 'wan_v3'
+        ? settingsLabel.replace('480p native', finalVideo.upscaled ? 'hasil 1K' : '480p asli')
+        : settingsLabel;
     let delivered = await sendResult(
       chatId,
       finalVideo.url,
-      `🧩 ${opts.model === 'wan_v3' && finalVideo.upscaled ? 'Wan 3.0' : label} (${opts.model === 'wan_v3' ? settingsLabel.replace('480p native', finalVideo.upscaled ? 'hasil 1K' : '480p asli') : settingsLabel})\n\n/menu untuk buat lagi`,
+      `🧩 ${deliveredLabel} (${deliveredSettings})\n\n/menu untuk buat lagi`,
       true
-    );
+    ).catch(() => false);
     if (!delivered && finalVideo.upscaled) {
+      const originalCaption = seedance1080
+        ? `🧩 ${label.replace('1080p', '480p')} (${settingsLabel.replace('480p native', '480p')})\n\n/menu untuk buat lagi`
+        : `🧩 ${label} (${settingsLabel} · hasil asli)\n\n/menu untuk buat lagi`;
       delivered = await sendResult(chatId, result.url,
-        `🧩 ${label} (${settingsLabel} · hasil asli)\n\n/menu untuk buat lagi`, true);
+        originalCaption, true).catch(() => false);
     }
     if (delivered) {
       refund = false;

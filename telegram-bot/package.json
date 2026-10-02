@@ -16,6 +16,7 @@
     "test:audio": "tsx tests/audio-generation.test.ts",
     "test:bytedance-upscale": "tsx tests/bytedance-upscale.test.ts",
     "test:flora-video": "tsx tests/flora-video-models.test.ts && tsx tests/flora-video-generation.test.ts",
+    "test:seedance1080": "tsx tests/seedance-1080-delivery.test.ts",
     "test:parallel": "tsx tests/parallel-generation-safety.test.ts",
     "test:oneover": "tsx tests/oneover-i2v.test.ts",
     "start": "node dist/index.js"
