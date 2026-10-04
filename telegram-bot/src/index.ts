@@ -2521,7 +2521,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🌀 Wan 3.0 • 30 detik • hingga 1K', 'mode_pi2v_wan_v3')],
     [Markup.button.callback('MiniMax H3 Uncensored • 15 detik • hingga 1K', 'mode_flora_minimax_h3_480')],
     [Markup.button.callback('Wan 3.0 Uncensored • 30 detik • hingga 1K', 'mode_flora_wan_v3_480')],
-    [Markup.button.callback('Seedance 2.0 480p • 15 detik', 'mode_flora_seedance_2_480')],
+    [Markup.button.callback('Seedance 2 Uncensored • 15 detik • 1080p', 'mode_flora_seedance_2_480')],
     [Markup.button.callback('🎬 Kling 2.1 Pro (10 detik)', 'mode_kling21')],
     [Markup.button.callback('🎬 Kling 2.1 P2 (10 detik)', 'mode_kling21p2')],
     [Markup.button.callback('✨ Gemini Omni Flash 1.1 • 10 detik • 1080p', 'mode_gomni11_flora')],
@@ -3096,7 +3096,7 @@ function hargaText(): string {
     `• Gemini Omni Flash 1.1 (10 detik · 1080p) — ${formatRupiah(MODEL_PRICES.gemini_omni_11_flora)}\n` +
     `• MiniMax H3 Uncensored (15 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.flora_minimax_h3_480)}\n` +
     `• Wan 3.0 Uncensored (30 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.flora_wan_v3_480)}\n` +
-    `• Seedance 2.0 480p (15 detik) — ${formatRupiah(MODEL_PRICES.flora_seedance_2_480)}\n` +
+    `• Seedance 2 Uncensored (15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.flora_seedance_2_480)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +
     `• Kling MC V3.0 PRO P3 — ${formatRupiah(MODEL_PRICES.kling_p3)} 🔥PROMO\n` +
@@ -4405,8 +4405,8 @@ bot.on('callback_query', async (ctx) => {
       floraSeedance2480ImageUrl: undefined,
     });
     return ctx.editMessageText(
-      `🎬 *Seedance 2.0 480p • 15 detik*\n\n` +
-      `Image to Video · *15 detik* · *480p*\n` +
+      `🎬 *Seedance 2 Uncensored • 15 detik • 1080p*\n\n` +
+      `Image to Video · *15 detik* · *1080p*\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.flora_seedance_2_480)}* per video\n\n` +
       '*Langkah 1:* Pilih rasio video:',
       { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
@@ -4430,7 +4430,7 @@ bot.on('callback_query', async (ctx) => {
       floraSeedance2480ImageUrl: undefined,
     });
     return ctx.editMessageText(
-      `🎬 *Seedance 2.0 480p • 15 detik*\n\nRasio: *${ratio}* · 15 detik · 480p\n\n` +
+      `🎬 *Seedance 2 Uncensored • 15 detik • 1080p*\n\nRasio: *${ratio}* · 15 detik · 1080p\n\n` +
       '*Langkah 2:* Kirim *foto acuan* untuk video kamu.',
       { parse_mode: 'Markdown' }
     );
@@ -7214,7 +7214,7 @@ bot.on('text', async (ctx) => {
     const config = FLORA_480_VIDEO_MODELS[modelKey];
     const displayLabel = config.label;
     const statusMsg = await ctx.reply(
-      `⏳ Memproses ${displayLabel} • ${config.durationSeconds} detik${config.autoUpscale ? ' • hingga 1K' : ''} (${ratio})...\nHasil dikirim otomatis setelah selesai.`
+      `⏳ Memproses ${displayLabel} • ${config.durationSeconds} detik${config.autoUpscale ? ` • hingga ${config.deliveryResolution}` : ''} (${ratio})...\nHasil dikirim otomatis setelah selesai.`
     );
     runFlora480Video(ctx.chat.id, userId, dbUserId, statusMsg.message_id, modelKey, imageUrl, prompt, ratio)
       .catch(() => console.error(`[${userId}] ${displayLabel} generation failed; provider details withheld`));
@@ -10633,7 +10633,7 @@ async function runFlora480Video(
             chatId,
             statusMsgId,
             undefined,
-            `⏳ ${LABEL}: video sedang dibuat... (3/3)\n${config.durationSeconds} detik · ${config.autoUpscale ? 'hasil hingga 1K' : '480p'}. Hasil dikirim otomatis.`
+            `⏳ ${LABEL}: video sedang dibuat... (3/3)\n${config.durationSeconds} detik · ${config.autoUpscale ? `hasil hingga ${config.deliveryResolution}` : '480p'}. Hasil dikirim otomatis.`
           ).catch(() => {});
           stage = 'poll';
           const resultUrl = await floraPollRun(apiKey, acceptedRunId, 20 * 60 * 1000);
@@ -10644,7 +10644,7 @@ async function runFlora480Video(
           let delivered = await sendResult(
             chatId,
             finalVideo.url,
-            `✨ ${LABEL} (${ratio} · ${config.durationSeconds} detik · ${finalVideo.upscaled ? '1K' : '480p'})\n\n/menu untuk buat lagi`,
+            `✨ ${LABEL} (${ratio} · ${config.durationSeconds} detik · ${finalVideo.upscaled ? config.deliveryResolution : '480p'})\n\n/menu untuk buat lagi`,
             true
           ).catch(() => false);
           if (!delivered && finalVideo.upscaled) {

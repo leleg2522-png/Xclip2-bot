@@ -8,18 +8,21 @@ export const FLORA_480_VIDEO_MODELS = {
     durationSeconds: 15,
     resolution: '480P',
     autoUpscale: true,
+    deliveryResolution: '1K',
   },
   wan_v3_480: {
     label: 'Wan 3.0 Uncensored',
     durationSeconds: 30,
     resolution: '480p',
     autoUpscale: true,
+    deliveryResolution: '1K',
   },
   seedance_2_480: {
-    label: 'Seedance 2.0 480p',
+    label: 'Seedance 2 Uncensored',
     durationSeconds: 15,
     resolution: '480p',
-    autoUpscale: false,
+    autoUpscale: true,
+    deliveryResolution: '1080p',
   },
 } as const;
 

@@ -19,7 +19,9 @@ assert.match(runnerSource, /if \(!delivered && finalVideo\.upscaled\)/);
 assert.match(source, /flora_minimax_h3_480:\s*3500/);
 assert.match(source, /flora_wan_v3_480:\s*5000/);
 assert.match(source, /flora_seedance_2_480:\s*6000/);
-assert.match(source, /Seedance 2\.0 480p • 15 detik/);
+assert.match(source, /Seedance 2 Uncensored • 15 detik • 1080p/);
+assert.match(source, /Seedance 2 Uncensored \(15 detik · 1080p\)/);
+assert.doesNotMatch(source, /Seedance 2\.0 480p/);
 assert.equal(FLORA_480_VIDEO_MODELS.minimax_h3_480.label, 'MiniMax H3 Uncensored');
 assert.equal(FLORA_480_VIDEO_MODELS.wan_v3_480.label, 'Wan 3.0 Uncensored');
 assert.match(source, /MiniMax H3 Uncensored • 15 detik • hingga 1K/);
@@ -215,7 +217,9 @@ async function verifySeedanceWizard() {
     await context.callback('flora480_seedance_ratio_916', ctx, 9);
     assert.equal(state.mode, 'idle', 'stale ratio callback must not reopen a paid draft');
     assert.match(messages.at(-1)!, /sudah tidak aktif/);
-    assert.doesNotMatch(messages.join(' '), /Flora|Renderful|upscal|1080|1K/i);
+    assert.match(messages.join(' '), /Seedance 2 Uncensored/);
+    assert.match(messages.join(' '), /1080p/);
+    assert.doesNotMatch(messages.join(' '), /Flora|Renderful|upscal|480p|1K/i);
   }
 }
 
@@ -225,17 +229,18 @@ async function main() {
     const native = harness();
     await native.run('seedance_2_480', 1, 'fixture', ratio);
     assert.deepEqual(native.events.charges, [6000]);
-    assert.deepEqual(native.events.order, ['poll', 'deliver']);
-    assert.deepEqual(native.events.upscales, []);
+    assert.deepEqual(native.events.order, ['poll', 'upscale', 'deliver']);
+    assert.equal(native.events.upscales.length, 1);
     assert.equal(native.events.submissions[0].model, 'live-seedance_2_480');
     assert.equal(native.events.submissions[0].params.image_url, 'https://provider.example.test/image.jpg');
     assert.equal(native.events.submissions[0].params.aspect_ratio, ratio);
     assert.equal(native.events.submissions[0].params.duration, '15');
     assert.equal(native.events.submissions[0].params.resolution, '480p');
     assert.equal(native.events.submissions[0].params.image_urls, undefined);
-    assert.equal(native.events.deliveries[0].url, 'https://provider.example.test/run-fixture.mp4');
-    assert.match(native.events.deliveries[0].caption, /480p/);
-    assert.doesNotMatch(native.events.messages.join(' ') + native.events.deliveries[0].caption, /1K|1080|Flora|upscal|Renderful/i);
+    assert.equal(native.events.deliveries[0].url, 'https://provider.example.test/run-fixture-1k.mp4');
+    assert.match(native.events.deliveries[0].caption, /Seedance 2 Uncensored/);
+    assert.match(native.events.deliveries[0].caption, /1080p/);
+    assert.doesNotMatch(native.events.messages.join(' ') + native.events.deliveries[0].caption, /1K|480p|Flora|upscal|Renderful/i);
     assert.deepEqual(native.events.refunds, []);
     assert.deepEqual(native.events.releases, [1]);
   }
@@ -247,9 +252,25 @@ async function main() {
     const failed = harness(options);
     await failed.run('seedance_2_480');
     assert.equal(failed.events.submissions.length, 1);
-    assert.deepEqual(failed.events.upscales, []);
+    assert.equal(failed.events.upscales.length, 'deliver' in options ? 1 : 0);
     assert.deepEqual(failed.events.refunds, [6000]);
     assert.deepEqual(failed.events.releases, [1]);
+  }
+  for (const options of [
+    { upscale: false },
+    { deliver: (url: string) => !url.includes('-1k.mp4') },
+    { sendThrows: (url: string) => url.includes('-1k.mp4') },
+  ]) {
+    const fallback = harness(options);
+    await fallback.run('seedance_2_480');
+    assert.equal(fallback.events.submissions.length, 1);
+    assert.equal(fallback.events.upscales.length, 1);
+    assert.equal(fallback.events.deliveries.at(-1)?.url, 'https://provider.example.test/run-fixture.mp4');
+    assert.match(fallback.events.deliveries.at(-1)?.caption ?? '', /Seedance 2 Uncensored.*480p/);
+    assert.doesNotMatch(fallback.events.deliveries.at(-1)?.caption ?? '', /1080|1K|native|asli|Renderful|Flora|upscal/i);
+    assert.deepEqual(fallback.events.refunds, []);
+    assert.deepEqual(fallback.events.successes, [1]);
+    assert.deepEqual(fallback.events.releases, [1]);
   }
   for (const key of ['minimax_h3_480', 'wan_v3_480'] as const) {
     const { events, run } = harness();
@@ -412,7 +433,10 @@ async function main() {
   assert.equal(parallel.events.submissions.length, 3);
   assert.equal(parallel.events.deliveries.find(d => d.chatId === 11)?.url, 'https://provider.example.test/run-minimax-1k.mp4');
   assert.equal(parallel.events.deliveries.find(d => d.chatId === 22)?.url, 'https://provider.example.test/run-wan-1k.mp4');
-  assert.equal(parallel.events.deliveries.find(d => d.chatId === 33)?.url, 'https://provider.example.test/run-seedance.mp4');
+  assert.equal(parallel.events.deliveries.find(d => d.chatId === 33)?.url, 'https://provider.example.test/run-seedance-1k.mp4');
+  assert.match(parallel.events.deliveries.find(d => d.chatId === 33)?.caption ?? '', /1080p/);
+  assert.match(parallel.events.deliveries.find(d => d.chatId === 11)?.caption ?? '', /1K/);
+  assert.match(parallel.events.deliveries.find(d => d.chatId === 22)?.caption ?? '', /1K/);
   assert.deepEqual(parallel.events.refunds, []);
   assert.deepEqual(parallel.events.releases.sort(), [11, 22, 33]);
   console.log('Flora 480p generation, automatic 1K delivery, native fallback, refunds and parallel-isolation simulations passed.');

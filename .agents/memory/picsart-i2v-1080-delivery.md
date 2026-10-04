@@ -19,9 +19,11 @@ Seedance 2, Seedance 2 Fast, and Seedance 2 Mini image-to-video also use the
 same automatic finishing pass, advertised as 1080p. Keep generation parameters
 and prices unchanged. This does not include their separate Video Edit routes.
 
-The separate Flora Seedance 2 option intentionally delivers 480p directly,
-at 15 seconds and Rp6,000, with landscape and portrait choices. Do not apply
-the original Seedance 2 route's automatic finishing policy to this option.
+The separate Flora Seedance 2 option is displayed as Seedance 2 Uncensored
+with 1080p delivery through automatic Renderful finishing. Its generation
+stays at 480p, 15 seconds, and Rp6,000 with landscape and portrait choices.
+Keep it separate from the original Seedance routes. Uncensored is only a
+public label, not a change to provider content policies.
 
 Seedance 2 Mini Video Edit and Seedance 2 Fast Video Edit stay separate from
 each other and from their image-to-video variants. Each Video Edit route
@@ -36,8 +38,8 @@ export workflow. The user subsequently added separate Flora options with 480p
 generation, then explicitly requested that those results also be upscaled
 before customer delivery. The user later expanded the exception to Seedance 2,
 Fast, and Mini image-to-video and requested 1080p menu labels.
-For the later Flora Seedance 2 option, the user explicitly chose direct 480p
-delivery instead of automatic 1080p finishing.
+The user initially chose direct 480p for Flora Seedance 2, then changed that
+choice to the Uncensored label and automatic Renderful 1080p finishing.
 
 **How to apply:** Keep the original generation resolution unchanged and run the
 finishing pass only after a successful generation. Public labels should describe

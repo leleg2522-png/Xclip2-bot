@@ -47,7 +47,9 @@ for (const ratio of ['9:16', '16:9'] as const) {
     image_url: imageUrl, duration: '15', resolution: '480p', aspect_ratio: ratio, bitrate_mode: 'standard',
   });
 }
-assert.equal(FLORA_480_VIDEO_MODELS.seedance_2_480.autoUpscale, false);
+assert.equal(FLORA_480_VIDEO_MODELS.seedance_2_480.autoUpscale, true);
+assert.equal(FLORA_480_VIDEO_MODELS.seedance_2_480.label, 'Seedance 2 Uncensored');
+assert.equal(FLORA_480_VIDEO_MODELS.seedance_2_480.deliveryResolution, '1080p');
 
 for (const key of ['minimax_h3_480', 'wan_v3_480', 'seedance_2_480'] as const) {
   const endpoint = fixture(key, `account-specific-${key}`);
