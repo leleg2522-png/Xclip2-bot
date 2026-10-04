@@ -52,7 +52,11 @@ function createDecodoProxyAgent(port: string): HttpsProxyAgent<string> {
   );
 }
 
-const decodoPrimaryAgent = createDecodoProxyAgent(process.env.DECODO_PROXY_PORT || '10002');
+const decodoPrimaryAgent = createDecodoProxyAgent(process.env.DECODO_PROXY_PORT || '10003');
+console.log(
+  `[picsart:proxy] Decodo ISP active host=${decodoPrimaryAgent.proxy.hostname} ` +
+  `port=${decodoPrimaryAgent.proxy.port}; direct egress disabled`
+);
 
 const http = axios.create({
   timeout: 120_000,

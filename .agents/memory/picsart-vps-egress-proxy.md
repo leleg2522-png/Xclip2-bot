@@ -16,3 +16,9 @@ description: Rules for hiding Railway behind static Decodo ISP proxy endpoints
 **Why:** The user requested “ganti jaringan decodo saja” after timeouts affected multiple Picsart models.
 
 **How to apply:** Verify that the replacement has a different egress IP and can reach Picsart without submitting a paid generation, then preserve the existing model and polling behavior.
+
+**Rule:** A successful unauthenticated connectivity check from Replit does not establish that authenticated generation or polling from Railway is healthy.
+
+**Why:** Picsart timeouts continued in Railway after the user confirmed redeployment to an endpoint that responded quickly during Replit connectivity checks.
+
+**How to apply:** Report these checks as basic connectivity only, not proof of a fix. Confirm the effective endpoint using credential-free startup diagnostics; investigate the Railway path if timeouts persist instead of indefinitely changing proxy ports.
