@@ -172,6 +172,7 @@ const MODEL_PRICES = {
   gemini_omni_11_flora: 3000,
   flora_minimax_h3_480: 3500,
   flora_wan_v3_480: 5000,
+  flora_seedance_2_480: 6000,
   chat: 100,           // Chat AI per pesan
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
   kling_p3: 4000,      // Kling MC V3.0 PRO P3 (Edanbot, kling-motion-26-pro)
@@ -1672,6 +1673,9 @@ type Mode =
   | 'flora_wan_v3_480_wait_ratio'
   | 'flora_wan_v3_480_wait_image'
   | 'flora_wan_v3_480_wait_prompt'
+  | 'flora_seedance_2_480_wait_ratio'
+  | 'flora_seedance_2_480_wait_image'
+  | 'flora_seedance_2_480_wait_prompt'
   | 'topaz_wait_video'
   | 'bytedance_upscale_wait_video'
   | 'img_wait_image'
@@ -1703,7 +1707,8 @@ type GenerationDraftKind =
   | 'kling21p2'
   | 'gomni11_flora'
   | 'flora_minimax_h3_480'
-  | 'flora_wan_v3_480';
+  | 'flora_wan_v3_480'
+  | 'flora_seedance_2_480';
 
 interface Session {
   mode: Mode;
@@ -1837,6 +1842,8 @@ interface Session {
   floraMinimaxH3480ImageUrl?: string;
   floraWanV3480Ratio?: Flora480AspectRatio;
   floraWanV3480ImageUrl?: string;
+  floraSeedance2480Ratio?: Flora480AspectRatio;
+  floraSeedance2480ImageUrl?: string;
   // Chat AI wizard state (multi-turn conversation)
   chatModel?: string;
   chatHistory?: Array<{ role: string; content: string }>;
@@ -1930,6 +1937,7 @@ const GENERATION_DRAFT_MODES = new Set<Mode>([
   'gomni11_flora_wait_ratio', 'gomni11_flora_wait_image', 'gomni11_flora_wait_prompt',
   'flora_minimax_h3_480_wait_ratio', 'flora_minimax_h3_480_wait_image', 'flora_minimax_h3_480_wait_prompt',
   'flora_wan_v3_480_wait_ratio', 'flora_wan_v3_480_wait_image', 'flora_wan_v3_480_wait_prompt',
+  'flora_seedance_2_480_wait_ratio', 'flora_seedance_2_480_wait_image', 'flora_seedance_2_480_wait_prompt',
   'topaz_wait_video', 'bytedance_upscale_wait_video',
   'img_wait_image', 'img_wait_prompt',
 ]);
@@ -1948,6 +1956,7 @@ function generationDraftKindForStart(data: string): GenerationDraftKind | undefi
     mode_gomni11_flora: 'gomni11_flora',
     mode_flora_minimax_h3_480: 'flora_minimax_h3_480',
     mode_flora_wan_v3_480: 'flora_wan_v3_480',
+    mode_flora_seedance_2_480: 'flora_seedance_2_480',
     mode_oneover_seedance25: 'oneover',
     mode_seedance_mini_edit: 'picsart_i2v',
     mode_seedance_fast_edit: 'picsart_i2v',
@@ -1992,6 +2001,7 @@ function generationDraftKindForContinuation(data: string): GenerationDraftKind |
   if (data.startsWith('audio_voice_')) return 'audio';
   if (data.startsWith('flora480_minimax_')) return 'flora_minimax_h3_480';
   if (data.startsWith('flora480_wan_')) return 'flora_wan_v3_480';
+  if (data.startsWith('flora480_seedance_')) return 'flora_seedance_2_480';
   return undefined;
 }
 
@@ -2511,6 +2521,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🌀 Wan 3.0 • 30 detik • hingga 1K', 'mode_pi2v_wan_v3')],
     [Markup.button.callback('MiniMax H3 Uncensored • 15 detik • hingga 1K', 'mode_flora_minimax_h3_480')],
     [Markup.button.callback('Wan 3.0 Uncensored • 30 detik • hingga 1K', 'mode_flora_wan_v3_480')],
+    [Markup.button.callback('Seedance 2.0 480p • 15 detik', 'mode_flora_seedance_2_480')],
     [Markup.button.callback('🎬 Kling 2.1 Pro (10 detik)', 'mode_kling21')],
     [Markup.button.callback('🎬 Kling 2.1 P2 (10 detik)', 'mode_kling21p2')],
     [Markup.button.callback('✨ Gemini Omni Flash 1.1 • 10 detik • 1080p', 'mode_gomni11_flora')],
@@ -3085,6 +3096,7 @@ function hargaText(): string {
     `• Gemini Omni Flash 1.1 (10 detik · 1080p) — ${formatRupiah(MODEL_PRICES.gemini_omni_11_flora)}\n` +
     `• MiniMax H3 Uncensored (15 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.flora_minimax_h3_480)}\n` +
     `• Wan 3.0 Uncensored (30 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.flora_wan_v3_480)}\n` +
+    `• Seedance 2.0 480p (15 detik) — ${formatRupiah(MODEL_PRICES.flora_seedance_2_480)}\n` +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +
     `• Kling MC V3.0 PRO P3 — ${formatRupiah(MODEL_PRICES.kling_p3)} 🔥PROMO\n` +
@@ -4381,6 +4393,44 @@ bot.on('callback_query', async (ctx) => {
     });
     return ctx.editMessageText(
       `✨ *Gemini Omni Flash 1.1*\n\nRasio: *${ratio}* · 10 detik · 1080p\n\n` +
+      '*Langkah 2:* Kirim *foto acuan* untuk video kamu.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data === 'mode_flora_seedance_2_480') {
+    setSession(userId, {
+      mode: 'flora_seedance_2_480_wait_ratio',
+      floraSeedance2480Ratio: undefined,
+      floraSeedance2480ImageUrl: undefined,
+    });
+    return ctx.editMessageText(
+      `🎬 *Seedance 2.0 480p • 15 detik*\n\n` +
+      `Image to Video · *15 detik* · *480p*\n` +
+      `Harga: *${formatRupiah(MODEL_PRICES.flora_seedance_2_480)}* per video\n\n` +
+      '*Langkah 1:* Pilih rasio video:',
+      { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
+        [
+          Markup.button.callback('📱 Portrait (9:16)', 'flora480_seedance_ratio_916'),
+          Markup.button.callback('🖥️ Landscape (16:9)', 'flora480_seedance_ratio_169'),
+        ],
+        [Markup.button.callback('« Kembali', 'back_main')],
+      ]) }
+    );
+  }
+
+  if (data === 'flora480_seedance_ratio_916' || data === 'flora480_seedance_ratio_169') {
+    if (getSession(userId).mode !== 'flora_seedance_2_480_wait_ratio') {
+      return ctx.reply('⚠️ Pilihan rasio sudah tidak aktif. Mulai lagi dari /menu.');
+    }
+    const ratio: Flora480AspectRatio = data.endsWith('_169') ? '16:9' : '9:16';
+    setSession(userId, {
+      mode: 'flora_seedance_2_480_wait_image',
+      floraSeedance2480Ratio: ratio,
+      floraSeedance2480ImageUrl: undefined,
+    });
+    return ctx.editMessageText(
+      `🎬 *Seedance 2.0 480p • 15 detik*\n\nRasio: *${ratio}* · 15 detik · 480p\n\n` +
       '*Langkah 2:* Kirim *foto acuan* untuk video kamu.',
       { parse_mode: 'Markdown' }
     );
@@ -6099,6 +6149,18 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     );
   }
 
+  if (session.mode === 'flora_seedance_2_480_wait_image') {
+    setSession(userId, {
+      floraSeedance2480ImageUrl: fileUrl,
+      mode: 'flora_seedance_2_480_wait_prompt',
+    });
+    return ctx.reply(
+      `✅ Foto acuan diterima! (Rasio: ${session.floraSeedance2480Ratio ?? '9:16'})\n\n` +
+      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu.',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (session.mode === 'flora_minimax_h3_480_wait_image') {
     setSession(userId, {
       floraMinimaxH3480ImageUrl: fileUrl,
@@ -7108,6 +7170,7 @@ bot.on('text', async (ctx) => {
   if (
     session.mode === 'flora_minimax_h3_480_wait_prompt'
     || session.mode === 'flora_wan_v3_480_wait_prompt'
+    || session.mode === 'flora_seedance_2_480_wait_prompt'
   ) {
     if (!await requireLogin(ctx)) return;
     const prompt = ctx.message.text.trim();
@@ -7115,22 +7178,24 @@ bot.on('text', async (ctx) => {
 
     const activeDraft = getSession(userId);
     const minimax = activeDraft.mode === 'flora_minimax_h3_480_wait_prompt';
-    if (!minimax && activeDraft.mode !== 'flora_wan_v3_480_wait_prompt') return;
+    const seedance = activeDraft.mode === 'flora_seedance_2_480_wait_prompt';
+    if (!minimax && !seedance && activeDraft.mode !== 'flora_wan_v3_480_wait_prompt') return;
+    const clearedDraft: Partial<Session> = seedance
+      ? { mode: 'idle', floraSeedance2480Ratio: undefined, floraSeedance2480ImageUrl: undefined }
+      : minimax
+        ? { mode: 'idle', floraMinimaxH3480Ratio: undefined, floraMinimaxH3480ImageUrl: undefined }
+        : { mode: 'idle', floraWanV3480Ratio: undefined, floraWanV3480ImageUrl: undefined };
     const imageUrl = minimax
       ? activeDraft.floraMinimaxH3480ImageUrl
-      : activeDraft.floraWanV3480ImageUrl;
+      : seedance ? activeDraft.floraSeedance2480ImageUrl : activeDraft.floraWanV3480ImageUrl;
     if (!imageUrl || !activeDraft.dbUserId) {
-      setSession(userId, minimax
-        ? { mode: 'idle', floraMinimaxH3480Ratio: undefined, floraMinimaxH3480ImageUrl: undefined }
-        : { mode: 'idle', floraWanV3480Ratio: undefined, floraWanV3480ImageUrl: undefined });
+      setSession(userId, clearedDraft);
       return ctx.reply('⚠️ Foto acuan tidak ditemukan. Mulai lagi dari /menu.');
     }
 
     const cooldownMs = getCooldownRemainingMs(userId);
     if (cooldownMs > 0) {
-      setSession(userId, minimax
-        ? { mode: 'idle', floraMinimaxH3480Ratio: undefined, floraMinimaxH3480ImageUrl: undefined }
-        : { mode: 'idle', floraWanV3480Ratio: undefined, floraWanV3480ImageUrl: undefined });
+      setSession(userId, clearedDraft);
       return ctx.reply(
         `⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`,
         { parse_mode: 'Markdown' }
@@ -7139,19 +7204,17 @@ bot.on('text', async (ctx) => {
 
     // Snapshot every draft value before returning the session to idle. Duplicate
     // message updates then cannot submit the same paid generation twice.
-    const modelKey: Flora480VideoModelKey = minimax ? 'minimax_h3_480' : 'wan_v3_480';
+    const modelKey: Flora480VideoModelKey = minimax ? 'minimax_h3_480' : seedance ? 'seedance_2_480' : 'wan_v3_480';
     const ratio = minimax
       ? activeDraft.floraMinimaxH3480Ratio ?? '9:16'
-      : activeDraft.floraWanV3480Ratio ?? '9:16';
+      : seedance ? activeDraft.floraSeedance2480Ratio ?? '9:16' : activeDraft.floraWanV3480Ratio ?? '9:16';
     const dbUserId = activeDraft.dbUserId;
-    setSession(userId, minimax
-      ? { mode: 'idle', floraMinimaxH3480Ratio: undefined, floraMinimaxH3480ImageUrl: undefined }
-      : { mode: 'idle', floraWanV3480Ratio: undefined, floraWanV3480ImageUrl: undefined });
+    setSession(userId, clearedDraft);
 
     const config = FLORA_480_VIDEO_MODELS[modelKey];
     const displayLabel = config.label;
     const statusMsg = await ctx.reply(
-      `⏳ Memproses ${displayLabel} • ${config.durationSeconds} detik • hingga 1K (${ratio})...\nHasil dikirim otomatis setelah selesai.`
+      `⏳ Memproses ${displayLabel} • ${config.durationSeconds} detik${config.autoUpscale ? ' • hingga 1K' : ''} (${ratio})...\nHasil dikirim otomatis setelah selesai.`
     );
     runFlora480Video(ctx.chat.id, userId, dbUserId, statusMsg.message_id, modelKey, imageUrl, prompt, ratio)
       .catch(() => console.error(`[${userId}] ${displayLabel} generation failed; provider details withheld`));
@@ -10477,7 +10540,7 @@ async function runGeminiOmni11Flora(
   }
 }
 
-// ─── Background: Flora 480p generation with automatic 1K delivery ──────────────
+// ─── Background: Flora 480p generation with per-route delivery policy ──────────
 
 function isExplicitFlora480KeyRejection(err: any): boolean {
   const status = Number(err?.response?.status);
@@ -10503,7 +10566,7 @@ async function runFlora480Video(
   const LABEL = config.label;
   const PRICE = modelKey === 'minimax_h3_480'
     ? MODEL_PRICES.flora_minimax_h3_480
-    : MODEL_PRICES.flora_wan_v3_480;
+    : modelKey === 'seedance_2_480' ? MODEL_PRICES.flora_seedance_2_480 : MODEL_PRICES.flora_wan_v3_480;
   const skippedKeys = new Set<string>();
   const charge = await beginCharge(dbUserId, PRICE, 3);
   if (!charge.ok) {
@@ -10570,12 +10633,14 @@ async function runFlora480Video(
             chatId,
             statusMsgId,
             undefined,
-            `⏳ ${LABEL}: video sedang dibuat... (3/3)\n${config.durationSeconds} detik · hasil hingga 1K. Hasil dikirim otomatis.`
+            `⏳ ${LABEL}: video sedang dibuat... (3/3)\n${config.durationSeconds} detik · ${config.autoUpscale ? 'hasil hingga 1K' : '480p'}. Hasil dikirim otomatis.`
           ).catch(() => {});
           stage = 'poll';
           const resultUrl = await floraPollRun(apiKey, acceptedRunId, 20 * 60 * 1000);
           stage = 'delivery';
-          const finalVideo = await upscaleGeneratedVideo(resultUrl, userId, chatId, statusMsgId);
+          const finalVideo = config.autoUpscale
+            ? await upscaleGeneratedVideo(resultUrl, userId, chatId, statusMsgId)
+            : { url: resultUrl, upscaled: false };
           let delivered = await sendResult(
             chatId,
             finalVideo.url,

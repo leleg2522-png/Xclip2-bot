@@ -32,7 +32,7 @@ assert.match(source, /customerSafeModelLabel[\s\S]*Renderful/);
 assert.match(source, /opts\.model === 'wan_v3' \|\| seedance1080\)\s*\?\s*await upscaleGeneratedVideo\(result\.url, userId, chatId, statusMsgId\)/);
 assert.match(source, /async function runPicsartSeedance25\([\s\S]*?const finalVideo = await upscaleGeneratedVideo\(result\.url, userId, chatId, statusMsgId\)/);
 assert.match(source, /async function runMinimaxH3\([\s\S]*?const finalVideo = await upscaleGeneratedVideo\(result\.url, userId, chatId, statusMsgId\)/);
-assert.match(source, /async function runFlora480Video\([\s\S]*?const finalVideo = await upscaleGeneratedVideo\(resultUrl, userId, chatId, statusMsgId\)/);
+assert.match(source, /async function runFlora480Video\([\s\S]*?const finalVideo = config\.autoUpscale\s*\? await upscaleGeneratedVideo\(resultUrl, userId, chatId, statusMsgId\)/);
 const autoUpscale = source.slice(
   source.indexOf('async function upscaleGeneratedVideo('),
   source.indexOf('// ─── Keyboards ───')

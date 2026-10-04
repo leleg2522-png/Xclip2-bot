@@ -1,5 +1,5 @@
-/** Native 480p generation contracts; delivery applies the automatic 1K pass. */
-export type Flora480VideoModelKey = 'minimax_h3_480' | 'wan_v3_480';
+/** Native 480p contracts with per-route finishing policies. */
+export type Flora480VideoModelKey = 'minimax_h3_480' | 'wan_v3_480' | 'seedance_2_480';
 export type Flora480AspectRatio = '9:16' | '16:9';
 
 export const FLORA_480_VIDEO_MODELS = {
@@ -7,11 +7,19 @@ export const FLORA_480_VIDEO_MODELS = {
     label: 'MiniMax H3 Uncensored',
     durationSeconds: 15,
     resolution: '480P',
+    autoUpscale: true,
   },
   wan_v3_480: {
     label: 'Wan 3.0 Uncensored',
     durationSeconds: 30,
     resolution: '480p',
+    autoUpscale: true,
+  },
+  seedance_2_480: {
+    label: 'Seedance 2.0 480p',
+    durationSeconds: 15,
+    resolution: '480p',
+    autoUpscale: false,
   },
 } as const;
 
@@ -35,6 +43,7 @@ type CatalogModel = {
 const modelNames: Record<Flora480VideoModelKey, readonly string[]> = {
   minimax_h3_480: ['minimaxh3max', 'minimaxh3'],
   wan_v3_480: ['wan30'],
+  seedance_2_480: ['seedance20'],
 };
 
 function catalogRows(raw: unknown): CatalogModel[] {
@@ -74,7 +83,9 @@ export function resolveFlora480VideoModel(
       param.required && param.default == null && !(param.name! in expectedParams));
     if (
       !unknownRequired
-      && params.get('image_urls')?.type === 'string[]'
+      && (key === 'seedance_2_480'
+        ? params.get('image_url')?.type === 'string'
+        : params.get('image_urls')?.type === 'string[]')
       && supportsOption(params.get('duration'), String(config.durationSeconds))
       && supportsOption(params.get('resolution'), config.resolution)
       && supportsOption(params.get('aspect_ratio'), '9:16')
@@ -92,6 +103,15 @@ export function buildFlora480VideoParams(
   if (!imageUrl.trim()) throw new Error('FLORA_REFERENCE_IMAGE_REQUIRED');
   if (ratio !== '9:16' && ratio !== '16:9') throw new Error('FLORA_INVALID_ASPECT_RATIO');
   const config = FLORA_480_VIDEO_MODELS[key];
+  if (key === 'seedance_2_480') {
+    return {
+      image_url: imageUrl,
+      duration: String(config.durationSeconds),
+      resolution: config.resolution,
+      aspect_ratio: ratio,
+      bitrate_mode: 'standard',
+    };
+  }
   return {
     image_urls: [imageUrl],
     duration: String(config.durationSeconds),

@@ -11,11 +11,11 @@ function fixture(key: Flora480VideoModelKey, id: string) {
   const cfg = FLORA_480_VIDEO_MODELS[key];
   return {
     model_id: id,
-    name: key === 'minimax_h3_480' ? 'MiniMax H3 Max' : 'WAN 3.0',
+    name: key === 'minimax_h3_480' ? 'MiniMax H3 Max' : key === 'seedance_2_480' ? 'Seedance 2.0' : 'WAN 3.0',
     type: 'video',
-    capabilities: ['audio-image-to-video'],
+    capabilities: [key === 'seedance_2_480' ? 'image-to-video' : 'audio-image-to-video'],
     params: [
-      { name: 'image_urls', type: 'string[]', required: false, default: [] },
+      { name: key === 'seedance_2_480' ? 'image_url' : 'image_urls', type: key === 'seedance_2_480' ? 'string' : 'string[]', required: false },
       { name: 'duration', type: 'string', options: [{ value: String(cfg.durationSeconds) }] },
       { name: 'resolution', type: 'string', options: [{ value: cfg.resolution }] },
       { name: 'aspect_ratio', type: 'string', options: [{ value: '9:16' }, { value: '16:9' }] },
@@ -42,8 +42,14 @@ assert.deepEqual(buildFlora480VideoParams('wan_v3_480', imageUrl, '16:9'), {
 });
 assert.throws(() => buildFlora480VideoParams('wan_v3_480', '', '9:16'), /IMAGE_REQUIRED/);
 assert.throws(() => buildFlora480VideoParams('wan_v3_480', imageUrl, '1:1' as any), /INVALID_ASPECT/);
+for (const ratio of ['9:16', '16:9'] as const) {
+  assert.deepEqual(buildFlora480VideoParams('seedance_2_480', imageUrl, ratio), {
+    image_url: imageUrl, duration: '15', resolution: '480p', aspect_ratio: ratio, bitrate_mode: 'standard',
+  });
+}
+assert.equal(FLORA_480_VIDEO_MODELS.seedance_2_480.autoUpscale, false);
 
-for (const key of ['minimax_h3_480', 'wan_v3_480'] as const) {
+for (const key of ['minimax_h3_480', 'wan_v3_480', 'seedance_2_480'] as const) {
   const endpoint = fixture(key, `account-specific-${key}`);
   const audioOnly = { ...endpoint, model_id: 'wrong-audio-only', capabilities: ['audio-to-video'] };
   assert.equal(resolveFlora480VideoModel(key, { models: [audioOnly, endpoint] }), endpoint.model_id);
