@@ -22,3 +22,9 @@ description: Rules for hiding Railway behind static Decodo ISP proxy endpoints
 **Why:** Picsart timeouts continued in Railway after the user confirmed redeployment to an endpoint that responded quickly during Replit connectivity checks.
 
 **How to apply:** Report these checks as basic connectivity only, not proof of a fix. Confirm the effective endpoint using credential-free startup diagnostics; investigate the Railway path if timeouts persist instead of indefinitely changing proxy ports.
+
+**Rule:** Decodo ISP country selection uses the documented username parameters, not the static session port. Verify the actual country before claiming that a location change worked.
+
+**Why:** Changing ports selected different egress IPs without specifying a country. A read-only test with country-sg returned SG; country availability depends on the purchased IP list.
+
+**How to apply:** Use the documented user-username-country-XX format while keeping credentials private, and confirm the country through Decodo's geolocation endpoint. A Countries usage export shows past traffic, not current IP entitlement. Do not treat an unauthenticated Picsart response as proof that a generation will succeed.
