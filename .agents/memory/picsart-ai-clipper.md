@@ -9,6 +9,14 @@ The captured Picsart video-clipping workflow returns clip recommendations, not f
 
 **How to apply:** Before promising Telegram MP4 delivery, either obtain a verified export contract or plan separate source-video trimming/rendering. Word timing can support subtitles, but subtitle rendering is separate. Thumbnail canvas dimensions must not be presented as final video resolution or evidence of automatic portrait reframing.
 
+## Autoframe and saved editor projects are not finished export
+
+The subsequent HAR captured `POST /gw-v2/workflows/media-platform/v1/videos/autoframe/submit` with the doubly nested body `{"params":{"params":{"video_url":"<uploaded clip URL>","aspect_ratio":"9:16"}}}`. Poll `.../autoframe/{id}/result`; successful `response.result.url` points to a CSV, not an MP4. The CSV has `time,x,y,scaleX,scaleY` crop/transform data.
+
+**Why:** Two captured autoframe jobs completed with CSV results. Three video files saved to Drive were the exact URLs returned by earlier clip uploads, with original landscape dimensions, rather than newly rendered portrait output. Editor replay JSON and a project manifest were uploaded separately; the manifest's `1080×1920` canvas, subtitles, title overlays and replay URLs describe editable composition, not proof of final MP4 export. One autoframe poll returned HTTP 500.
+
+**How to apply:** Treat autoframe as server-side framing analysis. Do not confuse `POST /drive/v1/files` with rendering: it saves a supplied asset. The saved manifest links each clip's media and replay project, which must be kept distinct from delivered media. A native render/export endpoint remains unverified; local browser-side rendering is plausible but not established by the HAR alone.
+
 ## Captured upstream contract
 
 - Upload: `POST https://upload.picsart.com/files`, returning `result.url`.
