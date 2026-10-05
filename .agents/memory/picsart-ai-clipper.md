@@ -17,6 +17,12 @@ The subsequent HAR captured `POST /gw-v2/workflows/media-platform/v1/videos/auto
 
 **How to apply:** Treat autoframe as server-side framing analysis. Do not confuse `POST /drive/v1/files` with rendering: it saves a supplied asset. The saved manifest links each clip's media and replay project, which must be kept distinct from delivered media. A native render/export endpoint remains unverified; local browser-side rendering is plausible but not established by the HAR alone.
 
+**Rule:** Do not ask for another identical HAR of the site's export flow.
+
+**Why:** The user confirmed that they already performed the download/export while capturing the second HAR. It still has no final MP4 download or server-side render request; the absence of a network endpoint is not evidence that the user skipped export.
+
+**How to apply:** Explain that a browser-side export is the likely path, without asserting its implementation as proven. A bot that relies exclusively on the captured Picsart API can analyze and autoframe but cannot reproduce the finished export; automating the website or rendering from the returned data are distinct options.
+
 ## Captured upstream contract
 
 - Upload: `POST https://upload.picsart.com/files`, returning `result.url`.
