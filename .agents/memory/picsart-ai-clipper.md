@@ -32,6 +32,12 @@ The subsequent HAR captured `POST /gw-v2/workflows/media-platform/v1/videos/auto
 - Submit returns `response.id`; poll `GET .../clips/{id}/result`.
 - Completion is `response.status:"COMPLETED"` with `response.result.clips`, `response.result.sources` and `response.usage.credits`.
 
+**Rule:** Do not equate a successful browser workflow request with proven access from the bot's existing Picsart credentials.
+
+**Why:** The recorded upload, clipper submit, and autoframe submit used an app-authorization header, but no authenticated end-to-end clipper call was tested from the bot's credential pool. The bot's existing Picsart API client does not imply this workflow has been integrated.
+
+**How to apply:** Describe API feasibility as browser-verified, not bot-verified; check credential compatibility before promising the new menu, and keep final-MP4 rendering separate from analysis/autoframe API access.
+
 **Rule:** Do not infer a universal credits-per-minute formula from one job, or promise fixed short-clip durations from `numClips`.
 
 **Why:** The captured job charged 73 credits for about 72 minutes of source video, and its twelve recommendations varied from about 40 to 173 seconds.
