@@ -32,11 +32,11 @@ The subsequent HAR captured `POST /gw-v2/workflows/media-platform/v1/videos/auto
 - Submit returns `response.id`; poll `GET .../clips/{id}/result`.
 - Completion is `response.status:"COMPLETED"` with `response.result.clips`, `response.result.sources` and `response.usage.credits`.
 
-**Rule:** Do not equate a successful browser workflow request with proven access from the bot's existing Picsart credentials.
+**Rule:** The bot's existing Picsart credentials were live-verified for one AI Clipper analysis job, but not for delivering a finished MP4.
 
-**Why:** The recorded upload, clipper submit, and autoframe submit used an app-authorization header, but no authenticated end-to-end clipper call was tested from the bot's credential pool. The bot's existing Picsart API client does not imply this workflow has been integrated.
+**Why:** Using an available lower-tier account, the bot's existing refresh-token handling and static ISP proxy submitted one two-minute source clip to Picsart with an authenticated 201 response, polled it to `COMPLETED`, and received one clip recommendation with no final video URL. The account's balance fell by three credits, matching reported usage for that single job.
 
-**How to apply:** Describe API feasibility as browser-verified, not bot-verified; check credential compatibility before promising the new menu, and keep final-MP4 rendering separate from analysis/autoframe API access.
+**How to apply:** Describe clip analysis as bot-verified, not yet integrated into its menu. Keep final-MP4 rendering separate from analysis/autoframe API access. Do not infer a universal credits-per-minute rate or run another paid test merely because the first succeeded.
 
 **Rule:** Do not infer a universal credits-per-minute formula from one job, or promise fixed short-clip durations from `numClips`.
 

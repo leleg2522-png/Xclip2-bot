@@ -25,4 +25,4 @@
 - [Picsart Kling Omni](picsart-kling-omni.md) — verified I2V contract is Kling v3 Omni Standard, 9:16, 12s, native 720p with audio; completion uses result.url.
 - [Renderful ByteDance Upscaler](renderful-bytedance-upscaler.md) — public 1K/Rp500 tool uses a Railway DB key pool; rotate only before submit and refund every failed delivery.
 - [Picsart Decodo ISP egress](picsart-vps-egress-proxy.md) — Picsart traffic must use static Decodo ISP proxies and fail closed if proxy credentials are unavailable.
-- [Picsart AI Clipper](picsart-ai-clipper.md) — captured workflow returns clip timestamps, word timing and thumbnails, not rendered MP4s; thumbnail canvas does not set video resolution.
+- [Picsart AI Clipper](picsart-ai-clipper.md) — bot credentials live-verified for clip analysis via ISP proxy; completion has no rendered MP4, so export needs a separate solution.
