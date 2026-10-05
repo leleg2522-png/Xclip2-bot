@@ -13,7 +13,7 @@
 - [XclipAI referral scheme](xclip-referral-scheme.md) — 5% dari SETIAP top-up undangan masuk saldo utama pengundang; bonus cair hanya saat order PAID, idempotent via UNIQUE(order_id)
 - [Picsart account pools](picsart-account-pools.md) — split by credit-at-add; Wan 3.0 Prime (including public Seedance 2.5) intentionally uses any pool so p100 and p500 are eligible
 - [Picsart Seedance 2.5 API](seedance-api.md) — native contract is reference-only; public Seedance 2.5 currently routes through verified Wan 3.0.
-- [edanbot Kling Motion](edanbot-kling-motion.md) — bot's "Kling MC V3 PRO P2" is really edanbot.digital→roboneo; auth = fragile Flask signed session= cookie (EDANBOT_COOKIE, needs prefix); job_id isolates users; never leak provider name
+- [edanbot Kling Motion](edanbot-kling-motion.md) — P2/P3 use Edanbot's public model; upstream routing may change. Provider names stay hidden; poll responses do not define submit parameters.
 - [Paid provider post-submit failover](paid-provider-post-submit-failover.md) — failover may retry only before an upstream paid job is accepted; post-submit auth loss must refund, not resubmit.
 - [OneOver submit timeouts](oneover-submit-timeouts.md) — legacy-only; never retry an ambiguous submit response while old OneOver jobs remain.
 - [Freebeat Windows Bridge](freebeat-windows-bridge.md) — legacy completion only; do not enqueue new public Seedance 2.5 orders.

@@ -17,6 +17,12 @@ The Telegram bot's Kling Motion P2 and P3 models are internally powered by **eda
 
 **How to apply:** Submit `kling-motion-26-pro` for both P2 and P3 while preserving their separate public labels and prices; the prompt entered after the reference video goes in `fields.prompt` (a `-` means empty prompt). Customer-facing text must not expose the key.
 
+**Rule:** A HAR containing only job polling and result downloads cannot establish a provider-selection parameter for generation.
+
+**Why:** The supplied HAR showed a completed Dropshot job but no upload or generate POST; its internal model identifier differed from its public model key.
+
+**How to apply:** Distinguish the public submit key from the internal response model. Compare the existing integration before claiming a backend change, and do not invent a provider field or a direct Dropshot API from a CDN result URL. Require a sanitized upload/generate capture to investigate forced provider routing.
+
 ## API flow (single shared account)
 - Auth: `EDANBOT_COOKIE` secret. It is the value of a Flask **signed** `session=` cookie. Normalize: prepend `session=` if missing (users often paste only the value → 401 without the prefix).
 - **Never route edanbot via Decodo proxy:** on Railway the proxy answers 407 (proxy auth) for these calls. Use a plain no-proxy axios client. The cookie is signed, not IP-bound, so direct calls work from any IP.
