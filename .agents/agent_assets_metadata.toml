@@ -375,3 +375,17 @@ mtime_ms = 1787524497502
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:7f88cd25-517f-45aa-aa1c-e5ef0c7301ea/12d5f12e-201d-4160-b6b0-970da90a5e56/eb84fb2b-c3bb-48ff-9693-23fffe8f0502"
 storage_version_token = "1787524539758997"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "iKDkQfvOHEHL3wObI5xve"
+uri = "file://outputs/ai-clipper-demo.mp4"
+type = "video"
+title = "Contoh hasil AI Clipper (MP4)"
+description = "Klip vertikal 2 menit 15 detik dengan audio, judul, subtitle, dan framing dari data Picsart. Render contoh oleh bot, bukan ekspor native Picsart."
+logical_id = "4afaf90d-4efa-42e2-90a9-23ad8cf73efe"
+content_hash = "sha256:ef958efd0011a72d418388fc0f03c8e7d591a9b3c0adbb962f9d3d0c688ad7ce"
+size = 7885913
+mtime_ms = 1791211017251
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/4afaf90d-4efa-42e2-90a9-23ad8cf73efe/0ab2eeda-714f-4320-a584-61f7091ca3b1"
+storage_version_token = "1791211053990168"
+content_type = "video/mp4"
