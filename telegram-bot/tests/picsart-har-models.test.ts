@@ -7,6 +7,13 @@ import { HAR_MODELS, buildHarModelParams, harWorkflow, harResultUrl, type HarMod
 
 const bot = fs.readFileSync(path.resolve(__dirname, '../src/index.ts'), 'utf8');
 const backend = fs.readFileSync(path.resolve(__dirname, '../src/picsart.ts'), 'utf8');
+const mainMenuStart = bot.indexOf('function mainMenuKeyboard()');
+const mainMenu = bot.slice(mainMenuStart, bot.indexOf('\nfunction ', mainMenuStart + 1));
+const klingMenuStart = bot.indexOf("  if (data === 'menu_kling_list') {");
+const klingMenuEnd = bot.indexOf("  if (data === ", klingMenuStart + 10);
+assert.doesNotMatch(mainMenu, /'mode_har_xclip_motion'/, 'Xclip Motion must not appear directly in the main menu');
+assert.match(bot.slice(klingMenuStart, klingMenuEnd), /'mode_har_xclip_motion'/,
+  'Xclip Motion belongs in the Kling Motion Control submenu');
 for (const [key, price] of Object.entries({ heygen: 2500, xclip_motion: 3000, banana21: 600 })) {
   assert.match(bot, new RegExp(`${key}:\\s*${price}`));
 }

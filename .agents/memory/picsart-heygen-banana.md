@@ -15,6 +15,14 @@ native 768×1344 videos; these are observations, not a universal rate formula.
 Heygen. Do not silently remove the video reference or swap either route to Kling.
 Keep the requested public Motion label rather than exposing its internal supplier.
 
+Place Xclip Motion in the Kling Motion Control submenu, not directly in the main
+Generate Video list. Heygen stays separate.
+
+**Why:** The user explicitly chose to move Xclip Motion to that submenu.
+
+**How to apply:** Preserve this grouping when reorganizing menus; it does not
+change Xclip Motion's backend or price.
+
 Heygen and Xclip Motion must be upscaled with ByteDance to the public 1K tier
 before delivery; advertise both as 1080p, not their native 768p.
 
