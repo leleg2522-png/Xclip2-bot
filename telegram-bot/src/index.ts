@@ -20,6 +20,7 @@ import {
   type Flora480VideoModelKey,
 } from './flora-video-models';
 import { FreebeatBridgeQueue, type BridgeAgent, type BridgeJob } from './freebeat-bridge';
+import { KLING_P4, klingP4VideoError, generateKlingP4Flora } from './kling-p4-flora';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -177,6 +178,7 @@ const MODEL_PRICES = {
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
   kling_p3: 4000,      // Kling MC V3.0 PRO P3 (Edanbot, kling-motion-26-pro)
   kling_p2: 4000,      // Kling MC V3 PRO P2 (same HAR-verified Edanbot backend)
+  kling_p4: 4000,      // Kling MC V3 Pro P4 (Flora Kling 2.6 Pro Motion Control)
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
   veo_fast: 1500,      // Veo 3.1 Fast Full HD (SnapGen)
   veo_lite: 1500,      // Veo 3.1 Lite Full HD (SnapGen, with audio)
@@ -1615,6 +1617,9 @@ type Mode =
   | 'klingp3_wait_image'
   | 'klingp3_wait_video'
   | 'klingp3_wait_prompt'
+  | 'klingp4_wait_image'
+  | 'klingp4_wait_video'
+  | 'klingp4_wait_prompt'
   | 'rw_wait_image'
   | 'rw_wait_prompt'
   | 'sora_wait_image'
@@ -1686,6 +1691,7 @@ type GenerationDraftKind =
   | 'kling'
   | 'klingp2'
   | 'klingp3'
+  | 'klingp4'
   | 'kling21'
   | 'picsart_i2v'
   | 'oneover'
@@ -1733,6 +1739,9 @@ interface Session {
   characterUrlP3?: string;
   klingP3VideoFileId?: string;
   klingP3VideoDuration?: number;
+  klingP4ImageFileId?: string;
+  klingP4VideoFileId?: string;
+  klingP4VideoDuration?: number;
   // Runway Gen-4.5 wizard state (image-to-video only)
   rwDuration?: number;
   rwRatio?: string;
@@ -1915,6 +1924,7 @@ const GENERATION_DRAFT_MODES = new Set<Mode>([
   'kling_wait_image', 'kling_wait_video', 'kling_wait_prompt',
   'klingp2_wait_image', 'klingp2_wait_video', 'klingp2_wait_prompt',
   'klingp3_wait_image', 'klingp3_wait_video', 'klingp3_wait_prompt',
+  'klingp4_wait_image', 'klingp4_wait_video', 'klingp4_wait_prompt',
   'rw_wait_image', 'rw_wait_prompt', 'sora_wait_image', 'sora_wait_prompt',
   'veofast_wait_image', 'veofast_wait_prompt', 'veolite_wait_image', 'veolite_wait_prompt',
   'veo31_wait_image', 'veo31_wait_prompt',
@@ -1951,6 +1961,7 @@ function generationDraftKindForStart(data: string): GenerationDraftKind | undefi
     mode_kling: 'kling',
     mode_klingp2: 'klingp2',
     mode_klingp3: 'klingp3',
+    mode_klingp4: 'klingp4',
     mode_kling21: 'kling21',
     mode_kling21p2: 'kling21p2',
     mode_gomni11_flora: 'gomni11_flora',
@@ -3100,6 +3111,7 @@ function hargaText(): string {
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +
     `• Kling MC V3.0 PRO P3 — ${formatRupiah(MODEL_PRICES.kling_p3)} 🔥PROMO\n` +
+    `• ${KLING_P4.label} — ${formatRupiah(MODEL_PRICES.kling_p4)}\n` +
     `• Topaz 4K Upscaler — ${formatRupiah(MODEL_PRICES.topaz)}\n` +
     `• ByteDance Upscaler 1K — ${formatRupiah(MODEL_PRICES.bytedance_upscale)}\n` +
     `• AI Lipsync (semua model) — ${formatRupiah(MODEL_PRICES.lipsync)}\n\n` +
@@ -4331,6 +4343,7 @@ bot.on('callback_query', async (ctx) => {
           [Markup.button.callback('🕹️ Kling MC3.0 PRO 🔥PROMO', 'mode_kling')],
           [Markup.button.callback('🎭 Kling MC V3 PRO P2 🔥PROMO', 'mode_klingp2')],
           [Markup.button.callback('🎭 Kling MC V3.0 PRO P3 🔥PROMO', 'mode_klingp3')],
+          [Markup.button.callback(`🎭 ${KLING_P4.label} · ${formatRupiah(MODEL_PRICES.kling_p4)}`, 'mode_klingp4')],
           [Markup.button.callback('⬅️ Kembali', 'back_main')],
         ]),
       }
@@ -4906,6 +4919,23 @@ bot.on('callback_query', async (ctx) => {
       '• Resolusi min. 300px, maks 10MB\n' +
       '• Format: JPG, PNG\n\n' +
       `ℹ️ Nanti di langkah 2, video referensi gerakan *maksimal ${KLING_MAX_REF_SECONDS} detik*.`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data === 'mode_klingp4') {
+    if (!await requireLogin(ctx)) return;
+    setSession(userId, {
+      mode: 'klingp4_wait_image',
+      klingP4ImageFileId: undefined,
+      klingP4VideoFileId: undefined,
+      klingP4VideoDuration: undefined,
+    });
+    return ctx.editMessageText(
+      `🎭 *${KLING_P4.label}*\n\nHarga: *${formatRupiah(MODEL_PRICES.kling_p4)}* per video\n\n` +
+      '*Langkah 1:* Kirim *foto karakter* (JPG/PNG, maksimal 10MB, min. 300px).\n' +
+      'Tampilkan seluruh tubuh dari depan, bukan close-up wajah.\n\n' +
+      `Video referensi di langkah berikutnya: *${KLING_P4.minSeconds}–${KLING_P4.maxSeconds} detik*, maksimal *15MB*.`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -5954,6 +5984,20 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     );
   }
 
+  if (session.mode === 'klingp4_wait_prompt' || session.mode === 'klingp4_wait_video') {
+    return ctx.reply(session.mode === 'klingp4_wait_prompt'
+      ? 'Video referensi sudah diterima. Kirim prompt teks atau ketik - untuk lewati.'
+      : 'Foto karakter sudah diterima. Sekarang kirim video referensi gerakan.');
+  }
+  if (session.mode === 'klingp4_wait_image') {
+    const photo = ctx.message.photo.at(-1)!;
+    if ((photo.file_size && photo.file_size > KLING_P4.maxImageBytes) || photo.width < 300 || photo.height < 300) {
+      return ctx.reply('❌ Foto harus min. 300px dan maksimal 10MB. Kirim foto lain.');
+    }
+    setSession(userId, { klingP4ImageFileId: photo.file_id, mode: 'klingp4_wait_video' });
+    return ctx.reply(`✅ Foto karakter diterima!\n\nLangkah 2: Kirim video referensi gerakan ${KLING_P4.minSeconds}–${KLING_P4.maxSeconds} detik (maksimal 15MB).`);
+  }
+
   if (session.mode === 'klingp2_wait_prompt') {
     return ctx.reply(
       '⚠️ Sekarang giliran *prompt teks*. Kirim deskripsi gerakan/adegan, atau ketik *-* untuk lewati.',
@@ -6480,6 +6524,17 @@ bot.on('video', async (ctx) => {
     );
   }
 
+  if (session.mode === 'klingp4_wait_video' && session.klingP4ImageFileId) {
+    const invalid = klingP4VideoError(vid.file_size, vid.duration);
+    if (invalid) return ctx.reply(`❌ ${invalid}`);
+    setSession(userId, { klingP4VideoFileId: vid.file_id, klingP4VideoDuration: vid.duration, mode: 'klingp4_wait_prompt' });
+    return ctx.reply('✅ Video referensi diterima!\n\nLangkah 3: Kirim prompt teks untuk mengarahkan hasil, atau ketik - untuk lewati.');
+  }
+  if (session.mode === 'klingp4_wait_prompt') {
+    return ctx.reply('Video referensi sudah diterima. Sekarang kirim prompt teks atau ketik - untuk lewati.');
+  }
+  if (session.mode === 'klingp4_wait_image') return ctx.reply('📸 Kirim foto karakter dulu.');
+
   if (session.mode === 'klingp2_wait_video' && session.characterUrlP2) {
     const P2_MAX_BYTES = 15 * 1024 * 1024;
     if (vid.file_size && vid.file_size > P2_MAX_BYTES) {
@@ -6720,6 +6775,31 @@ bot.on('text', async (ctx) => {
     const statusMsg = await ctx.reply(`⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).`);
     runKlingMotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, videoFileId, characterRef, prompt)
       .catch(e => console.error(`[${userId}] Kling gen error:`, e.message));
+    return;
+  }
+
+  if (session.mode === 'klingp4_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const draft = getSession(userId);
+    if (draft.mode !== 'klingp4_wait_prompt') return;
+    if (!draft.klingP4ImageFileId || !draft.klingP4VideoFileId) {
+      return ctx.reply('⚠️ Foto atau video belum lengkap. Buka /menu untuk mulai ulang.');
+    }
+    const raw = ctx.message.text.trim();
+    const prompt = raw === '-' ? '' : raw;
+    const imageFileId = draft.klingP4ImageFileId;
+    const videoFileId = draft.klingP4VideoFileId;
+    const seconds = draft.klingP4VideoDuration;
+    const dbUserId = draft.dbUserId!;
+    const cooldownMs = getCooldownRemainingMs(userId);
+    if (cooldownMs > 0) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply(`⏳ Tunggu ${formatCooldown(cooldownMs)} sebelum generate berikutnya.`);
+    }
+    setSession(userId, { mode: 'idle', klingP4ImageFileId: undefined, klingP4VideoFileId: undefined, klingP4VideoDuration: undefined });
+    const statusMsg = await ctx.reply(`⏳ Memproses ${KLING_P4.label}...\nHasil dikirim otomatis (~5–20 menit).`);
+    runKlingP4(ctx.chat.id, userId, dbUserId, statusMsg.message_id, imageFileId, videoFileId, seconds, prompt)
+      .catch(e => console.error(`[${userId}] KlingP4 error:`, e.message));
     return;
   }
 
@@ -7762,6 +7842,10 @@ bot.on('text', async (ctx) => {
       { parse_mode: 'Markdown' }
     );
   }
+  if (session.mode === 'klingp4_wait_image') return ctx.reply('📸 Kirim foto karakter dulu, atau /menu untuk batal.');
+  if (session.mode === 'klingp4_wait_video') {
+    return ctx.reply(`🎥 Kirim video referensi ${KLING_P4.minSeconds}–${KLING_P4.maxSeconds} detik, maksimal 15MB, atau /menu untuk batal.`);
+  }
   if (session.mode === 'klingp2_wait_image') {
     return ctx.reply('📸 Kirim *foto karakter* dulu ya, atau /menu untuk batal.', { parse_mode: 'Markdown' });
   }
@@ -7926,6 +8010,24 @@ bot.on('document', async (ctx) => {
     );
   }
 
+  if (session.mode === 'klingp4_wait_prompt') {
+    return ctx.reply('Foto dan video sudah diterima. Kirim prompt teks atau ketik - untuk lewati.');
+  }
+  if (session.mode === 'klingp4_wait_image') {
+    if (!['image/jpeg', 'image/png'].includes(doc.mime_type || '')) return ctx.reply('📸 Kirim foto karakter JPG atau PNG dulu.');
+    if (doc.file_size && doc.file_size > KLING_P4.maxImageBytes) return ctx.reply('❌ Foto karakter maksimal 10MB.');
+    setSession(userId, { klingP4ImageFileId: doc.file_id, mode: 'klingp4_wait_video' });
+    return ctx.reply(`✅ Foto karakter diterima!\n\nLangkah 2: Kirim video referensi ${KLING_P4.minSeconds}–${KLING_P4.maxSeconds} detik, maksimal 15MB.`);
+  }
+  if (session.mode === 'klingp4_wait_video' && session.klingP4ImageFileId) {
+    if (!doc.mime_type?.startsWith('video/')) return ctx.reply('🎥 Sekarang kirim video referensi gerakan.');
+    const seconds = (doc as any).duration as number | undefined;
+    const invalid = klingP4VideoError(doc.file_size, seconds);
+    if (invalid) return ctx.reply(`❌ ${invalid}`);
+    setSession(userId, { klingP4VideoFileId: doc.file_id, klingP4VideoDuration: seconds, mode: 'klingp4_wait_prompt' });
+    return ctx.reply(`✅ Video diterima. Pastikan durasinya ${KLING_P4.minSeconds}–${KLING_P4.maxSeconds} detik.\n\nLangkah 3: Kirim prompt teks atau ketik - untuk lewati.`);
+  }
+
   if (doc.mime_type?.startsWith('video/') && session.mode === 'klingp2_wait_prompt') {
     return ctx.reply(
       '⚠️ Video referensi sudah diterima. Sekarang kirim *prompt teks*, atau ketik *-* untuk lewati.',
@@ -8014,6 +8116,68 @@ bot.on('document', async (ctx) => {
 
   return ctx.reply('⚠️ Pilih mode terlebih dahulu:', mainMenuKeyboard());
 });
+
+// ─── Background: Kling MC V3 Pro P4 ──────────────────────────────────────────
+
+async function runKlingP4(
+  chatId: number, userId: number, dbUserId: number, statusMsgId: number,
+  imageFileId: string, videoFileId: string, seconds: number | undefined, prompt: string
+) {
+  const PRICE = MODEL_PRICES.kling_p4;
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  const status = async (text: string) => {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+  };
+  if (!charge.ok) {
+    await status(chargeFailMsg(charge.reason, PRICE));
+    return;
+  }
+  let refund = true;
+  try {
+    const [imageLink, videoLink] = await Promise.all([
+      bot.telegram.getFileLink(imageFileId), bot.telegram.getFileLink(videoFileId),
+    ]);
+    const [image, video] = await Promise.all([downloadBuffer(imageLink.href), downloadBuffer(videoLink.href)]);
+    const imageMeta = await sharp(image.buf).metadata();
+    if (!['jpeg', 'png'].includes(imageMeta.format || '') || (imageMeta.width ?? 0) < 300 || (imageMeta.height ?? 0) < 300) {
+      throw new Error('KLING_P4_INVALID_IMAGE');
+    }
+    const videoType = detectVideoType(video.buf, videoLink.href);
+    const resultUrl = await generateKlingP4Flora({
+      image: { buf: image.buf, name: `character.${image.ext}`, mime: image.mime },
+      video: { buf: video.buf, name: `reference.${videoType.ext}`, mime: videoType.mime },
+      prompt, seconds,
+    }, {
+      getKey: getNextFloraKey,
+      markDead: markFloraKeyDead,
+      workspace: floraGetWorkspace,
+      upload: floraUploadAsset,
+      generate: floraGenerate,
+      poll: floraPollRun,
+      exhausted: error => isFloraKeyExhaustedError(describeError(error)),
+      status,
+    });
+    const delivered = await sendResult(chatId, resultUrl, `🎭 ${KLING_P4.label}\n\n/menu untuk buat lagi`, true);
+    if (delivered) {
+      refund = false;
+      markGenSuccess(userId);
+      await incrementKlingUsage(dbUserId).catch(error => console.error(`[${userId}] Kling P4 usage update: ${describeError(error)}`));
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    }
+  } catch (error) {
+    console.error(`[${userId}] Kling P4 error: ${describeError(error)}`);
+    const friendly = describeError(error).includes('KLING_P4_INVALID_IMAGE')
+      ? '❌ Foto harus JPG/PNG dengan ukuran min. 300px.'
+      : '❌ Video tidak berhasil diproses.';
+    await status(`${friendly} Saldo akan dikembalikan.\n\n/menu untuk coba lagi`);
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
 
 // ─── Background: Kling Motion Control ────────────────────────────────────────
 

@@ -17,3 +17,15 @@ The user explicitly wants automatic upscaling to remain invisible to customers.
 **How to apply:** Check model buttons, price lists, setup prompts, queue/progress
 messages, result captions, and refund/failure notices when adding or changing a
 provider. Admin-only setup and operational logs may retain internal names.
+
+## Kling P4 naming
+
+The public name “Kling MC V3 Pro P4” intentionally identifies the Flora route for
+Kling Motion Control 2.6 Pro; do not treat the V3/2.6 mismatch as a bug or silently
+upgrade its upstream model to Kling 3.
+
+**Why:** The user explicitly requested the 2.6 Pro backend with this public name
+and chose Flora for P4.
+
+**How to apply:** Keep the requested customer label separate from the upstream
+model identity when updating the catalog or changing integration code.
