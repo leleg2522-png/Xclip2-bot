@@ -21,6 +21,7 @@ import {
 } from './flora-video-models';
 import { FreebeatBridgeQueue, type BridgeAgent, type BridgeJob } from './freebeat-bridge';
 import { KLING_P4, klingP4VideoError, generateKlingP4Flora } from './kling-p4-flora';
+import { HAR_MODELS, type HarModelKey, type HarAspectRatio } from './picsart-har-models';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -179,6 +180,9 @@ const MODEL_PRICES = {
   kling_p3: 4000,      // Kling MC V3.0 PRO P3 (Edanbot, kling-motion-26-pro)
   kling_p2: 4000,      // Kling MC V3 PRO P2 (same HAR-verified Edanbot backend)
   kling_p4: 4000,      // Kling MC V3 Pro P4 (Flora Kling 2.6 Pro Motion Control)
+  heygen: 2500,
+  xclip_motion: 3000,
+  banana21: 600,
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
   veo_fast: 1500,      // Veo 3.1 Fast Full HD (SnapGen)
   veo_lite: 1500,      // Veo 3.1 Lite Full HD (SnapGen, with audio)
@@ -1620,6 +1624,10 @@ type Mode =
   | 'klingp4_wait_image'
   | 'klingp4_wait_video'
   | 'klingp4_wait_prompt'
+  | 'har_wait_ratio'
+  | 'har_wait_image'
+  | 'har_wait_video'
+  | 'har_wait_prompt'
   | 'rw_wait_image'
   | 'rw_wait_prompt'
   | 'sora_wait_image'
@@ -1692,6 +1700,7 @@ type GenerationDraftKind =
   | 'klingp2'
   | 'klingp3'
   | 'klingp4'
+  | 'har_models'
   | 'kling21'
   | 'picsart_i2v'
   | 'oneover'
@@ -1742,6 +1751,11 @@ interface Session {
   klingP4ImageFileId?: string;
   klingP4VideoFileId?: string;
   klingP4VideoDuration?: number;
+  harModel?: HarModelKey;
+  harRatio?: HarAspectRatio;
+  harImageFileId?: string;
+  harVideoFileId?: string;
+  harVideoMime?: string;
   // Runway Gen-4.5 wizard state (image-to-video only)
   rwDuration?: number;
   rwRatio?: string;
@@ -1925,6 +1939,7 @@ const GENERATION_DRAFT_MODES = new Set<Mode>([
   'klingp2_wait_image', 'klingp2_wait_video', 'klingp2_wait_prompt',
   'klingp3_wait_image', 'klingp3_wait_video', 'klingp3_wait_prompt',
   'klingp4_wait_image', 'klingp4_wait_video', 'klingp4_wait_prompt',
+  'har_wait_ratio', 'har_wait_image', 'har_wait_video', 'har_wait_prompt',
   'rw_wait_image', 'rw_wait_prompt', 'sora_wait_image', 'sora_wait_prompt',
   'veofast_wait_image', 'veofast_wait_prompt', 'veolite_wait_image', 'veolite_wait_prompt',
   'veo31_wait_image', 'veo31_wait_prompt',
@@ -1953,6 +1968,7 @@ const GENERATION_DRAFT_MODES = new Set<Mode>([
 ]);
 
 function generationDraftKindForStart(data: string): GenerationDraftKind | undefined {
+  if (data.startsWith('mode_har_') && Object.hasOwn(HAR_MODELS, data.slice(9))) return 'har_models';
   if (data.startsWith('mode_pi2v_')) return 'picsart_i2v';
   if (data.startsWith('floraimg_select_')) return 'flora_image';
   if (data.startsWith('lipsync_select_')) return 'lipsync';
@@ -1993,6 +2009,7 @@ function generationDraftKindForStart(data: string): GenerationDraftKind | undefi
 }
 
 function generationDraftKindForContinuation(data: string): GenerationDraftKind | undefined {
+  if (data.startsWith('har_ratio_')) return 'har_models';
   if (data.startsWith('rw_')) return 'runway';
   if (data.startsWith('so_')) return 'sora';
   if (data.startsWith('vf_')) return 'veofast';
@@ -2033,7 +2050,7 @@ function reserveGenerationDraft(userId: number, kind: GenerationDraftKind): 'dra
 
 function isGenerationEntryCallback(data: string): boolean {
   return generationDraftKindForStart(data) !== undefined
-    || ['menu_kling_list', 'menu_flora_image', 'menu_lipsync', 'menu_audio'].includes(data);
+    || ['menu_kling_list', 'menu_banana21', 'menu_flora_image', 'menu_lipsync', 'menu_audio'].includes(data);
 }
 
 async function replyGenerationDraftBlock(ctx: any, reason: 'draft' | 'busy'): Promise<void> {
@@ -2512,6 +2529,8 @@ function mainMenuKeyboard() {
     // ── Generate Video ──
     [Markup.button.callback('── 🎬 Generate Video ──', 'noop')],
     [Markup.button.callback('🕹️ Kling Motion Control', 'menu_kling_list')],
+    [Markup.button.callback('🎬 Heygen Video · 15 detik', 'mode_har_heygen')],
+    [Markup.button.callback('🕺 Xclip Motion · foto + video', 'mode_har_xclip_motion')],
     [Markup.button.callback('🌊 Seedance 2.0 Mini 1080p', 'mode_pi2v_seedance_2_mini')],
     [Markup.button.callback('🎬 Seedance 2 Mini Video Edit 480p', 'mode_seedance_mini_edit')],
     [Markup.button.callback('⚡ Seedance 2 Fast Video Edit 480p', 'mode_seedance_fast_edit')],
@@ -2561,6 +2580,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🤖 GPT Image 2.5 Flare', 'mode_gpt25_flare')],
     [Markup.button.callback('🍌 Nano Banana Pro', 'mode_nbpro')],
     [Markup.button.callback('🍌 Nano Banana 2', 'mode_nb2')],
+    [Markup.button.callback('🍌 Nano Banana 2.1 · 4K', 'menu_banana21')],
     [Markup.button.callback('🍌 Nano Banana 2 Lite', 'mode_nb2lite')],
   ]);
 }
@@ -3112,6 +3132,9 @@ function hargaText(): string {
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +
     `• Kling MC V3.0 PRO P3 — ${formatRupiah(MODEL_PRICES.kling_p3)} 🔥PROMO\n` +
     `• ${KLING_P4.label} — ${formatRupiah(MODEL_PRICES.kling_p4)}\n` +
+    `• Heygen Video (15 detik) — ${formatRupiah(MODEL_PRICES.heygen)}\n` +
+    `• Xclip Motion (15 detik) — ${formatRupiah(MODEL_PRICES.xclip_motion)}\n` +
+    `• Nano Banana 2.1 4K (teks/foto) — ${formatRupiah(MODEL_PRICES.banana21)}\n` +
     `• Topaz 4K Upscaler — ${formatRupiah(MODEL_PRICES.topaz)}\n` +
     `• ByteDance Upscaler 1K — ${formatRupiah(MODEL_PRICES.bytedance_upscale)}\n` +
     `• AI Lipsync (semua model) — ${formatRupiah(MODEL_PRICES.lipsync)}\n\n` +
@@ -4923,6 +4946,43 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  if (data === 'menu_banana21') {
+    return ctx.editMessageText(
+      `🍌 *Nano Banana 2.1 · 4K*\nHarga: *${formatRupiah(MODEL_PRICES.banana21)}* per gambar.\n\nPilih mode:`,
+      { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
+        [Markup.button.callback('✍️ Text to Image', 'mode_har_banana21_t2i')],
+        [Markup.button.callback('🖼️ Image to Image', 'mode_har_banana21_i2i')],
+        [Markup.button.callback('⬅️ Kembali', 'back_main')],
+      ]) }
+    );
+  }
+  if (data.startsWith('mode_har_') && Object.hasOwn(HAR_MODELS, data.slice(9))) {
+    if (!await requireLogin(ctx)) return;
+    const model = data.slice(9) as HarModelKey;
+    const cfg = HAR_MODELS[model];
+    setSession(userId, { mode: 'har_wait_ratio', harModel: model, harRatio: undefined, harImageFileId: undefined, harVideoFileId: undefined, harVideoMime: undefined });
+    return ctx.editMessageText(
+      `*${cfg.label}*\nHarga: *${formatRupiah(MODEL_PRICES[cfg.priceKey])}* per ${cfg.video ? 'video' : 'gambar'}.\n` +
+      `${cfg.video ? 'Output: 15 detik · native 768p.' : 'Output: 1 gambar · 4K.'}\n\nPilih rasio:`,
+      { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
+        [Markup.button.callback('📱 9:16', 'har_ratio_916'), Markup.button.callback('🖥️ 16:9', 'har_ratio_169')],
+        ...(!cfg.video ? [[Markup.button.callback('⬜ 1:1', 'har_ratio_11')]] : []),
+        [Markup.button.callback('⬅️ Batal', 'back_main')],
+      ]) }
+    );
+  }
+  if (data.startsWith('har_ratio_')) {
+    const draft = getSession(userId);
+    const ratio = ({ '916': '9:16', '169': '16:9', '11': '1:1' } as const)[data.slice(10) as '916' | '169' | '11'];
+    if (draft.mode !== 'har_wait_ratio' || !draft.harModel || !ratio) return ctx.answerCbQuery('Mulai ulang dari /menu.').catch(() => {});
+    const cfg = HAR_MODELS[draft.harModel];
+    if (cfg.video && ratio === '1:1') return ctx.answerCbQuery('Pilih 9:16 atau 16:9.').catch(() => {});
+    setSession(userId, { harRatio: ratio, mode: cfg.needsImage ? 'har_wait_image' : 'har_wait_prompt' });
+    return ctx.editMessageText(cfg.needsImage
+      ? `🖼️ ${cfg.label} (${ratio})\n\nKirim satu foto acuan JPG/PNG, maksimal 10MB.`
+      : `✍️ ${cfg.label} (${ratio})\n\nKirim prompt untuk gambar yang ingin dibuat.`);
+  }
+
   if (data === 'mode_klingp4') {
     if (!await requireLogin(ctx)) return;
     setSession(userId, {
@@ -5984,6 +6044,18 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     );
   }
 
+  if (session.mode.startsWith('har_wait_')) {
+    const draft = getSession(userId);
+    if (draft.mode !== 'har_wait_image' || !draft.harModel) return ctx.reply('Foto tidak diperlukan di langkah ini. Selesaikan langkah yang diminta, atau /menu untuk batal.');
+    const photo = ctx.message.photo.at(-1)!;
+    if (photo.file_size && photo.file_size > 10 * 1024 * 1024) return ctx.reply('❌ Foto maksimal 10MB.');
+    const cfg = HAR_MODELS[draft.harModel];
+    setSession(userId, { harImageFileId: photo.file_id, mode: cfg.needsVideo ? 'har_wait_video' : 'har_wait_prompt' });
+    return ctx.reply(cfg.needsVideo
+      ? '✅ Foto diterima. Sekarang kirim video referensi gerakan (MP4/video Telegram, maksimal 19MB).'
+      : '✅ Foto diterima. Sekarang kirim prompt untuk mengarahkan hasil.');
+  }
+
   if (session.mode === 'klingp4_wait_prompt' || session.mode === 'klingp4_wait_video') {
     return ctx.reply(session.mode === 'klingp4_wait_prompt'
       ? 'Video referensi sudah diterima. Kirim prompt teks atau ketik - untuk lewati.'
@@ -6524,6 +6596,16 @@ bot.on('video', async (ctx) => {
     );
   }
 
+  if (session.mode.startsWith('har_wait_')) {
+    const draft = getSession(userId);
+    if (draft.mode !== 'har_wait_video' || draft.harModel !== 'xclip_motion' || !draft.harImageFileId) {
+      return ctx.reply('Video tidak diperlukan di langkah ini. Ikuti langkah yang diminta atau /menu untuk batal.');
+    }
+    if (vid.file_size && vid.file_size > 19 * 1024 * 1024) return ctx.reply('❌ Video referensi maksimal 19MB.');
+    setSession(userId, { harVideoFileId: vid.file_id, harVideoMime: 'video/mp4', mode: 'har_wait_prompt' });
+    return ctx.reply('✅ Video referensi diterima. Sekarang kirim prompt untuk mengarahkan hasil Xclip Motion.');
+  }
+
   if (session.mode === 'klingp4_wait_video' && session.klingP4ImageFileId) {
     const invalid = klingP4VideoError(vid.file_size, vid.duration);
     if (invalid) return ctx.reply(`❌ ${invalid}`);
@@ -6775,6 +6857,28 @@ bot.on('text', async (ctx) => {
     const statusMsg = await ctx.reply(`⏳ Memproses Kling Motion Control...\nHasil dikirim otomatis (~2-5 menit).`);
     runKlingMotionControl(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, videoFileId, characterRef, prompt)
       .catch(e => console.error(`[${userId}] Kling gen error:`, e.message));
+    return;
+  }
+
+  if (session.mode === 'har_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const draft = getSession(userId);
+    if (draft.mode !== 'har_wait_prompt') return;
+    if (!draft.dbUserId || !draft.harModel || !draft.harRatio) return ctx.reply('⚠️ Sesi tidak lengkap. Mulai ulang dari /menu.');
+    const cfg = HAR_MODELS[draft.harModel];
+    if (cfg.needsImage !== Boolean(draft.harImageFileId) || cfg.needsVideo !== Boolean(draft.harVideoFileId)) {
+      return ctx.reply('⚠️ Media belum lengkap. Mulai ulang dari /menu.');
+    }
+    const prompt = ctx.message.text.trim();
+    if (!prompt || prompt === '-') return ctx.reply('⚠️ Kirim prompt yang menjelaskan hasil yang diinginkan.');
+    const cooldown = getCooldownRemainingMs(userId);
+    if (cooldown > 0) return ctx.reply(`⏳ Tunggu ${formatCooldown(cooldown)} sebelum generate berikutnya.`);
+    const job = { model: draft.harModel, ratio: draft.harRatio, imageFileId: draft.harImageFileId, videoFileId: draft.harVideoFileId };
+    const dbUserId = draft.dbUserId;
+    setSession(userId, { mode: 'idle', harImageFileId: undefined, harVideoFileId: undefined, harVideoMime: undefined });
+    const status = await ctx.reply(`⏳ Memproses ${cfg.label}...\nHasil akan dikirim otomatis.`);
+    runHarModel(ctx.chat.id, userId, dbUserId, status.message_id, prompt, job)
+      .catch(error => console.error(`[${userId}] HAR model runner error:`, describeError(error)));
     return;
   }
 
@@ -7842,6 +7946,11 @@ bot.on('text', async (ctx) => {
       { parse_mode: 'Markdown' }
     );
   }
+  if (session.mode.startsWith('har_wait_')) {
+    return ctx.reply(session.mode === 'har_wait_image' ? '🖼️ Kirim foto acuan dulu.'
+      : session.mode === 'har_wait_video' ? '🎥 Kirim video referensi dulu.'
+      : 'Pilih rasio dari tombol yang tersedia, atau /menu untuk batal.');
+  }
   if (session.mode === 'klingp4_wait_image') return ctx.reply('📸 Kirim foto karakter dulu, atau /menu untuk batal.');
   if (session.mode === 'klingp4_wait_video') {
     return ctx.reply(`🎥 Kirim video referensi ${KLING_P4.minSeconds}–${KLING_P4.maxSeconds} detik, maksimal 15MB, atau /menu untuk batal.`);
@@ -8010,6 +8119,25 @@ bot.on('document', async (ctx) => {
     );
   }
 
+  if (session.mode.startsWith('har_wait_')) {
+    const draft = getSession(userId);
+    if (!draft.harModel) return ctx.reply('Mulai ulang dari /menu.');
+    const cfg = HAR_MODELS[draft.harModel];
+    if (draft.mode === 'har_wait_image') {
+      if (!['image/jpeg', 'image/png'].includes(doc.mime_type || '')) return ctx.reply('🖼️ Kirim foto JPG/PNG.');
+      if (doc.file_size && doc.file_size > 10 * 1024 * 1024) return ctx.reply('❌ Foto maksimal 10MB.');
+      setSession(userId, { harImageFileId: doc.file_id, mode: cfg.needsVideo ? 'har_wait_video' : 'har_wait_prompt' });
+      return ctx.reply(cfg.needsVideo ? '✅ Foto diterima. Kirim video referensi maksimal 19MB.' : '✅ Foto diterima. Kirim prompt untuk mengarahkan hasil.');
+    }
+    if (draft.mode === 'har_wait_video' && cfg.needsVideo && draft.harImageFileId) {
+      if (!doc.mime_type?.startsWith('video/')) return ctx.reply('🎥 Kirim video referensi.');
+      if (doc.file_size && doc.file_size > 19 * 1024 * 1024) return ctx.reply('❌ Video maksimal 19MB.');
+      setSession(userId, { harVideoFileId: doc.file_id, harVideoMime: doc.mime_type, mode: 'har_wait_prompt' });
+      return ctx.reply('✅ Video diterima. Kirim prompt untuk mengarahkan hasil Xclip Motion.');
+    }
+    return ctx.reply('Ikuti langkah yang diminta, atau /menu untuk batal.');
+  }
+
   if (session.mode === 'klingp4_wait_prompt') {
     return ctx.reply('Foto dan video sudah diterima. Kirim prompt teks atau ketik - untuk lewati.');
   }
@@ -8116,6 +8244,61 @@ bot.on('document', async (ctx) => {
 
   return ctx.reply('⚠️ Pilih mode terlebih dahulu:', mainMenuKeyboard());
 });
+
+// ─── Background: Heygen, Xclip Motion and Nano Banana 2.1 ─────────────────────
+
+async function runHarModel(
+  chatId: number, userId: number, dbUserId: number, statusMsgId: number, prompt: string,
+  job: { model: HarModelKey; ratio: HarAspectRatio; imageFileId?: string; videoFileId?: string }
+) {
+  const cfg = HAR_MODELS[job.model];
+  const PRICE = MODEL_PRICES[cfg.priceKey];
+  const status = async (text: string) => {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+  };
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  if (!charge.ok) { await status(chargeFailMsg(charge.reason, PRICE)); return; }
+  let refund = true;
+  try {
+    let image: { buffer: Buffer; name: string; mime: string } | undefined;
+    let video: { buffer: Buffer; name: string; mime: string } | undefined;
+    if (job.imageFileId) {
+      const link = await bot.telegram.getFileLink(job.imageFileId);
+      const data = await downloadBuffer(link.href);
+      if (data.buf.length > 10 * 1024 * 1024) throw new Error('REFERENCE_IMAGE_TOO_LARGE');
+      const meta = await sharp(data.buf).metadata();
+      if (!['jpeg', 'png'].includes(meta.format || '')) throw new Error('INVALID_REFERENCE_IMAGE');
+      image = { buffer: data.buf, name: `reference.${data.ext}`, mime: data.mime };
+    }
+    if (job.videoFileId) {
+      const link = await bot.telegram.getFileLink(job.videoFileId);
+      const data = await downloadBuffer(link.href);
+      if (data.buf.length > 19 * 1024 * 1024) throw new Error('REFERENCE_VIDEO_TOO_LARGE');
+      const type = detectVideoType(data.buf, link.href);
+      video = { buffer: data.buf, name: `reference.${type.ext}`, mime: type.mime };
+    }
+    const result = await picsart.generateHarModel({
+      userId: dbUserId, model: job.model, prompt, ratio: job.ratio, image, video,
+      onStatus: stage => { void status(`⏳ ${cfg.label}: ${stage === 'upload' ? 'menyiapkan media' : stage === 'submit' ? 'mengirim perintah' : 'memproses hasil'}...`); },
+    });
+    const caption = `${cfg.label} (${job.ratio} · ${cfg.video ? '15 detik · 768p' : '4K'})\n\n/menu untuk buat lagi`;
+    const delivered = cfg.video ? await sendResult(chatId, result.url, caption, true) : await sendImageResult(chatId, result.url, caption);
+    if (delivered) {
+      refund = false;
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    }
+  } catch (error) {
+    console.error(`[${userId}] ${cfg.label} failed: ${describeError(error)}`);
+    await status('❌ Hasil tidak berhasil diproses. Saldo akan dikembalikan.\n\n/menu untuk coba lagi');
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
 
 // ─── Background: Kling MC V3 Pro P4 ──────────────────────────────────────────
 

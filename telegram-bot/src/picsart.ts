@@ -19,6 +19,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import axios from 'axios';
+import { HAR_MODELS, buildHarModelParams, harWorkflow, harResultUrl, type HarModelKey, type HarAspectRatio } from './picsart-har-models';
 import FormData from 'form-data';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import sharp from 'sharp';
@@ -3262,6 +3263,82 @@ export async function generateGptImage(input: {
     return pollPicsartImageResult(credId, 'openai-image-editing', id, {
       onTick: (ms) => input.onPoll?.(Math.round(ms / 1000)),
     });
+  });
+}
+
+export async function generateHarModel(input: {
+  userId: number;
+  model: HarModelKey;
+  prompt: string;
+  ratio: HarAspectRatio;
+  image?: { buffer: Buffer; name: string; mime: string };
+  video?: { buffer: Buffer; name: string; mime: string };
+  onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
+}): Promise<{ url: string; credits?: number }> {
+  const cfg = HAR_MODELS[input.model];
+  if (!cfg || cfg.needsImage !== Boolean(input.image) || cfg.needsVideo !== Boolean(input.video)) {
+    throw new Error('PICSART_INVALID_HAR_MEDIA');
+  }
+  return runWithAccount(input.userId, null, async credId => {
+    input.onStatus?.('upload');
+    const imageUrl = input.image
+      ? await uploadFile(credId, input.image.buffer, input.image.name, input.image.mime, { gateway: true }) : undefined;
+    const videoUrl = input.video
+      ? await uploadFile(credId, input.video.buffer, input.video.name, input.video.mime, { gateway: true }) : undefined;
+    const params = buildHarModelParams({ model: input.model, prompt: input.prompt, ratio: input.ratio, imageUrl, videoUrl });
+    const path = harWorkflow(input.model);
+    const access = await getAccessToken(credId);
+    input.onStatus?.('submit');
+    const r = await http.post(`${API_BASE}${path}/submit`, { params }, {
+      headers: commonHeaders({
+        'content-type': 'application/json', authorization: `Bearer ${access}`,
+        'x-app-authorization': X_APP_AUTHORIZATION,
+        'x-sub-package-id': 'subscription_pro',
+      }),
+      validateStatus: () => true,
+    });
+    if (!ok2xx(r.status)) throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 200)}`);
+    const id = r.data?.response?.id;
+    if (!id) throw new Error('PICSART_NO_JOB_ID');
+    input.onStatus?.('poll');
+    // After acceptance, wrap ALL errors so account failover cannot replay the job.
+    try {
+      const diag = new PollDiag();
+      for (let i = 0; i < 240; i++) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        const token = await getAccessToken(credId);
+        let poll;
+        try {
+          poll = await http.get(`${API_BASE}${path}/${id}/result`, {
+            headers: commonHeaders({
+              authorization: `Bearer ${token}`,
+              'x-app-authorization': X_APP_AUTHORIZATION,
+              'x-sub-package-id': 'subscription_pro',
+            }), validateStatus: () => true,
+          });
+        } catch (error: any) {
+          if (/ETIMEDOUT|ECONNRESET|ECONNABORTED|EPIPE/.test(error?.code || '')) continue;
+          throw error;
+        }
+        if (!diag.note(poll)) continue;
+        const response = poll.data?.response;
+        const status = String(response?.status ?? '').toUpperCase();
+        if (status === 'COMPLETED') {
+          const url = harResultUrl(response.result, cfg.video);
+          if (!url) throw new Error('PICSART_NO_RESULT_URL');
+          return { url, credits: response.usage?.credits };
+        }
+        if (['FAILED', 'ERROR', 'CANCELLED'].includes(status)) throw new Error('PICSART_GEN_FAILED');
+      }
+      throw diag.timeoutError();
+    } catch (error) {
+      if (isPicsartPostSubmitAuthFailure(error)) {
+        await q(`UPDATE picsart_credentials SET status = 'dead', dead_at = NOW(), updated_at = NOW() WHERE id = $1`, [credId]).catch(() => {});
+      }
+      // Do not include original auth/credit sentinels that runWithAccount matches.
+      console.error(`[picsart:har] accepted job ${id} failed during poll: ${String(error)}`);
+      throw new Error(`PICSART_ACCEPTED_JOB_FAILED job=${id}`);
+    }
   });
 }
 
