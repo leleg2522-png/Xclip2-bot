@@ -389,3 +389,17 @@ mtime_ms = 1791211017251
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/4afaf90d-4efa-42e2-90a9-23ad8cf73efe/0ab2eeda-714f-4320-a584-61f7091ca3b1"
 storage_version_token = "1791211053990168"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "wCNqPfJJTKTxTyuTOHQlW"
+uri = "file://outputs/kling-p4-flora-live.mp4"
+type = "video"
+title = "Hasil tes nyata Kling MC V3 Pro P4"
+description = "Generate lewat Flora AI dengan key aktif dari DB Railway. Referensi 5 detik, output MP4 1088×1904 pada 30 fps. Selesai dalam sekitar 9 menit."
+logical_id = "f3d7c0e3-b7bd-465e-8d9e-122764baf64e"
+content_hash = "sha256:efc3110ebeda22ceac61ff64f93ab7381fa6acc932c04c8d9b52b70c0c24f7c5"
+size = 14274987
+mtime_ms = 1791369205551
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/f3d7c0e3-b7bd-465e-8d9e-122764baf64e/899d79b5-404d-4bf0-a1ee-f21ac68370cd"
+storage_version_token = "1791369276983274"
+content_type = "video/mp4"

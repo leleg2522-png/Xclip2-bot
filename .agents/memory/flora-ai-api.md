@@ -25,6 +25,16 @@ description: Working call format for Flora AI generate/upload, key-pool behavior
 - Upload asset signed-url: response memakai **snake_case** (`form_fields`, `file_field`) — bukan camelCase. Upload multipart ke ImageKit dengan semua form_fields + `fileName` dari response, lalu `POST /assets/{id}/complete`.
 - Poll `GET /runs/{run_id}` — job Kling 2.6 MC nyata ~7–15 menit (estimasi resmi 670s). `progress` sering tetap 0 sampai tiba-tiba completed.
 
+Keep the P4 polling budget long even when the reference video is short.
+
+**Why:** A real P4 generation with a current Railway-pool key and a five-second
+reference completed successfully, but took about nine minutes from acceptance to
+download. Short input does not imply a short queue/render time.
+
+**How to apply:** Do not shorten the twenty-minute timeout based only on input
+duration or treat unchanged running/progress as failure. Continue polling the same
+accepted run rather than submitting another paid job.
+
 ## Topaz 4K Video Upscaler
 - model_id: `video-upscaler-topaz` (provider: fal, type: video)
 - Params: `upscale_factor` (float 1–4, NOT `scale`), `target_fps` (int 16–60)
