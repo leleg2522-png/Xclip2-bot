@@ -158,6 +158,10 @@ async function main() {
     await testBackend(model);
     await testWizard(model);
     for (const outcome of ['success', 'delivery', 'provider', 'insufficient'] as const) await testBilling(model, outcome);
+    if (HAR_MODELS[model].video) {
+      await testBilling(model, 'upscale');
+      await testBilling(model, 'upscale-error');
+    }
   }
   await testWizard('xclip_motion', true);
   await testWizard('banana21_i2i', true);
@@ -166,14 +170,17 @@ async function main() {
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
 
-async function testBilling(model: HarModelKey, outcome: 'success' | 'delivery' | 'provider' | 'insufficient') {
+async function testBilling(model: HarModelKey, outcome: 'success' | 'delivery' | 'provider' | 'insufficient' | 'upscale' | 'upscale-error') {
   const cfg = HAR_MODELS[model];
   const prices = { heygen: 2500, xclip_motion: 3000, banana21: 600 };
-  const events = { charges: [] as number[], refunds: [] as number[], releases: 0, successes: 0, generations: 0 };
+  const events = { charges: [] as number[], refunds: [] as number[], releases: 0, successes: 0, generations: 0, upscales: 0, deliveries: 0 };
   const start = bot.indexOf('async function runHarModel(');
   const end = bot.indexOf('// ─── Background: Kling MC V3 Pro P4', start);
-  const delivered = async (_chat: number, _url: string, caption: string) => {
+  const delivered = async (_chat: number, url: string, caption: string) => {
+    events.deliveries++;
+    assert.equal(url, cfg.video ? `${video}?upscaled=1080p` : image);
     assert.ok(caption.includes(cfg.label));
+    assert.ok(caption.includes(cfg.video ? '1080p' : '4K'));
     assert.doesNotMatch(caption, /picsart/i);
     return outcome === 'success';
   };
@@ -188,6 +195,13 @@ async function testBilling(model: HarModelKey, outcome: 'success' | 'delivery' |
       getFileLink: async (id: string) => ({ href: `https://example.test/${id}` }),
       editMessageText: async () => {}, deleteMessage: async () => {}, sendMessage: async () => {},
     } },
+    upscaleGeneratedVideo: async (url: string, userId: number, chatId: number, messageId: number) => {
+      events.upscales++;
+      assert.equal(url, video);
+      assert.deepEqual([userId, chatId, messageId], [2, 1, 4]);
+      if (outcome === 'upscale-error') throw Error('UPSCALER_FAILED');
+      return { url: outcome === 'upscale' ? video : `${video}?upscaled=1080p`, upscaled: outcome !== 'upscale' };
+    },
     downloadBuffer: async () => ({ buf: Buffer.from('fixture'), mime: 'image/png', ext: 'png' }),
     sharp: () => ({ metadata: async () => ({ format: 'png' }) }),
     detectVideoType: () => ({ mime: 'video/mp4', ext: 'mp4' }),
@@ -213,8 +227,11 @@ async function testBilling(model: HarModelKey, outcome: 'success' | 'delivery' |
     videoFileId: cfg.needsVideo ? 'video_id' : undefined,
   });
   assert.deepEqual(events.charges, [prices[cfg.priceKey]]);
-  assert.deepEqual(events.refunds, ['delivery', 'provider'].includes(outcome) ? [prices[cfg.priceKey]] : []);
+  assert.deepEqual(events.refunds, ['delivery', 'provider', 'upscale', 'upscale-error'].includes(outcome) ? [prices[cfg.priceKey]] : []);
   assert.equal(events.releases, outcome === 'insufficient' ? 0 : 1);
   assert.equal(events.generations, outcome === 'insufficient' ? 0 : 1);
   assert.equal(events.successes, outcome === 'success' ? 1 : 0);
+  assert.equal(events.upscales, cfg.video && !['provider', 'insufficient'].includes(outcome) ? 1 : 0);
+  assert.equal(events.deliveries, ['success', 'delivery'].includes(outcome) ? 1 : 0,
+    'No native video should be delivered after a failed upscale');
 }

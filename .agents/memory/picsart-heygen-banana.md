@@ -15,6 +15,16 @@ native 768×1344 videos; these are observations, not a universal rate formula.
 Heygen. Do not silently remove the video reference or swap either route to Kling.
 Keep the requested public Motion label rather than exposing its internal supplier.
 
+Heygen and Xclip Motion must be upscaled with ByteDance to the public 1K tier
+before delivery; advertise both as 1080p, not their native 768p.
+
+**Why:** The user explicitly requested this finishing step and 1080p bot copy.
+
+**How to apply:** Keep their existing generation prices. Only a successfully
+upscaled, delivered result completes the charge; failed finishing must refund
+fully rather than silently deliver native quality. Do not apply this video
+finishing requirement to Banana image routes.
+
 Banana 2.1 has distinct evidence for its two modes: the HAR completed image-to-image
 at the 4K setting; text-to-image was verified only through the non-billable options
 endpoint using a currently valid bot token, not through a paid generation.

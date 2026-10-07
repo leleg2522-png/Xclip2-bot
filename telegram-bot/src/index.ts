@@ -2529,8 +2529,8 @@ function mainMenuKeyboard() {
     // ── Generate Video ──
     [Markup.button.callback('── 🎬 Generate Video ──', 'noop')],
     [Markup.button.callback('🕹️ Kling Motion Control', 'menu_kling_list')],
-    [Markup.button.callback('🎬 Heygen Video · 15 detik', 'mode_har_heygen')],
-    [Markup.button.callback('🕺 Xclip Motion · foto + video', 'mode_har_xclip_motion')],
+    [Markup.button.callback('🎬 Heygen Video · 15 detik · 1080p', 'mode_har_heygen')],
+    [Markup.button.callback('🕺 Xclip Motion · foto + video · 1080p', 'mode_har_xclip_motion')],
     [Markup.button.callback('🌊 Seedance 2.0 Mini 1080p', 'mode_pi2v_seedance_2_mini')],
     [Markup.button.callback('🎬 Seedance 2 Mini Video Edit 480p', 'mode_seedance_mini_edit')],
     [Markup.button.callback('⚡ Seedance 2 Fast Video Edit 480p', 'mode_seedance_fast_edit')],
@@ -3132,8 +3132,8 @@ function hargaText(): string {
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +
     `• Kling MC V3.0 PRO P3 — ${formatRupiah(MODEL_PRICES.kling_p3)} 🔥PROMO\n` +
     `• ${KLING_P4.label} — ${formatRupiah(MODEL_PRICES.kling_p4)}\n` +
-    `• Heygen Video (15 detik) — ${formatRupiah(MODEL_PRICES.heygen)}\n` +
-    `• Xclip Motion (15 detik) — ${formatRupiah(MODEL_PRICES.xclip_motion)}\n` +
+    `• Heygen Video (15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.heygen)}\n` +
+    `• Xclip Motion (15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.xclip_motion)}\n` +
     `• Nano Banana 2.1 4K (teks/foto) — ${formatRupiah(MODEL_PRICES.banana21)}\n` +
     `• Topaz 4K Upscaler — ${formatRupiah(MODEL_PRICES.topaz)}\n` +
     `• ByteDance Upscaler 1K — ${formatRupiah(MODEL_PRICES.bytedance_upscale)}\n` +
@@ -4963,7 +4963,7 @@ bot.on('callback_query', async (ctx) => {
     setSession(userId, { mode: 'har_wait_ratio', harModel: model, harRatio: undefined, harImageFileId: undefined, harVideoFileId: undefined, harVideoMime: undefined });
     return ctx.editMessageText(
       `*${cfg.label}*\nHarga: *${formatRupiah(MODEL_PRICES[cfg.priceKey])}* per ${cfg.video ? 'video' : 'gambar'}.\n` +
-      `${cfg.video ? 'Output: 15 detik · native 768p.' : 'Output: 1 gambar · 4K.'}\n\nPilih rasio:`,
+      `${cfg.video ? 'Output: 15 detik · 1080p (otomatis di-upscale sebelum dikirim).' : 'Output: 1 gambar · 4K.'}\n\nPilih rasio:`,
       { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
         [Markup.button.callback('📱 9:16', 'har_ratio_916'), Markup.button.callback('🖥️ 16:9', 'har_ratio_169')],
         ...(!cfg.video ? [[Markup.button.callback('⬜ 1:1', 'har_ratio_11')]] : []),
@@ -8281,8 +8281,16 @@ async function runHarModel(
       userId: dbUserId, model: job.model, prompt, ratio: job.ratio, image, video,
       onStatus: stage => { void status(`⏳ ${cfg.label}: ${stage === 'upload' ? 'menyiapkan media' : stage === 'submit' ? 'mengirim perintah' : 'memproses hasil'}...`); },
     });
-    const caption = `${cfg.label} (${job.ratio} · ${cfg.video ? '15 detik · 768p' : '4K'})\n\n/menu untuk buat lagi`;
-    const delivered = cfg.video ? await sendResult(chatId, result.url, caption, true) : await sendImageResult(chatId, result.url, caption);
+    let deliveryUrl = result.url;
+    if (cfg.video) {
+      // These routes promise 1080p. Unlike optional finishing on other models,
+      // never deliver the native result or keep the charge if upscale fails.
+      const finished = await upscaleGeneratedVideo(result.url, userId, chatId, statusMsgId);
+      if (!finished.upscaled) throw new Error('HAR_VIDEO_1080_FINISH_FAILED');
+      deliveryUrl = finished.url;
+    }
+    const caption = `${cfg.label} (${job.ratio} · ${cfg.video ? '15 detik · 1080p' : '4K'})\n\n/menu untuk buat lagi`;
+    const delivered = cfg.video ? await sendResult(chatId, deliveryUrl, caption, true) : await sendImageResult(chatId, deliveryUrl, caption);
     if (delivered) {
       refund = false;
       markGenSuccess(userId);
