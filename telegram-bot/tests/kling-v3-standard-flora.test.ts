@@ -50,6 +50,18 @@ function harness(failure?: string) {
 function compile(text: string) {
   return ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
 }
+// Use the production string-based classifier so runner tests catch an Error
+// object being passed directly to raw.toLowerCase().
+const classifierContext = vm.createContext({});
+for (const [startMarker, endMarker] of [
+  ['function describeError(', '// Provider and bridge names'],
+  ['function isFloraKeyExhaustedError(', 'function isFloraRetryablePreSubmitError('],
+]) {
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start);
+  assert.ok(start >= 0 && end > start);
+  vm.runInContext(compile(source.slice(start, end)), classifierContext);
+}
 async function apiTests() {
   const success = harness();
   await generateKlingV3StandardFlora(input, success.api);
@@ -81,12 +93,19 @@ async function billingTest(outcome: string) {
     downloadBuffer: async () => ({ buf: Buffer.from('fixture'), mime: 'image/png', ext: 'png' }),
     sharp: () => ({ metadata: async () => ({ format: 'png', width: 600, height: 600 }) }),
     detectVideoType: () => ({ ext: 'mp4', mime: 'video/mp4' }),
-    generateKlingV3StandardFlora: async () => {
+    generateKlingV3StandardFlora: async (_input: unknown, api: KlingP4Api) => {
+      assert.equal(api.exhausted(Error('401 unauthorized')), true);
+      assert.equal(api.exhausted(Error('BILLING_NOT_ENOUGH_CREDITS')), true);
+      assert.equal(api.exhausted(Object.assign(Error('request failed'), {
+        response: { status: 403, data: { message: 'invalid_credentials' } },
+      })), true);
+      assert.equal(api.exhausted(Error('ETIMEDOUT')), false);
       if (outcome === 'provider') throw Error('FAILED');
       return 'https://example.test/native.mp4';
     },
     getNextFloraKey() {}, markFloraKeyDead() {}, floraGetWorkspace() {}, floraUploadAsset() {},
-    floraGenerate() {}, floraPollRun() {}, isFloraKeyExhaustedError() {},
+    floraGenerate() {}, floraPollRun() {},
+    isFloraKeyExhaustedError: classifierContext.isFloraKeyExhaustedError,
     upscaleGeneratedVideo: async (url: string) => {
       events.upscales++; assert.equal(url, 'https://example.test/native.mp4');
       if (outcome === 'upscale-error') throw Error('UPSCALER_FAILED');
@@ -100,7 +119,7 @@ async function billingTest(outcome: string) {
     },
     addSaldo: async (_id: number, amount: number) => { events.refunds.push(amount); },
     releaseGenerating: () => { events.releases++; }, markGenSuccess: () => { events.successes++; },
-    formatRupiah: (n: number) => String(n), describeError: (e: any) => e.message, console: { error() {} },
+    formatRupiah: (n: number) => String(n), describeError: classifierContext.describeError, console: { error() {} },
   });
   const start = source.indexOf('async function runKlingV3Standard(');
   const end = source.indexOf('// ─── Background: Kling MC V3 Pro P4', start);

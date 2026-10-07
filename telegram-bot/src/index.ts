@@ -8425,7 +8425,7 @@ async function runKlingV3Standard(
     }, {
       getKey: getNextFloraKey, markDead: markFloraKeyDead, workspace: floraGetWorkspace,
       upload: floraUploadAsset, generate: floraGenerate, poll: floraPollRun,
-      exhausted: isFloraKeyExhaustedError, status,
+      exhausted: error => isFloraKeyExhaustedError(describeError(error)), status,
     });
     const finished = await upscaleGeneratedVideo(url, userId, chatId, statusMsgId);
     if (!finished.upscaled) throw new Error('KLING_P5_1080_FINISH_FAILED');
