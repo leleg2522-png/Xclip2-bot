@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { isFloraWorkspaceSetupError } from '../src/kling-p4-flora';
 import {
   FLORA_480_VIDEO_MODELS,
   resolveFlora480VideoModel,
@@ -63,6 +64,7 @@ type Options = {
   keys?: string[];
   chargeOk?: boolean;
   catalog?: (key: string, attempt: number) => unknown;
+  workspace?: (key: string) => { workspaceId: string; projectId: string };
   submit?: (key: string, prompt: string) => string;
   poll?: (runId: string) => string;
   deliver?: boolean | ((url: string) => boolean);
@@ -85,12 +87,15 @@ function harness(options: Options = {}) {
     upscales: [] as Array<{ sourceUrl: string; userId: number; chatId: number; statusMsgId: number }>,
     order: [] as string[],
     catalogCalls: 0,
+    workspaceKeys: [] as string[],
+    uploads: [] as string[],
   };
   const keys = options.keys ?? ['key-a', 'key-b'];
   const context = vm.createContext({
     FLORA_480_VIDEO_MODELS,
     buildFlora480VideoParams,
     resolveFlora480VideoModel,
+    isFloraWorkspaceSetupError,
     MODEL_PRICES: { flora_minimax_h3_480: 3500, flora_wan_v3_480: 5000, flora_seedance_2_480: 6000 },
     FLORA_BASE: 'https://provider.example.test',
     console: { log() {}, warn() {}, error() {} },
@@ -113,8 +118,14 @@ function harness(options: Options = {}) {
         return { data: options.catalog ? options.catalog(key, events.catalogCalls) : catalog() };
       },
     },
-    floraGetWorkspace: async () => ({ workspaceId: 'workspace', projectId: 'project' }),
-    floraUploadImage: async () => 'https://provider.example.test/image.jpg',
+    floraGetWorkspace: async (key: string) => {
+      events.workspaceKeys.push(key);
+      return options.workspace ? options.workspace(key) : { workspaceId: 'workspace', projectId: 'project' };
+    },
+    floraUploadImage: async (key: string) => {
+      events.uploads.push(key);
+      return 'https://provider.example.test/image.jpg';
+    },
     floraGenerate: async (key: string, _: any, model: string, params: any, prompt: string, type: string) => {
       assert.equal(type, 'video');
       events.submissions.push({ key, model, params, prompt });
@@ -225,6 +236,44 @@ async function verifySeedanceWizard() {
 
 async function main() {
   await verifySeedanceWizard();
+  for (const model of ['wan_v3_480', 'minimax_h3_480', 'seedance_2_480'] as const) {
+    for (const code of ['FLORA_NO_PROJECT', 'FLORA_NO_WORKSPACE']) {
+      const fallback = harness({ workspace: key => {
+        if (key === 'key-a') throw new Error(`${code}: missing setup`);
+        return { workspaceId: 'workspace', projectId: 'project' };
+      } });
+      await fallback.run(model);
+      assert.deepEqual(fallback.events.workspaceKeys, ['key-a', 'key-b']);
+      assert.deepEqual(fallback.events.uploads, ['key-b']);
+      assert.equal(fallback.events.submissions.length, 1);
+      assert.equal(fallback.events.submissions[0].key, 'key-b');
+      assert.deepEqual(fallback.events.dead, []);
+      assert.deepEqual(fallback.events.refunds, []);
+      assert.deepEqual(fallback.events.releases, [1]);
+      assert.doesNotMatch(fallback.events.messages.join(' '), /FLORA_NO|workspace|project|key-|provider/i);
+    }
+    const unavailable = harness({ workspace: () => { throw new Error('FLORA_NO_PROJECT: missing setup'); } });
+    await unavailable.run(model);
+    assert.deepEqual(unavailable.events.workspaceKeys, ['key-a', 'key-b']);
+    assert.equal(unavailable.events.uploads.length, 0);
+    assert.equal(unavailable.events.submissions.length, 0);
+    assert.deepEqual(unavailable.events.dead, []);
+    assert.equal(unavailable.events.refunds.length, 1);
+    assert.equal(unavailable.events.refunds[0], unavailable.events.charges[0]);
+    assert.deepEqual(unavailable.events.releases, [1]);
+  }
+  for (const options of [
+    { submit: () => { throw new Error('FLORA_NO_PROJECT: ambiguous submit'); } },
+    { poll: () => { throw new Error('FLORA_NO_PROJECT: accepted run failure'); } },
+  ]) {
+    const failed = harness(options);
+    await failed.run('wan_v3_480');
+    assert.equal(failed.events.submissions.length, 1);
+    assert.deepEqual(failed.events.workspaceKeys, ['key-a']);
+    assert.deepEqual(failed.events.dead, []);
+    assert.deepEqual(failed.events.refunds, [5000]);
+    assert.deepEqual(failed.events.releases, [1]);
+  }
   for (const ratio of ['16:9', '9:16'] as const) {
     const native = harness();
     await native.run('seedance_2_480', 1, 'fixture', ratio);

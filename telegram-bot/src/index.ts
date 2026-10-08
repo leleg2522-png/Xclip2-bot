@@ -20,7 +20,7 @@ import {
   type Flora480VideoModelKey,
 } from './flora-video-models';
 import { FreebeatBridgeQueue, type BridgeAgent, type BridgeJob } from './freebeat-bridge';
-import { KLING_P4, klingP4VideoError, generateKlingP4Flora } from './kling-p4-flora';
+import { KLING_P4, klingP4VideoError, generateKlingP4Flora, isFloraWorkspaceSetupError } from './kling-p4-flora';
 import { KLING_V3_STANDARD, klingV3StandardVideoError, generateKlingV3StandardFlora } from './kling-v3-standard-flora';
 import { HAR_MODELS, type HarModelKey, type HarAspectRatio } from './picsart-har-models';
 
@@ -11170,6 +11170,14 @@ async function runFlora480Video(
 
           const submitRejected = !submitting
             || [400, 401, 402, 403, 422].includes(Number(err?.response?.status));
+          if (!submitting && stage === 'workspace' && isFloraWorkspaceSetupError(err)) {
+            // Valid credentials can belong to an account without a project.
+            // No upload or paid submit has happened; skip only this request.
+            console.warn(`[${userId}] ${LABEL}: skipping account with missing workspace setup`);
+            skippedKeys.add(apiKey);
+            skipAccount = true;
+            break;
+          }
           if (submitRejected && isExplicitFlora480KeyRejection(err)) {
             await markFloraKeyDead(apiKey).catch(() => {});
             skippedKeys.add(apiKey);
