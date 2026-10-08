@@ -403,3 +403,17 @@ mtime_ms = 1791369205551
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/f3d7c0e3-b7bd-465e-8d9e-122764baf64e/899d79b5-404d-4bf0-a1ee-f21ac68370cd"
 storage_version_token = "1791369276983274"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "idm02U9u1l8ic--N-3Wxp"
+uri = "file://outputs/flora-key64-cheapest-image.png"
+type = "image"
+title = "Hasil tes gambar — key ID 64"
+description = "Flux 2 Klein 4B, 1024×1024. Satu generate berhasil; biaya yang dilaporkan API US$0,004."
+logical_id = "bc52df9d-7e43-45f4-b6a3-535bb5385783"
+content_hash = "sha256:def4ba1792d21e7c9586bcbd7388fe62b48fba4d5d5325c8f7f67b70e66ce785"
+size = 294291
+mtime_ms = 1791455613920
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/bc52df9d-7e43-45f4-b6a3-535bb5385783/7c6edb3d-9c97-458d-a03c-6b5f2f907a17"
+storage_version_token = "1791455632281814"
+content_type = "image/png"
