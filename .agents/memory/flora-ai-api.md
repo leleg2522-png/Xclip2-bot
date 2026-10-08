@@ -68,6 +68,15 @@ accepted run rather than submitting another paid job.
 - `flora_key_pool` table: id, api_key, status, created_at, dead_at (same pattern as leonardo_key_pool)
 
 ## Perilaku key/akun
+- A valid Flora key can return a workspace successfully but an empty project list.
+  Authentication and DB `available` status do not prove the account is ready to generate.
+
+  **Why:** Live API checks confirmed an authenticated account with no project while
+  other pool accounts had valid projects. Missing setup is not evidence of exhausted credits.
+
+  **How to apply:** Before paid submission, missing workspace/project may skip that
+  key for the current request without marking it dead. Do not auto-create projects
+  or retry an accepted or ambiguous paid submission to work around missing setup.
 - **Klaim "1 API key = 1 task" TERBUKTI SALAH**: 1 key free menerima 4 task ($0.471 flat/video), termasuk 2 berjalan paralel — semuanya sukses.
 - **Tidak ada endpoint saldo credits** di API publik — satu-satunya sinyal key habis adalah error saat submit (401/402/403/insufficient). Run yang failed karena validasi tetap tercatat charged.
 - Flora kadang membungkus gangguan upstream sebagai HTTP 400 `input_validation_error` dengan pesan generik `Server Error`. Jika belum ada `run_id`, retry setelah jeda tanpa mematikan/mengecualikan key (pool bisa hanya punya satu key); setelah ada `run_id`, jangan pernah resubmit.

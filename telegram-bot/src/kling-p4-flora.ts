@@ -27,7 +27,13 @@ export interface KlingP4Api {
   status(text: string): Promise<void>;
 }
 
-/** Only pre-acceptance credential errors may rotate keys. Never replay a paid run. */
+export function isFloraWorkspaceSetupError(error: unknown): boolean {
+  const message = typeof error === 'object' && error !== null && 'message' in error
+    ? String(error.message) : String(error);
+  return /^FLORA_NO_(WORKSPACE|PROJECT):/.test(message);
+}
+
+/** Rotate only for pre-acceptance credentials or missing workspace setup. Never replay a paid run. */
 export async function generateKlingP4Flora(
   input: { image: Media; video: Media; prompt: string; seconds?: number },
   api: KlingP4Api
@@ -40,8 +46,10 @@ export async function generateKlingP4Flora(
     const key = await api.getKey(skipped);
     if (!key) throw new Error('KLING_P4_UNAVAILABLE');
     let runId: string | undefined;
+    let workspaceReady = false;
     try {
       const ws = await api.workspace(key);
+      workspaceReady = true;
       await api.status(`⏳ ${KLING_P4.label}: mengunggah foto dan video referensi...`);
       const imageUrl = await api.upload(key, ws.workspaceId, input.image.buf, input.image.name, input.image.mime);
       const videoUrl = await api.upload(key, ws.workspaceId, input.video.buf, input.video.name, input.video.mime);
@@ -57,7 +65,10 @@ export async function generateKlingP4Flora(
     } catch (error) {
       const exhausted = api.exhausted(error);
       if (exhausted) await api.markDead(key).catch(() => {});
-      if (runId || !exhausted) throw error;
+      // Missing setup is not a dead credential. Skip only during discovery,
+      // before any upload or paid submit; leave the key available for later.
+      const missingSetup = !workspaceReady && isFloraWorkspaceSetupError(error);
+      if (runId || (!exhausted && !missingSetup)) throw error;
       skipped.add(key);
     }
   }

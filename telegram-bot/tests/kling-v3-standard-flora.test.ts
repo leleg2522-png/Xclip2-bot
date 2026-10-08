@@ -24,16 +24,19 @@ const input = {
 function harness(failure?: string) {
   const calls = { submits: [] as any[], polls: [] as string[], dead: [] as string[] };
   const api: KlingP4Api = {
-    getKey: async skip => failure === 'no-key' ? null : skip.has('one') ? 'two' : 'one',
+    getKey: async skip => failure === 'no-key' ? null : ['one', 'two'].find(key => !skip.has(key)) ?? null,
     markDead: async key => { calls.dead.push(key); },
     workspace: async key => {
       if (failure === 'pre-auth' && key === 'one') throw Error('401');
+      if (failure === 'all-no-project' || (failure === 'no-project' && key === 'one')) throw Error('FLORA_NO_PROJECT: missing');
+      if (failure === 'no-workspace' && key === 'one') throw Error('FLORA_NO_WORKSPACE: missing');
       return { workspaceId: 'workspace', projectId: 'project' };
     },
     upload: async (_key, _ws, _buf, name) => `https://example.test/${name}`,
     generate: async (...args) => {
       calls.submits.push(args);
       if (failure === 'timeout') throw Error('ETIMEDOUT');
+      if (failure === 'submit-no-project') throw Error('FLORA_NO_PROJECT: ambiguous submit');
       return failure === 'no-id' ? '' : 'run_fixture';
     },
     poll: async (_key, id) => {
@@ -74,6 +77,20 @@ async function apiTests() {
   await generateKlingV3StandardFlora(input, preAuth.api);
   assert.deepEqual(preAuth.calls.dead, ['one']);
   assert.equal(preAuth.calls.submits[0][0], 'two');
+  for (const failure of ['no-project', 'no-workspace']) {
+    const h = harness(failure);
+    await generateKlingV3StandardFlora(input, h.api);
+    assert.equal(h.calls.submits.length, 1);
+    assert.equal(h.calls.submits[0][0], 'two');
+    assert.deepEqual(h.calls.dead, []);
+  }
+  const noProjects = harness('all-no-project');
+  await assert.rejects(generateKlingV3StandardFlora(input, noProjects.api), /KLING_V3_STANDARD_UNAVAILABLE/);
+  assert.equal(noProjects.calls.submits.length, 0);
+  assert.deepEqual(noProjects.calls.dead, []);
+  const ambiguous = harness('submit-no-project');
+  await assert.rejects(generateKlingV3StandardFlora(input, ambiguous.api), /FLORA_NO_PROJECT/);
+  assert.equal(ambiguous.calls.submits.length, 1);
   for (const error of ['no-key', 'no-id', 'timeout', 'poll-auth', 'poll-billing']) {
     const h = harness(error);
     await assert.rejects(generateKlingV3StandardFlora(input, h.api));

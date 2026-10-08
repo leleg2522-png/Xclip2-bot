@@ -1,4 +1,4 @@
-import type { KlingP4Api } from './kling-p4-flora';
+import { isFloraWorkspaceSetupError, type KlingP4Api } from './kling-p4-flora';
 
 export const KLING_V3_STANDARD = {
   label: 'Kling MC V3 Pro P5',
@@ -29,8 +29,10 @@ export async function generateKlingV3StandardFlora(
     const key = await api.getKey(skipped);
     if (!key) throw new Error('KLING_V3_STANDARD_UNAVAILABLE');
     let runId: string | undefined;
+    let workspaceReady = false;
     try {
       const ws = await api.workspace(key);
+      workspaceReady = true;
       await api.status(`⏳ ${KLING_V3_STANDARD.label}: mengunggah foto dan video referensi...`);
       const imageUrl = await api.upload(key, ws.workspaceId, input.image.buf, input.image.name, input.image.mime);
       const videoUrl = await api.upload(key, ws.workspaceId, input.video.buf, input.video.name, input.video.mime);
@@ -45,7 +47,8 @@ export async function generateKlingV3StandardFlora(
       const exhausted = api.exhausted(error);
       if (exhausted) await api.markDead(key).catch(() => {});
       // Once accepted, credential or billing failure must refund, not resubmit.
-      if (runId || !exhausted) throw error;
+      const missingSetup = !workspaceReady && isFloraWorkspaceSetupError(error);
+      if (runId || (!exhausted && !missingSetup)) throw error;
       skipped.add(key);
     }
   }

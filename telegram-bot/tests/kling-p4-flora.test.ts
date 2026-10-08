@@ -26,19 +26,22 @@ const input = {
   prompt: 'copy this motion', seconds: 10,
 };
 
-function apiHarness(failure?: 'pre-auth' | 'poll-auth' | 'poll-billing' | 'timeout' | 'no-id' | 'no-key') {
+function apiHarness(failure?: 'pre-auth' | 'poll-auth' | 'poll-billing' | 'timeout' | 'no-id' | 'no-key' | 'no-project' | 'no-workspace' | 'all-no-project' | 'submit-no-project') {
   const calls = { submits: [] as any[], polls: [] as string[], dead: [] as string[], uploads: [] as string[] };
   const api: KlingP4Api = {
-    getKey: async skip => failure === 'no-key' ? null : skip.has('one') ? 'two' : 'one',
+    getKey: async skip => failure === 'no-key' ? null : ['one', 'two'].find(key => !skip.has(key)) ?? null,
     markDead: async key => { calls.dead.push(key); },
     workspace: async key => {
       if (failure === 'pre-auth' && key === 'one') throw Error('401');
+      if (failure === 'all-no-project' || (failure === 'no-project' && key === 'one')) throw Error('FLORA_NO_PROJECT: missing');
+      if (failure === 'no-workspace' && key === 'one') throw Error('FLORA_NO_WORKSPACE: missing');
       return { workspaceId: 'ws_fixture', projectId: 'prj_fixture' };
     },
     upload: async (_key, _ws, _buf, name) => { calls.uploads.push(name); return `https://example.test/${name}`; },
     generate: async (...args) => {
       calls.submits.push(args);
       if (failure === 'timeout') throw Error('ETIMEDOUT');
+      if (failure === 'submit-no-project') throw Error('FLORA_NO_PROJECT: ambiguous submit');
       return failure === 'no-id' ? '' : 'run_fixture';
     },
     poll: async (_key, id) => {
@@ -68,6 +71,20 @@ async function testApi() {
   await generateKlingP4Flora(input, fallback.api);
   assert.deepEqual(fallback.calls.dead, ['one']);
   assert.equal(fallback.calls.submits[0][0], 'two');
+  for (const failure of ['no-project', 'no-workspace'] as const) {
+    const h = apiHarness(failure);
+    await generateKlingP4Flora(input, h.api);
+    assert.equal(h.calls.submits.length, 1);
+    assert.equal(h.calls.submits[0][0], 'two');
+    assert.deepEqual(h.calls.dead, []);
+  }
+  const noProjects = apiHarness('all-no-project');
+  await assert.rejects(generateKlingP4Flora(input, noProjects.api), /KLING_P4_UNAVAILABLE/);
+  assert.equal(noProjects.calls.submits.length, 0);
+  assert.deepEqual(noProjects.calls.dead, []);
+  const ambiguous = apiHarness('submit-no-project');
+  await assert.rejects(generateKlingP4Flora(input, ambiguous.api), /FLORA_NO_PROJECT/);
+  assert.equal(ambiguous.calls.submits.length, 1);
   for (const fail of ['poll-auth', 'poll-billing', 'timeout', 'no-id', 'no-key'] as const) {
     const h = apiHarness(fail);
     await assert.rejects(generateKlingP4Flora(input, h.api));
