@@ -4,6 +4,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { HAR_MODELS, buildHarModelParams, harWorkflow, harResultUrl, type HarModelKey } from '../src/picsart-har-models';
+import { klingV3StandardVideoError } from '../src/kling-v3-standard-flora';
 
 const bot = fs.readFileSync(path.resolve(__dirname, '../src/index.ts'), 'utf8');
 const backend = fs.readFileSync(path.resolve(__dirname, '../src/picsart.ts'), 'utf8');
@@ -14,11 +15,12 @@ const klingMenuEnd = bot.indexOf("  if (data === ", klingMenuStart + 10);
 assert.doesNotMatch(mainMenu, /'mode_har_xclip_motion'/, 'Xclip Motion must not appear directly in the main menu');
 assert.match(bot.slice(klingMenuStart, klingMenuEnd), /'mode_har_xclip_motion'/,
   'Xclip Motion belongs in the Kling Motion Control submenu');
-for (const [key, price] of Object.entries({ heygen: 2500, xclip_motion: 3000, banana21: 600 })) {
+for (const [key, price] of Object.entries({ heygen: 2500, xclip_motion: 2500, banana21: 600 })) {
   assert.match(bot, new RegExp(`${key}:\\s*${price}`));
 }
 const image = 'https://example.test/image.jpg', video = 'https://example.test/video.mp4';
 for (const model of Object.keys(HAR_MODELS) as HarModelKey[]) {
+  if (model === 'xclip_motion') continue;
   const cfg = HAR_MODELS[model];
   const p = buildHarModelParams({
     model, prompt: 'A cool pose', ratio: '9:16',
@@ -42,6 +44,8 @@ for (const model of Object.keys(HAR_MODELS) as HarModelKey[]) {
   }
 }
 assert.throws(() => buildHarModelParams({ model: 'xclip_motion', prompt: 'move', ratio: '9:16', imageUrl: image }));
+assert.throws(() => buildHarModelParams({ model: 'xclip_motion', prompt: 'move', ratio: '9:16', imageUrl: image, videoUrl: video }), /XCLIP_MOTION_BACKEND_CHANGED/);
+assert.throws(() => harWorkflow('xclip_motion'), /XCLIP_MOTION_BACKEND_CHANGED/);
 assert.throws(() => buildHarModelParams({ model: 'heygen', prompt: 'move', ratio: '1:1', imageUrl: image }));
 assert.throws(() => buildHarModelParams({ model: 'banana21_i2i', prompt: 'edit', ratio: '1:1' }));
 assert.equal(harResultUrl({ url: video }, true), video);
@@ -111,7 +115,7 @@ async function testWizard(model: HarModelKey, documents = false) {
     answerCbQuery: async () => {},
   };
   const sandbox = vm.createContext({
-    ctx, HAR_MODELS, MODEL_PRICES: { heygen: 2500, xclip_motion: 3000, banana21: 600 },
+    ctx, HAR_MODELS, klingV3StandardVideoError, MODEL_PRICES: { heygen: 2500, xclip_motion: 2500, banana21: 600 },
     getSession: () => session, setSession: (_id: number, data: any) => Object.assign(session, data),
     requireLogin: async () => true, getCooldownRemainingMs: () => 0, formatCooldown: () => '',
     formatRupiah: (price: number) => `${price}`,
@@ -128,15 +132,23 @@ async function testWizard(model: HarModelKey, documents = false) {
     "  if (data.startsWith('mode_har_') && Object.hasOwn(HAR_MODELS, data.slice(9))) {",
     "  if (data === 'mode_klingp4') {", `const data = 'mode_har_${model}';`
   );
-  assert.equal(session.mode, 'har_wait_ratio');
-  await execute("  if (data.startsWith('har_ratio_')) {", "  if (data === 'mode_klingp4') {", "const data = 'har_ratio_916';");
+  if (model === 'xclip_motion') {
+    assert.equal(session.mode, 'har_wait_image');
+    assert.equal(session.harRatio, undefined);
+    assert.match(messages.at(-1)!, /2500/);
+    assert.match(messages.at(-1)!, /3–30 detik/);
+    assert.doesNotMatch(messages.at(-1)!, /Flora|P5|upscal|15 detik/i);
+  } else {
+    assert.equal(session.mode, 'har_wait_ratio');
+    await execute("  if (data.startsWith('har_ratio_')) {", "  if (data === 'mode_klingp4') {", "const data = 'har_ratio_916';");
+  }
   assert.equal(session.mode, cfg.needsImage ? 'har_wait_image' : 'har_wait_prompt');
   const photoStart = bot.indexOf("  if (session.mode.startsWith('har_wait_')) {");
   const videoStart = bot.indexOf("  if (session.mode.startsWith('har_wait_')) {", photoStart + 1);
   const docStart = bot.indexOf("  if (session.mode.startsWith('har_wait_')) {\n    const draft = getSession(userId);", videoStart + 1);
   if (cfg.needsImage) {
     ctx.message = documents ? { document: { file_id: 'image_id', mime_type: 'image/png', file_size: 1000 } }
-      : { photo: [{ file_id: 'image_id', file_size: 1000 }] };
+      : { photo: [{ file_id: 'image_id', file_size: 1000, width: 600, height: 600 }] };
     const a = documents ? docStart : photoStart;
     const marker = documents ? "  if (session.mode === 'klingp4_wait_prompt') {" : "  if (session.mode === 'klingp4_wait_prompt' ||";
     const b = bot.indexOf(marker, a);
@@ -144,6 +156,20 @@ async function testWizard(model: HarModelKey, documents = false) {
   }
   if (cfg.needsVideo) {
     assert.equal(session.mode, 'har_wait_video');
+    if (model === 'xclip_motion' && !documents) {
+      const endMarker = "  if (session.mode === 'klingp4_wait_video' &&";
+      for (const invalid of [
+        { file_id: 'invalid', file_size: 16 * 1024 * 1024, duration: 10 },
+        { file_id: 'invalid', file_size: 1000, duration: 31 },
+        { file_id: 'invalid', file_size: 1000, duration: 2 },
+      ]) {
+        ctx.message = { video: invalid };
+        const b = bot.indexOf(endMarker, videoStart);
+        await vm.runInContext(compile(`(async()=> { const userId=ctx.from.id, session=getSession(userId), vid=ctx.message.video; ${bot.slice(videoStart, b)} })()`), sandbox);
+        assert.equal(session.mode, 'har_wait_video');
+        assert.equal(session.harVideoFileId, undefined);
+      }
+    }
     ctx.message = documents ? { document: { file_id: 'video_id', mime_type: 'video/mp4', file_size: 1000 } }
       : { video: { file_id: 'video_id', file_size: 1000, duration: 10 } };
     const a = documents ? docStart : videoStart;
@@ -158,12 +184,17 @@ async function testWizard(model: HarModelKey, documents = false) {
   assert.equal(runs[0][5].model, model);
   assert.equal(runs[0][5].imageFileId, cfg.needsImage ? 'image_id' : undefined);
   assert.equal(runs[0][5].videoFileId, cfg.needsVideo ? 'video_id' : undefined);
+  if (model === 'xclip_motion') {
+    assert.equal(runs[0][5].ratio, undefined);
+    assert.equal(runs[0][5].seconds, documents ? undefined : 10);
+  }
 }
 
 async function main() {
   for (const model of Object.keys(HAR_MODELS) as HarModelKey[]) {
-    await testBackend(model);
     await testWizard(model);
+    if (model === 'xclip_motion') continue;
+    await testBackend(model);
     for (const outcome of ['success', 'delivery', 'provider', 'insufficient'] as const) await testBilling(model, outcome);
     if (HAR_MODELS[model].video) {
       await testBilling(model, 'upscale');
@@ -173,13 +204,13 @@ async function main() {
   await testWizard('xclip_motion', true);
   await testWizard('banana21_i2i', true);
   for (const error of ['poll-auth', 'no-url', 'timeout', 'get-transient'] as const) await testBackend('heygen', error);
-  console.log('Heygen, Xclip Motion and Banana 2.1 contracts, wizards, billing/refunds and no-resubmit tests passed.');
+  console.log('Heygen/Banana contracts and billing, plus migrated Xclip Motion wizard checks passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
 
 async function testBilling(model: HarModelKey, outcome: 'success' | 'delivery' | 'provider' | 'insufficient' | 'upscale' | 'upscale-error') {
   const cfg = HAR_MODELS[model];
-  const prices = { heygen: 2500, xclip_motion: 3000, banana21: 600 };
+  const prices = { heygen: 2500, xclip_motion: 2500, banana21: 600 };
   const events = { charges: [] as number[], refunds: [] as number[], releases: 0, successes: 0, generations: 0, upscales: 0, deliveries: 0 };
   const start = bot.indexOf('async function runHarModel(');
   const end = bot.indexOf('// ─── Background: Kling MC V3 Pro P4', start);

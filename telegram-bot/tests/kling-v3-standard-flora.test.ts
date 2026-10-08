@@ -10,6 +10,7 @@ const source = fs.readFileSync(path.resolve(__dirname, '../src/index.ts'), 'utf8
 assert.equal(KLING_V3_STANDARD.label, 'Kling MC V3 Pro P5');
 assert.equal(KLING_V3_STANDARD.modelId, 'iv2v-kling-v3-standard-motion');
 assert.match(source, /kling_v3_standard:\s*3500/);
+assert.match(source, /xclip_motion:\s*2500/);
 assert.match(source, /mode_klingv3std:\s*'klingv3std'/);
 assert.ok(klingV3StandardVideoError(16 * 1024 * 1024, 10));
 assert.ok(klingV3StandardVideoError(1000, 31));
@@ -22,7 +23,7 @@ const input = {
   prompt: 'follow movement', seconds: 10,
 };
 function harness(failure?: string) {
-  const calls = { submits: [] as any[], polls: [] as string[], dead: [] as string[] };
+  const calls = { submits: [] as any[], polls: [] as string[], dead: [] as string[], statuses: [] as string[] };
   const api: KlingP4Api = {
     getKey: async skip => failure === 'no-key' ? null : ['one', 'two'].find(key => !skip.has(key)) ?? null,
     markDead: async key => { calls.dead.push(key); },
@@ -46,7 +47,7 @@ function harness(failure?: string) {
       return 'https://example.test/native.mp4';
     },
     exhausted: error => /401|BILLING/.test(String(error)),
-    status: async text => { assert.doesNotMatch(text, /flora|fal/i); },
+    status: async text => { calls.statuses.push(text); assert.doesNotMatch(text, /flora|fal/i); },
   };
   return { api, calls };
 }
@@ -73,6 +74,11 @@ async function apiTests() {
     image_url: 'https://example.test/photo.png', video_url: 'https://example.test/ref.mp4', character_orientation: 'video',
   });
   assert.equal(success.calls.submits[0][4], input.prompt);
+  const motion = harness();
+  await generateKlingV3StandardFlora({ ...input, publicLabel: 'Xclip Motion' }, motion.api);
+  assert.equal(motion.calls.submits[0][2], 'iv2v-kling-v3-standard-motion');
+  assert.ok(motion.calls.statuses.every(text => text.includes('Xclip Motion')));
+  assert.doesNotMatch(motion.calls.statuses.join(' '), /P5|Flora|Picsart|Renderful|upscal/i);
   const preAuth = harness('pre-auth');
   await generateKlingV3StandardFlora(input, preAuth.api);
   assert.deepEqual(preAuth.calls.dead, ['one']);
@@ -97,27 +103,32 @@ async function apiTests() {
     assert.equal(h.calls.submits.length, error === 'no-key' ? 0 : 1, `${error}: never replay a paid run`);
   }
 }
-async function billingTest(outcome: string) {
-  const events = { charges: [] as number[], refunds: [] as number[], releases: 0, upscales: 0, deliveries: 0, successes: 0 };
+async function billingTest(outcome: string, route: 'p5' | 'xclip_motion' = 'p5') {
+  const price = route === 'xclip_motion' ? 2500 : 3500;
+  const label = route === 'xclip_motion' ? 'Xclip Motion' : KLING_V3_STANDARD.label;
+  const events = { charges: [] as number[], refunds: [] as number[], releases: 0, upscales: 0, deliveries: 0, successes: 0, messages: [] as string[] };
   const ctx = vm.createContext({
-    MODEL_PRICES: { kling_v3_standard: 3500 }, KLING_V3_STANDARD,
+    MODEL_PRICES: { kling_v3_standard: 3500, xclip_motion: 2500 }, KLING_V3_STANDARD,
+    HAR_MODELS: { xclip_motion: { label: 'Xclip Motion' } },
     beginCharge: async (_id: number, amount: number, limit: number) => {
       assert.equal(limit, 3); events.charges.push(amount); return { ok: outcome !== 'insufficient', reason: 'insufficient' };
     },
     chargeFailMsg: () => 'No balance',
-    bot: { telegram: { editMessageText: async () => {}, sendMessage: async () => {}, deleteMessage: async () => {},
+    bot: { telegram: { editMessageText: async (_chat: number, _msg: number, _inline: unknown, text: string) => { events.messages.push(text); },
+      sendMessage: async (_chat: number, text: string) => { events.messages.push(text); }, deleteMessage: async () => {},
       getFileLink: async (id: string) => ({ href: `https://example.test/${id}` }) } },
     downloadBuffer: async () => ({ buf: Buffer.from('fixture'), mime: 'image/png', ext: 'png' }),
     sharp: () => ({ metadata: async () => ({ format: 'png', width: 600, height: 600 }) }),
     detectVideoType: () => ({ ext: 'mp4', mime: 'video/mp4' }),
     generateKlingV3StandardFlora: async (_input: unknown, api: KlingP4Api) => {
+      assert.equal((_input as any).publicLabel, label);
       assert.equal(api.exhausted(Error('401 unauthorized')), true);
       assert.equal(api.exhausted(Error('BILLING_NOT_ENOUGH_CREDITS')), true);
       assert.equal(api.exhausted(Object.assign(Error('request failed'), {
         response: { status: 403, data: { message: 'invalid_credentials' } },
       })), true);
       assert.equal(api.exhausted(Error('ETIMEDOUT')), false);
-      if (outcome === 'provider') throw Error('FAILED');
+      if (outcome === 'provider') throw Error('Flora provider failed https://provider.example.test/private-result');
       return 'https://example.test/native.mp4';
     },
     getNextFloraKey() {}, markFloraKeyDead() {}, floraGetWorkspace() {}, floraUploadAsset() {},
@@ -130,7 +141,8 @@ async function billingTest(outcome: string) {
     },
     sendResult: async (_chat: number, url: string, caption: string, video: boolean) => {
       events.deliveries++; assert.equal(url, 'https://example.test/1080.mp4');
-      assert.ok(caption.includes('Kling MC V3 Pro P5')); assert.ok(caption.includes('1K/1080p'));
+      assert.ok(caption.includes(label)); assert.ok(caption.includes('1K/1080p'));
+      if (route === 'xclip_motion') assert.doesNotMatch(caption, /P5|Kling/i);
       assert.doesNotMatch(caption, /flora|standard|renderful/i); assert.equal(video, true);
       return outcome !== 'delivery';
     },
@@ -141,12 +153,22 @@ async function billingTest(outcome: string) {
   const start = source.indexOf('async function runKlingV3Standard(');
   const end = source.indexOf('// ─── Background: Kling MC V3 Pro P4', start);
   vm.runInContext(compile(source.slice(start, end)), ctx);
-  await ctx.runKlingV3Standard(1, 2, 3, 4, 'image', 'video', 10, 'move');
-  assert.deepEqual(events.charges, [3500]);
-  assert.deepEqual(events.refunds, ['success', 'insufficient'].includes(outcome) ? [] : [3500]);
+  if (route === 'xclip_motion') {
+    const dispatchStart = source.indexOf('async function runHarModel(');
+    const dispatchEnd = source.indexOf('// ─── Background: Kling Motion V3 Standard', dispatchStart);
+    vm.runInContext(compile(source.slice(dispatchStart, dispatchEnd)), ctx);
+    await ctx.runHarModel(1, 2, 3, 4, 'move', { model: 'xclip_motion', imageFileId: 'image', videoFileId: 'video', seconds: 10 });
+  } else {
+    await ctx.runKlingV3Standard(1, 2, 3, 4, 'image', 'video', 10, 'move');
+  }
+  assert.deepEqual(events.charges, [price]);
+  assert.deepEqual(events.refunds, ['success', 'insufficient'].includes(outcome) ? [] : [price]);
   assert.equal(events.releases, outcome === 'insufficient' ? 0 : 1);
   assert.equal(events.successes, outcome === 'success' ? 1 : 0);
   assert.equal(events.deliveries, ['success', 'delivery'].includes(outcome) ? 1 : 0);
+  if (route === 'xclip_motion') {
+    assert.doesNotMatch(events.messages.join(' '), /Flora|Picsart|Renderful|P5|Kling|provider\.example/i);
+  }
 }
 async function wizardTest(documents = false) {
   const session: any = { mode: 'idle', dbUserId: 33 }, runs: any[] = [], messages: string[] = [];
@@ -198,7 +220,10 @@ async function wizardTest(documents = false) {
 }
 async function main() {
   await apiTests(); await wizardTest(); await wizardTest(true);
-  for (const outcome of ['success', 'delivery', 'provider', 'insufficient', 'upscale-fallback', 'upscale-error']) await billingTest(outcome);
-  console.log('Kling P5 Standard: model, wizard, 1080p finishing, Rp3500 refund and no-resubmit tests passed.');
+  for (const outcome of ['success', 'delivery', 'provider', 'insufficient', 'upscale-fallback', 'upscale-error']) {
+    await billingTest(outcome);
+    await billingTest(outcome, 'xclip_motion');
+  }
+  console.log('Kling P5 and Xclip Motion: Standard model, branded status, independent prices, 1080p finishing, refunds and no-resubmit tests passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

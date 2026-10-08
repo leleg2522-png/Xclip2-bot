@@ -3,32 +3,32 @@ name: Picsart Heygen and Banana 2.1 verification
 description: Separate public motion route and evidence distinguishing captured video/image results from non-billable T2I options
 ---
 
-Keep Heygen photo-to-video and Xclip Motion as separate customer models, although
-both use Heygen Video 1 upstream.
+Keep Heygen photo-to-video and Xclip Motion as separate customer models. Heygen
+stays on Heygen Video 1; Xclip Motion now uses Flora Kling V3 Standard Motion.
 
-**Why:** The user requested a separate “xclip motion” model for the captured
-photo + reference-video flow. The HAR completed both flows: photo-only used 15
-credits and photo + video used 30 credits for 15-second outputs. Both returned
-native 768×1344 videos; these are observations, not a universal rate formula.
+**Why:** The user explicitly changed Xclip Motion to Kling MC V3 Standard via
+Flora, retained mandatory upscale delivery, and lowered its price to Rp2.500.
+The original Heygen photo-only route remains unchanged.
 
 **How to apply:** Require both media for Xclip Motion, and only a photo for
-Heygen. Do not silently remove the video reference or swap either route to Kling.
-Keep the requested public Motion label rather than exposing its internal supplier.
+Heygen. Xclip Motion uses reference-following duration rather than the old fixed
+15-second Heygen settings. Do not retain unsupported Heygen aspect-ratio controls.
+Keep the public Motion label and its
+price independent from the separate P5 product, even though they share Standard.
 
 Place Xclip Motion in the Kling Motion Control submenu, not directly in the main
 Generate Video list. Heygen stays separate.
 
 **Why:** The user explicitly chose to move Xclip Motion to that submenu.
 
-**How to apply:** Preserve this grouping when reorganizing menus; it does not
-change Xclip Motion's backend or price.
+**How to apply:** Preserve this grouping when reorganizing menus.
 
 Heygen and Xclip Motion must be upscaled with ByteDance to the public 1K tier
-before delivery; advertise both as 1080p, not their native 768p.
+before delivery; advertise delivered 1080p without claiming native resolution.
 
 **Why:** The user explicitly requested this finishing step and 1080p bot copy.
 
-**How to apply:** Keep their existing generation prices. Only a successfully
+**How to apply:** Only a successfully
 upscaled, delivered result completes the charge; failed finishing must refund
 fully rather than silently deliver native quality. Do not apply this video
 finishing requirement to Banana image routes.

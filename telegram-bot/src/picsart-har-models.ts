@@ -9,6 +9,7 @@ export const HAR_MODELS = {
 } as const;
 
 export function harWorkflow(model: HarModelKey): string {
+  if (model === 'xclip_motion') throw new Error('XCLIP_MOTION_BACKEND_CHANGED');
   return HAR_MODELS[model].video
     ? '/gw-v2/workflows/heygen/v1/models/video/generate'
     : '/gw-v2/workflows/gemini/v2/images';
@@ -21,6 +22,7 @@ export function buildHarModelParams(input: {
   imageUrl?: string;
   videoUrl?: string;
 }): Record<string, any> {
+  if (input.model === 'xclip_motion') throw new Error('XCLIP_MOTION_BACKEND_CHANGED');
   const cfg = HAR_MODELS[input.model];
   if (!cfg || !input.prompt.trim()) throw new Error('PICSART_INVALID_HAR_INPUT');
   if (cfg.needsImage !== Boolean(input.imageUrl) || cfg.needsVideo !== Boolean(input.videoUrl)) {

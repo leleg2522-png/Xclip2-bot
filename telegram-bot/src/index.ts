@@ -183,7 +183,7 @@ const MODEL_PRICES = {
   kling_p4: 4000,      // Kling MC V3 Pro P4 (Flora Kling 2.6 Pro Motion Control)
   kling_v3_standard: 3500,
   heygen: 2500,
-  xclip_motion: 3000,
+  xclip_motion: 2500,
   banana21: 600,
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
   veo_fast: 1500,      // Veo 3.1 Fast Full HD (SnapGen)
@@ -1765,6 +1765,7 @@ interface Session {
   harImageFileId?: string;
   harVideoFileId?: string;
   harVideoMime?: string;
+  harVideoDuration?: number;
   // Runway Gen-4.5 wizard state (image-to-video only)
   rwDuration?: number;
   rwRatio?: string;
@@ -3144,7 +3145,7 @@ function hargaText(): string {
     `• ${KLING_P4.label} — ${formatRupiah(MODEL_PRICES.kling_p4)}\n` +
     `• ${KLING_V3_STANDARD.label} (1K/1080p) — ${formatRupiah(MODEL_PRICES.kling_v3_standard)}\n` +
     `• Heygen Video (15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.heygen)}\n` +
-    `• Xclip Motion (15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.xclip_motion)}\n` +
+    `• Xclip Motion (3–30 detik · 1080p) — ${formatRupiah(MODEL_PRICES.xclip_motion)}\n` +
     `• Nano Banana 2.1 4K (teks/foto) — ${formatRupiah(MODEL_PRICES.banana21)}\n` +
     `• Topaz 4K Upscaler — ${formatRupiah(MODEL_PRICES.topaz)}\n` +
     `• ByteDance Upscaler 1K — ${formatRupiah(MODEL_PRICES.bytedance_upscale)}\n` +
@@ -4973,10 +4974,19 @@ bot.on('callback_query', async (ctx) => {
     if (!await requireLogin(ctx)) return;
     const model = data.slice(9) as HarModelKey;
     const cfg = HAR_MODELS[model];
-    setSession(userId, { mode: 'har_wait_ratio', harModel: model, harRatio: undefined, harImageFileId: undefined, harVideoFileId: undefined, harVideoMime: undefined });
+    setSession(userId, { mode: model === 'xclip_motion' ? 'har_wait_image' : 'har_wait_ratio', harModel: model, harRatio: undefined, harImageFileId: undefined, harVideoFileId: undefined, harVideoMime: undefined, harVideoDuration: undefined });
+    if (model === 'xclip_motion') {
+      return ctx.editMessageText(
+        `🕺 *${cfg.label}*\nHarga: *${formatRupiah(MODEL_PRICES.xclip_motion)}* per video.\n` +
+        'Hasil: *1K/1080p*. Durasi mengikuti video referensi.\n\n' +
+        '*Langkah 1:* Kirim foto karakter JPG/PNG, maksimal 10MB, min. 300px. Tampilkan seluruh tubuh dari depan.\n\n' +
+        'Video referensi di langkah berikutnya: *3–30 detik*, maksimal *15MB*.',
+        { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('⬅️ Batal', 'back_main')]]) }
+      );
+    }
     return ctx.editMessageText(
       `*${cfg.label}*\nHarga: *${formatRupiah(MODEL_PRICES[cfg.priceKey])}* per ${cfg.video ? 'video' : 'gambar'}.\n` +
-      `${cfg.video ? 'Output: 15 detik · 1080p (otomatis di-upscale sebelum dikirim).' : 'Output: 1 gambar · 4K.'}\n\nPilih rasio:`,
+      `${cfg.video ? 'Output: 15 detik · 1080p.' : 'Output: 1 gambar · 4K.'}\n\nPilih rasio:`,
       { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
         [Markup.button.callback('📱 9:16', 'har_ratio_916'), Markup.button.callback('🖥️ 16:9', 'har_ratio_169')],
         ...(!cfg.video ? [[Markup.button.callback('⬜ 1:1', 'har_ratio_11')]] : []),
@@ -4989,6 +4999,7 @@ bot.on('callback_query', async (ctx) => {
     const ratio = ({ '916': '9:16', '169': '16:9', '11': '1:1' } as const)[data.slice(10) as '916' | '169' | '11'];
     if (draft.mode !== 'har_wait_ratio' || !draft.harModel || !ratio) return ctx.answerCbQuery('Mulai ulang dari /menu.').catch(() => {});
     const cfg = HAR_MODELS[draft.harModel];
+    if (draft.harModel === 'xclip_motion') return ctx.answerCbQuery('Mulai ulang Xclip Motion dari /menu.').catch(() => {});
     if (cfg.video && ratio === '1:1') return ctx.answerCbQuery('Pilih 9:16 atau 16:9.').catch(() => {});
     setSession(userId, { harRatio: ratio, mode: cfg.needsImage ? 'har_wait_image' : 'har_wait_prompt' });
     return ctx.editMessageText(cfg.needsImage
@@ -6078,9 +6089,10 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     const photo = ctx.message.photo.at(-1)!;
     if (photo.file_size && photo.file_size > 10 * 1024 * 1024) return ctx.reply('❌ Foto maksimal 10MB.');
     const cfg = HAR_MODELS[draft.harModel];
+    if (cfg.needsVideo && (photo.width < 300 || photo.height < 300)) return ctx.reply('❌ Foto harus min. 300px.');
     setSession(userId, { harImageFileId: photo.file_id, mode: cfg.needsVideo ? 'har_wait_video' : 'har_wait_prompt' });
     return ctx.reply(cfg.needsVideo
-      ? '✅ Foto diterima. Sekarang kirim video referensi gerakan (MP4/video Telegram, maksimal 19MB).'
+      ? '✅ Foto diterima. Sekarang kirim video referensi gerakan (3–30 detik, maksimal 15MB).'
       : '✅ Foto diterima. Sekarang kirim prompt untuk mengarahkan hasil.');
   }
 
@@ -6643,8 +6655,9 @@ bot.on('video', async (ctx) => {
     if (draft.mode !== 'har_wait_video' || draft.harModel !== 'xclip_motion' || !draft.harImageFileId) {
       return ctx.reply('Video tidak diperlukan di langkah ini. Ikuti langkah yang diminta atau /menu untuk batal.');
     }
-    if (vid.file_size && vid.file_size > 19 * 1024 * 1024) return ctx.reply('❌ Video referensi maksimal 19MB.');
-    setSession(userId, { harVideoFileId: vid.file_id, harVideoMime: 'video/mp4', mode: 'har_wait_prompt' });
+    const invalid = klingV3StandardVideoError(vid.file_size, vid.duration);
+    if (invalid) return ctx.reply(`❌ ${invalid}`);
+    setSession(userId, { harVideoFileId: vid.file_id, harVideoMime: vid.mime_type ?? 'video/mp4', harVideoDuration: vid.duration, mode: 'har_wait_prompt' });
     return ctx.reply('✅ Video referensi diterima. Sekarang kirim prompt untuk mengarahkan hasil Xclip Motion.');
   }
 
@@ -6915,7 +6928,7 @@ bot.on('text', async (ctx) => {
     if (!await requireLogin(ctx)) return;
     const draft = getSession(userId);
     if (draft.mode !== 'har_wait_prompt') return;
-    if (!draft.dbUserId || !draft.harModel || !draft.harRatio) return ctx.reply('⚠️ Sesi tidak lengkap. Mulai ulang dari /menu.');
+    if (!draft.dbUserId || !draft.harModel || (draft.harModel !== 'xclip_motion' && !draft.harRatio)) return ctx.reply('⚠️ Sesi tidak lengkap. Mulai ulang dari /menu.');
     const cfg = HAR_MODELS[draft.harModel];
     if (cfg.needsImage !== Boolean(draft.harImageFileId) || cfg.needsVideo !== Boolean(draft.harVideoFileId)) {
       return ctx.reply('⚠️ Media belum lengkap. Mulai ulang dari /menu.');
@@ -6924,9 +6937,9 @@ bot.on('text', async (ctx) => {
     if (!prompt || prompt === '-') return ctx.reply('⚠️ Kirim prompt yang menjelaskan hasil yang diinginkan.');
     const cooldown = getCooldownRemainingMs(userId);
     if (cooldown > 0) return ctx.reply(`⏳ Tunggu ${formatCooldown(cooldown)} sebelum generate berikutnya.`);
-    const job = { model: draft.harModel, ratio: draft.harRatio, imageFileId: draft.harImageFileId, videoFileId: draft.harVideoFileId };
+    const job = { model: draft.harModel, ratio: draft.harRatio, imageFileId: draft.harImageFileId, videoFileId: draft.harVideoFileId, seconds: draft.harVideoDuration };
     const dbUserId = draft.dbUserId;
-    setSession(userId, { mode: 'idle', harImageFileId: undefined, harVideoFileId: undefined, harVideoMime: undefined });
+    setSession(userId, { mode: 'idle', harImageFileId: undefined, harVideoFileId: undefined, harVideoMime: undefined, harVideoDuration: undefined });
     const status = await ctx.reply(`⏳ Memproses ${cfg.label}...\nHasil akan dikirim otomatis.`);
     runHarModel(ctx.chat.id, userId, dbUserId, status.message_id, prompt, job)
       .catch(error => console.error(`[${userId}] HAR model runner error:`, describeError(error)));
@@ -8199,12 +8212,13 @@ bot.on('document', async (ctx) => {
       if (!['image/jpeg', 'image/png'].includes(doc.mime_type || '')) return ctx.reply('🖼️ Kirim foto JPG/PNG.');
       if (doc.file_size && doc.file_size > 10 * 1024 * 1024) return ctx.reply('❌ Foto maksimal 10MB.');
       setSession(userId, { harImageFileId: doc.file_id, mode: cfg.needsVideo ? 'har_wait_video' : 'har_wait_prompt' });
-      return ctx.reply(cfg.needsVideo ? '✅ Foto diterima. Kirim video referensi maksimal 19MB.' : '✅ Foto diterima. Kirim prompt untuk mengarahkan hasil.');
+      return ctx.reply(cfg.needsVideo ? '✅ Foto diterima. Kirim video referensi 3–30 detik, maksimal 15MB.' : '✅ Foto diterima. Kirim prompt untuk mengarahkan hasil.');
     }
     if (draft.mode === 'har_wait_video' && cfg.needsVideo && draft.harImageFileId) {
       if (!doc.mime_type?.startsWith('video/')) return ctx.reply('🎥 Kirim video referensi.');
-      if (doc.file_size && doc.file_size > 19 * 1024 * 1024) return ctx.reply('❌ Video maksimal 19MB.');
-      setSession(userId, { harVideoFileId: doc.file_id, harVideoMime: doc.mime_type, mode: 'har_wait_prompt' });
+      const invalid = klingV3StandardVideoError(doc.file_size);
+      if (invalid) return ctx.reply(`❌ ${invalid}`);
+      setSession(userId, { harVideoFileId: doc.file_id, harVideoMime: doc.mime_type, harVideoDuration: undefined, mode: 'har_wait_prompt' });
       return ctx.reply('✅ Video diterima. Kirim prompt untuk mengarahkan hasil Xclip Motion.');
     }
     return ctx.reply('Ikuti langkah yang diminta, atau /menu untuk batal.');
@@ -8333,12 +8347,26 @@ bot.on('document', async (ctx) => {
   return ctx.reply('⚠️ Pilih mode terlebih dahulu:', mainMenuKeyboard());
 });
 
-// ─── Background: Heygen, Xclip Motion and Nano Banana 2.1 ─────────────────────
+// ─── Background: branded media routes ──────────────────────────────────────
 
 async function runHarModel(
   chatId: number, userId: number, dbUserId: number, statusMsgId: number, prompt: string,
-  job: { model: HarModelKey; ratio: HarAspectRatio; imageFileId?: string; videoFileId?: string }
+  job: { model: HarModelKey; ratio?: HarAspectRatio; imageFileId?: string; videoFileId?: string; seconds?: number }
 ) {
+  // Keep existing callback/session names, but never submit Motion to Picsart.
+  if (job.model === 'xclip_motion') {
+    if (!job.imageFileId || !job.videoFileId) {
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '❌ Foto dan video referensi wajib diisi. Mulai ulang dari /menu.').catch(() => {});
+      return;
+    }
+    return runKlingV3Standard(chatId, userId, dbUserId, statusMsgId,
+      job.imageFileId, job.videoFileId, job.seconds, prompt, 'xclip_motion');
+  }
+  const ratio = job.ratio;
+  if (!ratio) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '❌ Rasio belum dipilih. Mulai ulang dari /menu.').catch(() => {});
+    return;
+  }
   const cfg = HAR_MODELS[job.model];
   const PRICE = MODEL_PRICES[cfg.priceKey];
   const status = async (text: string) => {
@@ -8366,7 +8394,7 @@ async function runHarModel(
       video = { buffer: data.buf, name: `reference.${type.ext}`, mime: type.mime };
     }
     const result = await picsart.generateHarModel({
-      userId: dbUserId, model: job.model, prompt, ratio: job.ratio, image, video,
+      userId: dbUserId, model: job.model, prompt, ratio, image, video,
       onStatus: stage => { void status(`⏳ ${cfg.label}: ${stage === 'upload' ? 'menyiapkan media' : stage === 'submit' ? 'mengirim perintah' : 'memproses hasil'}...`); },
     });
     let deliveryUrl = result.url;
@@ -8377,7 +8405,7 @@ async function runHarModel(
       if (!finished.upscaled) throw new Error('HAR_VIDEO_1080_FINISH_FAILED');
       deliveryUrl = finished.url;
     }
-    const caption = `${cfg.label} (${job.ratio} · ${cfg.video ? '15 detik · 1080p' : '4K'})\n\n/menu untuk buat lagi`;
+    const caption = `${cfg.label} (${ratio} · ${cfg.video ? '15 detik · 1080p' : '4K'})\n\n/menu untuk buat lagi`;
     const delivered = cfg.video ? await sendResult(chatId, deliveryUrl, caption, true) : await sendImageResult(chatId, deliveryUrl, caption);
     if (delivered) {
       refund = false;
@@ -8400,9 +8428,11 @@ async function runHarModel(
 
 async function runKlingV3Standard(
   chatId: number, userId: number, dbUserId: number, statusMsgId: number,
-  imageFileId: string, videoFileId: string, seconds: number | undefined, prompt: string
+  imageFileId: string, videoFileId: string, seconds: number | undefined, prompt: string,
+  route: 'p5' | 'xclip_motion' = 'p5'
 ) {
-  const PRICE = MODEL_PRICES.kling_v3_standard;
+  const LABEL = route === 'xclip_motion' ? HAR_MODELS.xclip_motion.label : KLING_V3_STANDARD.label;
+  const PRICE = route === 'xclip_motion' ? MODEL_PRICES.xclip_motion : MODEL_PRICES.kling_v3_standard;
   const status = async (text: string) => {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
   };
@@ -8421,7 +8451,7 @@ async function runKlingV3Standard(
     const type = detectVideoType(video.buf, videoLink.href);
     const url = await generateKlingV3StandardFlora({
       image: { buf: image.buf, name: `character.${image.ext}`, mime: image.mime },
-      video: { buf: video.buf, name: `reference.${type.ext}`, mime: type.mime }, prompt, seconds,
+      video: { buf: video.buf, name: `reference.${type.ext}`, mime: type.mime }, prompt, seconds, publicLabel: LABEL,
     }, {
       getKey: getNextFloraKey, markDead: markFloraKeyDead, workspace: floraGetWorkspace,
       upload: floraUploadAsset, generate: floraGenerate, poll: floraPollRun,
@@ -8429,7 +8459,7 @@ async function runKlingV3Standard(
     });
     const finished = await upscaleGeneratedVideo(url, userId, chatId, statusMsgId);
     if (!finished.upscaled) throw new Error('KLING_P5_1080_FINISH_FAILED');
-    if (await sendResult(chatId, finished.url, `🎭 ${KLING_V3_STANDARD.label} · 1K/1080p\n\n/menu untuk buat lagi`, true)) {
+    if (await sendResult(chatId, finished.url, `🎭 ${LABEL} · 1K/1080p\n\n/menu untuk buat lagi`, true)) {
       refund = false;
       markGenSuccess(userId);
       await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
