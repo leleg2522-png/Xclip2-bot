@@ -39,7 +39,7 @@ assert.ok(rereadIndex >= 0, 'Picsart prompt must re-read the active draft after 
 assert.ok(modeGuardIndex > rereadIndex, 'Picsart prompt must validate the re-read mode');
 assert.ok(claimIndex > modeGuardIndex, 'Picsart prompt must synchronously claim the active draft');
 assert.ok(statusAwaitIndex > claimIndex, 'Picsart prompt must claim the draft before the next await');
-assert.match(source, /runKlingP2\(ctx\.chat\.id, userId, session\.dbUserId!, statusMsg\.message_id, characterUrlP2, videoFileIdP2, videoDurationP2, prompt\)/);
+assert.match(source, /runKlingP2\(ctx\.chat\.id, userId, dbUserId, statusMsg\.message_id, characterUrlP2, videoFileIdP2, videoDurationP2, prompt\)/);
 assert.match(source, /runFloraAudio\(ctx\.chat\.id, userId, session\.dbUserId!, statusMsg\.message_id, modelId, label, 'generate', prompt, undefined, undefined, voiceId\)/);
 
 console.log('Parallel generation safety tests passed (isolated draft + three shared job slots).');

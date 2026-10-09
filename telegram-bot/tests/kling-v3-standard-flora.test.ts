@@ -103,12 +103,13 @@ async function apiTests() {
     assert.equal(h.calls.submits.length, error === 'no-key' ? 0 : 1, `${error}: never replay a paid run`);
   }
 }
-async function billingTest(outcome: string, route: 'p5' | 'xclip_motion' = 'p5') {
-  const price = route === 'xclip_motion' ? 2500 : 3500;
-  const label = route === 'xclip_motion' ? 'Xclip Motion' : KLING_V3_STANDARD.label;
+async function billingTest(outcome: string, route: 'p5' | 'p2' | 'p3' | 'xclip_motion' = 'p5') {
+  const price = route === 'xclip_motion' ? 2500 : route === 'p2' || route === 'p3' ? 4000 : 3500;
+  const label = route === 'p2' ? 'Kling MC V3 PRO P2' : route === 'p3' ? 'Kling MC V3.0 PRO P3'
+    : route === 'xclip_motion' ? 'Xclip Motion' : KLING_V3_STANDARD.label;
   const events = { charges: [] as number[], refunds: [] as number[], releases: 0, upscales: 0, deliveries: 0, successes: 0, messages: [] as string[] };
   const ctx = vm.createContext({
-    MODEL_PRICES: { kling_v3_standard: 3500, xclip_motion: 2500 }, KLING_V3_STANDARD,
+    MODEL_PRICES: { kling_v3_standard: 3500, xclip_motion: 2500, kling_p2: 4000, kling_p3: 4000 }, KLING_V3_STANDARD,
     HAR_MODELS: { xclip_motion: { label: 'Xclip Motion' } },
     beginCharge: async (_id: number, amount: number, limit: number) => {
       assert.equal(limit, 3); events.charges.push(amount); return { ok: outcome !== 'insufficient', reason: 'insufficient' };
@@ -158,6 +159,14 @@ async function billingTest(outcome: string, route: 'p5' | 'xclip_motion' = 'p5')
     const dispatchEnd = source.indexOf('// ─── Background: Kling Motion V3 Standard', dispatchStart);
     vm.runInContext(compile(source.slice(dispatchStart, dispatchEnd)), ctx);
     await ctx.runHarModel(1, 2, 3, 4, 'move', { model: 'xclip_motion', imageFileId: 'image', videoFileId: 'video', seconds: 10 });
+  } else if (route === 'p2' || route === 'p3') {
+    const from = source.indexOf('async function runKlingP2(');
+    const to = source.indexOf('// ─── Background: Picsart Image-to-Video', from);
+    const wrappers = source.slice(from, to);
+    assert.doesNotMatch(wrappers, /runKlingEdanbot|kling-motion-26-pro/);
+    vm.runInContext(compile(wrappers), ctx);
+    const run = route === 'p2' ? ctx.runKlingP2 : ctx.runKlingP3;
+    await run(1, 2, 3, 4, route === 'p2' ? 'https://example.test/legacy-photo.jpg' : 'photo_file_id', 'video', 10, 'move');
   } else {
     await ctx.runKlingV3Standard(1, 2, 3, 4, 'image', 'video', 10, 'move');
   }
@@ -223,7 +232,9 @@ async function main() {
   for (const outcome of ['success', 'delivery', 'provider', 'insufficient', 'upscale-fallback', 'upscale-error']) {
     await billingTest(outcome);
     await billingTest(outcome, 'xclip_motion');
+      await billingTest(outcome, 'p2');
+      await billingTest(outcome, 'p3');
   }
-  console.log('Kling P5 and Xclip Motion: Standard model, branded status, independent prices, 1080p finishing, refunds and no-resubmit tests passed.');
+  console.log('Kling P2/P3/P5 and Xclip Motion: Standard model, branded status, independent prices, 1080p finishing, refunds and no-resubmit tests passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

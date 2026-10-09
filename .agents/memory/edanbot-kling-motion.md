@@ -1,11 +1,25 @@
 ---
-name: edanbot Kling Motion (hidden suppliers)
-description: Hidden Kling Motion variants, observed upstream routing, and fragile session-cookie auth
+name: Kling Motion package routing and legacy Edanbot
+description: P2/P3 follow P5; Edanbot notes are legacy-only and supplier identities stay hidden.
 ---
 
-# Kling Motion variants = edanbot.digital (hidden)
+# Current P2/P3 routing
 
-The Telegram bot's Kling Motion P2 and P3 models are internally powered by **edanbot.digital**. Both now submit the latest HAR-verified public model key `kling-motion-26-pro`, which resolves internally to Kling Motion 2.6 Pro.
+MC P2 and P3 must use the same backend and 1080p finishing as MC P5, while
+retaining separate package names and prices. Edanbot is no longer their public
+generation path.
+
+**Why:** The user explicitly requested: “dan juga mc p2 dan p3 pake backend mc p5”.
+
+**How to apply:** Keep future P5 backend changes consistent across P2/P3 unless
+the user separates them again. Do not revive the Edanbot route or require an
+Edanbot cookie for these packages. Hide supplier identities in customer copy.
+
+# Legacy Edanbot reference only
+
+Before the P5 migration, P2/P3 used **edanbot.digital**, with the HAR-verified
+public key `kling-motion-26-pro`. All instructions below apply only to legacy
+Edanbot integration, not current P2/P3 routing.
 
 **Hard rule:** never let any user-facing string (reply/caption/error/filename) leak `edanbot`/`roboneo`/`wavespeed`/`openart`/`meitu`/`meitudata`, and never send the raw `result_url` as a link — always re-upload bytes.
 
