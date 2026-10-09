@@ -417,3 +417,31 @@ mtime_ms = 1791455613920
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/bc52df9d-7e43-45f4-b6a3-535bb5385783/7c6edb3d-9c97-458d-a03c-6b5f2f907a17"
 storage_version_token = "1791455632281814"
 content_type = "image/png"
+
+[[outputs]]
+id = "HT7I_oJ0IP2oBzKZQvo18"
+uri = "file://.agents/outputs/banana-i2i-test/reference.jpg"
+type = "image"
+title = "Foto acuan tes image-to-image"
+description = "Foto sebelum diedit: background abu-abu, ukuran 1280 × 720."
+logical_id = "9748a217-7d1c-45d2-8123-da983df34ac4"
+content_hash = "sha256:0750d08bec5a935c4f92fba57c67e0ec5eea9f9b4a219ad94e8dfebba86f7c02"
+size = 250290
+mtime_ms = 1791548952476
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/9748a217-7d1c-45d2-8123-da983df34ac4/09fbd14c-946a-4e72-b8a9-d2688169abe3"
+storage_version_token = "1791549183958615"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "lrlwnhDQmM3wLyIpHBiSo"
+uri = "file://.agents/outputs/banana-i2i-test/output.jpg"
+type = "image"
+title = "Hasil Nano Banana 2 — image-to-image 4K"
+description = "Generate nyata berhasil: background diubah menjadi toska, hasil 5504 × 3072 piksel. File asli tanpa kompresi."
+logical_id = "766a9cb7-15c4-4e3a-9be3-ea1c7aa26efe"
+content_hash = "sha256:805d129780503d4dda01a7d70afd77f2c5cd4cec75cbc4f23de145aa5d3707c7"
+size = 7695437
+mtime_ms = 1791549136103
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/766a9cb7-15c4-4e3a-9be3-ea1c7aa26efe/92c31c62-d032-4e1e-9626-0bc4f4ccf408"
+storage_version_token = "1791549185473038"
+content_type = "image/jpeg"

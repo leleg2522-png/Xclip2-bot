@@ -22,3 +22,16 @@ as HTTP 407 before the provider receives the request. The current official
 OpenAPI exposes no upload route: host input bytes through the bot's temporary
 public `/dl/:token` link and submit that as `video_url`; never expose a Telegram
 file URL because it contains the bot token.
+
+## Developer-key preflight
+
+A 401 from `/agents/quote` does not prove a Renderful developer key is invalid.
+Use `/account/balance` or the normal developer endpoints to confirm access.
+
+**Why:** The same pool key was rejected by the quote endpoint but accepted by
+`/account/balance` and `/generations`. Treating quote rejection as key exhaustion
+would incorrectly disable usable credentials.
+
+**How to apply:** Never mark pool keys dead solely because `/agents/quote`
+returns 401. Keep non-billable preflight failure distinct from actual generation
+authentication or insufficient-credit failures.

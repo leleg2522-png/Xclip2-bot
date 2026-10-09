@@ -1,0 +1,26 @@
+{
+  "model": "nano-banana-2-i2i",
+  "resolutionRequested": "4k",
+  "prompt": "Edit the provided portrait photo. Preserve exactly the same woman, facial identity, windblown hair, pose, close-up framing and photorealistic style. Change only the gray background to a solid vivid teal studio backdrop. Keep the subject recognizable and the fine hair strands intact. No text or watermark. Output in 4K.",
+  "botSaldoCharged": false,
+  "request": {
+    "type": "image-to-image",
+    "model": "nano-banana-2-i2i",
+    "prompt": "Edit the provided portrait photo. Preserve exactly the same woman, facial identity, windblown hair, pose, close-up framing and photorealistic style. Change only the gray background to a solid vivid teal studio backdrop. Keep the subject recognizable and the fine hair strands intact. No text or watermark. Output in 4K.",
+    "aspect_ratio": "16:9",
+    "resolution": "4k",
+    "num_outputs": 1,
+    "image_url": "https://d2w6xqzevsijyc.cloudfront.net/JTgSMQs2GsPA0V4wbyeJ05dQO0q1/images/1769502428976_0.png",
+    "images": [
+      "https://d2w6xqzevsijyc.cloudfront.net/JTgSMQs2GsPA0V4wbyeJ05dQO0q1/images/1769502428976_0.png"
+    ]
+  },
+  "jobId": "iErhVQZDhIaU47pj3L6f",
+  "cost": 0.09,
+  "status": "completed",
+  "width": 5504,
+  "height": 3072,
+  "bytes": 7695437,
+  "file": "output.jpg",
+  "is4k": true
+}
