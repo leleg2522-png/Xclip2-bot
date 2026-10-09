@@ -23,6 +23,7 @@ import { FreebeatBridgeQueue, type BridgeAgent, type BridgeJob } from './freebea
 import { KLING_P4, klingP4VideoError, generateKlingP4Flora, isFloraWorkspaceSetupError } from './kling-p4-flora';
 import { KLING_V3_STANDARD, klingV3StandardVideoError, generateKlingV3StandardFlora } from './kling-v3-standard-flora';
 import { HAR_MODELS, type HarModelKey, type HarAspectRatio } from './picsart-har-models';
+import { generateBananaRenderful } from './banana-renderful';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -5758,7 +5759,7 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
-  // ── Nano Banana image wizard (SnapGen, text-to-image or image-to-image) ──
+  // ── Nano Banana image wizard (Renderful, text-to-image or image-to-image) ──
   if (data === 'mode_nbpro' || data === 'mode_nb2' || data === 'mode_nb2lite') {
     const cfg = IMG_MODELS[data];
     setSession(userId, {
@@ -5770,7 +5771,8 @@ bot.on('callback_query', async (ctx) => {
       imgImageUrls: undefined,
     });
     return ctx.editMessageText(
-      `${cfg.label}\n\nGenerate gambar (${formatRupiah(MODEL_PRICES[cfg.priceKey])}).\n\nPilih rasio gambar:`,
+      `${cfg.label} · 4K\n\nGenerate gambar (${formatRupiah(MODEL_PRICES[cfg.priceKey])}).\n` +
+      `${data === 'mode_nb2lite' ? 'Paket Lite memakai model Nano Banana 2.\n' : ''}\nPilih rasio gambar:`,
       { parse_mode: 'Markdown', ...imgRatioKeyboard() }
     );
   }
@@ -7896,9 +7898,14 @@ bot.on('text', async (ctx) => {
     return;
   }
 
-  // ── Nano Banana image prompt (SnapGen) ──
+  // ── Nano Banana image prompt (Renderful) ──
   if (session.mode === 'img_wait_prompt') {
     if (!await requireLogin(ctx)) return;
+    const draft = getSession(userId);
+    if (draft.mode !== 'img_wait_prompt') return;
+    if (!draft.dbUserId || !draft.imgModel || !draft.imgPriceKey || !draft.imgInputMode || !draft.imgRatio) {
+      return ctx.reply('⚠️ Sesi tidak lengkap. Mulai ulang dari /menu.');
+    }
     const prompt = ctx.message.text.trim();
     if (!prompt) {
       return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi gambar yang kamu mau.');
@@ -7908,18 +7915,18 @@ bot.on('text', async (ctx) => {
       setSession(userId, { mode: 'idle' });
       return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
     }
-    const model = session.imgModel ?? 'nano-banana-pro';
-    const priceKey = session.imgPriceKey ?? 'nb_pro';
+    const model = draft.imgModel;
+    const priceKey = draft.imgPriceKey;
     const opts = {
       model,
       priceKey,
-      inputMode: session.imgInputMode ?? 't2i',
-      imageUrls: session.imgImageUrls ?? [],
-      ratio: session.imgRatio ?? '1:1',
+      inputMode: draft.imgInputMode,
+      imageUrls: [...(draft.imgImageUrls ?? [])],
+      ratio: draft.imgRatio,
     } as const;
     setSession(userId, { mode: 'idle' });
     const statusMsg = await ctx.reply('⏳ Memproses gambar...\nHasil dikirim otomatis (~1-3 menit).', { parse_mode: 'Markdown' });
-    runImage(ctx.chat.id, userId, session.dbUserId!, statusMsg.message_id, prompt, opts)
+    runImage(ctx.chat.id, userId, draft.dbUserId, statusMsg.message_id, prompt, opts)
       .catch(e => console.error(`[${userId}] Image gen error:`, e.message));
     return;
   }
@@ -10301,7 +10308,7 @@ async function snapgenPollImage(
   throw new Error(`SNAPGEN_TIMEOUT: proses melebihi ${Math.round((maxAttempts * intervalMs) / 60000)} menit`);
 }
 
-// ─── Background: Nano Banana image (SnapGen, text-to-image or image-to-image) ──
+// ─── Background: Nano Banana image (Renderful, text-to-image or image-to-image) ──
 
 async function runImage(
   chatId: number,
@@ -10334,7 +10341,8 @@ async function runImage(
     const images: Array<{ buffer: Buffer; name: string; mime: string }> = [];
     if (opts.inputMode === 'i2i' && opts.imageUrls && opts.imageUrls.length > 0) {
       let idx = 0;
-      for (const url of opts.imageUrls.slice(0, 2)) {
+      if (opts.imageUrls.length > 2) throw Error('BANANA_INVALID_REFERENCES');
+      for (const url of opts.imageUrls) {
         idx++;
         const img = await downloadBuffer(url);
         images.push({ buffer: img.buf, name: `reference-${idx}.${img.ext}`, mime: img.mime });
@@ -10342,38 +10350,38 @@ async function runImage(
       }
     }
 
-    let lastEdit = 0;
-    await bot.telegram.editMessageText(
-      chatId, statusMsgId, undefined,
-      `🎨 ${label}: mengirim perintah ke server... (1/2)`
-    ).catch(() => {});
-    const submitted = await snapgenSubmitImage({ prompt, model: opts.model, aspectRatio: ratio, images });
-
-    let resultUrl = submitted.url;
-    if (!resultUrl) {
-      lastEdit = Date.now();
-      await bot.telegram.editMessageText(
-        chatId, statusMsgId, undefined,
-        `🎨 ${label}: gambar sedang dibuat... (2/2)\n⏱️ Mohon tunggu, biasanya 1–3 menit. Jangan tutup chat ini.`
-      ).catch(() => {});
-      const result = await snapgenPollImage(submitted.uuid, {
-        onTick: (elapsedSec) => {
-          if (Date.now() - lastEdit < 15_000) return;
-          lastEdit = Date.now();
-          const mins = Math.floor(elapsedSec / 60);
-          const secs = elapsedSec % 60;
-          const timer = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
-          bot.telegram.editMessageText(
-            chatId, statusMsgId, undefined,
-            `🎨 ${label}: gambar sedang dibuat... (2/2)\n⏱️ Sudah berjalan ${timer}.\nJangan tutup chat ini, gambar dikirim otomatis.`
-          ).catch(() => {});
-        },
-      });
-      resultUrl = result.url;
-    }
+    const resultUrl = await generateBananaRenderful({
+      model: opts.model, mode: opts.inputMode, prompt, ratio, images,
+    }, {
+      getKey: getNextRenderfulPoolKey,
+      markDead: markRenderfulPoolKeyDead,
+      rejectedKey: error => {
+        const code = (error as any)?.response?.status;
+        // Do not rotate on ambiguous timeouts, generic 5xx or provider outages.
+        return [401, 402, 403].includes(code) && isKeyExhaustedError(describeError(error));
+      },
+      host: async image => {
+        const meta = await sharp(image.buffer).metadata();
+        if (!['jpeg', 'png'].includes(meta.format || '')) throw Error('BANANA_INVALID_IMAGE');
+        return publishMedia(image.buffer, false);
+      },
+      submit: async (key, body) => {
+        const response = await bytedanceUpscalerHttp.post(`${RENDERFUL_BASE}/generations`, body, {
+          headers: { Authorization: `Bearer ${key}` },
+        });
+        return response.data?.id;
+      },
+      poll: async (key, id) => pollForResult(id, userId, key),
+      status: async stage => {
+        const text = stage === 'upload' ? 'menyiapkan foto acuan'
+          : stage === 'submit' ? 'mengirim perintah' : 'gambar 4K sedang dibuat';
+        await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+          `🎨 ${label}: ${text}...\nHasil dikirim otomatis.`).catch(() => {});
+      },
+    });
 
     const caption = `🎨 ${label} (${ratio} · 4K)\n\n/menu untuk buat lagi`;
-    const delivered = await sendImageResult(chatId, resultUrl, caption);
+    const delivered = await sendImageResult(chatId, resultUrl, caption, true);
     if (delivered) {
       refund = false;
       const newCount = await incrementKlingUsage(dbUserId);
@@ -10386,9 +10394,9 @@ async function runImage(
     const msg = describeError(err);
     console.error(`[${userId}] ${label} error: ${msg}`);
     let friendly: string;
-    if (msg.includes('SNAPGEN_TIMEOUT')) {
+    if (msg.includes('Timeout')) {
       friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
-    } else if (msg.includes('SNAPGEN_KEY_MISSING')) {
+    } else if (msg.includes('BANANA_UNAVAILABLE')) {
       friendly = '❌ Layanan sedang tidak tersedia. Coba lagi nanti.';
     } else {
       friendly = '❌ Gagal memproses. Coba lagi nanti.';
@@ -10409,7 +10417,7 @@ async function runImage(
 
 // Kirim gambar hasil via replyWithPhoto; fallback ke document jika gagal. Kita
 // unduh sendiri lalu upload bytes-nya supaya URL upstream tidak pernah terlihat.
-async function sendImageResult(chatId: number, outputUrl: string, caption: string): Promise<boolean> {
+async function sendImageResult(chatId: number, outputUrl: string, caption: string, require4k = false): Promise<boolean> {
   let buf: Buffer | null = null;
   try {
     const res = await telegramHttp.get(outputUrl, { responseType: 'arraybuffer', timeout: 120_000 });
@@ -10425,6 +10433,25 @@ async function sendImageResult(chatId: number, outputUrl: string, caption: strin
     return false;
   }
   const opts = { caption };
+  if (require4k) {
+    const meta = await sharp(buf).metadata();
+    if (Math.max(meta.width ?? 0, meta.height ?? 0) < 3840) {
+      await bot.telegram.sendMessage(chatId, '❌ Hasil belum memenuhi kualitas 4K. Saldo akan dikembalikan.').catch(() => {});
+      return false;
+    }
+    // Telegram sendPhoto compresses 4K even when the file is under 10MB.
+    const ext = meta.format === 'jpeg' ? 'jpg' : meta.format ?? 'png';
+    try {
+      await bot.telegram.sendDocument(chatId, { source: buf, filename: `output.${ext}` }, opts);
+      return true;
+    } catch (error) {
+      console.error('Full-resolution image delivery failed:', describeError(error));
+      const link = await publishMedia(buf, false);
+      await bot.telegram.sendMessage(chatId,
+        `📥 Download gambar 4K (segera simpan, link berlaku sementara):\n${link}\n\n${caption}`);
+      return true;
+    }
+  }
   // Batas foto Telegram 10MB — hasil 4K sering lebih besar; langsung kirim
   // sebagai dokumen (kualitas penuh, tanpa kompresi) tanpa buang waktu coba foto.
   const PHOTO_MAX_BYTES = 10 * 1024 * 1024;

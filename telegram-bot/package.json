@@ -14,6 +14,7 @@
     "test:klingp4": "tsx tests/kling-p4-flora.test.ts",
     "test:klingp5": "tsx tests/kling-v3-standard-flora.test.ts",
     "test:har-models": "tsx tests/picsart-har-models.test.ts",
+    "test:banana": "tsx tests/banana-renderful.test.ts",
     "test:floraimage": "tsx tests/flora-image-generation.test.ts",
     "test:lipsync": "tsx tests/lipsync.test.ts",
     "test:audio": "tsx tests/audio-generation.test.ts",

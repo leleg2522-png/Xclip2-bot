@@ -45,3 +45,15 @@ The expired HAR token returned 401; incomplete metadata headers returned
 **How to apply:** Do not claim a real T2I result was generated during this check.
 When testing captured workflow capabilities, preserve platform/touchpoint metadata
 alongside authentication before interpreting validation errors.
+
+## Banana Renderful migration scope
+
+Only Banana Pro, Banana Lite and Banana 2 are in the Renderful migration.
+Banana 2.1 is explicitly excluded.
+
+**Why:** The user clarified: “yg di ganti banana pro banana lite dan banan 2
+banana 2,1 mah tidak”, superseding the earlier “semua model banana” wording.
+
+**How to apply:** Do not include Banana 2.1 in broader Banana backend changes
+without a new user request. Existing package prices remain unchanged unless
+the user separately requests a price change.
