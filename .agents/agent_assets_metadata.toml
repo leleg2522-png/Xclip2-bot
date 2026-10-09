@@ -445,3 +445,45 @@ mtime_ms = 1791549136103
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/766a9cb7-15c4-4e3a-9be3-ea1c7aa26efe/92c31c62-d032-4e1e-9626-0bc4f4ccf408"
 storage_version_token = "1791549185473038"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "nYE1jYpkGlzfJN4DZ4yH9"
+uri = "file://attached_assets/image_search/banana-character-fullbody.jpg"
+type = "image"
+title = "Foto 1 — karakter full badan"
+description = "Karakter acuan dari Pexels. Wajah, pose, dan sepatu diminta tetap dipertahankan."
+logical_id = "7abb08bd-1e6c-4841-9d7a-42ea368dea87"
+content_hash = "sha256:fd5a3c7e3c34e0ec2005bc1f2aa800ace6e83c2eb4551390768ea14cc3122f4c"
+size = 81763
+mtime_ms = 1791549435811
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/7abb08bd-1e6c-4841-9d7a-42ea368dea87/99f90bfe-fecc-4c31-80c2-372e07c4ba72"
+storage_version_token = "1791549578179791"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "H-Kst5hEnChYE0mWNjuSP"
+uri = "file://attached_assets/image_search/banana-red-jacket-flatlay.jpg"
+type = "image"
+title = "Foto 2 — baju yang akan dipakai"
+description = "Foto produk jaket bomber merah marun dari Alpha Industries. Dipakai sebagai acuan pakaian kedua."
+logical_id = "5b249aab-c94c-4a3a-a419-9eb833863e8b"
+content_hash = "sha256:80a644f42e88f04a97368c7a2a0b85b4fef66889a74afe475eb648dadde11fea"
+size = 82035
+mtime_ms = 1791549501459
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/5b249aab-c94c-4a3a-a419-9eb833863e8b/21faf5b2-5602-4bc4-bac4-b12d6907cf47"
+storage_version_token = "1791549579416372"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "jvCSt07DUnffUlgAGgdK9"
+uri = "file://.agents/outputs/banana-clothing-test/output.jpg"
+type = "image"
+title = "Hasil tes 2 foto — karakter memakai jaket acuan"
+description = "Generate nyata Nano Banana 2 berhasil. Karakter dari foto pertama memakai bomber marun dari foto kedua, termasuk detail tag lengan. Resolusi asli 3584 × 4800 piksel, tanpa kompresi."
+logical_id = "9e495573-647d-4d71-b461-d57b457b0f8f"
+content_hash = "sha256:5611491a861ce37da4e75ebda4b608b14907541c082915076d96552f07164b65"
+size = 6121690
+mtime_ms = 1791549600855
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/9e495573-647d-4d71-b461-d57b457b0f8f/fbe15620-ed2a-4154-9fb7-b0bf41d4fec1"
+storage_version_token = "1791549637319572"
+content_type = "image/jpeg"

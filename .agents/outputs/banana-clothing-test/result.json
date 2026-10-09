@@ -1,0 +1,28 @@
+{
+  "model": "nano-banana-2-i2i",
+  "resolutionRequested": "4k",
+  "referenceCount": 2,
+  "prompt": "Two reference images, in this exact order: image 1 is the character; image 2 is the garment to wear. Edit ONLY the character in image 1. Preserve her facial identity, hair, body proportions, exact standing pose and raised arm positions, white undergarment, black lace-up boots and plain studio background. Remove her existing outer coat and replace it with the exact jacket shown in image 2. Match the jacket reference color, fabric, silhouette, length, ribbed collar/cuffs/hem, zipper, pockets and sleeve tag as closely as possible. Fit this garment realistically to her body and pose, with natural fabric folds. Do not merely recolor the old coat. Show the entire character from head to both boot soles with no cropping. Photorealistic fashion photograph, 4K. Do not add unrelated writing or watermarks.",
+  "botSaldoCharged": false,
+  "request": {
+    "type": "image-to-image",
+    "model": "nano-banana-2-i2i",
+    "prompt": "Two reference images, in this exact order: image 1 is the character; image 2 is the garment to wear. Edit ONLY the character in image 1. Preserve her facial identity, hair, body proportions, exact standing pose and raised arm positions, white undergarment, black lace-up boots and plain studio background. Remove her existing outer coat and replace it with the exact jacket shown in image 2. Match the jacket reference color, fabric, silhouette, length, ribbed collar/cuffs/hem, zipper, pockets and sleeve tag as closely as possible. Fit this garment realistically to her body and pose, with natural fabric folds. Do not merely recolor the old coat. Show the entire character from head to both boot soles with no cropping. Photorealistic fashion photograph, 4K. Do not add unrelated writing or watermarks.",
+    "aspect_ratio": "3:4",
+    "resolution": "4k",
+    "num_outputs": 1,
+    "image_url": "https://images.pexels.com/photos/6856000/pexels-photo-6856000.jpeg?auto=compress&cs=tinysrgb&w=1200",
+    "images": [
+      "https://images.pexels.com/photos/6856000/pexels-photo-6856000.jpeg?auto=compress&cs=tinysrgb&w=1200",
+      "https://www.alphaindustries.com/cdn/shop/files/ma-1-bomber-jacket-slim-fit-outerwear-cedar-red-xs-258670.jpg?v=1756747070&width=1200"
+    ]
+  },
+  "jobId": "2VCKb8Jkg2Tbu52UCVWZ",
+  "cost": 0.09,
+  "status": "completed",
+  "width": 3584,
+  "height": 4800,
+  "bytes": 6121690,
+  "file": "output.jpg",
+  "is4k": true
+}

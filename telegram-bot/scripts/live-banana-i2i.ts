@@ -8,13 +8,20 @@ import path from 'node:path';
 import { generateBananaRenderful } from '../src/banana-renderful';
 
 const paid = process.argv.includes('--paid');
+const clothing = process.argv.includes('--clothing');
 if (!paid) throw Error('Run with --paid only after user authorization.');
 const base = 'https://api.renderful.ai/api/v1';
 const sourceUrl = 'https://d2w6xqzevsijyc.cloudfront.net/JTgSMQs2GsPA0V4wbyeJ05dQO0q1/images/1769502428976_0.png';
-const outDir = path.resolve(__dirname, '../../.agents/outputs/banana-i2i-test');
+const outDir = path.resolve(__dirname, clothing ? '../../.agents/outputs/banana-clothing-test' : '../../.agents/outputs/banana-i2i-test');
+const clothingSources = [
+  { name: 'character.jpg', file: 'banana-character-fullbody.jpg', url: 'https://images.pexels.com/photos/6856000/pexels-photo-6856000.jpeg?auto=compress&cs=tinysrgb&w=1200' },
+  { name: 'garment.jpg', file: 'banana-red-jacket-flatlay.jpg', url: 'https://www.alphaindustries.com/cdn/shop/files/ma-1-bomber-jacket-slim-fit-outerwear-cedar-red-xs-258670.jpg?v=1756747070&width=1200' },
+];
 const http = axios.create({ proxy: false, timeout: 180_000 });
 const pool = new Pool({ connectionString: process.env.RAILWAY_DATABASE_URL, ssl: { rejectUnauthorized: false } });
-const prompt = 'Edit the provided portrait photo. Preserve exactly the same woman, facial identity, windblown hair, pose, close-up framing and photorealistic style. Change only the gray background to a solid vivid teal studio backdrop. Keep the subject recognizable and the fine hair strands intact. No text or watermark. Output in 4K.';
+const prompt = clothing
+  ? 'Two reference images, in this exact order: image 1 is the character; image 2 is the garment to wear. Edit ONLY the character in image 1. Preserve her facial identity, hair, body proportions, exact standing pose and raised arm positions, white undergarment, black lace-up boots and plain studio background. Remove her existing outer coat and replace it with the exact jacket shown in image 2. Match the jacket reference color, fabric, silhouette, length, ribbed collar/cuffs/hem, zipper, pockets and sleeve tag as closely as possible. Fit this garment realistically to her body and pose, with natural fabric folds. Do not merely recolor the old coat. Show the entire character from head to both boot soles with no cropping. Photorealistic fashion photograph, 4K. Do not add unrelated writing or watermarks.'
+  : 'Edit the provided portrait photo. Preserve exactly the same woman, facial identity, windblown hair, pose, close-up framing and photorealistic style. Change only the gray background to a solid vivid teal studio backdrop. Keep the subject recognizable and the fine hair strands intact. No text or watermark. Output in 4K.';
 let submitted = false;
 async function main() {
   await fs.mkdir(outDir, { recursive: true });
@@ -23,7 +30,12 @@ async function main() {
   if (previous?.jobId && !['completed', 'failed'].includes(previous.status)) {
     throw Error('PRIOR_ACCEPTED_JOB_EXISTS_DO_NOT_RESUBMIT');
   }
-  const reference = await fs.readFile(path.join(outDir, 'reference.jpg'));
+  const inputImages = clothing
+    ? await Promise.all(clothingSources.map(async item => ({
+        buffer: await fs.readFile(path.resolve(__dirname, '../../attached_assets/image_search', item.file)),
+        name: item.name, mime: 'image/jpeg',
+      })))
+    : [{ buffer: await fs.readFile(path.join(outDir, 'reference.jpg')), name: 'reference.jpg', mime: 'image/jpeg' }];
   const rows = await pool.query("SELECT api_key FROM renderful_key_pool WHERE status <> 'dead' ORDER BY id DESC LIMIT 50");
   console.log(`POOL_CANDIDATES ${rows.rows.length}`);
   let key: string | undefined;
@@ -61,18 +73,23 @@ async function main() {
   }
   if (!key) throw Error('NO_READY_RENDERFUL_KEY');
   const headers = { Authorization: `Bearer ${key}` };
-  const result: any = { model: 'nano-banana-2-i2i', resolutionRequested: '4k', prompt, quoteCost, botSaldoCharged: false };
+  const result: any = { model: 'nano-banana-2-i2i', resolutionRequested: '4k', referenceCount: inputImages.length, prompt, quoteCost, botSaldoCharged: false };
   const save = () => fs.writeFile(path.join(outDir, 'result.json'), JSON.stringify(result, null, 2));
   const url = await generateBananaRenderful({
-    model: 'nano-banana-2', mode: 'i2i', prompt, ratio: '16:9',
-    images: [{ buffer: reference, name: 'reference.jpg', mime: 'image/jpeg' }],
+    model: 'nano-banana-2', mode: 'i2i', prompt, ratio: clothing ? '3:4' : '16:9',
+    images: inputImages,
   }, {
     getKey: async () => key!,
     markDead: async () => {},
     rejectedKey: () => false,
     // Use the same publicly fetchable sample bytes as the saved reference.
     // Telegram URLs and bot tokens are never sent to the provider.
-    host: async () => sourceUrl,
+    host: async image => {
+      if (!clothing) return sourceUrl;
+      const reference = clothingSources.find(item => item.name === image.name);
+      if (!reference) throw Error('UNKNOWN_REFERENCE');
+      return reference.url;
+    },
     status: async stage => { console.log(`STAGE ${stage}`); },
     submit: async (_key, body) => {
       if (submitted) throw Error('REFUSE_SECOND_SUBMIT');
