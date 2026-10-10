@@ -57,3 +57,15 @@ banana 2,1 mah tidak”, superseding the earlier “semua model banana” wordin
 **How to apply:** Do not include Banana 2.1 in broader Banana backend changes
 without a new user request. Existing package prices remain unchanged unless
 the user separately requests a price change.
+
+## Shared Banana package backend
+
+Banana Pro and Lite must follow Banana 2's backend, for both text-to-image and
+image-to-image. Keep the public packages separate; Banana 2.1 remains excluded.
+
+**Why:** The user requested: “buat agar nano banana pro dan lite memeakai backend
+yg sama dengan banan 2”.
+
+**How to apply:** Future Banana 2 backend changes should also apply to Pro/Lite
+unless the user separates them again. Do not restore a distinct Pro backend
+solely because the public package is named Pro.

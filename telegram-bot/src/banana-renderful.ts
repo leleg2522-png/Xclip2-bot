@@ -20,13 +20,12 @@ export interface BananaApi {
   status(stage: 'upload' | 'submit' | 'poll'): Promise<void>;
 }
 
-// Lite is a retained public package, not a nonexistent Renderful model ID.
+// Pro and Lite retain their public package names but share Banana 2's backend.
 export function bananaRenderfulModel(model: BananaModel, mode: 't2i' | 'i2i'): string {
   if (!['nano-banana-pro', 'nano-banana-2', 'nano-banana-2-lite'].includes(model)) {
     throw new Error('BANANA_INVALID_MODEL');
   }
-  const base = model === 'nano-banana-pro' ? model : 'nano-banana-2';
-  return mode === 'i2i' ? `${base}-i2i` : base;
+  return mode === 'i2i' ? 'nano-banana-2-i2i' : 'nano-banana-2';
 }
 
 export async function generateBananaRenderful(

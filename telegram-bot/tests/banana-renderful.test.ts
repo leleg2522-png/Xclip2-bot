@@ -43,7 +43,7 @@ async function contractTests() {
     await generateBananaRenderful({ model, mode, prompt: 'draw or edit', ratio: '9:16', images: mode === 'i2i' ? [...images, ...images] : [] }, h.api);
     assert.equal(h.events.submits.length, 1);
     const body = h.events.submits[0].body;
-    assert.equal(body.model, `${model === 'nano-banana-pro' ? model : 'nano-banana-2'}${mode === 'i2i' ? '-i2i' : ''}`);
+    assert.equal(body.model, `nano-banana-2${mode === 'i2i' ? '-i2i' : ''}`, 'Pro, Lite and Banana 2 must share the same backend in both modes');
     assert.equal(body.type, mode === 't2i' ? 'text-to-image' : 'image-to-image');
     assert.equal(body.resolution, '4k');
     assert.equal(body.num_outputs, 1);
@@ -158,6 +158,6 @@ async function main() {
   await contractTests();
   await billingTests();
   await deliveryTests();
-  console.log('Banana Pro/2/Lite Renderful: T2I/I2I, 4K, full-resolution delivery, independent prices/refunds, no replay and unchanged Banana 2.1 passed.');
+  console.log('Banana Pro/2/Lite share Banana 2 backend: T2I/I2I, 4K, full-resolution delivery, independent prices/refunds, no replay and unchanged Banana 2.1 passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
