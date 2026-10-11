@@ -86,6 +86,19 @@ For combined photo/video references, confirm both array fields and the requested
 duration/resolution before submitting. Input-video duration/size limits are not
 specified by these catalog fields; do not infer them from output duration.
 
+Do not promise multi-character motion or original-sound transfer solely from the
+mixed-to-video catalog schema. A paid request combining three character images,
+a dance reference video and its extracted audio at 480p/30s was accepted by Flora
+but failed upstream with `GENERATION_INVALID_PARAMS`; no field was identified.
+
+**Why:** Catalog validation and job acceptance did not establish a working
+upstream contract, and the failure response omitted a charged-cost figure.
+
+**How to apply:** Treat this combination as unverified. Do not infer that any
+particular field or all multi-reference requests are unsupported from the generic
+error. Narrow the input contract only in a separately authorized paid test, never
+by replaying the failed accepted order or charging a bot user's saldo.
+
 - A valid Flora key can return a workspace successfully but an empty project list.
   Authentication and DB `available` status do not prove the account is ready to generate.
 
