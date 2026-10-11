@@ -54,13 +54,16 @@ model; distinguish that server-side failure from a rejected Flowy API key.
 
 **Why:** A video-list request returned HTTP 500 because Flowy's fal adapter
 received an upstream 401 while resolving a Kling model. No model list was
-returned, so the response could not establish H3 availability.
+returned, so the response could not establish H3 availability. The separate
+quick-tool catalog and Motion Control quote still succeeded with the Flowy key.
 
 **How to apply:** Identify which service returned the authorization error.
 Do not ask the user to replace their Flowy key merely because an error body
 mentions an upstream provider's invalid key. Treat a failed catalog as
 inconclusive, not as evidence that a model is unsupported; do not bypass the
 catalog by submitting a paid generation.
+Check quick tools independently instead of assuming a broken direct-generation
+catalog means that every Flowy API route is unusable.
 
 Uploaded duration and dimensions must be measured from the actual media, not
 supplied optimistically; tool pricing and limits trust the declared source facts.
