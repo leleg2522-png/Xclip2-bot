@@ -27,4 +27,4 @@
 - [Picsart Decodo ISP egress](picsart-vps-egress-proxy.md) — Picsart traffic must use static Decodo ISP proxies and fail closed if proxy credentials are unavailable.
 - [Picsart AI Clipper](picsart-ai-clipper.md) — bot credentials live-verified for clip analysis via ISP proxy; completion has no rendered MP4, so export needs a separate solution.
 - [Heygen and Banana 2.1](picsart-heygen-banana.md) — Xclip Motion: Wan 480p → mandatory Renderful 1080p, 15s reference cap; Heygen and Banana remain independent.
-- [Flowy API](flowy-api.md) — static docs lag live OpenAPI; verify authenticated model/tool limits and quotes before promising motion durations or migrating.
+- [Flowy API](flowy-api.md) — Studio's public catalog includes H3 Max/Turbo I2V; docs and curated REST models are narrower. Verify quotes and limits before migrating.

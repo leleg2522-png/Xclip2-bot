@@ -1,6 +1,6 @@
 ---
 name: Flowy API documentation mismatch
-description: Prefer the live public schema and authenticated catalogs over stale reference examples; validate motion limits and wallet context before migration.
+description: Distinguish the public Studio model catalog from narrower docs and curated REST models; verify limits, quotes and wallet context.
 ---
 
 Flowy's rendered reference pages can lag behind its live public OpenAPI.
@@ -17,6 +17,24 @@ the account's actual catalog, input limits and price quote. Do not treat the
 generic generation request's documented 4–10s default clamp as the proven limit
 of every curated model or the separate Motion Control tool. A public schema is
 not a successful authenticated or paid generation test.
+
+The Studio Generate Video page has a larger, dynamic provider-model catalog
+than the two engines described in the Canvas Video Node documentation.
+Public catalog browsing does not require an API key, even though the separate
+curated REST model-list endpoint does.
+
+**Why:** The public Generate Video page visibly showed H3 Max and H3 Max Turbo.
+Its public catalog returned explicit image-to-video variants for both, plus
+H3 Max reference-to-video. A plain markdown fetch omitted the hydrated model
+list, so an empty text extraction was not evidence of absent models.
+
+**How to apply:** For current availability, inspect the actual Studio catalog.
+The browser's anonymous catalog uses the genstudio service route
+`/api/public/models?modality=video`, with pagination; it is distinct from
+`/api/v1/v1/models?type=video`. Do not assume provider model IDs from this public
+catalog are accepted by the curated direct-generation REST endpoint, or that
+catalog presence proves free-plan eligibility, pricing or a successful run.
+Distinguish text-, image- and reference-to-video variants explicitly.
 
 Uploaded duration and dimensions must be measured from the actual media, not
 supplied optimistically; tool pricing and limits trust the declared source facts.
