@@ -11,8 +11,10 @@ Wan 3.0 480p generation backend, with uploaded reference videos accepted for
 **Why:** The user requested replacing Xclip Motion's backend with Wan 3.0 480p
 and then accepted a 15-second maximum after the Flora runtime explicitly rejected
 a whole 30-second reference: “oke berarti 15 detik saja maks nya”.
-Its existing separate price is Rp2.500. This
-supersedes the earlier Kling V3 Standard/1080p direction only for Xclip Motion.
+The user raised Xclip Motion's separate price to Rp3.500 (“harga nya naikan jadi
+3,5k”), including its mandatory upscale; this supersedes the earlier Rp2.500
+price only for Xclip Motion. The Wan backend supersedes the earlier Kling V3
+Standard generation direction only for Xclip Motion.
 The user subsequently requested: “hasil xclipmotion di upscale dulu ke 1080p
 di renderfull baru di kasih ke user”. This supersedes native 480p delivery,
 not the Wan backend or the accepted 15-second reference cap.

@@ -16,7 +16,7 @@ const klingMenuEnd = bot.indexOf("  if (data === ", klingMenuStart + 10);
 assert.doesNotMatch(mainMenu, /'mode_har_xclip_motion'/, 'Xclip Motion must not appear directly in the main menu');
 assert.match(bot.slice(klingMenuStart, klingMenuEnd), /'mode_har_xclip_motion'/,
   'Xclip Motion belongs in the Kling Motion Control submenu');
-for (const [key, price] of Object.entries({ heygen: 2500, xclip_motion: 2500, banana21: 600 })) {
+for (const [key, price] of Object.entries({ heygen: 2500, xclip_motion: 3500, banana21: 600 })) {
   assert.match(bot, new RegExp(`${key}:\\s*${price}`));
 }
 const image = 'https://example.test/image.jpg', video = 'https://example.test/video.mp4';
@@ -116,7 +116,7 @@ async function testWizard(model: HarModelKey, documents = false) {
     answerCbQuery: async () => {},
   };
   const sandbox = vm.createContext({
-    ctx, HAR_MODELS, klingV3StandardVideoError, xclipMotionVideoError, MODEL_PRICES: { heygen: 2500, xclip_motion: 2500, banana21: 600 },
+    ctx, HAR_MODELS, klingV3StandardVideoError, xclipMotionVideoError, MODEL_PRICES: { heygen: 2500, xclip_motion: 3500, banana21: 600 },
     getSession: () => session, setSession: (_id: number, data: any) => Object.assign(session, data),
     requireLogin: async () => true, getCooldownRemainingMs: () => 0, formatCooldown: () => '',
     formatRupiah: (price: number) => `${price}`,
@@ -136,7 +136,7 @@ async function testWizard(model: HarModelKey, documents = false) {
   if (model === 'xclip_motion') {
     assert.equal(session.mode, 'har_wait_image');
     assert.equal(session.harRatio, undefined);
-    assert.match(messages.at(-1)!, /2500/);
+    assert.match(messages.at(-1)!, /3500/);
     assert.match(messages.at(-1)!, /3–15 detik/);
     assert.match(messages.at(-1)!, /1080p setelah upscale/);
     assert.doesNotMatch(messages.at(-1)!, /Flora|P5|Renderful|480p/i);
@@ -213,7 +213,7 @@ main().catch(error => { console.error(error); process.exitCode = 1; });
 
 async function testBilling(model: HarModelKey, outcome: 'success' | 'delivery' | 'provider' | 'insufficient' | 'upscale' | 'upscale-error') {
   const cfg = HAR_MODELS[model];
-  const prices = { heygen: 2500, xclip_motion: 2500, banana21: 600 };
+  const prices = { heygen: 2500, xclip_motion: 3500, banana21: 600 };
   const events = { charges: [] as number[], refunds: [] as number[], releases: 0, successes: 0, generations: 0, upscales: 0, deliveries: 0 };
   const start = bot.indexOf('async function runHarModel(');
   const end = bot.indexOf('// ─── Background: Kling MC V3 Pro P4', start);

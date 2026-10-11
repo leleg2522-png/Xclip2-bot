@@ -112,7 +112,7 @@ async function contractTests() {
 async function billingTests(outcome: string) {
   const events = { charges: [] as number[], refunds: [] as number[], releases: 0, successes: 0, submissions: 0, deliveries: 0, upscales: 0, messages: [] as string[] };
   const ctx = vm.createContext({
-    Buffer, MODEL_PRICES: { xclip_motion: 2500 }, XCLIP_MOTION, xclipMotionVideoError,
+    Buffer, MODEL_PRICES: { xclip_motion: 3500 }, XCLIP_MOTION, xclipMotionVideoError,
     beginCharge: async (_id: number, amount: number) => { events.charges.push(amount); return { ok: outcome !== 'insufficient', reason: 'insufficient' }; },
     chargeFailMsg: () => 'Saldo tidak cukup',
     bot: { telegram: {
@@ -151,15 +151,15 @@ async function billingTests(outcome: string) {
     },
     addSaldo: async (_id: number, amount: number) => { events.refunds.push(amount); },
     releaseGenerating: () => { events.releases++; }, markGenSuccess: () => { events.successes++; },
-    formatRupiah: () => 'Rp2.500', describeError: () => 'sanitized',
+    formatRupiah: () => 'Rp3.500', describeError: () => 'sanitized',
     console: { error() {} },
   });
   const start = source.indexOf('async function runXclipMotion(');
   const end = source.indexOf('// ─── Background: Kling Motion V3 Standard', start);
   vm.runInContext(compile(source.slice(start, end)), ctx);
   await ctx.runXclipMotion(1, 2, 3, 4, 'photo', 'video', outcome === 'metadata-duration' ? 30 : undefined, 'move');
-  assert.deepEqual(events.charges, outcome === 'metadata-duration' ? [] : [2500]);
-  assert.deepEqual(events.refunds, ['success', 'insufficient', 'metadata-duration'].includes(outcome) ? [] : [2500]);
+  assert.deepEqual(events.charges, outcome === 'metadata-duration' ? [] : [3500]);
+  assert.deepEqual(events.refunds, ['success', 'insufficient', 'metadata-duration'].includes(outcome) ? [] : [3500]);
   assert.equal(events.releases, ['insufficient', 'metadata-duration'].includes(outcome) ? 0 : 1);
   assert.equal(events.successes, outcome === 'success' ? 1 : 0);
   assert.equal(events.deliveries, ['success', 'delivery', 'delivery-throw'].includes(outcome) ? 1 : 0);
@@ -194,7 +194,54 @@ async function realMediaTests() {
   } finally { await fsp.rm(dir, { recursive: true, force: true }); }
 }
 
+async function deliveryPrivacyTests() {
+  const upstream = 'https://private.renderful.example/output.mp4?token=synthetic';
+  const caption = 'Xclip Motion · 11 detik · 1080p';
+  const ownLink = 'https://our-domain.test/dl/random-test-token';
+  const start = source.indexOf('async function sendResult(');
+  const end = source.indexOf('async function pollForResult(', start);
+  assert.ok(start >= 0 && end > start);
+  const snippet = source.slice(start, end);
+  for (const mode of ['inline', 'document', 'link', 'large', 'download-failed']) {
+    const messages: string[] = [], uploaded: any[] = [];
+    const bytes = Buffer.alloc(mode === 'large' ? 48 * 1024 * 1024 + 1 : 100);
+    const ctx = vm.createContext({
+      Buffer,
+      telegramHttp: { get: async (url: string) => {
+        assert.equal(url, upstream);
+        if (mode === 'download-failed') throw Error('Download failed');
+        return { data: bytes };
+      } },
+      bot: { telegram: {
+        sendVideo: async (_chat: number, file: any, opts: any) => {
+          assert.ok(Buffer.isBuffer(file.source));
+          assert.equal(file.filename, 'output.mp4'); assert.equal(opts.caption, caption);
+          if (mode === 'document' || mode === 'link') throw Error('Video upload failed');
+          uploaded.push(file);
+        },
+        sendDocument: async (_chat: number, file: any, opts: any) => {
+          assert.ok(Buffer.isBuffer(file.source));
+          assert.equal(file.filename, 'output.mp4'); assert.equal(opts.caption, caption);
+          if (mode === 'link') throw Error('Document upload failed');
+          uploaded.push(file);
+        },
+        sendMessage: async (_chat: number, text: string) => { messages.push(text); },
+      } },
+      publishMedia: async (buf: Buffer, video: boolean) => {
+        assert.deepEqual(buf, bytes); assert.equal(video, true); return ownLink;
+      },
+      console: { log() {} },
+    });
+    vm.runInContext(compile(snippet), ctx);
+    assert.equal(await ctx.sendResult(1, upstream, caption, true), mode !== 'download-failed');
+    if (mode === 'link' || mode === 'large') assert.ok(messages.some(text => text.includes(ownLink)));
+    if (mode === 'inline' || mode === 'document') assert.equal(uploaded.length, 1);
+    for (const text of messages) assert.doesNotMatch(text, /renderful|flora|wan|synthetic|private\.|token=/i);
+  }
+}
+
 async function main() {
+  assert.match(source, /xclip_motion:\s*3500/);
   assert.match(source, /Xclip Motion \(3–15 detik · 1080p\)/);
   assert.match(source, /Xclip Motion · 1080p/);
   assert.match(source, /return runXclipMotion\(/);
@@ -205,6 +252,7 @@ async function main() {
   await contractTests();
   for (const outcome of ['success', 'delivery', 'delivery-throw', 'upscale-fallback', 'upscale-throw', 'provider', 'insufficient', 'metadata-duration', 'actual-duration']) await billingTests(outcome);
   await realMediaTests();
+  await deliveryPrivacyTests();
   console.log('Xclip Motion: Wan 480p generation, mandatory 1080p finishing, no native fallback delivery, 3–15s boundaries, refunds, no paid replay and real FFmpeg media checks passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

@@ -186,7 +186,7 @@ const MODEL_PRICES = {
   kling_p4: 4000,      // Kling MC V3 Pro P4 (Flora Kling 2.6 Pro Motion Control)
   kling_v3_standard: 2500,
   heygen: 2500,
-  xclip_motion: 2500,
+  xclip_motion: 3500,
   banana21: 600,
   runway: 1500,        // Runway Gen-4.5 (image-to-video)
   veo_fast: 1500,      // Veo 3.1 Fast Full HD (SnapGen)
