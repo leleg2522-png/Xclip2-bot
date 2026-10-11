@@ -68,6 +68,24 @@ accepted run rather than submitting another paid job.
 - `flora_key_pool` table: id, api_key, status, created_at, dead_at (same pattern as leonardo_key_pool)
 
 ## Perilaku key/akun
+
+### Wan 3.0 reference inputs
+
+Wan 3.0's live model variants have different input contracts. The mixed-to-video
+variant supports both `image_urls` and `video_urls` arrays, with output duration
+up to `"30"` and resolution `"480p"`. The ordinary image-to-video variant instead
+requires singular `image_url`; do not add video references to it by guessing.
+
+**Why:** The official live catalog checked on 2026-10-11 distinguishes
+`m2v-wan-3-0-gateway` (`mixed-to-video`) from `i2v-wan-3-0-gateway`
+(`image-to-video`). Schema support is not a paid-generation test or a guarantee
+of exact motion transfer.
+
+**How to apply:** Resolve the account's live schema for the intended capability.
+For combined photo/video references, confirm both array fields and the requested
+duration/resolution before submitting. Input-video duration/size limits are not
+specified by these catalog fields; do not infer them from output duration.
+
 - A valid Flora key can return a workspace successfully but an empty project list.
   Authentication and DB `available` status do not prove the account is ready to generate.
 
