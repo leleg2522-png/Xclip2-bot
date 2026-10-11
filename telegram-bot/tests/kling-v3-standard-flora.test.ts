@@ -9,7 +9,7 @@ import type { KlingP4Api } from '../src/kling-p4-flora';
 const source = fs.readFileSync(path.resolve(__dirname, '../src/index.ts'), 'utf8');
 assert.equal(KLING_V3_STANDARD.label, 'Kling MC V3 Pro P5');
 assert.equal(KLING_V3_STANDARD.modelId, 'iv2v-kling-v3-standard-motion');
-assert.match(source, /kling_v3_standard:\s*3500/);
+assert.match(source, /kling_v3_standard:\s*2500/);
 assert.match(source, /xclip_motion:\s*2500/);
 assert.match(source, /mode_klingv3std:\s*'klingv3std'/);
 assert.ok(klingV3StandardVideoError(16 * 1024 * 1024, 10));
@@ -104,12 +104,12 @@ async function apiTests() {
   }
 }
 async function billingTest(outcome: string, route: 'p5' | 'p2' | 'p3' | 'xclip_motion' = 'p5') {
-  const price = route === 'xclip_motion' ? 2500 : route === 'p2' || route === 'p3' ? 4000 : 3500;
+  const price = route === 'p2' || route === 'p3' ? 4000 : 2500;
   const label = route === 'p2' ? 'Kling MC V3 PRO P2' : route === 'p3' ? 'Kling MC V3.0 PRO P3'
     : route === 'xclip_motion' ? 'Xclip Motion' : KLING_V3_STANDARD.label;
   const events = { charges: [] as number[], refunds: [] as number[], releases: 0, upscales: 0, deliveries: 0, successes: 0, messages: [] as string[] };
   const ctx = vm.createContext({
-    MODEL_PRICES: { kling_v3_standard: 3500, xclip_motion: 2500, kling_p2: 4000, kling_p3: 4000 }, KLING_V3_STANDARD,
+    MODEL_PRICES: { kling_v3_standard: 2500, xclip_motion: 2500, kling_p2: 4000, kling_p3: 4000 }, KLING_V3_STANDARD,
     HAR_MODELS: { xclip_motion: { label: 'Xclip Motion' } },
     beginCharge: async (_id: number, amount: number, limit: number) => {
       assert.equal(limit, 3); events.charges.push(amount); return { ok: outcome !== 'insufficient', reason: 'insufficient' };
@@ -185,7 +185,7 @@ async function wizardTest(documents = false) {
     reply: async (text: string) => { messages.push(text); return { message_id: 44 }; },
     editMessageText: async (text: string) => { messages.push(text); } };
   const sandbox = vm.createContext({
-    ctx, KLING_V3_STANDARD, klingV3StandardVideoError, MODEL_PRICES: { kling_v3_standard: 3500 },
+    ctx, KLING_V3_STANDARD, klingV3StandardVideoError, MODEL_PRICES: { kling_v3_standard: 2500 },
     getSession: () => session, setSession: (_id: number, data: any) => Object.assign(session, data),
     requireLogin: async () => true, formatRupiah: (n: number) => `Rp${n.toLocaleString('id-ID')}`,
     getCooldownRemainingMs: () => 0, formatCooldown: () => '', runKlingV3Standard: async (...args: any[]) => { runs.push(args); },
@@ -197,7 +197,7 @@ async function wizardTest(documents = false) {
     await vm.runInContext(compile(`(async()=>{ const userId=ctx.from.id, session=getSession(userId); ${prelude}\n${source.slice(a, b)} })()`), sandbox);
   }
   await execute("  if (data === 'mode_klingv3std') {", "  if (data === 'mode_klingp4') {", "const data='mode_klingv3std';");
-  assert.ok(messages.at(-1)!.includes('Rp3.500')); assert.ok(messages.at(-1)!.includes('1K/1080p'));
+  assert.ok(messages.at(-1)!.includes('Rp2.500')); assert.ok(messages.at(-1)!.includes('1K/1080p'));
   const document = () => execute(
     "  if (session.mode === 'klingv3std_wait_prompt') return ctx.reply('Foto dan video",
     "  if (session.mode === 'klingp4_wait_prompt') {\n    return ctx.reply('Foto dan video",
