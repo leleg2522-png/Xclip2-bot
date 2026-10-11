@@ -4,17 +4,21 @@ description: Separate public motion route and evidence distinguishing captured v
 ---
 
 Keep Heygen photo-to-video and Xclip Motion as separate customer models. Heygen
-stays on Heygen Video 1; Xclip Motion now uses Flora Kling V3 Standard Motion.
+stays on Heygen Video 1. The user's current Xclip Motion requirement is a
+Wan 3.0 480p backend, with uploaded reference videos accepted for 3–30 seconds.
 
-**Why:** The user explicitly changed Xclip Motion to Kling MC V3 Standard via
-Flora, retained mandatory upscale delivery, and lowered its price to Rp2.500.
-The original Heygen photo-only route remains unchanged.
+**Why:** The user requested replacing Xclip Motion's backend with Wan 3.0 480p
+and corrected proposals to limit uploads to 15 seconds: they want 30-second
+reference videos accepted. Its existing separate price is Rp2.500. This
+supersedes the earlier Kling V3 Standard/1080p direction only for Xclip Motion.
 
 **How to apply:** Require both media for Xclip Motion, and only a photo for
 Heygen. Xclip Motion uses reference-following duration rather than the old fixed
 15-second Heygen settings. Do not retain unsupported Heygen aspect-ratio controls.
-Keep the public Motion label and its
-price independent from the separate P5 product, even though they share Standard.
+Keep the public Motion label and price independent from the separate P5
+product. Do not silently discard part of a longer reference or change the public
+upload maximum to an upstream per-request limit. Determine the actual provider
+contract before choosing a long-reference processing strategy.
 
 Place Xclip Motion in the Kling Motion Control submenu, not directly in the main
 Generate Video list. Heygen stays separate.
@@ -23,7 +27,7 @@ Generate Video list. Heygen stays separate.
 
 **How to apply:** Preserve this grouping when reorganizing menus.
 
-Heygen and Xclip Motion must be upscaled with ByteDance to the public 1K tier
+Heygen must be upscaled with ByteDance to the public 1K tier
 before delivery; advertise delivered 1080p without claiming native resolution.
 
 **Why:** The user explicitly requested this finishing step and 1080p bot copy.
@@ -31,7 +35,8 @@ before delivery; advertise delivered 1080p without claiming native resolution.
 **How to apply:** Only a successfully
 upscaled, delivered result completes the charge; failed finishing must refund
 fully rather than silently deliver native quality. Do not apply this video
-finishing requirement to Banana image routes.
+finishing requirement to Banana image routes or to the newly requested 480p
+Xclip Motion route.
 
 Banana 2.1 has distinct evidence for its two modes: the HAR completed image-to-image
 at the 4K setting; text-to-image was verified only through the non-billable options

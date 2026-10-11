@@ -99,6 +99,11 @@ documents the combined duration budget, unlike Flora's duration dropdown. A
 30-second output plus a nonzero reference video violates this rule even though
 Flora accepts the job; its provider error can be generic `GENERATION_INVALID_PARAMS`.
 
+These are documented bounds of Alibaba's native API, not a directly tested
+15-second input ceiling on Flora's gateway. Flora's catalog does not disclose
+that input ceiling, and a successful shorter-reference test cannot establish it.
+Keep that distinction explicit when explaining limits or designing around them.
+
 **How to apply:** Measure actual reference duration, validate the aggregate
 budget before submission, and choose an integer output duration no larger than
 `floor(30 - totalReferenceVideoSeconds)`. Matching the reference's approximate
