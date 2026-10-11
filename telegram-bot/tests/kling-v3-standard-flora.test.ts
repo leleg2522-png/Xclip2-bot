@@ -231,10 +231,9 @@ async function main() {
   await apiTests(); await wizardTest(); await wizardTest(true);
   for (const outcome of ['success', 'delivery', 'provider', 'insufficient', 'upscale-fallback', 'upscale-error']) {
     await billingTest(outcome);
-    await billingTest(outcome, 'xclip_motion');
       await billingTest(outcome, 'p2');
       await billingTest(outcome, 'p3');
   }
-  console.log('Kling P2/P3/P5 and Xclip Motion: Standard model, branded status, independent prices, 1080p finishing, refunds and no-resubmit tests passed.');
+  console.log('Kling P2/P3/P5: Standard model, independent prices, 1080p finishing, refunds and no-resubmit tests passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

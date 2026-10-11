@@ -22,6 +22,8 @@ import {
 import { FreebeatBridgeQueue, type BridgeAgent, type BridgeJob } from './freebeat-bridge';
 import { KLING_P4, klingP4VideoError, generateKlingP4Flora, isFloraWorkspaceSetupError } from './kling-p4-flora';
 import { KLING_V3_STANDARD, klingV3StandardVideoError, generateKlingV3StandardFlora } from './kling-v3-standard-flora';
+import { XCLIP_MOTION, xclipMotionVideoError, prepareXclipMotionReference } from './xclip-motion-media';
+import { generateXclipMotionFlora } from './xclip-motion-flora';
 import { HAR_MODELS, type HarModelKey, type HarAspectRatio } from './picsart-har-models';
 import { generateBananaRenderful } from './banana-renderful';
 
@@ -3147,7 +3149,7 @@ function hargaText(): string {
     `• ${KLING_P4.label} — ${formatRupiah(MODEL_PRICES.kling_p4)}\n` +
     `• ${KLING_V3_STANDARD.label} (1K/1080p) — ${formatRupiah(MODEL_PRICES.kling_v3_standard)}\n` +
     `• Heygen Video (15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.heygen)}\n` +
-    `• Xclip Motion (3–30 detik · 1080p) — ${formatRupiah(MODEL_PRICES.xclip_motion)}\n` +
+    `• Xclip Motion (3–15 detik · 480p) — ${formatRupiah(MODEL_PRICES.xclip_motion)}\n` +
     `• Nano Banana 2.1 4K (teks/foto) — ${formatRupiah(MODEL_PRICES.banana21)}\n` +
     `• Topaz 4K Upscaler — ${formatRupiah(MODEL_PRICES.topaz)}\n` +
     `• ByteDance Upscaler 1K — ${formatRupiah(MODEL_PRICES.bytedance_upscale)}\n` +
@@ -4381,7 +4383,7 @@ bot.on('callback_query', async (ctx) => {
           [Markup.button.callback('🎭 Kling MC V3 PRO P2 🔥PROMO', 'mode_klingp2')],
           [Markup.button.callback('🎭 Kling MC V3.0 PRO P3 🔥PROMO', 'mode_klingp3')],
           [Markup.button.callback(`🎭 ${KLING_P4.label} · ${formatRupiah(MODEL_PRICES.kling_p4)}`, 'mode_klingp4')],
-          [Markup.button.callback(`🕺 Xclip Motion · 1080p · ${formatRupiah(MODEL_PRICES.xclip_motion)}`, 'mode_har_xclip_motion')],
+          [Markup.button.callback(`🕺 Xclip Motion · 480p · ${formatRupiah(MODEL_PRICES.xclip_motion)}`, 'mode_har_xclip_motion')],
           [Markup.button.callback(`🎭 ${KLING_V3_STANDARD.label} · 1K · ${formatRupiah(MODEL_PRICES.kling_v3_standard)}`, 'mode_klingv3std')],
           [Markup.button.callback('⬅️ Kembali', 'back_main')],
         ]),
@@ -4980,9 +4982,9 @@ bot.on('callback_query', async (ctx) => {
     if (model === 'xclip_motion') {
       return ctx.editMessageText(
         `🕺 *${cfg.label}*\nHarga: *${formatRupiah(MODEL_PRICES.xclip_motion)}* per video.\n` +
-        'Hasil: *1K/1080p*. Durasi mengikuti video referensi.\n\n' +
+        'Hasil: *480p*. Durasi mengikuti video referensi (dibulatkan ke detik terdekat).\n\n' +
         '*Langkah 1:* Kirim foto karakter JPG/PNG, maksimal 10MB, min. 300px. Tampilkan seluruh tubuh dari depan.\n\n' +
-        'Video referensi di langkah berikutnya: *3–30 detik*, maksimal *15MB*.',
+        'Video referensi di langkah berikutnya: *3–15 detik*, maksimal *15MB*.',
         { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('⬅️ Batal', 'back_main')]]) }
       );
     }
@@ -6098,7 +6100,7 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     if (cfg.needsVideo && (photo.width < 300 || photo.height < 300)) return ctx.reply('❌ Foto harus min. 300px.');
     setSession(userId, { harImageFileId: photo.file_id, mode: cfg.needsVideo ? 'har_wait_video' : 'har_wait_prompt' });
     return ctx.reply(cfg.needsVideo
-      ? '✅ Foto diterima. Sekarang kirim video referensi gerakan (3–30 detik, maksimal 15MB).'
+      ? '✅ Foto diterima. Sekarang kirim video referensi gerakan (3–15 detik, maksimal 15MB).'
       : '✅ Foto diterima. Sekarang kirim prompt untuk mengarahkan hasil.');
   }
 
@@ -6667,7 +6669,7 @@ bot.on('video', async (ctx) => {
     if (draft.mode !== 'har_wait_video' || draft.harModel !== 'xclip_motion' || !draft.harImageFileId) {
       return ctx.reply('Video tidak diperlukan di langkah ini. Ikuti langkah yang diminta atau /menu untuk batal.');
     }
-    const invalid = klingV3StandardVideoError(vid.file_size, vid.duration);
+    const invalid = xclipMotionVideoError(vid.file_size, vid.duration);
     if (invalid) return ctx.reply(`❌ ${invalid}`);
     setSession(userId, { harVideoFileId: vid.file_id, harVideoMime: vid.mime_type ?? 'video/mp4', harVideoDuration: vid.duration, mode: 'har_wait_prompt' });
     return ctx.reply('✅ Video referensi diterima. Sekarang kirim prompt untuk mengarahkan hasil Xclip Motion.');
@@ -8239,13 +8241,13 @@ bot.on('document', async (ctx) => {
       if (!['image/jpeg', 'image/png'].includes(doc.mime_type || '')) return ctx.reply('🖼️ Kirim foto JPG/PNG.');
       if (doc.file_size && doc.file_size > 10 * 1024 * 1024) return ctx.reply('❌ Foto maksimal 10MB.');
       setSession(userId, { harImageFileId: doc.file_id, mode: cfg.needsVideo ? 'har_wait_video' : 'har_wait_prompt' });
-      return ctx.reply(cfg.needsVideo ? '✅ Foto diterima. Kirim video referensi 3–30 detik, maksimal 15MB.' : '✅ Foto diterima. Kirim prompt untuk mengarahkan hasil.');
+      return ctx.reply(cfg.needsVideo ? '✅ Foto diterima. Kirim video referensi 3–15 detik, maksimal 15MB.' : '✅ Foto diterima. Kirim prompt untuk mengarahkan hasil.');
     }
     if (draft.mode === 'har_wait_video' && cfg.needsVideo && draft.harImageFileId) {
       if (!doc.mime_type?.startsWith('video/')) return ctx.reply('🎥 Kirim video referensi.');
-      const invalid = klingV3StandardVideoError(doc.file_size);
+      const invalid = xclipMotionVideoError(doc.file_size, (doc as any).duration);
       if (invalid) return ctx.reply(`❌ ${invalid}`);
-      setSession(userId, { harVideoFileId: doc.file_id, harVideoMime: doc.mime_type, harVideoDuration: undefined, mode: 'har_wait_prompt' });
+      setSession(userId, { harVideoFileId: doc.file_id, harVideoMime: doc.mime_type, harVideoDuration: (doc as any).duration, mode: 'har_wait_prompt' });
       return ctx.reply('✅ Video diterima. Kirim prompt untuk mengarahkan hasil Xclip Motion.');
     }
     return ctx.reply('Ikuti langkah yang diminta, atau /menu untuk batal.');
@@ -8390,8 +8392,8 @@ async function runHarModel(
       await bot.telegram.editMessageText(chatId, statusMsgId, undefined, '❌ Foto dan video referensi wajib diisi. Mulai ulang dari /menu.').catch(() => {});
       return;
     }
-    return runKlingV3Standard(chatId, userId, dbUserId, statusMsgId,
-      job.imageFileId, job.videoFileId, job.seconds, prompt, 'xclip_motion');
+    return runXclipMotion(chatId, userId, dbUserId, statusMsgId,
+      job.imageFileId, job.videoFileId, job.seconds, prompt);
   }
   const ratio = job.ratio;
   if (!ratio) {
@@ -8455,17 +8457,79 @@ async function runHarModel(
   }
 }
 
+// ─── Background: Xclip Motion (native 480p reference motion) ────────────────
+
+async function runXclipMotion(
+  chatId: number, userId: number, dbUserId: number, statusMsgId: number,
+  imageFileId: string, videoFileId: string, seconds: number | undefined, prompt: string,
+) {
+  const PRICE = MODEL_PRICES.xclip_motion;
+  const status = async (text: string) => {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+  };
+  const invalid = xclipMotionVideoError(undefined, seconds);
+  if (invalid) { await status(`❌ ${invalid}\n\n/menu untuk coba lagi`); return; }
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  if (!charge.ok) { await status(chargeFailMsg(charge.reason, PRICE)); return; }
+  let refund = true;
+  try {
+    const [imageLink, videoLink] = await Promise.all([
+      bot.telegram.getFileLink(imageFileId), bot.telegram.getFileLink(videoFileId),
+    ]);
+    const [image, video] = await Promise.all([downloadBuffer(imageLink.href), downloadBuffer(videoLink.href)]);
+    const meta = await sharp(image.buf).metadata();
+    if (!['jpeg', 'png'].includes(meta.format || '') || (meta.width || 0) < 300 || (meta.height || 0) < 300) {
+      throw Error('INVALID_CHARACTER_IMAGE');
+    }
+    await status('⏳ Xclip Motion: memeriksa video dan menyiapkan gerakan...');
+    const reference = await prepareXclipMotionReference(video.buf);
+    const url = await generateXclipMotionFlora({
+      image: { buf: image.buf, name: `character.${image.ext}`, mime: image.mime },
+      reference, prompt,
+    }, {
+      getKey: getNextFloraKey, markDead: markFloraKeyDead, workspace: floraGetWorkspace,
+      models: async key => (await floraHttp.get(`${FLORA_BASE}/models`, {
+        headers: { Authorization: `Bearer ${key}` }, params: { type: 'video' },
+      })).data,
+      upload: floraUploadAsset, generate: floraGenerate, poll: floraPollRun,
+      exhausted: error => isFloraKeyExhaustedError(describeError(error)), status,
+    });
+    if (await sendResult(chatId, url, `🕺 Xclip Motion · ${reference.outputSeconds} detik · 480p\n\n/menu untuk buat lagi`, true)) {
+      refund = false;
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    }
+  } catch (error) {
+    console.error(`[${userId}] XclipMotion failed: ${describeError(error)}`);
+    const known: Record<string, string> = {
+      XCLIP_REFERENCE_DURATION: 'Durasi video referensi harus 3–15 detik.',
+      XCLIP_VIDEO_TOO_LARGE: 'Video referensi maksimal 15MB.',
+      XCLIP_IMAGE_TOO_LARGE: 'Foto karakter maksimal 10MB.',
+      XCLIP_INVALID_REFERENCE_VIDEO: 'Video referensi harus jelas, minimal 240px per sisi.',
+      INVALID_CHARACTER_IMAGE: 'Foto karakter harus JPG/PNG, minimal 300px per sisi.',
+    };
+    const message = error instanceof Error ? known[error.message] : undefined;
+    await status(`❌ ${message ?? 'Generate tidak berhasil.'} Saldo akan dikembalikan.\n\n/menu untuk coba lagi`);
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
 // ─── Background: Kling Motion V3 Standard ───────────────────────────────────
 
 async function runKlingV3Standard(
   chatId: number, userId: number, dbUserId: number, statusMsgId: number,
   imageFileId: string, videoFileId: string, seconds: number | undefined, prompt: string,
-  route: 'p5' | 'p2' | 'p3' | 'xclip_motion' = 'p5'
+  route: 'p5' | 'p2' | 'p3' = 'p5'
 ) {
   const LABEL = route === 'p2' ? 'Kling MC V3 PRO P2' : route === 'p3' ? 'Kling MC V3.0 PRO P3'
-    : route === 'xclip_motion' ? HAR_MODELS.xclip_motion.label : KLING_V3_STANDARD.label;
+    : KLING_V3_STANDARD.label;
   const PRICE = route === 'p2' ? MODEL_PRICES.kling_p2 : route === 'p3' ? MODEL_PRICES.kling_p3
-    : route === 'xclip_motion' ? MODEL_PRICES.xclip_motion : MODEL_PRICES.kling_v3_standard;
+    : MODEL_PRICES.kling_v3_standard;
   const status = async (text: string) => {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
   };

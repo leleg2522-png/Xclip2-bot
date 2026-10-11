@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import { HAR_MODELS, buildHarModelParams, harWorkflow, harResultUrl, type HarModelKey } from '../src/picsart-har-models';
 import { klingV3StandardVideoError } from '../src/kling-v3-standard-flora';
+import { xclipMotionVideoError } from '../src/xclip-motion-media';
 
 const bot = fs.readFileSync(path.resolve(__dirname, '../src/index.ts'), 'utf8');
 const backend = fs.readFileSync(path.resolve(__dirname, '../src/picsart.ts'), 'utf8');
@@ -115,7 +116,7 @@ async function testWizard(model: HarModelKey, documents = false) {
     answerCbQuery: async () => {},
   };
   const sandbox = vm.createContext({
-    ctx, HAR_MODELS, klingV3StandardVideoError, MODEL_PRICES: { heygen: 2500, xclip_motion: 2500, banana21: 600 },
+    ctx, HAR_MODELS, klingV3StandardVideoError, xclipMotionVideoError, MODEL_PRICES: { heygen: 2500, xclip_motion: 2500, banana21: 600 },
     getSession: () => session, setSession: (_id: number, data: any) => Object.assign(session, data),
     requireLogin: async () => true, getCooldownRemainingMs: () => 0, formatCooldown: () => '',
     formatRupiah: (price: number) => `${price}`,
@@ -136,8 +137,9 @@ async function testWizard(model: HarModelKey, documents = false) {
     assert.equal(session.mode, 'har_wait_image');
     assert.equal(session.harRatio, undefined);
     assert.match(messages.at(-1)!, /2500/);
-    assert.match(messages.at(-1)!, /3–30 detik/);
-    assert.doesNotMatch(messages.at(-1)!, /Flora|P5|upscal|15 detik/i);
+    assert.match(messages.at(-1)!, /3–15 detik/);
+    assert.match(messages.at(-1)!, /480p/);
+    assert.doesNotMatch(messages.at(-1)!, /Flora|P5|upscal|1080p/i);
   } else {
     assert.equal(session.mode, 'har_wait_ratio');
     await execute("  if (data.startsWith('har_ratio_')) {", "  if (data === 'mode_klingp4') {", "const data = 'har_ratio_916';");
@@ -161,6 +163,7 @@ async function testWizard(model: HarModelKey, documents = false) {
       for (const invalid of [
         { file_id: 'invalid', file_size: 16 * 1024 * 1024, duration: 10 },
         { file_id: 'invalid', file_size: 1000, duration: 31 },
+        { file_id: 'invalid', file_size: 1000, duration: 16 },
         { file_id: 'invalid', file_size: 1000, duration: 2 },
       ]) {
         ctx.message = { video: invalid };
