@@ -184,7 +184,7 @@ const MODEL_PRICES = {
   kling_p3: 4000,      // Kling MC V3.0 PRO P3 (P5 Standard backend)
   kling_p2: 4000,      // Kling MC V3 PRO P2 (P5 Standard backend)
   kling_p4: 4000,      // Kling MC V3 Pro P4 (P5 Standard backend + 1080p finishing)
-  kling_v3_standard: 2500,
+  kling_v3_standard: 3500,
   heygen: 2500,
   xclip_motion: 3500,
   banana21: 600,
