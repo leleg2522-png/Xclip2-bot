@@ -49,6 +49,19 @@ route exists. The live generation endpoint supports `?estimate=true`, which
 validates/prices a request without dispatching, reserving or charging credits;
 use that after authenticated model discovery before any authorized paid test.
 
+Model discovery can fail while resolving metadata for an unrelated provider
+model; distinguish that server-side failure from a rejected Flowy API key.
+
+**Why:** A video-list request returned HTTP 500 because Flowy's fal adapter
+received an upstream 401 while resolving a Kling model. No model list was
+returned, so the response could not establish H3 availability.
+
+**How to apply:** Identify which service returned the authorization error.
+Do not ask the user to replace their Flowy key merely because an error body
+mentions an upstream provider's invalid key. Treat a failed catalog as
+inconclusive, not as evidence that a model is unsupported; do not bypass the
+catalog by submitting a paid generation.
+
 Uploaded duration and dimensions must be measured from the actual media, not
 supplied optimistically; tool pricing and limits trust the declared source facts.
 
