@@ -18,8 +18,8 @@ const runnerSource = source.slice(start, end);
 assert.match(runnerSource, /await upscaleGeneratedVideo\(resultUrl, userId, chatId, statusMsgId\)/);
 assert.match(runnerSource, /if \(!delivered && finalVideo\.upscaled\)/);
 assert.match(source, /flora_minimax_h3_480:\s*3500/);
-assert.match(source, /flora_wan_v3_480:\s*5000/);
-assert.match(source, /flora_seedance_2_480:\s*6000/);
+assert.match(source, /flora_wan_v3_480:\s*10000/);
+assert.match(source, /flora_seedance_2_480:\s*10000/);
 assert.match(source, /Seedance 2 Uncensored • 15 detik • 1080p/);
 assert.match(source, /Seedance 2 Uncensored \(15 detik · 1080p\)/);
 assert.doesNotMatch(source, /Seedance 2\.0 480p/);
@@ -96,7 +96,7 @@ function harness(options: Options = {}) {
     buildFlora480VideoParams,
     resolveFlora480VideoModel,
     isFloraWorkspaceSetupError,
-    MODEL_PRICES: { flora_minimax_h3_480: 3500, flora_wan_v3_480: 5000, flora_seedance_2_480: 6000 },
+    MODEL_PRICES: { flora_minimax_h3_480: 3500, flora_wan_v3_480: 10000, flora_seedance_2_480: 10000 },
     FLORA_BASE: 'https://provider.example.test',
     console: { log() {}, warn() {}, error() {} },
     setTimeout: (callback: () => void) => callback(),
@@ -188,7 +188,7 @@ async function verifySeedanceWizard() {
     const jobs: any[][] = [];
     const context = vm.createContext({
       FLORA_480_VIDEO_MODELS,
-      MODEL_PRICES: { flora_seedance_2_480: 6000 },
+      MODEL_PRICES: { flora_seedance_2_480: 10000 },
       Markup: { inlineKeyboard: (buttons: any) => ({ buttons }), button: { callback: (text: string, data: string) => ({ text, data }) } },
       getSession: () => state,
       setSession: (_: number, update: any) => { state = { ...state, ...update }; },
@@ -212,7 +212,7 @@ async function verifySeedanceWizard() {
     };
     await context.callback('mode_flora_seedance_2_480', ctx, 9);
     assert.equal(state.mode, 'flora_seedance_2_480_wait_ratio');
-    assert.match(messages.at(-1)!, /Rp6000/);
+    assert.match(messages.at(-1)!, /Rp10000/);
     await context.callback(`flora480_seedance_ratio_${ratio === '16:9' ? '169' : '916'}`, ctx, 9);
     assert.equal(state.mode, 'flora_seedance_2_480_wait_image');
     assert.equal(state.floraSeedance2480Ratio, ratio);
@@ -271,13 +271,13 @@ async function main() {
     assert.equal(failed.events.submissions.length, 1);
     assert.deepEqual(failed.events.workspaceKeys, ['key-a']);
     assert.deepEqual(failed.events.dead, []);
-    assert.deepEqual(failed.events.refunds, [5000]);
+    assert.deepEqual(failed.events.refunds, [10000]);
     assert.deepEqual(failed.events.releases, [1]);
   }
   for (const ratio of ['16:9', '9:16'] as const) {
     const native = harness();
     await native.run('seedance_2_480', 1, 'fixture', ratio);
-    assert.deepEqual(native.events.charges, [6000]);
+    assert.deepEqual(native.events.charges, [10000]);
     assert.deepEqual(native.events.order, ['poll', 'upscale', 'deliver']);
     assert.equal(native.events.upscales.length, 1);
     assert.equal(native.events.submissions[0].model, 'live-seedance_2_480');
@@ -302,7 +302,7 @@ async function main() {
     await failed.run('seedance_2_480');
     assert.equal(failed.events.submissions.length, 1);
     assert.equal(failed.events.upscales.length, 'deliver' in options ? 1 : 0);
-    assert.deepEqual(failed.events.refunds, [6000]);
+    assert.deepEqual(failed.events.refunds, [10000]);
     assert.deepEqual(failed.events.releases, [1]);
   }
   for (const options of [
@@ -324,7 +324,7 @@ async function main() {
   for (const key of ['minimax_h3_480', 'wan_v3_480'] as const) {
     const { events, run } = harness();
     await run(key);
-    assert.deepEqual(events.charges, [key === 'minimax_h3_480' ? 3500 : 5000]);
+    assert.deepEqual(events.charges, [key === 'minimax_h3_480' ? 3500 : 10000]);
     assert.equal(events.submissions.length, 1);
     assert.equal(events.submissions[0].model, `live-${key}`);
     assert.equal(events.submissions[0].params.duration, String(FLORA_480_VIDEO_MODELS[key].durationSeconds));
@@ -404,7 +404,7 @@ async function main() {
     await ambiguous.run('wan_v3_480');
     assert.equal(ambiguous.events.submissions.length, 1, 'ambiguous submit must never repeat');
     assert.deepEqual(ambiguous.events.dead, []);
-    assert.deepEqual(ambiguous.events.refunds, [5000]);
+    assert.deepEqual(ambiguous.events.refunds, [10000]);
     assert.deepEqual(ambiguous.events.releases, [1]);
   }
   for (const error of [
@@ -417,7 +417,7 @@ async function main() {
     await ambiguous.run('wan_v3_480');
     assert.equal(ambiguous.events.submissions.length, 1, 'incidental quota/auth wording must not cause resubmission');
     assert.deepEqual(ambiguous.events.dead, []);
-    assert.deepEqual(ambiguous.events.refunds, [5000]);
+    assert.deepEqual(ambiguous.events.refunds, [10000]);
     assert.deepEqual(ambiguous.events.releases, [1]);
   }
 
@@ -441,16 +441,16 @@ async function main() {
   await deliveryFailed.run('wan_v3_480');
   assert.equal(deliveryFailed.events.submissions.length, 1);
   assert.equal(deliveryFailed.events.deliveries.length, 2, 'failed 1K delivery must attempt the original before refund');
-  assert.deepEqual(deliveryFailed.events.refunds, [5000]);
+  assert.deepEqual(deliveryFailed.events.refunds, [10000]);
   assert.deepEqual(deliveryFailed.events.successes, []);
 
   const pendingRefund = harness({ deliver: false, refundFails: true });
   await pendingRefund.run('wan_v3_480');
-  assert.deepEqual(pendingRefund.events.refunds, [5000], 'ambiguous credit must not be blindly repeated');
+  assert.deepEqual(pendingRefund.events.refunds, [10000], 'ambiguous credit must not be blindly repeated');
   assert.deepEqual(pendingRefund.events.releases, [1]);
   assert.match(pendingRefund.events.messages.join(' '), /belum dapat dikonfirmasi/);
   assert.match(pendingRefund.events.messages.join(' '), /video-1-10/);
-  assert.doesNotMatch(pendingRefund.events.messages.join(' '), /Saldo Rp5000 dikembalikan/);
+  assert.doesNotMatch(pendingRefund.events.messages.join(' '), /Saldo Rp10000 dikembalikan/);
 
   const empty = harness({ keys: [] });
   await empty.run('minimax_h3_480');
