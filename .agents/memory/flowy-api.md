@@ -31,10 +31,23 @@ list, so an empty text extraction was not evidence of absent models.
 **How to apply:** For current availability, inspect the actual Studio catalog.
 The browser's anonymous catalog uses the genstudio service route
 `/api/public/models?modality=video`, with pagination; it is distinct from
-`/api/v1/v1/models?type=video`. Do not assume provider model IDs from this public
+`/api/v1/models?type=video`. Do not assume provider model IDs from this public
 catalog are accepted by the curated direct-generation REST endpoint, or that
 catalog presence proves free-plan eligibility, pricing or a successful run.
 Distinguish text-, image- and reference-to-video variants explicitly.
+
+Build REST URLs from the live OpenAPI server URL plus its path, not from the
+URL where the OpenAPI document itself is fetched.
+
+**Why:** The spec is served beneath `/api/v1/openapi.json`, but its declared
+server URL ends in `/genstudio-svc-v2/api`; the paths already begin with `/v1`.
+Using the document directory as the API base incorrectly duplicates `/v1`.
+
+**How to apply:** The official model list is `/api/v1/models`, not
+`/api/v1/v1/models`. A missing-key 401 alone does not establish that a guessed
+route exists. The live generation endpoint supports `?estimate=true`, which
+validates/prices a request without dispatching, reserving or charging credits;
+use that after authenticated model discovery before any authorized paid test.
 
 Uploaded duration and dimensions must be measured from the actual media, not
 supplied optimistically; tool pricing and limits trust the declared source facts.
