@@ -12,7 +12,13 @@ const FormData = require('form-data');
 const ts = require('typescript');
 if (!process.argv.includes('--paid')) throw Error('QA_REQUIRES_PAID_AUTHORIZATION');
 const root = path.resolve(import.meta.dirname, '../..');
-const dir = path.join(root, 'generated-artifacts/wan-three-character-test');
+const simple = process.argv.includes('--simple');
+const threeShort = process.argv.includes('--three-short');
+if (simple && threeShort) throw Error('QA_CHOOSE_ONE_TEST_VARIANT');
+const inputDir = path.join(root, 'generated-artifacts/wan-three-character-test');
+const dir = simple ? path.join(root, 'generated-artifacts/wan-simple-reference-test')
+  : threeShort ? path.join(root, 'generated-artifacts/wan-three-character-short-test') : inputDir;
+const seconds = simple ? '10' : threeShort ? '11' : '30';
 fs.mkdirSync(dir, { recursive: true });
 const stateFile = path.join(dir, 'state.json');
 let state = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : {};
@@ -25,6 +31,10 @@ const http = axios.create({ proxy: false, timeout: 180000 });
 const db = new Pool({ connectionString: process.env.RAILWAY_DATABASE_URL, ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 15000 });
 const base = 'https://app.flora.ai/api/v1';
 http.interceptors.response.use(response => {
+  if (response.config.url === `${base}/generate`) {
+    save({ chargedCost: response.data?.charged_cost ?? null });
+    console.log('SUBMIT_CHARGED_COST', response.data?.charged_cost ?? 'NOT_RETURNED');
+  }
   if (/\/runs\//.test(response.config.url || '')) {
     const data = response.data;
     if (state.status !== data.status) {
@@ -75,29 +85,40 @@ try {
       const model = models.find(x => x.model_id === 'm2v-wan-3-0-gateway' && x.capabilities?.includes('mixed-to-video'));
       const params = new Map((model?.params ?? []).map(p => [p.name, p]));
       if (!params.has('image_urls') || !params.has('video_urls')
-        || !params.get('duration')?.options?.some(x => x.value === '30')
+        || !params.get('duration')?.options?.some(x => x.value === seconds)
         || !params.get('resolution')?.options?.some(x => x.value === '480p')) throw Error('QA_UNSUPPORTED_CONTRACT');
-      console.log('CONTRACT_CONFIRMED_3_IMAGES_VIDEO_AUDIO_30S_480P');
+      console.log(simple ? 'CONTRACT_CONFIRMED_1_IMAGE_VIDEO_10S_480P'
+        : `CONTRACT_CONFIRMED_3_IMAGES_VIDEO_AUDIO_${seconds}S_480P`);
       save({ keyRecord: record.id, model: model.model_id, botSaldoCharged: false, referenceVideoSeconds: 11.237 });
-      const inputs = [
+      const inputs = simple ? [
         ['character1.jpg', path.join(root, 'attached_assets/image_search/banana-character-fullbody.jpg'), 'image/jpeg'],
-        ['character2.jpg', path.join(dir, 'character2.jpg'), 'image/jpeg'],
-        ['character3.jpg', path.join(dir, 'character3.jpg'), 'image/jpeg'],
-        ['dance-reference.mp4', path.join(dir, 'reference-source.mp4'), 'video/mp4'],
-        ['reference-sound.mp3', path.join(dir, 'reference-audio.mp3'), 'audio/mpeg'],
+        ['dance-reference.mp4', path.join(inputDir, 'reference-source.mp4'), 'video/mp4'],
+      ] : [
+        ['character1.jpg', path.join(root, 'attached_assets/image_search/banana-character-fullbody.jpg'), 'image/jpeg'],
+        ['character2.jpg', path.join(inputDir, 'character2.jpg'), 'image/jpeg'],
+        ['character3.jpg', path.join(inputDir, 'character3.jpg'), 'image/jpeg'],
+        ['dance-reference.mp4', path.join(inputDir, 'reference-source.mp4'), 'video/mp4'],
+        ['reference-sound.mp3', path.join(inputDir, 'reference-audio.mp3'), 'audio/mpeg'],
       ];
       const urls = [];
       for (const [name, file, mime] of inputs) {
         console.log('UPLOAD', name);
         urls.push(await adapters.floraUploadAsset(key, ws.workspaceId, fs.readFileSync(file), name, mime));
       }
-      const prompt = 'Use the first three image references as THREE DIFFERENT characters, all appearing together in one wide shot: character 1 on the left, character 2 in the middle, character 3 on the right. Preserve each individual face, hairstyle and original clothing. Show all three full bodies head to feet, with enough space between them. All three characters perform the SAME choreography as the dancer in the reference video, copying the sequence, timing, arm gestures, body turns and footwork in synchronized unison. Do not copy the reference dancer face or outfit. Use the supplied reference audio as the soundtrack, preserving the original music, vocals and beat rather than inventing new sound. Synchronize the dancing to that soundtrack. The reference is about 11 seconds; repeat its choreography and music to fill a 30-second video. Fixed wide camera, photorealistic, no cuts, no extra people, no unrelated text.';
-      save({ submitAttempted: true, submittedAt: new Date().toISOString(), prompt, referenceImages: 3, separateAudioExtractedFromVideo: true });
-      const id = await adapters.floraGenerate(key, ws, model.model_id, {
+      const prompt = simple
+        ? 'Use the woman in the image as the only character. Preserve her face, hair and clothing. Make her follow the dance choreography, body movements and timing in the reference video. Do not copy the reference dancer appearance. Show the full body with a fixed camera. Use the reference video music if supported. Photorealistic, no extra people, no unrelated text.'
+        : `Use the first three image references as THREE DIFFERENT characters, all appearing together in one wide shot: character 1 on the left, character 2 in the middle, character 3 on the right. Preserve each individual face, hairstyle and original clothing. Show all three full bodies head to feet, with enough space between them. All three characters perform the SAME choreography as the dancer in the reference video, copying the sequence, timing, arm gestures, body turns and footwork in synchronized unison. Do not copy the reference dancer face or outfit. Use the supplied reference audio as the soundtrack, preserving the original music, vocals and beat rather than inventing new sound. Synchronize the dancing to that soundtrack. The reference is about 11 seconds; generate a ${seconds}-second video. Fixed wide camera, photorealistic, no cuts, no extra people, no unrelated text.`;
+      if (Number(seconds) + 11.237 > 30) throw Error('QA_REFERENCE_PLUS_OUTPUT_EXCEEDS_NATIVE_30S_LIMIT');
+      const requestParams = simple ? {
+        image_urls: [urls[0]], video_urls: [urls[1]],
+        duration: seconds, resolution: '480p', aspect_ratio: '16:9',
+      } : {
         image_urls: urls.slice(0, 3), video_urls: [urls[3]], audio_urls: [urls[4]],
-        duration: '30', resolution: '480p', aspect_ratio: '16:9', audio: true,
+        duration: seconds, resolution: '480p', aspect_ratio: '16:9', audio: true,
         prompt_expansion: false, thinking: false,
-      }, prompt, 'video');
+      };
+      save({ submitAttempted: true, submittedAt: new Date().toISOString(), prompt, referenceImages: simple ? 1 : 3, durationRequested: seconds, separateAudioExtractedFromVideo: !simple });
+      const id = await adapters.floraGenerate(key, ws, model.model_id, requestParams, prompt, 'video');
       save({ runId: id, status: 'accepted' });
       console.log('ACCEPTED_RUN', id);
       url = await adapters.floraPollRun(key, id, 20 * 60 * 1000);

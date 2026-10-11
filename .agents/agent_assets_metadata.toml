@@ -487,3 +487,31 @@ mtime_ms = 1791549600855
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/9e495573-647d-4d71-b461-d57b457b0f8f/fbe15620-ed2a-4154-9fb7-b0bf41d4fec1"
 storage_version_token = "1791549637319572"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "PGrlpvMDyy_mp-HmcrPpc"
+uri = "file://generated-artifacts/wan-simple-reference-test/output.mp4"
+type = "video"
+title = "Tes kontrol Wan 3.0 — satu karakter, 10 detik"
+description = "Hasil asli Flora 480p dengan video referensi joget. Tidak ditambahkan soundtrack atau upscaling setelah generate. Tes tiga karakter sedang diproses."
+logical_id = "ea2a1090-0f8a-49b8-903a-debd7ffaaf01"
+content_hash = "sha256:48d15b77bed97b439470edaa02e55d45c42c4d0f9a33d9173595dd6ab52c6081"
+size = 4419420
+mtime_ms = 1791714955023
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/ea2a1090-0f8a-49b8-903a-debd7ffaaf01/b2615958-1aad-4c46-a291-470e1c1ec914"
+storage_version_token = "1791715123814784"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "baR4FO689luLU0VZRaMPo"
+uri = "file://generated-artifacts/wan-three-character-short-test/output.mp4"
+type = "video"
+title = "Wan 3.0 — tiga karakter berjoget, 11 detik"
+description = "Hasil asli Flora: 854×480, 30 fps, dengan tiga foto karakter, video joget dan audio yang diekstrak dari referensi. Tidak ada tambahan soundtrack atau upscaling setelah generate."
+logical_id = "ce0c2f2e-9423-485a-89be-85e1a5818dcb"
+content_hash = "sha256:9c085fc1cb7aa8e72e0c1650caabbc21c74b0fd04dee8b3ef4af210cdcc0e4cf"
+size = 10454120
+mtime_ms = 1791715150243
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/ce0c2f2e-9423-485a-89be-85e1a5818dcb/b4391187-1bdc-4146-b4bd-cc61acd64160"
+storage_version_token = "1791715213229834"
+content_type = "video/mp4"

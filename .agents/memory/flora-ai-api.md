@@ -73,7 +73,8 @@ accepted run rather than submitting another paid job.
 
 Wan 3.0's live model variants have different input contracts. The mixed-to-video
 variant supports both `image_urls` and `video_urls` arrays, with output duration
-up to `"30"` and resolution `"480p"`. The ordinary image-to-video variant instead
+options up to `"30"` and resolution `"480p"`. This does NOT mean 30-second output
+is valid when a reference video is supplied. The ordinary image-to-video variant instead
 requires singular `image_url`; do not add video references to it by guessing.
 
 **Why:** The official live catalog checked on 2026-10-11 distinguishes
@@ -86,18 +87,40 @@ For combined photo/video references, confirm both array fields and the requested
 duration/resolution before submitting. Input-video duration/size limits are not
 specified by these catalog fields; do not infer them from output duration.
 
-Do not promise multi-character motion or original-sound transfer solely from the
-mixed-to-video catalog schema. A paid request combining three character images,
-a dance reference video and its extracted audio at 480p/30s was accepted by Flora
-but failed upstream with `GENERATION_INVALID_PARAMS`; no field was identified.
+For Wan 3.0 video-reference requests, **total input-video seconds + output
+seconds must not exceed 30**. Reference videos total at most 15 seconds, and
+reference audio separately totals at most 15 seconds. Native limits allow up to
+10 reference images, 5 reference videos and 5 reference audio clips. Reference
+image/video/audio types can be combined; first/last-frame types cannot be mixed
+with these reference types.
 
-**Why:** Catalog validation and job acceptance did not establish a working
-upstream contract, and the failure response omitted a charged-cost figure.
+**Why:** The [native Wan 3.0 API reference](https://help.aliyun.com/en/model-studio/wan3-video-generation-api-reference)
+documents the combined duration budget, unlike Flora's duration dropdown. A
+30-second output plus a nonzero reference video violates this rule even though
+Flora accepts the job; its provider error can be generic `GENERATION_INVALID_PARAMS`.
 
-**How to apply:** Treat this combination as unverified. Do not infer that any
-particular field or all multi-reference requests are unsupported from the generic
-error. Narrow the input contract only in a separately authorized paid test, never
-by replaying the failed accepted order or charging a bot user's saldo.
+**How to apply:** Measure actual reference duration, validate the aggregate
+budget before submission, and choose an integer output duration no larger than
+`floor(30 - totalReferenceVideoSeconds)`. Matching the reference's approximate
+duration is safer than blindly requesting the catalog maximum. Schema support
+still does not prove accurate choreography or original-sound copying; inspect
+delivered media. Never replay an accepted or ambiguous paid job.
+
+Multiple character-image references + a dance video + separate reference audio
+can deliver native 480p when the combined duration budget is valid. This is not
+an identity lock: a generated group can retain the reference dancer's face or
+outfit for the central character, especially in its opening frames.
+
+**Why:** Correctly bounded mixed-reference generation delivered all three
+characters, while visual inspection showed reference-dancer appearance leaking
+into the central character. Explicit reference audio produced a closer music
+fingerprint match than the video-audio-only control, but this does not prove
+bit-identical soundtrack copying.
+
+**How to apply:** When preserving the source sound matters, supply extracted
+audio as `audio_urls` and inspect the actual audio result. Review all character
+identities throughout the output; do not market generic Wan mixed-to-video as
+equivalent to dedicated Kling Motion Control or promise exact identity/music.
 
 - A valid Flora key can return a workspace successfully but an empty project list.
   Authentication and DB `available` status do not prove the account is ready to generate.
