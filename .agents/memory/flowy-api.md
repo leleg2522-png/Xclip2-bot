@@ -65,6 +65,20 @@ catalog by submitting a paid generation.
 Check quick tools independently instead of assuming a broken direct-generation
 catalog means that every Flowy API route is unusable.
 
+Successful discovery, quotes, uploads and run acceptance do not prove that
+the provider can finish a Motion Control generation.
+
+**Why:** A regular Motion Control test passed those stages but then returned a
+generic failed-run message. The wallet returned to its original available
+balance with no reserved credits. The generic failure did not identify the
+underlying cause.
+
+**How to apply:** Confirm terminal status and a downloadable output before
+calling the generation path operational. Verify wallet reservations and balance
+after failure, and do not attribute a generic run error to an earlier fal
+catalog error without evidence. Never automatically resubmit an accepted paid
+run merely because it later fails.
+
 Uploaded duration and dimensions must be measured from the actual media, not
 supplied optimistically; tool pricing and limits trust the declared source facts.
 
