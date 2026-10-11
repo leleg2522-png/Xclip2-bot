@@ -138,8 +138,8 @@ async function testWizard(model: HarModelKey, documents = false) {
     assert.equal(session.harRatio, undefined);
     assert.match(messages.at(-1)!, /2500/);
     assert.match(messages.at(-1)!, /3–15 detik/);
-    assert.match(messages.at(-1)!, /480p/);
-    assert.doesNotMatch(messages.at(-1)!, /Flora|P5|upscal|1080p/i);
+    assert.match(messages.at(-1)!, /1080p setelah upscale/);
+    assert.doesNotMatch(messages.at(-1)!, /Flora|P5|Renderful|480p/i);
   } else {
     assert.equal(session.mode, 'har_wait_ratio');
     await execute("  if (data.startsWith('har_ratio_')) {", "  if (data === 'mode_klingp4') {", "const data = 'har_ratio_916';");

@@ -3149,7 +3149,7 @@ function hargaText(): string {
     `• ${KLING_P4.label} — ${formatRupiah(MODEL_PRICES.kling_p4)}\n` +
     `• ${KLING_V3_STANDARD.label} (1K/1080p) — ${formatRupiah(MODEL_PRICES.kling_v3_standard)}\n` +
     `• Heygen Video (15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.heygen)}\n` +
-    `• Xclip Motion (3–15 detik · 480p) — ${formatRupiah(MODEL_PRICES.xclip_motion)}\n` +
+    `• Xclip Motion (3–15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.xclip_motion)}\n` +
     `• Nano Banana 2.1 4K (teks/foto) — ${formatRupiah(MODEL_PRICES.banana21)}\n` +
     `• Topaz 4K Upscaler — ${formatRupiah(MODEL_PRICES.topaz)}\n` +
     `• ByteDance Upscaler 1K — ${formatRupiah(MODEL_PRICES.bytedance_upscale)}\n` +
@@ -4383,7 +4383,7 @@ bot.on('callback_query', async (ctx) => {
           [Markup.button.callback('🎭 Kling MC V3 PRO P2 🔥PROMO', 'mode_klingp2')],
           [Markup.button.callback('🎭 Kling MC V3.0 PRO P3 🔥PROMO', 'mode_klingp3')],
           [Markup.button.callback(`🎭 ${KLING_P4.label} · ${formatRupiah(MODEL_PRICES.kling_p4)}`, 'mode_klingp4')],
-          [Markup.button.callback(`🕺 Xclip Motion · 480p · ${formatRupiah(MODEL_PRICES.xclip_motion)}`, 'mode_har_xclip_motion')],
+          [Markup.button.callback(`🕺 Xclip Motion · 1080p · ${formatRupiah(MODEL_PRICES.xclip_motion)}`, 'mode_har_xclip_motion')],
           [Markup.button.callback(`🎭 ${KLING_V3_STANDARD.label} · 1K · ${formatRupiah(MODEL_PRICES.kling_v3_standard)}`, 'mode_klingv3std')],
           [Markup.button.callback('⬅️ Kembali', 'back_main')],
         ]),
@@ -4982,7 +4982,7 @@ bot.on('callback_query', async (ctx) => {
     if (model === 'xclip_motion') {
       return ctx.editMessageText(
         `🕺 *${cfg.label}*\nHarga: *${formatRupiah(MODEL_PRICES.xclip_motion)}* per video.\n` +
-        'Hasil: *480p*. Durasi mengikuti video referensi (dibulatkan ke detik terdekat).\n\n' +
+        'Hasil: *1080p setelah upscale*. Durasi mengikuti video referensi (dibulatkan ke detik terdekat).\n\n' +
         '*Langkah 1:* Kirim foto karakter JPG/PNG, maksimal 10MB, min. 300px. Tampilkan seluruh tubuh dari depan.\n\n' +
         'Video referensi di langkah berikutnya: *3–15 detik*, maksimal *15MB*.',
         { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('⬅️ Batal', 'back_main')]]) }
@@ -8457,7 +8457,7 @@ async function runHarModel(
   }
 }
 
-// ─── Background: Xclip Motion (native 480p reference motion) ────────────────
+// ─── Background: Xclip Motion (480p generation, mandatory 1080p finishing) ──
 
 async function runXclipMotion(
   chatId: number, userId: number, dbUserId: number, statusMsgId: number,
@@ -8494,7 +8494,10 @@ async function runXclipMotion(
       upload: floraUploadAsset, generate: floraGenerate, poll: floraPollRun,
       exhausted: error => isFloraKeyExhaustedError(describeError(error)), status,
     });
-    if (await sendResult(chatId, url, `🕺 Xclip Motion · ${reference.outputSeconds} detik · 480p\n\n/menu untuk buat lagi`, true)) {
+    await status('⏳ Xclip Motion: video selesai dibuat, sedang diproses ke 1080p...');
+    const finished = await upscaleGeneratedVideo(url, userId, chatId, statusMsgId);
+    if (!finished.upscaled) throw Error('XCLIP_1080_FINISH_FAILED');
+    if (await sendResult(chatId, finished.url, `🕺 Xclip Motion · ${reference.outputSeconds} detik · 1080p\n\n/menu untuk buat lagi`, true)) {
       refund = false;
       markGenSuccess(userId);
       await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});

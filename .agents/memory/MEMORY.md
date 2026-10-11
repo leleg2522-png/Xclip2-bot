@@ -26,4 +26,4 @@
 - [Renderful ByteDance Upscaler](renderful-bytedance-upscaler.md) — public 1K/Rp500 tool uses a Railway DB key pool; rotate only before submit and refund every failed delivery.
 - [Picsart Decodo ISP egress](picsart-vps-egress-proxy.md) — Picsart traffic must use static Decodo ISP proxies and fail closed if proxy credentials are unavailable.
 - [Picsart AI Clipper](picsart-ai-clipper.md) — bot credentials live-verified for clip analysis via ISP proxy; completion has no rendered MP4, so export needs a separate solution.
-- [Heygen and Banana 2.1](picsart-heygen-banana.md) — Xclip Motion is separate: user wants Wan 3.0 480p with a 15s reference cap; Heygen and Banana 2.1 remain independent.
+- [Heygen and Banana 2.1](picsart-heygen-banana.md) — Xclip Motion: Wan 480p → mandatory Renderful 1080p, 15s reference cap; Heygen and Banana remain independent.

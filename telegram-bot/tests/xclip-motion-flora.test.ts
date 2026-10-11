@@ -110,7 +110,7 @@ async function contractTests() {
 }
 
 async function billingTests(outcome: string) {
-  const events = { charges: [] as number[], refunds: [] as number[], releases: 0, successes: 0, submissions: 0, deliveries: 0, messages: [] as string[] };
+  const events = { charges: [] as number[], refunds: [] as number[], releases: 0, successes: 0, submissions: 0, deliveries: 0, upscales: 0, messages: [] as string[] };
   const ctx = vm.createContext({
     Buffer, MODEL_PRICES: { xclip_motion: 2500 }, XCLIP_MOTION, xclipMotionVideoError,
     beginCharge: async (_id: number, amount: number) => { events.charges.push(amount); return { ok: outcome !== 'insufficient', reason: 'insufficient' }; },
@@ -134,12 +134,21 @@ async function billingTests(outcome: string) {
     getNextFloraKey() {}, markFloraKeyDead() {}, floraGetWorkspace() {}, floraUploadAsset() {}, floraGenerate() {}, floraPollRun() {},
     isFloraKeyExhaustedError: () => false,
     sendResult: async (_chat: number, url: string, caption: string) => {
-      events.deliveries++; assert.equal(url, 'https://example.test/native480.mp4');
-      assert.match(caption, /Xclip Motion.*11 detik.*480p/);
-      assert.doesNotMatch(caption, /1080|Wan|Flora|Kling/i);
+      events.deliveries++; assert.equal(events.upscales, 1);
+      assert.equal(url, 'https://example.test/finished1080.mp4');
+      assert.match(caption, /Xclip Motion.*11 detik.*1080p/);
+      assert.doesNotMatch(caption, /480p|Wan|Flora|Kling|Renderful/i);
+      if (outcome === 'delivery-throw') throw Error('Delivery failed');
       return outcome !== 'delivery';
     },
-    upscaleGeneratedVideo: async () => { assert.fail('Xclip Motion must never upscale'); },
+    upscaleGeneratedVideo: async (url: string, userId: number, chatId: number, statusMsgId: number) => {
+      events.upscales++;
+      assert.equal(url, 'https://example.test/native480.mp4');
+      assert.deepEqual([userId, chatId, statusMsgId], [2, 1, 4]);
+      if (outcome === 'upscale-throw') throw Error('Renderful failed');
+      if (outcome === 'upscale-fallback') return { url, upscaled: false };
+      return { url: 'https://example.test/finished1080.mp4', upscaled: true };
+    },
     addSaldo: async (_id: number, amount: number) => { events.refunds.push(amount); },
     releaseGenerating: () => { events.releases++; }, markGenSuccess: () => { events.successes++; },
     formatRupiah: () => 'Rp2.500', describeError: () => 'sanitized',
@@ -153,8 +162,9 @@ async function billingTests(outcome: string) {
   assert.deepEqual(events.refunds, ['success', 'insufficient', 'metadata-duration'].includes(outcome) ? [] : [2500]);
   assert.equal(events.releases, ['insufficient', 'metadata-duration'].includes(outcome) ? 0 : 1);
   assert.equal(events.successes, outcome === 'success' ? 1 : 0);
-  assert.equal(events.deliveries, ['success', 'delivery'].includes(outcome) ? 1 : 0);
-  assert.doesNotMatch(events.messages.join(' '), /Flora|Wan|Kling|provider\.example/i);
+  assert.equal(events.deliveries, ['success', 'delivery', 'delivery-throw'].includes(outcome) ? 1 : 0);
+  assert.equal(events.upscales, ['success', 'delivery', 'delivery-throw', 'upscale-fallback', 'upscale-throw'].includes(outcome) ? 1 : 0);
+  assert.doesNotMatch(events.messages.join(' '), /Flora|Wan|Kling|Renderful|provider\.example/i);
 }
 
 async function realMediaTests() {
@@ -185,13 +195,16 @@ async function realMediaTests() {
 }
 
 async function main() {
-  assert.match(source, /Xclip Motion \(3–15 detik · 480p\)/);
-  assert.match(source, /Xclip Motion · 480p/);
+  assert.match(source, /Xclip Motion \(3–15 detik · 1080p\)/);
+  assert.match(source, /Xclip Motion · 1080p/);
   assert.match(source, /return runXclipMotion\(/);
-  assert.doesNotMatch(source.slice(source.indexOf('async function runXclipMotion('), source.indexOf('// ─── Background: Kling Motion V3 Standard')), /upscaleGeneratedVideo|generateKlingV3StandardFlora/);
+  const run = source.slice(source.indexOf('async function runXclipMotion('), source.indexOf('// ─── Background: Kling Motion V3 Standard'));
+  assert.doesNotMatch(run, /generateKlingV3StandardFlora/);
+  assert.match(run, /await upscaleGeneratedVideo\(url, userId, chatId, statusMsgId\)/);
+  assert.match(run, /if \(!finished\.upscaled\) throw Error\('XCLIP_1080_FINISH_FAILED'\)/);
   await contractTests();
-  for (const outcome of ['success', 'delivery', 'provider', 'insufficient', 'metadata-duration', 'actual-duration']) await billingTests(outcome);
+  for (const outcome of ['success', 'delivery', 'delivery-throw', 'upscale-fallback', 'upscale-throw', 'provider', 'insufficient', 'metadata-duration', 'actual-duration']) await billingTests(outcome);
   await realMediaTests();
-  console.log('Xclip Motion: live-schema routing, native 480p, 3–15s boundaries, audio/no-audio, refunds, no paid replay and real FFmpeg media checks passed.');
+  console.log('Xclip Motion: Wan 480p generation, mandatory 1080p finishing, no native fallback delivery, 3–15s boundaries, refunds, no paid replay and real FFmpeg media checks passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
