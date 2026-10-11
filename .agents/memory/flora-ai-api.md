@@ -5,6 +5,16 @@ description: Working call format for Flora AI generate/upload, key-pool behavior
 
 **Billing error bisa muncul di tahap RUN:** Flora bisa lapor `FLORA_RUN_FAILED [BILLING_NOT_ENOUGH_CREDITS]` setelah job jalan (bukan hanya saat submit/upload). Deteksi key-habis tidak boleh hanya filter tahap pre-run — sinyal billing eksplisit harus selalu membuang key dari pool, apapun tahapnya.
 
+Submit returning `charged_cost: 0` is not proof that generation is free or the
+account has sufficient credits; a later run can still fail billing.
+
+**Why:** Flora accepted a generation with zero reported submit cost and then
+returned `BILLING_NOT_ENOUGH_CREDITS`, without testing input compatibility.
+
+**How to apply:** Classify that result as a credit blocker, not evidence for a
+model's reference-duration limits. Inspect the accepted run; never automatically
+replay it on another account. A further boundary test needs separate authorization.
+
 # Flora AI API — hasil verifikasi langsung (Jul 2026)
 
 ## Format request yang benar
@@ -99,10 +109,18 @@ documents the combined duration budget, unlike Flora's duration dropdown. A
 30-second output plus a nonzero reference video violates this rule even though
 Flora accepts the job; its provider error can be generic `GENERATION_INVALID_PARAMS`.
 
-These are documented bounds of Alibaba's native API, not a directly tested
-15-second input ceiling on Flora's gateway. Flora's catalog does not disclose
-that input ceiling, and a successful shorter-reference test cannot establish it.
-Keep that distinction explicit when explaining limits or designing around them.
+Flora's Wan 3.0 mixed-to-video gateway also enforces a 15-second reference-video
+ceiling at runtime. Its exact rejection is: “Video duration exceeds the maximum
+allowed. Maximum is 15 seconds.”
+
+**Why:** A whole 30-second reference was explicitly rejected with that message
+on an independently authorized account test. A prior account's credit failure
+was inconclusive; the live model catalog omits the input limit.
+
+**How to apply:** Do not equate the catalog's 30-second output option with
+30-second reference support. A product requiring 30-second uploads needs a
+separately designed long-reference strategy, not direct forwarding to this
+gateway or silent truncation.
 
 **How to apply:** Measure actual reference duration, validate the aggregate
 budget before submission, and choose an integer output duration no larger than
