@@ -13,6 +13,7 @@ for (const mode of ['image', 'video', 'prompt']) {
 }
 assert.match(source, /KLING_P4.label.*MODEL_PRICES.kling_p4/);
 assert.equal(KLING_P4.label, 'Kling MC V3 Pro P4');
+// Retain coverage of the legacy helper; public P4 now dispatches to P5 below.
 assert.equal(KLING_P4.modelId, 'iv2v-kling-2.6-motion');
 assert.equal(klingP4VideoError(100, 3), undefined);
 assert.equal(klingP4VideoError(100, 30), undefined);
@@ -95,8 +96,11 @@ async function testApi() {
   assert.ok(skippedPrompt.calls.submits[0][4].length > 0);
 }
 
-const start = source.indexOf('async function runKlingP4(');
+const wrapperStart = source.indexOf('async function runKlingP4(');
+const start = source.indexOf('async function runKlingV3Standard(');
 const end = source.indexOf('// ─── Background: Kling Motion Control', start);
+assert.match(source.slice(wrapperStart, end), /return runKlingV3Standard\([\s\S]*prompt, 'p4'/);
+assert.doesNotMatch(source.slice(wrapperStart, end), /generateKlingP4Flora/);
 const compiled = ts.transpileModule(source.slice(start, end), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText;
@@ -116,11 +120,18 @@ async function testBilling(delivered: boolean, failure = false, chargeOk = true)
     downloadBuffer: async () => ({ buf: Buffer.from('media'), mime: 'image/png', ext: 'png' }),
     sharp: () => ({ metadata: async () => ({ format: 'png', width: 600, height: 600 }) }),
     detectVideoType: () => ({ ext: 'mp4', mime: 'video/mp4' }),
-    generateKlingP4Flora: async () => { if (failure) throw Error('failed'); return 'https://example.test/result.mp4'; },
+    generateKlingV3StandardFlora: async (input: any) => {
+      assert.equal(input.publicLabel, KLING_P4.label);
+      if (failure) throw Error('failed');
+      return 'https://example.test/result.mp4';
+    },
+    upscaleGeneratedVideo: async () => ({ url: 'https://example.test/1080.mp4', upscaled: true }),
     getNextFloraKey() {}, markFloraKeyDead() {}, floraGetWorkspace() {},
     floraUploadAsset() {}, floraGenerate() {}, floraPollRun() {}, isFloraKeyExhaustedError() {},
     sendResult: async (_chat: number, _url: string, caption: string, video: boolean) => {
-      assert.ok(caption.includes(KLING_P4.label)); assert.equal(video, true); return delivered;
+      assert.ok(caption.includes(KLING_P4.label)); assert.ok(caption.includes('1K/1080p'));
+      assert.equal(_url, 'https://example.test/1080.mp4');
+      assert.equal(video, true); return delivered;
     },
     incrementKlingUsage: async () => {}, markGenSuccess: () => { events.successes++; },
     addSaldo: async (_id: number, amount: number) => { events.refunds.push(amount); },
@@ -144,7 +155,7 @@ async function main() {
   await testBilling(false);
   await testBilling(false, true);
   await testBilling(false, false, false);
-  console.log('Kling P4 Flora contract, no-resubmit, billing and delivery tests passed.');
+  console.log('Kling P4 P5 routing, wizard, 1080p delivery, billing and legacy no-resubmit tests passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
 

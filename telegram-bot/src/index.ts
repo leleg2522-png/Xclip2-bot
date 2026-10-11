@@ -20,7 +20,7 @@ import {
   type Flora480VideoModelKey,
 } from './flora-video-models';
 import { FreebeatBridgeQueue, type BridgeAgent, type BridgeJob } from './freebeat-bridge';
-import { KLING_P4, klingP4VideoError, generateKlingP4Flora, isFloraWorkspaceSetupError } from './kling-p4-flora';
+import { KLING_P4, klingP4VideoError, isFloraWorkspaceSetupError } from './kling-p4-flora';
 import { KLING_V3_STANDARD, klingV3StandardVideoError, generateKlingV3StandardFlora } from './kling-v3-standard-flora';
 import { XCLIP_MOTION, xclipMotionVideoError, prepareXclipMotionReference } from './xclip-motion-media';
 import { generateXclipMotionFlora } from './xclip-motion-flora';
@@ -183,7 +183,7 @@ const MODEL_PRICES = {
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
   kling_p3: 4000,      // Kling MC V3.0 PRO P3 (P5 Standard backend)
   kling_p2: 4000,      // Kling MC V3 PRO P2 (P5 Standard backend)
-  kling_p4: 4000,      // Kling MC V3 Pro P4 (Flora Kling 2.6 Pro Motion Control)
+  kling_p4: 4000,      // Kling MC V3 Pro P4 (P5 Standard backend + 1080p finishing)
   kling_v3_standard: 2500,
   heygen: 2500,
   xclip_motion: 3500,
@@ -3146,7 +3146,7 @@ function hargaText(): string {
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +
     `• Kling MC V3.0 PRO P3 — ${formatRupiah(MODEL_PRICES.kling_p3)} 🔥PROMO\n` +
-    `• ${KLING_P4.label} — ${formatRupiah(MODEL_PRICES.kling_p4)}\n` +
+    `• ${KLING_P4.label} (1K/1080p) — ${formatRupiah(MODEL_PRICES.kling_p4)}\n` +
     `• ${KLING_V3_STANDARD.label} (1K/1080p) — ${formatRupiah(MODEL_PRICES.kling_v3_standard)}\n` +
     `• Heygen Video (15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.heygen)}\n` +
     `• Xclip Motion (3–15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.xclip_motion)}\n` +
@@ -4382,7 +4382,7 @@ bot.on('callback_query', async (ctx) => {
           [Markup.button.callback('🕹️ Kling MC3.0 PRO 🔥PROMO', 'mode_kling')],
           [Markup.button.callback('🎭 Kling MC V3 PRO P2 🔥PROMO', 'mode_klingp2')],
           [Markup.button.callback('🎭 Kling MC V3.0 PRO P3 🔥PROMO', 'mode_klingp3')],
-          [Markup.button.callback(`🎭 ${KLING_P4.label} · ${formatRupiah(MODEL_PRICES.kling_p4)}`, 'mode_klingp4')],
+          [Markup.button.callback(`🎭 ${KLING_P4.label} · 1K · ${formatRupiah(MODEL_PRICES.kling_p4)}`, 'mode_klingp4')],
           [Markup.button.callback(`🕺 Xclip Motion · 1080p · ${formatRupiah(MODEL_PRICES.xclip_motion)}`, 'mode_har_xclip_motion')],
           [Markup.button.callback(`🎭 ${KLING_V3_STANDARD.label} · 1K · ${formatRupiah(MODEL_PRICES.kling_v3_standard)}`, 'mode_klingv3std')],
           [Markup.button.callback('⬅️ Kembali', 'back_main')],
@@ -5036,6 +5036,7 @@ bot.on('callback_query', async (ctx) => {
     });
     return ctx.editMessageText(
       `🎭 *${KLING_P4.label}*\n\nHarga: *${formatRupiah(MODEL_PRICES.kling_p4)}* per video\n\n` +
+      'Hasil: *1K/1080p*.\n\n' +
       '*Langkah 1:* Kirim *foto karakter* (JPG/PNG, maksimal 10MB, min. 300px).\n' +
       'Tampilkan seluruh tubuh dari depan, bukan close-up wajah.\n\n' +
       `Video referensi di langkah berikutnya: *${KLING_P4.minSeconds}–${KLING_P4.maxSeconds} detik*, maksimal *15MB*.`,
@@ -8527,11 +8528,13 @@ async function runXclipMotion(
 async function runKlingV3Standard(
   chatId: number, userId: number, dbUserId: number, statusMsgId: number,
   imageFileId: string, videoFileId: string, seconds: number | undefined, prompt: string,
-  route: 'p5' | 'p2' | 'p3' = 'p5'
+  route: 'p5' | 'p2' | 'p3' | 'p4' = 'p5'
 ) {
   const LABEL = route === 'p2' ? 'Kling MC V3 PRO P2' : route === 'p3' ? 'Kling MC V3.0 PRO P3'
+    : route === 'p4' ? KLING_P4.label
     : KLING_V3_STANDARD.label;
   const PRICE = route === 'p2' ? MODEL_PRICES.kling_p2 : route === 'p3' ? MODEL_PRICES.kling_p3
+    : route === 'p4' ? MODEL_PRICES.kling_p4
     : MODEL_PRICES.kling_v3_standard;
   const status = async (text: string) => {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
@@ -8563,6 +8566,9 @@ async function runKlingV3Standard(
     if (await sendResult(chatId, finished.url, `🎭 ${LABEL} · 1K/1080p\n\n/menu untuk buat lagi`, true)) {
       refund = false;
       markGenSuccess(userId);
+      if (route === 'p4') {
+        await incrementKlingUsage(dbUserId).catch(error => console.error(`[${userId}] Kling P4 usage update: ${describeError(error)}`));
+      }
       await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
     }
   } catch (error) {
@@ -8583,60 +8589,10 @@ async function runKlingP4(
   chatId: number, userId: number, dbUserId: number, statusMsgId: number,
   imageFileId: string, videoFileId: string, seconds: number | undefined, prompt: string
 ) {
-  const PRICE = MODEL_PRICES.kling_p4;
-  const charge = await beginCharge(dbUserId, PRICE, 3);
-  const status = async (text: string) => {
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
-  };
-  if (!charge.ok) {
-    await status(chargeFailMsg(charge.reason, PRICE));
-    return;
-  }
-  let refund = true;
-  try {
-    const [imageLink, videoLink] = await Promise.all([
-      bot.telegram.getFileLink(imageFileId), bot.telegram.getFileLink(videoFileId),
-    ]);
-    const [image, video] = await Promise.all([downloadBuffer(imageLink.href), downloadBuffer(videoLink.href)]);
-    const imageMeta = await sharp(image.buf).metadata();
-    if (!['jpeg', 'png'].includes(imageMeta.format || '') || (imageMeta.width ?? 0) < 300 || (imageMeta.height ?? 0) < 300) {
-      throw new Error('KLING_P4_INVALID_IMAGE');
-    }
-    const videoType = detectVideoType(video.buf, videoLink.href);
-    const resultUrl = await generateKlingP4Flora({
-      image: { buf: image.buf, name: `character.${image.ext}`, mime: image.mime },
-      video: { buf: video.buf, name: `reference.${videoType.ext}`, mime: videoType.mime },
-      prompt, seconds,
-    }, {
-      getKey: getNextFloraKey,
-      markDead: markFloraKeyDead,
-      workspace: floraGetWorkspace,
-      upload: floraUploadAsset,
-      generate: floraGenerate,
-      poll: floraPollRun,
-      exhausted: error => isFloraKeyExhaustedError(describeError(error)),
-      status,
-    });
-    const delivered = await sendResult(chatId, resultUrl, `🎭 ${KLING_P4.label}\n\n/menu untuk buat lagi`, true);
-    if (delivered) {
-      refund = false;
-      markGenSuccess(userId);
-      await incrementKlingUsage(dbUserId).catch(error => console.error(`[${userId}] Kling P4 usage update: ${describeError(error)}`));
-      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-    }
-  } catch (error) {
-    console.error(`[${userId}] Kling P4 error: ${describeError(error)}`);
-    const friendly = describeError(error).includes('KLING_P4_INVALID_IMAGE')
-      ? '❌ Foto harus JPG/PNG dengan ukuran min. 300px.'
-      : '❌ Video tidak berhasil diproses.';
-    await status(`${friendly} Saldo akan dikembalikan.\n\n/menu untuk coba lagi`);
-  } finally {
-    if (refund) {
-      await addSaldo(dbUserId, PRICE).catch(() => {});
-      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
-    }
-    releaseGenerating(dbUserId);
-  }
+  return runKlingV3Standard(
+    chatId, userId, dbUserId, statusMsgId,
+    imageFileId, videoFileId, seconds, prompt, 'p4'
+  );
 }
 
 // ─── Background: Kling Motion Control ────────────────────────────────────────

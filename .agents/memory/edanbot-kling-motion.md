@@ -1,19 +1,23 @@
 ---
 name: Kling Motion package routing and legacy Edanbot
-description: P2/P3 follow P5; Edanbot notes are legacy-only and supplier identities stay hidden.
+description: P2/P3/P4 follow P5; older backend notes are legacy-only and supplier identities stay hidden.
 ---
 
-# Current P2/P3 routing
+# Current P2/P3/P4 routing
 
-MC P2 and P3 must use the same backend and 1080p finishing as MC P5, while
+MC P2, P3 and P4 must use the same backend and 1080p finishing as MC P5, while
 retaining separate package names and prices. Edanbot is no longer their public
 generation path.
 
 **Why:** The user explicitly requested: “dan juga mc p2 dan p3 pake backend mc p5”.
+The user subsequently requested: “dan juga kling mc p4 ganti backend nya jadi
+kling mc p5”.
 
-**How to apply:** Keep future P5 backend changes consistent across P2/P3 unless
+**How to apply:** Keep future P5 backend changes consistent across P2/P3/P4 unless
 the user separates them again. Do not revive the Edanbot route or require an
-Edanbot cookie for these packages. Hide supplier identities in customer copy.
+Edanbot cookie for P2/P3, or restore the old Kling 2.6 generation route for P4.
+Hide supplier identities in customer copy. A finishing failure must refund, not
+deliver native video.
 
 # Legacy Edanbot reference only
 
