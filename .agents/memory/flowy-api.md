@@ -139,3 +139,27 @@ until its reference mapping is verified. A successful estimate does not validate
 the actual reference-to-provider mapping. Studio profile credits can be zero
 even when workspace-billed generation succeeds; do not confuse account-profile
 credits with the selected workspace's wallet.
+
+## Studio session renewal
+
+Do not treat the browser-session expiry as the Studio access-token lifetime.
+The inspected HAR JWT declares a 24-hour lifetime, while the browser session
+response's `expires` is approximately thirty days out. Neither proves that a
+copied access token renews itself. The captured session response does not supply
+a refresh token, and browser-cookie authentication is absent from the HAR.
+
+**Why:** Inspection of the token's time claims and session response confirmed
+different expiry windows. Anonymous browser-session retrieval returned no session.
+The official OAuth discovery metadata advertises the refresh-token grant, and
+Flowy's Create a session documentation permits exchanging an authorized OAuth
+access token for a Studio access/refresh pair. It explicitly rejects workspace
+API keys for that exchange.
+
+**How to apply:** Prefer an authorized OAuth connection for long-lived Studio
+automation. Refresh the OAuth grant and obtain/renew Studio access using the
+documented session contract; follow actual returned expiry values rather than
+assuming every new session lasts twenty-four hours. This path is documented,
+not yet end-to-end verified in this project. Creating a Studio session grants
+full account privileges, beyond OAuth scopes; obtain informed approval and keep
+all session/refresh credentials server-side. Renew authentication for polling
+the original job, never by replaying an accepted paid generation.
