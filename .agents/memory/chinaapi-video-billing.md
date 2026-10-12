@@ -74,3 +74,12 @@ is about 2.5, not proof of a 30-second 2.0 first-frame generation.
 **How to apply:** Keep the 2.0 first-frame route at its 15-second catalog maximum
 unless model-specific evidence establishes a different limit. Do not substitute
 2.5 while displaying 2.0.
+
+The ChinaAPI pool is shared by all four new models in the existing Railway bot
+database, not in the invite panel's local Replit database.
+
+**Why:** The user specifically requested “pool api di DB railway nya”.
+
+**How to apply:** Keep pool management on the bot's Railway database. Disabled
+pool credentials must not be silently reused through environment-key fallback.
+Do not treat several keys from one account as separate funded wallets.

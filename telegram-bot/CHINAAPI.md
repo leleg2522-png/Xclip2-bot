@@ -18,8 +18,10 @@ the 30-second Seedance 2.5 reference-mode setting.
 
 ## Runtime setup
 
-- Add `CHINAAPI_API_KEY` as a secret in the bot's hosting environment. Replit
-  secrets are not automatically copied to a separate Railway service.
+- Keys are selected from `chinaapi_key_pool` in the existing Railway bot
+  database. `CHINAAPI_API_KEY` is optional: if provided at startup it is imported
+  once by uniqueness, without reactivating a disabled key. No environment-key
+  fallback bypasses an empty or disabled pool.
 - Keep Railway's `RAILWAY_PUBLIC_DOMAIN`, or set `PUBLIC_BASE_URL` to the bot's
   public **HTTPS** origin. Reference photos use the existing `/dl/:token`
   media route so Telegram bot credentials are never sent upstream.
@@ -29,9 +31,34 @@ the 30-second Seedance 2.5 reference-mode setting.
 
 ## Safety and delivery
 
+Each key is leased atomically for one job across all bot instances, selecting
+the least recently used available key. Leases expire after one hour for crash
+recovery, and ownership tokens protect a newer lease from an old job's cleanup.
+Polling has both an attempt limit and a 40-minute elapsed deadline.
+
+Before an accepted task, the bot can try at most five different keys after a
+definite authentication/quota rejection or a model-catalog mismatch. A submit
+with a timeout, missing task ID, ambiguous response or accepted task is never
+repeated. Invalid/exhausted keys are disabled; admin restore does not add credits.
+Several keys belonging to the same account can still share one wallet.
+
+### Private admin commands
+
+- `/addchinakey`: add one or several keys; the input message is deleted after
+  reading, and keys are never echoed. Only private admin chats are allowed.
+- `/chinapool`: counts and key IDs/statuses, without credential values.
+- `/nonaktifchinakey ID`: disable a key without deleting its record.
+- `/restorechinakey ID`: reactivate after resolving the issue; active leases
+  cannot be restored to avoid a second job using that key.
+
+For authorized external Railway schema setup, use
+`pnpm run setup:china-pool -- --apply`. It confirms the existing bot database,
+creates only the new pool table/index, and imports the existing secret if present.
+It does not start Telegram polling or deploy the bot.
+
 The wizard accepts a 9:16 or 16:9 ratio, a photo (including image documents), and
 a prompt. It crops the reference to the selected ratio, pins maximum duration
-and minimum native tier, submits once, polls the accepted job, and downloads its
+and minimum native tier, accepts only one paid task, polls that task, and downloads its
 authenticated content. No automatic upscale, model substitution or shorter clip
 fallback is used. The temporary reference link is removed after processing.
 

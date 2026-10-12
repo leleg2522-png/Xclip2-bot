@@ -5,7 +5,9 @@ import ts from 'typescript';
 import {
   CHINA_VIDEO_MODELS, ChinaVideoClient, chinaVideoRequest, isChinaVideoModel,
   validateChinaVideoFacts,
+  ChinaVideoHttpError, isChinaKeyRejection,
 } from '../src/chinaapi-video';
+import { ChinaApiKeyPool } from '../src/chinaapi-key-pool';
 
 const source = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 const keys = Object.keys(CHINA_VIDEO_MODELS) as Array<keyof typeof CHINA_VIDEO_MODELS>;
@@ -110,6 +112,50 @@ async function main() {
   await assert.rejects(authLost.poll('accepted', async () => {}), /HTTP_401/);
   const timedOut = new ChinaVideoClient('test-key', async () => json({ status: 'queued' }), async () => {});
   await assert.rejects(timedOut.poll('accepted', async () => {}, 2), /POLL_TIMEOUT/);
+  for (const [code, safe] of [['insufficient_user_quota', true], ['', false]] as const) {
+    const rejected = new ChinaVideoClient('test-key', async () => json({ error: { code } }, 402));
+    await assert.rejects(rejected.submit(chinaVideoRequest('wan3', image, 'walk', '16:9')), error => {
+      assert.ok(isChinaKeyRejection(error));
+      assert.equal(error.safeToRotate, safe);
+      return true;
+    });
+  }
+  const ambiguousWithId = new ChinaVideoClient('test-key', async () => json({ id: 'accepted', error: { code: 'insufficient_quota' } }, 402));
+  await assert.rejects(ambiguousWithId.submit(chinaVideoRequest('wan3', image, 'walk', '16:9')), error => {
+    assert.ok(isChinaKeyRejection(error));
+    assert.equal(error.safeToRotate, false);
+    return true;
+  });
+  const sqlCalls: Array<{ sql: string; params?: any[] }> = [];
+  const databasePool = new ChinaApiKeyPool({
+    async query(sql, params) {
+      sqlCalls.push({ sql, params });
+      assert.doesNotMatch(sql, /dummy-secret-key/);
+      if (sql.includes('RETURNING p.id')) return { rows: [{ id: 2, api_key: 'dummy-secret-key' }], rowCount: 1 };
+      if (sql.includes(' AS available') && sql.includes('SELECT EXISTS')) return { rows: [{ available: true }], rowCount: 1 };
+      if (sql.includes(' AS busy') && sql.includes('COUNT(*)')) return { rows: [{ available: 1, busy: 1, dead: 1 }], rowCount: 1 };
+      if (sql.includes('SELECT id, status')) return { rows: [{ id: 2, status: 'available', busy: false }], rowCount: 1 };
+      return { rows: [], rowCount: 1 };
+    },
+  });
+  await databasePool.ensureSchema();
+  assert.equal(await databasePool.addKeys(['dummy-secret-key', 'dummy-secret-key']), 1);
+  assert.deepEqual(sqlCalls.at(-1)?.params, [['dummy-secret-key']]);
+  assert.equal(await databasePool.hasAvailable(), true);
+  const selected = await databasePool.acquire([1]);
+  assert.ok(selected);
+  assert.equal(selected.apiKey, 'dummy-secret-key');
+  assert.match(sqlCalls.at(-1)!.sql, /FOR UPDATE SKIP LOCKED/);
+  await databasePool.release(selected, 'never store arbitrary upstream text');
+  assert.equal(sqlCalls.at(-1)?.params?.[2], 'authentication_or_quota_rejected');
+  assert.match(sqlCalls.at(-1)!.sql, /WHERE id = \$1 AND lease_token = \$2/);
+  assert.deepEqual(await databasePool.stats(), { available: 1, busy: 1, dead: 1 });
+  assert.equal((await databasePool.list())[0].id, 2);
+  await databasePool.disable(2);
+  await databasePool.restore(2);
+  assert.match(sqlCalls.at(-1)!.sql, /lease_until <= NOW/);
+  const dbError = new ChinaApiKeyPool({ query: async () => { throw Error('dummy-secret-key'); } });
+  await assert.rejects(dbError.stats(), /CHINA_POOL_DATABASE_ERROR/);
 
   // Execute the real billing/delivery runner with inert transport and DB doubles.
   const start = source.indexOf('async function runChinaVideo(');
@@ -119,18 +165,38 @@ async function main() {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
   }).outputText;
   function harness(stage = 'success') {
-    const events = { charges: [] as number[], refunds: [] as number[], submits: 0, releases: 0, successes: 0, messages: [] as string[] };
+    const events = { charges: [] as number[], refunds: [] as number[], submits: 0, releases: 0, successes: 0, messages: [] as string[], keyReleases: [] as Array<{ id: number; dead: boolean }> };
     const chain: any = {};
     for (const method of ['rotate', 'resize', 'flatten', 'jpeg']) chain[method] = () => chain;
     chain.toBuffer = async () => Buffer.from('cropped-photo');
     class FakeClient {
-      async ensureModel() { if (stage === 'catalog') throw Error('unavailable'); }
-      async submit() { events.submits++; if (stage === 'submit') throw Error('ambiguous'); return 'accepted'; }
-      async poll() { if (stage === 'poll') throw Error('failed'); }
+      constructor(private key: string) {}
+      async ensureModel() {
+        if (stage === 'catalog') throw Error('unavailable');
+        if (stage === 'rotate' && this.key === 'pool-1') throw new ChinaVideoHttpError(401, true, true);
+      }
+      async submit() {
+        events.submits++;
+        if (stage === 'submit') throw Error('ambiguous');
+        if (stage === 'quota-rotate' && this.key === 'pool-1') throw new ChinaVideoHttpError(402, true, true);
+        return 'accepted';
+      }
+      async poll() {
+        if (stage === 'poll') throw Error('failed');
+        if (stage === 'accepted-auth-loss') throw new ChinaVideoHttpError(401, true, true);
+      }
       async download() { if (stage === 'download') throw Error('failed'); return Buffer.from('video'); }
     }
     const context = vm.createContext({
-      CHINA_VIDEO_MODELS, ChinaVideoClient: FakeClient, chinaVideoRequest,
+      CHINA_VIDEO_MODELS, ChinaVideoClient: FakeClient, chinaVideoRequest, isChinaKeyRejection,
+      chinaKeyPool: {
+        hasAvailable: async () => stage !== 'unconfigured',
+        acquire: async (skip: number[]) => {
+          const id = [1, 2].find(id => !skip.includes(id));
+          return id ? { id, apiKey: `pool-${id}`, token: 'lease' } : null;
+        },
+        release: async (lease: any, reason: any) => { events.keyReleases.push({ id: lease.id, dead: !!reason }); },
+      },
       inspectChinaVideo: async () => { if (stage === 'dimensions') throw Error('mismatch'); return { width: 854, height: 480 }; },
       process: { env: { CHINAAPI_API_KEY: stage === 'unconfigured' ? '' : 'unit-test' } },
       publicBaseUrl: () => stage === 'no-public-url' ? 'http://localhost' : 'https://media.example.test',
@@ -169,6 +235,7 @@ async function main() {
     assert.equal(success.events.submits, 1);
     assert.equal(success.events.successes, 1);
     assert.equal(success.events.releases, 1);
+    assert.deepEqual(success.events.keyReleases, [{ id: 1, dead: false }]);
     assert.doesNotMatch(success.events.messages.join(' '), /ChinaAPI|PRIVATE|upscale/i);
   }
   for (const stage of ['catalog', 'photo', 'submit', 'poll', 'download', 'dimensions', 'delivery', 'delivery-throw', 'refund']) {
@@ -191,6 +258,19 @@ async function main() {
     assert.deepEqual(rejected.events.refunds, []);
     assert.equal(rejected.events.submits, 0);
   }
+  for (const stage of ['rotate', 'quota-rotate']) {
+    const failover = harness(stage);
+    await failover.run('wan3');
+    assert.deepEqual(failover.events.charges, [2000]);
+    assert.deepEqual(failover.events.refunds, []);
+    assert.equal(failover.events.submits, stage === 'rotate' ? 1 : 2);
+    assert.deepEqual(failover.events.keyReleases, [{ id: 1, dead: true }, { id: 2, dead: false }]);
+  }
+  const lostAuth = harness('accepted-auth-loss');
+  await lostAuth.run('wan3');
+  assert.equal(lostAuth.events.submits, 1);
+  assert.deepEqual(lostAuth.events.refunds, [2000]);
+  assert.deepEqual(lostAuth.events.keyReleases, [{ id: 1, dead: true }]);
   // Exercise the actual setup, image and prompt branches, not just their labels.
   function section(first: string, next: string) {
     const begin = source.indexOf(first);
@@ -208,6 +288,7 @@ async function main() {
   };
   const wizardContext = vm.createContext({
     CHINA_VIDEO_MODELS, isChinaVideoModel,
+    chinaKeyPool: { hasAvailable: async () => true },
     process: { env: { CHINAAPI_API_KEY: 'unit-test' } },
     getSession: () => draft,
     setSession: (_id: number, data: any) => { draft = { ...draft, ...data }; },
@@ -252,7 +333,7 @@ async function main() {
   await wizardContext.wizard(ctx, 'china_ratio_169', 2);
   assert.equal(draft.mode, 'idle', 'Stale ratio buttons must not recreate a draft');
   assert.match(replies.at(-1)!, /tidak aktif/);
-  wizardContext.process.env.CHINAAPI_API_KEY = '';
+  wizardContext.chinaKeyPool.hasAvailable = async () => false;
   await wizardContext.wizard(ctx, 'mode_china_wan3', 2);
   assert.equal(draft.mode, 'idle');
   assert.match(replies.at(-1)!, /Saldo tidak dipotong/);

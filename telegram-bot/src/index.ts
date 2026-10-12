@@ -27,9 +27,10 @@ import { generateXclipMotionFlora } from './xclip-motion-flora';
 import { HAR_MODELS, type HarModelKey, type HarAspectRatio } from './picsart-har-models';
 import { generateBananaRenderful } from './banana-renderful';
 import {
-  CHINA_VIDEO_MODELS, ChinaVideoClient, chinaVideoRequest, inspectChinaVideo, isChinaVideoModel,
+  CHINA_VIDEO_MODELS, ChinaVideoClient, chinaVideoRequest, inspectChinaVideo, isChinaVideoModel, isChinaKeyRejection,
   type ChinaVideoModelKey, type ChinaVideoRatio,
 } from './chinaapi-video';
+import { ChinaApiKeyPool, type ChinaKeyLease } from './chinaapi-key-pool';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -122,6 +123,7 @@ const db = new Pool({
   connectionTimeoutMillis: 10_000,
 });
 const freebeatBridge = new FreebeatBridgeQueue(db);
+const chinaKeyPool = new ChinaApiKeyPool(db);
 // CRITICAL: a pooled client can error while idle (server closed the socket).
 // The pg Pool emits 'error' for that; with NO listener Node treats it as an
 // unhandled 'error' event and CRASHES the process — which wipes every
@@ -4208,6 +4210,49 @@ bot.command('clearleonardopool', async (ctx) => {
 
 // ─── Admin: Flora AI Key Pool (Topaz 4K Upscaler) ────────────────────────────
 
+// Pool administration is private-chat/admin-only. Never echo stored keys.
+bot.command('addchinakey', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  const raw = ctx.message.text.replace(/^\/addchinakey(?:@\w+)?\s*/i, '').trim();
+  if (raw) await ctx.deleteMessage().catch(() => {});
+  if (ctx.chat.type !== 'private') return ctx.reply('Kelola key hanya melalui chat pribadi bot.');
+  if (!raw) return ctx.reply('Gunakan /addchinakey di chat pribadi admin, diikuti key. Bisa beberapa key dipisahkan koma atau baris baru. Pesan key akan dihapus setelah dibaca.');
+  try {
+    const keys = raw.split(/[\s,]+/).filter(Boolean);
+    const added = await chinaKeyPool.addKeys(keys);
+    const stats = await chinaKeyPool.stats();
+    return ctx.reply(`Pool ChinaAPI diperbarui.\nDitambahkan: ${added}\nDuplikat: ${keys.length - added}\nTersedia: ${stats.available}\nDipakai: ${stats.busy}\nNonaktif: ${stats.dead}`);
+  } catch {
+    return ctx.reply('Key belum dapat ditambahkan. Periksa format atau koneksi database. Nilai key tidak ditampilkan.');
+  }
+});
+bot.command('chinapool', async (ctx) => {
+  if (!(await requireAdmin(ctx))) return;
+  if (ctx.chat.type !== 'private') return ctx.reply('Kelola pool melalui chat pribadi bot.');
+  const stats = await chinaKeyPool.stats();
+  const rows = await chinaKeyPool.list();
+  return ctx.reply(
+    `Pool ChinaAPI\nTersedia: ${stats.available}\nDipakai: ${stats.busy}\nNonaktif: ${stats.dead}\n\n` +
+    rows.map(row => `ID ${row.id}: ${row.status}${row.busy ? ' (dipakai)' : ''}`).join('\n') +
+    '\n\n/nonaktifchinakey ID\n/restorechinakey ID'
+  );
+});
+for (const command of ['nonaktifchinakey', 'restorechinakey'] as const) {
+  bot.command(command, async (ctx) => {
+    if (!(await requireAdmin(ctx))) return;
+    if (ctx.chat.type !== 'private') return ctx.reply('Kelola pool melalui chat pribadi bot.');
+    const value = ctx.message.text.trim().split(/\s+/)[1];
+    const id = Number(value);
+    if (!/^\d+$/.test(value || '') || !Number.isSafeInteger(id) || id < 1 || id > 2147483647) {
+      return ctx.reply(`Format: /${command} ID`);
+    }
+    const updated = command === 'restorechinakey' ? await chinaKeyPool.restore(id) : await chinaKeyPool.disable(id);
+    return ctx.reply(updated
+      ? `ID ${id} ${command === 'restorechinakey' ? 'diaktifkan kembali' : 'dinonaktifkan'}.`
+      : 'ID tidak ditemukan atau key masih dipakai. Tunggu job selesai sebelum restore.');
+  });
+}
+
 bot.command('addflorakey', async (ctx) => {
   if (!(await requireAdmin(ctx))) return;
   const raw = ctx.message.text.replace(/^\/addflorakey\s*/i, '').trim();
@@ -4475,7 +4520,7 @@ bot.on('callback_query', async (ctx) => {
   if (data.startsWith('mode_china_')) {
     const modelKey = data.slice('mode_china_'.length);
     if (!isChinaVideoModel(modelKey)) return;
-    if (!process.env.CHINAAPI_API_KEY) {
+    if (!await chinaKeyPool.hasAvailable().catch(() => false)) {
       setSession(userId, { mode: 'idle' });
       return ctx.editMessageText('Layanan model ini sedang tidak tersedia. Saldo tidak dipotong.\n\n/menu untuk kembali.');
     }
@@ -11461,9 +11506,8 @@ async function runChinaVideo(
   modelKey: ChinaVideoModelKey, imageUrl: string, prompt: string, ratio: ChinaVideoRatio,
 ): Promise<void> {
   const config = CHINA_VIDEO_MODELS[modelKey];
-  const apiKey = process.env.CHINAAPI_API_KEY;
   const publicOrigin = publicBaseUrl();
-  if (!apiKey || !/^https:\/\//.test(publicOrigin)) {
+  if (!/^https:\/\//.test(publicOrigin) || !await chinaKeyPool.hasAvailable().catch(() => false)) {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       'Layanan model ini belum tersedia. Saldo tidak dipotong.\n\n/menu untuk kembali.').catch(() => {});
     return;
@@ -11475,9 +11519,9 @@ async function runChinaVideo(
   }
   let refund = true;
   let referenceUrl: string | undefined;
+  let lease: ChinaKeyLease | null = null;
+  let deadReason: string | undefined;
   try {
-    const client = new ChinaVideoClient(apiKey);
-    await client.ensureModel(modelKey);
     // Never hand a Telegram file URL to the supplier: it contains the bot token.
     // Serve a cropped JPEG from our existing random-token media endpoint instead.
     const source = await downloadBuffer(imageUrl);
@@ -11487,7 +11531,30 @@ async function runChinaVideo(
       .rotate().resize(ratio === '9:16' ? edge : wide, ratio === '9:16' ? wide : edge, { fit: 'cover' })
       .flatten({ background: '#ffffff' }).jpeg({ quality: 92 }).toBuffer();
     referenceUrl = await publishMedia(frame, false);
-    const taskId = await client.submit(chinaVideoRequest(modelKey, referenceUrl, prompt, ratio));
+    let client: ChinaVideoClient | undefined;
+    let taskId: string | undefined;
+    const skippedIds: number[] = [];
+    for (let attempt = 0; attempt < 5; attempt++) {
+      lease = await chinaKeyPool.acquire(skippedIds);
+      if (!lease) break;
+      skippedIds.push(lease.id);
+      client = new ChinaVideoClient(lease.apiKey);
+      let stage: 'catalog' | 'submit' = 'catalog';
+      try {
+        await client.ensureModel(modelKey);
+        stage = 'submit';
+        taskId = await client.submit(chinaVideoRequest(modelKey, referenceUrl, prompt, ratio));
+        break;
+      } catch (error) {
+        const rejected = isChinaKeyRejection(error);
+        const incompatible = stage === 'catalog' && error instanceof Error
+          && error.message === 'CHINA_VIDEO_MODEL_UNAVAILABLE';
+        if (!(rejected && error.safeToRotate) && !incompatible) throw error;
+        await chinaKeyPool.release(lease, rejected ? 'rejected' : undefined);
+        lease = null;
+      }
+    }
+    if (!client || !taskId) throw new Error('CHINA_VIDEO_POOL_UNAVAILABLE');
     console.log(`[${userId}] native video accepted model=${modelKey} task=${taskId}`);
     let lastProgress = -1;
     await client.poll(taskId, async progress => {
@@ -11507,7 +11574,8 @@ async function runChinaVideo(
     refund = false;
     markGenSuccess(userId);
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-  } catch {
+  } catch (error) {
+    if (isChinaKeyRejection(error)) deadReason = 'rejected';
     // Raw upstream errors can contain account details; keep customer copy neutral.
     console.error(`[${userId}] native video failed model=${modelKey}; details withheld`);
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
@@ -11529,6 +11597,9 @@ async function runChinaVideo(
       }
     } finally {
       releaseGenerating(dbUserId);
+      if (lease) await chinaKeyPool.release(lease, deadReason).catch(() => {
+        console.error(`[CHINA_POOL_RELEASE_UNCONFIRMED] id=${lease?.id}; lease will expire automatically`);
+      });
       if (referenceUrl) {
         const token = new URL(referenceUrl).pathname.split('/').at(-1)!;
         const entry = mediaStore.get(token);
@@ -12411,6 +12482,12 @@ app.listen(PORT, () => {
     console.log('✅ Picsart keepalive aktif (refresh tiap 3 hari)');
   } catch (e: any) {
     console.error('❌ Picsart schema gagal:', e?.message ?? e);
+  }
+  try {
+    await chinaKeyPool.ensureSchema();
+    if (process.env.CHINAAPI_API_KEY) await chinaKeyPool.addKeys([process.env.CHINAAPI_API_KEY]);
+  } catch {
+    console.error('ChinaAPI pool initialization failed; credential details withheld');
   }
   bot.launch({ allowedUpdates: ['message', 'callback_query'] });
   console.log('✅ Bot berjalan...');

@@ -13,6 +13,15 @@ export const CHINA_VIDEO_MODELS = {
 export type ChinaVideoModelKey = keyof typeof CHINA_VIDEO_MODELS;
 export type ChinaVideoRatio = '9:16' | '16:9';
 
+export class ChinaVideoHttpError extends Error {
+  constructor(readonly status: number, readonly keyRejected: boolean, readonly safeToRotate: boolean) {
+    super(`CHINA_VIDEO_HTTP_${status}`);
+  }
+}
+export function isChinaKeyRejection(error: unknown): error is ChinaVideoHttpError {
+  return error instanceof ChinaVideoHttpError && error.keyRejected;
+}
+
 export function isChinaVideoModel(value: string): value is ChinaVideoModelKey {
   return Object.hasOwn(CHINA_VIDEO_MODELS, value);
 }
@@ -62,7 +71,22 @@ export class ChinaVideoClient {
       ...(body ? { body: JSON.stringify(body) } : {}),
       signal: AbortSignal.timeout(90000),
     });
-    if (!response.ok) throw new Error(`CHINA_VIDEO_HTTP_${response.status}`);
+    if (!response.ok) {
+      const rejected: any = await response.json().catch(() => null);
+      const code = String(rejected?.error?.code ?? rejected?.code ?? '').toLowerCase();
+      const explicitRejection = [
+        'invalid_api_key', 'invalid_token', 'token_expired', 'insufficient_quota',
+        'insufficient_user_quota', 'insufficient_token_quota', 'quota_exceeded',
+        'token_quota_not_enough', 'payment_required',
+      ].includes(code);
+      const keyRejected = response.status === 401 || response.status === 402
+        || (response.status === 403 && explicitRejection);
+      const hasTask = !!(rejected?.id || rejected?.task_id || rejected?.data?.id || rejected?.data?.task_id);
+      // A GET has no paid side effect. A failed POST can rotate only on a clear
+      // structured authentication/quota rejection without an accepted task.
+      throw new ChinaVideoHttpError(response.status, keyRejected,
+        !hasTask && keyRejected && (!body || explicitRejection));
+    }
     const payload = await response.json();
     const data = payload?.data ?? payload;
     if (!data || payload?.success === false || (data.error && data.status !== 'failed')) {
@@ -85,7 +109,8 @@ export class ChinaVideoClient {
   }
   async poll(id: string, progress: (value: number) => Promise<void>, maxAttempts = 160): Promise<void> {
     let failures = 0;
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const deadline = Date.now() + 40 * 60 * 1000;
+    for (let attempt = 0; attempt < maxAttempts && Date.now() < deadline; attempt++) {
       let run;
       try {
         run = await this.request(`/v1/videos/${encodeURIComponent(id)}`);
