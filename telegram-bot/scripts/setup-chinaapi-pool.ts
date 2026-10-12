@@ -16,9 +16,11 @@ async function main() {
     const pool = new ChinaApiKeyPool(client);
     await pool.ensureSchema();
     const added = process.env.CHINAAPI_API_KEY ? await pool.addKeys([process.env.CHINAAPI_API_KEY]) : 0;
+    const retired = process.argv.includes('--retire-seeded-key') && process.env.CHINAAPI_API_KEY
+      ? await pool.retirePreviouslyUsed(process.env.CHINAAPI_API_KEY) : 0;
     const stats = await pool.stats();
     await client.query('COMMIT');
-    console.log(JSON.stringify({ target: 'Railway bot database', table: 'chinaapi_key_pool', added, stats }));
+    console.log(JSON.stringify({ target: 'Railway bot database', table: 'chinaapi_key_pool', added, retired, stats }));
   } catch {
     await client.query('ROLLBACK').catch(() => {});
     throw Error('ChinaAPI pool setup failed; credential details withheld');

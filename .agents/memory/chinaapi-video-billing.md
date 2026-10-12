@@ -83,3 +83,14 @@ database, not in the invite panel's local Replit database.
 **How to apply:** Keep pool management on the bot's Railway database. Disabled
 pool credentials must not be silently reused through environment-key fallback.
 Do not treat several keys from one account as separate funded wallets.
+
+ChinaAPI keys are single-use, not reusable round-robin credentials: “apikey nya
+hanya 1 kali pakai”.
+
+**Why:** The user clarified this after the original reusable pool was built.
+An ambiguous submit may have accepted a paid job, so returning its key to the
+pool risks violating the one-use rule.
+
+**How to apply:** Persist consumption before one generation submit. Never restore
+or re-import a consumed key as available after success, failure, timeout or a
+restart. The same job's polling/download may continue with its original key.

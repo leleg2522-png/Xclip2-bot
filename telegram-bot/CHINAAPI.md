@@ -31,15 +31,22 @@ the 30-second Seedance 2.5 reference-mode setting.
 
 ## Safety and delivery
 
-Each key is leased atomically for one job across all bot instances, selecting
-the least recently used available key. Leases expire after one hour for crash
-recovery, and ownership tokens protect a newer lease from an old job's cleanup.
+**One key = one generation attempt, permanently.** After free catalog discovery,
+the key is durably consumed before submitting a paid request. Success, failure,
+timeout, process crash and delivery failure never make it available again.
+Polling and downloading that same task still use its original key.
+
+Keys are leased atomically across bot instances while preparing a request.
+Unused preparation leases expire after one hour for crash recovery; a consumed
+key never expires back into availability. Ownership tokens protect a newer
+preparation lease from an old job's cleanup.
 Polling has both an attempt limit and a 40-minute elapsed deadline.
 
 Before an accepted task, the bot can try at most five different keys after a
 definite authentication/quota rejection or a model-catalog mismatch. A submit
 with a timeout, missing task ID, ambiguous response or accepted task is never
-repeated. Invalid/exhausted keys are disabled; admin restore does not add credits.
+repeated. Invalid/exhausted keys are disabled. A used key cannot be restored,
+including by duplicate import or an environment seed at startup.
 Several keys belonging to the same account can still share one wallet.
 
 ### Private admin commands
@@ -48,8 +55,8 @@ Several keys belonging to the same account can still share one wallet.
   reading, and keys are never echoed. Only private admin chats are allowed.
 - `/chinapool`: counts and key IDs/statuses, without credential values.
 - `/nonaktifchinakey ID`: disable a key without deleting its record.
-- `/restorechinakey ID`: reactivate after resolving the issue; active leases
-  cannot be restored to avoid a second job using that key.
+- `/restorechinakey ID`: reactivate only an unused, inactive key after resolving
+  the issue. Consumed keys and active leases cannot be restored.
 
 For authorized external Railway schema setup, use
 `pnpm run setup:china-pool -- --apply`. It confirms the existing bot database,

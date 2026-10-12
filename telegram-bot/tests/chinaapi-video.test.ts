@@ -133,8 +133,8 @@ async function main() {
       assert.doesNotMatch(sql, /dummy-secret-key/);
       if (sql.includes('RETURNING p.id')) return { rows: [{ id: 2, api_key: 'dummy-secret-key' }], rowCount: 1 };
       if (sql.includes(' AS available') && sql.includes('SELECT EXISTS')) return { rows: [{ available: true }], rowCount: 1 };
-      if (sql.includes(' AS busy') && sql.includes('COUNT(*)')) return { rows: [{ available: 1, busy: 1, dead: 1 }], rowCount: 1 };
-      if (sql.includes('SELECT id, status')) return { rows: [{ id: 2, status: 'available', busy: false }], rowCount: 1 };
+      if (sql.includes(' AS busy') && sql.includes('COUNT(*)')) return { rows: [{ available: 1, busy: 1, dead: 1, used: 1 }], rowCount: 1 };
+      if (sql.includes(' AS status')) return { rows: [{ id: 2, status: 'available', busy: false }], rowCount: 1 };
       return { rows: [], rowCount: 1 };
     },
   });
@@ -146,14 +146,19 @@ async function main() {
   assert.ok(selected);
   assert.equal(selected.apiKey, 'dummy-secret-key');
   assert.match(sqlCalls.at(-1)!.sql, /FOR UPDATE SKIP LOCKED/);
+  await databasePool.consume(selected);
+  assert.match(sqlCalls.at(-1)!.sql, /consumed_at IS NULL AND lease_until > NOW/);
   await databasePool.release(selected, 'never store arbitrary upstream text');
   assert.equal(sqlCalls.at(-1)?.params?.[2], 'authentication_or_quota_rejected');
   assert.match(sqlCalls.at(-1)!.sql, /WHERE id = \$1 AND lease_token = \$2/);
-  assert.deepEqual(await databasePool.stats(), { available: 1, busy: 1, dead: 1 });
+  assert.deepEqual(await databasePool.stats(), { available: 1, busy: 1, dead: 1, used: 1 });
   assert.equal((await databasePool.list())[0].id, 2);
   await databasePool.disable(2);
   await databasePool.restore(2);
   assert.match(sqlCalls.at(-1)!.sql, /lease_until <= NOW/);
+  assert.match(sqlCalls.at(-1)!.sql, /consumed_at IS NULL/);
+  const alreadyUsed = new ChinaApiKeyPool({ query: async () => ({ rows: [], rowCount: 0 }) });
+  await assert.rejects(alreadyUsed.consume(selected), /ALREADY_USED_OR_NOT_OWNED/);
   const dbError = new ChinaApiKeyPool({ query: async () => { throw Error('dummy-secret-key'); } });
   await assert.rejects(dbError.stats(), /CHINA_POOL_DATABASE_ERROR/);
 
@@ -165,7 +170,7 @@ async function main() {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
   }).outputText;
   function harness(stage = 'success') {
-    const events = { charges: [] as number[], refunds: [] as number[], submits: 0, releases: 0, successes: 0, messages: [] as string[], keyReleases: [] as Array<{ id: number; dead: boolean }> };
+    const events = { charges: [] as number[], refunds: [] as number[], submits: 0, releases: 0, successes: 0, messages: [] as string[], consumes: [] as number[], keyReleases: [] as Array<{ id: number; dead: boolean }> };
     const chain: any = {};
     for (const method of ['rotate', 'resize', 'flatten', 'jpeg']) chain[method] = () => chain;
     chain.toBuffer = async () => Buffer.from('cropped-photo');
@@ -194,6 +199,10 @@ async function main() {
         acquire: async (skip: number[]) => {
           const id = [1, 2].find(id => !skip.includes(id));
           return id ? { id, apiKey: `pool-${id}`, token: 'lease' } : null;
+        },
+        consume: async (lease: any) => {
+          events.consumes.push(lease.id);
+          if (stage === 'consume-db-ambiguous') throw Error('CHINA_POOL_DATABASE_ERROR');
         },
         release: async (lease: any, reason: any) => { events.keyReleases.push({ id: lease.id, dead: !!reason }); },
       },
@@ -233,6 +242,7 @@ async function main() {
     assert.deepEqual(success.events.charges, [2000]);
     assert.deepEqual(success.events.refunds, []);
     assert.equal(success.events.submits, 1);
+    assert.deepEqual(success.events.consumes, [1]);
     assert.equal(success.events.successes, 1);
     assert.equal(success.events.releases, 1);
     assert.deepEqual(success.events.keyReleases, [{ id: 1, dead: false }]);
@@ -271,6 +281,11 @@ async function main() {
   assert.equal(lostAuth.events.submits, 1);
   assert.deepEqual(lostAuth.events.refunds, [2000]);
   assert.deepEqual(lostAuth.events.keyReleases, [{ id: 1, dead: true }]);
+  const consumeFailure = harness('consume-db-ambiguous');
+  await consumeFailure.run('wan3');
+  assert.equal(consumeFailure.events.submits, 0, 'No paid call after ambiguous consumption write');
+  assert.deepEqual(consumeFailure.events.refunds, [2000]);
+  assert.deepEqual(consumeFailure.events.consumes, [1]);
   // Exercise the actual setup, image and prompt branches, not just their labels.
   function section(first: string, next: string) {
     const begin = source.indexOf(first);

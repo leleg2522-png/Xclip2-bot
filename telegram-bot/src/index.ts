@@ -4221,7 +4221,7 @@ bot.command('addchinakey', async (ctx) => {
     const keys = raw.split(/[\s,]+/).filter(Boolean);
     const added = await chinaKeyPool.addKeys(keys);
     const stats = await chinaKeyPool.stats();
-    return ctx.reply(`Pool ChinaAPI diperbarui.\nDitambahkan: ${added}\nDuplikat: ${keys.length - added}\nTersedia: ${stats.available}\nDipakai: ${stats.busy}\nNonaktif: ${stats.dead}`);
+    return ctx.reply(`Pool ChinaAPI diperbarui.\nDitambahkan: ${added}\nDuplikat: ${keys.length - added}\nTersedia: ${stats.available}\nDicadangkan: ${stats.busy}\nTerpakai sekali: ${stats.used}\nNonaktif: ${stats.dead}`);
   } catch {
     return ctx.reply('Key belum dapat ditambahkan. Periksa format atau koneksi database. Nilai key tidak ditampilkan.');
   }
@@ -4232,7 +4232,7 @@ bot.command('chinapool', async (ctx) => {
   const stats = await chinaKeyPool.stats();
   const rows = await chinaKeyPool.list();
   return ctx.reply(
-    `Pool ChinaAPI\nTersedia: ${stats.available}\nDipakai: ${stats.busy}\nNonaktif: ${stats.dead}\n\n` +
+    `Pool ChinaAPI • 1 key = 1 percobaan generate\nTersedia: ${stats.available}\nDicadangkan: ${stats.busy}\nTerpakai sekali: ${stats.used}\nNonaktif: ${stats.dead}\n\n` +
     rows.map(row => `ID ${row.id}: ${row.status}${row.busy ? ' (dipakai)' : ''}`).join('\n') +
     '\n\n/nonaktifchinakey ID\n/restorechinakey ID'
   );
@@ -4249,7 +4249,7 @@ for (const command of ['nonaktifchinakey', 'restorechinakey'] as const) {
     const updated = command === 'restorechinakey' ? await chinaKeyPool.restore(id) : await chinaKeyPool.disable(id);
     return ctx.reply(updated
       ? `ID ${id} ${command === 'restorechinakey' ? 'diaktifkan kembali' : 'dinonaktifkan'}.`
-      : 'ID tidak ditemukan atau key masih dipakai. Tunggu job selesai sebelum restore.');
+      : 'ID tidak ditemukan, masih dicadangkan, atau sudah terpakai sekali. Key terpakai tidak bisa diaktifkan kembali.');
   });
 }
 
@@ -11542,6 +11542,7 @@ async function runChinaVideo(
       let stage: 'catalog' | 'submit' = 'catalog';
       try {
         await client.ensureModel(modelKey);
+        await chinaKeyPool.consume(lease);
         stage = 'submit';
         taskId = await client.submit(chinaVideoRequest(modelKey, referenceUrl, prompt, ratio));
         break;
