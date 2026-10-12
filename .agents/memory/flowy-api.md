@@ -66,12 +66,12 @@ Check quick tools independently instead of assuming a broken direct-generation
 catalog means that every Flowy API route is unusable.
 
 Successful discovery, quotes, uploads and run acceptance do not prove that
-the provider can finish a Motion Control generation.
+the provider can finish a Motion Control generation or video upscale.
 
-**Why:** A regular Motion Control test passed those stages but then returned a
-generic failed-run message. The wallet returned to its original available
-balance with no reserved credits. The generic failure did not identify the
-underlying cause.
+**Why:** A regular Motion Control test and a separate short 2x video upscale
+test passed those stages but then returned a generic failed-run message. In
+both cases the wallet returned to its original available balance with no
+reserved credits. The generic failure did not identify the underlying cause.
 
 **How to apply:** Confirm terminal status and a downloadable output before
 calling the generation path operational. Verify wallet reservations and balance
@@ -87,6 +87,9 @@ and duration without probing the file, and tools consume those facts.
 
 **How to apply:** Reuse real media inspection before upload and quote. Never
 understate duration, dimensions or other billed source facts.
+For video upscale, quote the actual duration, dimensions and chosen factor.
+The catalog's representative per-run estimate is not the cost of every video;
+longer clips and larger factors can consume most of the workspace wallet.
 
 Multiple keys for one workspace share its wallet; a fresh key does not create
 fresh credits.
