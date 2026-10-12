@@ -515,3 +515,17 @@ mtime_ms = 1791715150243
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/ce0c2f2e-9423-485a-89be-85e1a5818dcb/b4391187-1bdc-4146-b4bd-cc61acd64160"
 storage_version_token = "1791715213229834"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "bc4N5fkpY8MG0p8dj2ovO"
+uri = "file://generated-artifacts/chinaapi-wan30-i2v-test/result.mp4"
+type = "video"
+title = "Wan 3.0 — Image-to-Video 30 detik, 480p"
+description = "Hasil native ChinaAPI: 854×480, sekitar 30 detik, 30 fps, dengan audio. Frame awal menggunakan contoh kucing resmi Alibaba. Penggunaan key tercatat US$1,50."
+logical_id = "f413b7d0-fbeb-4850-a89c-dde2a2f41b31"
+content_hash = "sha256:6358588989e39cbee0c8ee7b7e6919d25c7728ecfda9302a2a65b8f005e80809"
+size = 28032024
+mtime_ms = 1791773690851
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/f413b7d0-fbeb-4850-a89c-dde2a2f41b31/852682eb-1568-4883-88e0-8609cfd9864b"
+storage_version_token = "1791773792993793"
+content_type = "video/mp4"
