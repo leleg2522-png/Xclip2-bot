@@ -18,49 +18,60 @@ async function main() {
   assert.equal(keys.length, 4);
   assert.equal(isChinaVideoModel('constructor'), false);
   assert.equal(isChinaVideoModel('unknown'), false);
+  assert.equal(isChinaVideoModel('kling_v3'), false);
+  assert.equal(isChinaVideoModel('kling_omni'), false);
   for (const key of keys) {
     const config = CHINA_VIDEO_MODELS[key];
     assert.equal(config.price, 2000);
     assert.equal(config.duration, key === 'wan3' ? 30 : 15);
-    assert.equal(config.resolution, key.startsWith('kling') ? '720p' : '480p');
+    assert.equal(config.resolution, key === 'minimax_h3' ? '2K' : '480p');
+    assert.ok(config.referenceEdge >= 256);
     for (const ratio of ['9:16', '16:9'] as const) {
       const body: any = chinaVideoRequest(key, image, ' subject walks ', ratio);
       assert.equal(body.model, config.model);
       assert.equal(body.prompt, 'subject walks');
-      if (key === 'kling_omni') {
-        assert.equal(body.metadata.duration, '15');
-        assert.equal(body.metadata.mode, 'std');
-        assert.equal(body.metadata.aspect_ratio, ratio);
-        assert.deepEqual(body.metadata.image_list, [{ image_url: image, type: 'first_frame' }]);
-        assert.equal(body.metadata.resolution, undefined);
-      } else if (key === 'kling_v3') {
-        assert.equal(body.image, image);
-        assert.equal(body.mode, 'std');
+      if (key === 'minimax_h3') {
+        assert.equal(body.model, 'MiniMax-H3');
+        assert.equal(body.size, '2K');
+        assert.equal(body.input_reference, image);
         assert.equal(body.duration, 15);
-        assert.equal(body.metadata.aspect_ratio, ratio);
-        assert.equal(body.input_reference, undefined);
+        assert.equal(body.metadata, undefined, 'Do not override first-frame adaptive ratio');
       } else {
         assert.equal(body.input_reference, image);
         assert.equal(body.duration, config.duration);
-        if (key === 'wan3') {
+        if (key === 'wan3' || key === 'happyhorse11') {
           assert.equal(body.size, ratio === '9:16' ? '480*832' : '832*480');
           assert.equal(body.metadata, undefined);
         } else {
           assert.deepEqual(body.metadata, { resolution: '480p' });
         }
       }
-      const edge = Number.parseInt(config.resolution);
+      const edge = key === 'minimax_h3' ? 1440 : Number.parseInt(config.resolution);
       const wide = Math.round(edge * 16 / 9 / 2) * 2;
       const probe = { streams: [{
         codec_type: 'video', duration: String(config.duration),
         width: ratio === '9:16' ? edge : wide, height: ratio === '9:16' ? wide : edge,
       }], format: { duration: config.duration + 0.02 } };
       assert.equal(validateChinaVideoFacts(key, ratio, probe).duration, config.duration);
+      if (key === 'minimax_h3') {
+        const dci = { streams: [{ ...probe.streams[0],
+          width: ratio === '9:16' ? 1152 : 2048, height: ratio === '9:16' ? 2048 : 1152,
+        }] };
+        assert.equal(validateChinaVideoFacts(key, ratio, dci).duration, 15);
+      }
+      if (key === 'happyhorse11') {
+        const aligned = { streams: [{ ...probe.streams[0],
+          width: ratio === '9:16' ? 480 : 832, height: ratio === '9:16' ? 832 : 480,
+        }] };
+        assert.equal(validateChinaVideoFacts(key, ratio, aligned).duration, 15);
+      }
       for (const mismatch of [
         { ...probe, streams: [] },
         { ...probe, streams: [{ ...probe.streams[0], duration: 5 }] },
         { ...probe, streams: [{ ...probe.streams[0], width: 1080, height: 1920 }] },
         { ...probe, streams: [{ ...probe.streams[0], width: edge, height: edge }] },
+        { ...probe, streams: [{ ...probe.streams[0], width: 1920, height: 1080 }] },
+        { ...probe, streams: [{ ...probe.streams[0], width: 3840, height: 2160 }] },
       ]) assert.throws(() => validateChinaVideoFacts(key, ratio, mismatch), /OUTPUT_MISMATCH/);
     }
     assert.throws(() => chinaVideoRequest(key, 'http://localhost/secret', 'walk', '16:9'));
@@ -99,7 +110,7 @@ async function main() {
       }
       return json({ status: 'failed', error: { message: 'private upstream reason' } });
     }, async () => {});
-    const request = chinaVideoRequest('kling_v3', image, 'walk', '9:16');
+    const request = chinaVideoRequest('minimax_h3', image, 'walk', '9:16');
     if (failure === 'failed') {
       const accepted = await failing.submit(request);
       await assert.rejects(failing.poll(accepted, async () => {}), /GENERATION_FAILED/);
@@ -170,9 +181,10 @@ async function main() {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
   }).outputText;
   function harness(stage = 'success') {
-    const events = { charges: [] as number[], refunds: [] as number[], submits: 0, releases: 0, successes: 0, messages: [] as string[], consumes: [] as number[], keyReleases: [] as Array<{ id: number; dead: boolean }> };
+    const events = { charges: [] as number[], refunds: [] as number[], submits: 0, releases: 0, successes: 0, messages: [] as string[], consumes: [] as number[], referenceSizes: [] as number[][], keyReleases: [] as Array<{ id: number; dead: boolean }> };
     const chain: any = {};
     for (const method of ['rotate', 'resize', 'flatten', 'jpeg']) chain[method] = () => chain;
+    chain.resize = (width: number, height: number) => { events.referenceSizes.push([width, height]); return chain; };
     chain.toBuffer = async () => Buffer.from('cropped-photo');
     class FakeClient {
       constructor(private key: string) {}
@@ -243,6 +255,8 @@ async function main() {
     assert.deepEqual(success.events.refunds, []);
     assert.equal(success.events.submits, 1);
     assert.deepEqual(success.events.consumes, [1]);
+    assert.ok(success.events.referenceSizes[0].every(edge => Number.isFinite(edge) && edge >= 256));
+    if (key === 'minimax_h3') assert.deepEqual(success.events.referenceSizes, [[1366, 768]]);
     assert.equal(success.events.successes, 1);
     assert.equal(success.events.releases, 1);
     assert.deepEqual(success.events.keyReleases, [{ id: 1, dead: false }]);
@@ -345,6 +359,11 @@ async function main() {
     assert.equal(draft.chinaVideoImageUrl, undefined);
   }
   draft = { mode: 'idle', dbUserId: 3 };
+  await wizardContext.wizard(ctx, 'mode_china_kling_v3', 2);
+  assert.match(replies.at(-1)!, /sudah tidak tersedia/);
+  assert.equal(draft.mode, 'idle');
+  await wizardContext.wizard(ctx, 'mode_china_kling_omni', 2);
+  assert.match(replies.at(-1)!, /sudah tidak tersedia/);
   await wizardContext.wizard(ctx, 'china_ratio_169', 2);
   assert.equal(draft.mode, 'idle', 'Stale ratio buttons must not recreate a draft');
   assert.match(replies.at(-1)!, /tidak aktif/);

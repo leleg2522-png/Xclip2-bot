@@ -4494,7 +4494,9 @@ bot.on('callback_query', async (ctx) => {
 
   if (data.startsWith('mode_china_')) {
     const modelKey = data.slice('mode_china_'.length);
-    if (!isChinaVideoModel(modelKey)) return;
+    if (!isChinaVideoModel(modelKey)) {
+      return ctx.editMessageText('Pilihan ini sudah tidak tersedia. Buka /menu untuk pilihan terbaru.');
+    }
     if (!await chinaKeyPool.hasAvailable().catch(() => false)) {
       setSession(userId, { mode: 'idle' });
       return ctx.editMessageText('Layanan model ini sedang tidak tersedia. Saldo tidak dipotong.\n\n/menu untuk kembali.');
@@ -11500,7 +11502,7 @@ async function runChinaVideo(
     // Never hand a Telegram file URL to the supplier: it contains the bot token.
     // Serve a cropped JPEG from our existing random-token media endpoint instead.
     const source = await downloadBuffer(imageUrl);
-    const edge = Number.parseInt(config.resolution);
+    const edge = config.referenceEdge;
     const wide = Math.round(edge * 16 / 9 / 2) * 2;
     const frame = await sharp(source.buf)
       .rotate().resize(ratio === '9:16' ? edge : wide, ratio === '9:16' ? wide : edge, { fit: 'cover' })

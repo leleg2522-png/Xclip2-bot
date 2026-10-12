@@ -6,13 +6,20 @@ not the supplier name.
 
 | Model | Duration | Native tier | Customer price |
 | --- | --- | --- | --- |
-| Kling Omni | 15 seconds | 720p / std | Rp2.000 |
-| Kling V3 | 15 seconds | 720p / std | Rp2.000 |
+| MiniMax H3 | 15 seconds | 2K | Rp2.000 |
+| HappyHorse 1.1 | 15 seconds | 480p | Rp2.000 |
 | Wan 3.0 | 30 seconds | 480p | Rp2.000 |
 | Seedance 2.0 | 15 seconds | 480p | Rp2.000 |
 
 These prices are explicitly requested customer prices, **not** estimates of
 supplier cost. Normal supplier pricing can exceed the customer charge.
+The two new Kling choices were cancelled and replaced; existing models from
+other providers are unchanged. H3's gateway payload uses `size: "2K"` with
+`input_reference`; HappyHorse I2V uses `832*480`/`480*832` and `input_reference`.
+Both use integer `duration: 15`. These contracts are documented at
+https://dash.chinaapi.ai/docs/api/video/ and present in authenticated discovery.
+Do not substitute H3-Max, which does not support 2K. H3 reference-image sizing
+is independent from output tier; never parse the label `2K` as a two-pixel edge.
 Seedance 2.0's model-specific catalog lists a 15-second maximum; do not copy
 the 30-second Seedance 2.5 reference-mode setting.
 

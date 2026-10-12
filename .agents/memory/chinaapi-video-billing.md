@@ -56,6 +56,9 @@ requested width; report the measured dimensions.
 
 For the four additional ChinaAPI bot choices, the user set the customer price
 to “2k semua” and requested maximum duration with the lowest native resolution.
+The user later cancelled the new Kling V3/Omni choices and replaced them with
+MiniMax H3 at **2K/15 seconds** (an explicit exception to lowest resolution) and
+HappyHorse 1.1 at **15 seconds, lowest resolution** (480p in the gateway).
 
 **Why:** These are explicitly chosen product settings, not a cost-plus pricing
 formula; normal supplier cost can exceed the customer price.
@@ -63,6 +66,8 @@ formula; normal supplier cost can exceed the customer price.
 **How to apply:** Keep Rp2.000 per generation for these four choices unless the
 user changes it. Do not silently increase the price, shorten duration, upscale
 the output, or change other suppliers' prices to compensate for margin.
+Keep these replacements confined to the new ChinaAPI choices, not the older
+Picsart/Flora Kling or H3 routes.
 
 Seedance 2.0's model-specific catalog duration limit takes precedence over the
 generic video guide's shared request-shape description.

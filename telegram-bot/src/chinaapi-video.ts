@@ -5,10 +5,10 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 
 export const CHINA_VIDEO_MODELS = {
-  kling_omni: { label: 'Kling Omni', model: 'kling-v3-omni', duration: 15, resolution: '720p', price: 2000 },
-  kling_v3: { label: 'Kling V3', model: 'kling-v3', duration: 15, resolution: '720p', price: 2000 },
-  wan3: { label: 'Wan 3.0', model: 'wan3.0-video', duration: 30, resolution: '480p', price: 2000 },
-  seedance2: { label: 'Seedance 2.0', model: 'doubao-seedance-2-0-260128', duration: 15, resolution: '480p', price: 2000 },
+  minimax_h3: { label: 'MiniMax H3', model: 'MiniMax-H3', duration: 15, resolution: '2K', referenceEdge: 768, price: 2000 },
+  happyhorse11: { label: 'HappyHorse 1.1', model: 'happyhorse-1.1-i2v', duration: 15, resolution: '480p', referenceEdge: 480, price: 2000 },
+  wan3: { label: 'Wan 3.0', model: 'wan3.0-video', duration: 30, resolution: '480p', referenceEdge: 480, price: 2000 },
+  seedance2: { label: 'Seedance 2.0', model: 'doubao-seedance-2-0-260128', duration: 15, resolution: '480p', referenceEdge: 480, price: 2000 },
 } as const;
 export type ChinaVideoModelKey = keyof typeof CHINA_VIDEO_MODELS;
 export type ChinaVideoRatio = '9:16' | '16:9';
@@ -32,20 +32,10 @@ export function chinaVideoRequest(key: ChinaVideoModelKey, image: string, prompt
   }
   const config = CHINA_VIDEO_MODELS[key];
   const common = { model: config.model, prompt: prompt.trim() };
-  if (key === 'kling_omni') {
-    return {
-      ...common,
-      metadata: {
-        image_list: [{ image_url: image, type: 'first_frame' }],
-        mode: 'std', duration: String(config.duration), aspect_ratio: ratio, sound: 'off',
-      },
-    };
-  }
-  if (key === 'kling_v3') {
-    return {
-      ...common, image, duration: config.duration, mode: 'std',
-      metadata: { aspect_ratio: ratio, sound: 'off' },
-    };
+  if (key === 'minimax_h3') {
+    // H3 (not H3-Max) supports 2K. First-frame ratio follows the cropped image.
+    // The gateway maps its top-level size to the upstream resolution enum.
+    return { ...common, input_reference: image, duration: config.duration, size: '2K' };
   }
   if (key === 'seedance2') {
     // First-frame mode follows the cropped image's ratio. Explicit ratio is
@@ -165,10 +155,18 @@ export function validateChinaVideoFacts(key: ChinaVideoModelKey, ratio: ChinaVid
   const streamDuration = Number(video?.duration);
   const duration = Number.isFinite(streamDuration) ? streamDuration : Number(probe.format?.duration);
   const shortest = Math.min(video?.width, video?.height);
+  const longest = Math.max(video?.width, video?.height);
+  // "2K" is a provider tier, not "2 pixels" or a promise of one exact raster.
+  // Accept its 16:9/9:16 2K family, while rejecting HD/base-768p and 4K results.
+  const correctTier = config.resolution === '2K'
+    ? shortest >= 1152 && shortest <= 1440 && longest >= 2048 && longest <= 2560
+    : shortest === Number.parseInt(config.resolution);
   const expectedAspect = ratio === '9:16' ? 9 / 16 : 16 / 9;
   if (!video || !Number.isFinite(duration) || Math.abs(duration - config.duration) > 0.25
-    || shortest !== Number.parseInt(config.resolution)
-    || Math.abs(video.width / video.height - expectedAspect) > 0.025) {
+    || !correctTier
+    // Some 480p providers align 16:9 frames to 832x480 / 480x832.
+    // Use a relative tolerance so landscape and portrait are treated equally.
+    || Math.abs((video.width / video.height) / expectedAspect - 1) > 0.026) {
     throw new Error('CHINA_VIDEO_OUTPUT_MISMATCH');
   }
   return { width: video.width as number, height: video.height as number, duration };
