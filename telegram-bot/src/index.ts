@@ -26,6 +26,10 @@ import { XCLIP_MOTION, xclipMotionVideoError, prepareXclipMotionReference } from
 import { generateXclipMotionFlora } from './xclip-motion-flora';
 import { HAR_MODELS, type HarModelKey, type HarAspectRatio } from './picsart-har-models';
 import { generateBananaRenderful } from './banana-renderful';
+import {
+  CHINA_VIDEO_MODELS, ChinaVideoClient, chinaVideoRequest, inspectChinaVideo, isChinaVideoModel,
+  type ChinaVideoModelKey, type ChinaVideoRatio,
+} from './chinaapi-video';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -1697,6 +1701,9 @@ type Mode =
   | 'flora_seedance_2_480_wait_ratio'
   | 'flora_seedance_2_480_wait_image'
   | 'flora_seedance_2_480_wait_prompt'
+  | 'china_video_wait_ratio'
+  | 'china_video_wait_image'
+  | 'china_video_wait_prompt'
   | 'topaz_wait_video'
   | 'bytedance_upscale_wait_video'
   | 'img_wait_image'
@@ -1732,10 +1739,14 @@ type GenerationDraftKind =
   | 'gomni11_flora'
   | 'flora_minimax_h3_480'
   | 'flora_wan_v3_480'
-  | 'flora_seedance_2_480';
+  | 'flora_seedance_2_480'
+  | 'china_video';
 
 interface Session {
   mode: Mode;
+  chinaVideoModel?: ChinaVideoModelKey;
+  chinaVideoRatio?: ChinaVideoRatio;
+  chinaVideoImageUrl?: string;
   // Menandai wizard generate yang masih dikonfigurasi, termasuk langkah rasio/
   // durasi sebelum mode berubah menjadi *_wait_*. Satu user hanya boleh
   // mengisi satu draft agar media/prompt tidak bisa tertukar.
@@ -1949,6 +1960,7 @@ function setSession(userId: number, data: Partial<Session>) {
 }
 
 const GENERATION_DRAFT_MODES = new Set<Mode>([
+  'china_video_wait_ratio', 'china_video_wait_image', 'china_video_wait_prompt',
   'kling_wait_image', 'kling_wait_video', 'kling_wait_prompt',
   'klingp2_wait_image', 'klingp2_wait_video', 'klingp2_wait_prompt',
   'klingp3_wait_image', 'klingp3_wait_video', 'klingp3_wait_prompt',
@@ -1983,6 +1995,7 @@ const GENERATION_DRAFT_MODES = new Set<Mode>([
 ]);
 
 function generationDraftKindForStart(data: string): GenerationDraftKind | undefined {
+  if (data.startsWith('mode_china_') && isChinaVideoModel(data.slice('mode_china_'.length))) return 'china_video';
   if (data.startsWith('mode_har_') && Object.hasOwn(HAR_MODELS, data.slice(9))) return 'har_models';
   if (data.startsWith('mode_pi2v_')) return 'picsart_i2v';
   if (data.startsWith('floraimg_select_')) return 'flora_image';
@@ -2025,6 +2038,7 @@ function generationDraftKindForStart(data: string): GenerationDraftKind | undefi
 }
 
 function generationDraftKindForContinuation(data: string): GenerationDraftKind | undefined {
+  if (data.startsWith('china_ratio_')) return 'china_video';
   if (data.startsWith('har_ratio_')) return 'har_models';
   if (data.startsWith('rw_')) return 'runway';
   if (data.startsWith('so_')) return 'sora';
@@ -2562,6 +2576,9 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🎭 Kling v2.6 Pro', 'mode_pi2v_kling_v26_pro')],
     [Markup.button.callback('🎞️ Kling v3 Standard', 'mode_pi2v_kling_v3')],
     [Markup.button.callback('🌐 Kling Omni • 12 detik • 720p', 'mode_pi2v_kling_omni')],
+    ...Object.entries(CHINA_VIDEO_MODELS).map(([key, config]) => [
+      Markup.button.callback(`${config.label} • ${config.duration} detik • ${config.resolution} • ${formatRupiah(config.price)}`, `mode_china_${key}`),
+    ]),
     [Markup.button.callback('🌀 Wan v2 Image-to-Video', 'mode_pi2v_wan_v2')],
     [Markup.button.callback('🌀 Wan 3.0 • 30 detik • hingga 1K', 'mode_pi2v_wan_v3')],
     [Markup.button.callback('MiniMax H3 Uncensored • 15 detik • hingga 1K', 'mode_flora_minimax_h3_480')],
@@ -3143,6 +3160,9 @@ function hargaText(): string {
     `• MiniMax H3 Uncensored (15 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.flora_minimax_h3_480)}\n` +
     `• Wan 3.0 Uncensored (30 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.flora_wan_v3_480)}\n` +
     `• Seedance 2 Uncensored (15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.flora_seedance_2_480)}\n` +
+    Object.values(CHINA_VIDEO_MODELS).map(config =>
+      `• ${config.label} (${config.duration} detik · ${config.resolution}) — ${formatRupiah(config.price)}`
+    ).join('\n') + '\n' +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +
     `• Kling MC V3.0 PRO P3 — ${formatRupiah(MODEL_PRICES.kling_p3)} 🔥PROMO\n` +
@@ -4449,6 +4469,40 @@ bot.on('callback_query', async (ctx) => {
       `✨ *Gemini Omni Flash 1.1*\n\nRasio: *${ratio}* · 10 detik · 1080p\n\n` +
       '*Langkah 2:* Kirim *foto acuan* untuk video kamu.',
       { parse_mode: 'Markdown' }
+    );
+  }
+
+  if (data.startsWith('mode_china_')) {
+    const modelKey = data.slice('mode_china_'.length);
+    if (!isChinaVideoModel(modelKey)) return;
+    if (!process.env.CHINAAPI_API_KEY) {
+      setSession(userId, { mode: 'idle' });
+      return ctx.editMessageText('Layanan model ini sedang tidak tersedia. Saldo tidak dipotong.\n\n/menu untuk kembali.');
+    }
+    const config = CHINA_VIDEO_MODELS[modelKey];
+    setSession(userId, {
+      mode: 'china_video_wait_ratio', chinaVideoModel: modelKey,
+      chinaVideoRatio: undefined, chinaVideoImageUrl: undefined,
+    });
+    return ctx.editMessageText(
+      `${config.label} • ${config.duration} detik • ${config.resolution}\n` +
+      `Harga: ${formatRupiah(config.price)} per video\n\nPilih rasio, lalu kirim foto acuan dan prompt.`,
+      Markup.inlineKeyboard([
+        [Markup.button.callback('9:16', 'china_ratio_916'), Markup.button.callback('16:9', 'china_ratio_169')],
+        [Markup.button.callback('« Kembali', 'back_main')],
+      ])
+    );
+  }
+  if (data === 'china_ratio_916' || data === 'china_ratio_169') {
+    const draft = getSession(userId);
+    if (draft.mode !== 'china_video_wait_ratio' || !draft.chinaVideoModel) {
+      return ctx.reply('Pilihan sudah tidak aktif. Mulai lagi dari /menu.');
+    }
+    const ratio: ChinaVideoRatio = data === 'china_ratio_916' ? '9:16' : '16:9';
+    const config = CHINA_VIDEO_MODELS[draft.chinaVideoModel];
+    setSession(userId, { mode: 'china_video_wait_image', chinaVideoRatio: ratio });
+    return ctx.editMessageText(
+      `${config.label} • ${config.duration} detik • ${config.resolution} (${ratio})\n\nKirim foto acuan. Foto disesuaikan ke rasio yang dipilih.`
     );
   }
 
@@ -6334,6 +6388,11 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     );
   }
 
+  if (session.mode === 'china_video_wait_image') {
+    setSession(userId, { chinaVideoImageUrl: fileUrl, mode: 'china_video_wait_prompt' });
+    return ctx.reply('Foto acuan diterima. Kirim prompt teks untuk video kamu.');
+  }
+
   if (session.mode === 'flora_seedance_2_480_wait_image') {
     setSession(userId, {
       floraSeedance2480ImageUrl: fileUrl,
@@ -6509,8 +6568,12 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
 
 bot.on('photo', async (ctx) => {
   if (!await requireLogin(ctx)) return;
+  const draft = getSession(ctx.from.id);
   const photo = ctx.message.photo[ctx.message.photo.length - 1];
   const fileLink = await ctx.telegram.getFileLink(photo.file_id);
+  if (draft.mode === 'china_video_wait_image' && getSession(ctx.from.id) !== draft) {
+    return ctx.reply('Proses foto sebelumnya sudah dibatalkan. Kirim foto untuk pilihan yang sedang aktif.');
+  }
   await handleImageInput(ctx, fileLink.href, photo.file_id);
 });
 
@@ -7459,6 +7522,32 @@ bot.on('text', async (ctx) => {
     return;
   }
 
+  if (session.mode === 'china_video_wait_prompt') {
+    if (!await requireLogin(ctx)) return;
+    const prompt = ctx.message.text.trim();
+    if (!prompt) return ctx.reply('Prompt tidak boleh kosong. Kirim deskripsi adegan.');
+    // Consume the draft before awaiting delivery to prevent duplicate jobs.
+    const draft = getSession(userId);
+    if (draft.mode !== 'china_video_wait_prompt' || draft !== session) return;
+    const modelKey = draft.chinaVideoModel;
+    const imageUrl = draft.chinaVideoImageUrl;
+    const ratio = draft.chinaVideoRatio;
+    const dbUserId = draft.dbUserId;
+    setSession(userId, {
+      mode: 'idle', chinaVideoModel: undefined, chinaVideoImageUrl: undefined, chinaVideoRatio: undefined,
+    });
+    if (!modelKey || !imageUrl || !ratio || !dbUserId) {
+      return ctx.reply('Data belum lengkap. Mulai lagi dari /menu.');
+    }
+    const cooldown = getCooldownRemainingMs(userId);
+    if (cooldown > 0) return ctx.reply(`Tunggu ${formatCooldown(cooldown)} sebelum generate berikutnya.`);
+    const config = CHINA_VIDEO_MODELS[modelKey];
+    const message = await ctx.reply(`Memproses ${config.label} • ${config.duration} detik • ${config.resolution} (${ratio}). Hasil dikirim otomatis.`);
+    runChinaVideo(ctx.chat.id, userId, dbUserId, message.message_id, modelKey, imageUrl, prompt, ratio)
+      .catch(() => console.error(`[${userId}] video runner failed; details withheld`));
+    return;
+  }
+
   if (
     session.mode === 'flora_minimax_h3_480_wait_prompt'
     || session.mode === 'flora_wan_v3_480_wait_prompt'
@@ -8101,6 +8190,9 @@ bot.on('document', async (ctx) => {
 
   if (doc.mime_type?.startsWith('image/')) {
     const fileLink = await ctx.telegram.getFileLink(doc.file_id);
+    if (session.mode === 'china_video_wait_image' && getSession(userId) !== session) {
+      return ctx.reply('Proses foto sebelumnya sudah dibatalkan. Kirim foto untuk pilihan yang sedang aktif.');
+    }
     await handleImageInput(ctx, fileLink.href, doc.file_id);
     return;
   }
@@ -11359,6 +11451,90 @@ async function runFlora480Video(
       }
     } finally {
       releaseGenerating(dbUserId);
+    }
+  }
+}
+
+// ─── Background: native video routes (independent of existing suppliers) ────
+async function runChinaVideo(
+  chatId: number, userId: number, dbUserId: number, statusMsgId: number,
+  modelKey: ChinaVideoModelKey, imageUrl: string, prompt: string, ratio: ChinaVideoRatio,
+): Promise<void> {
+  const config = CHINA_VIDEO_MODELS[modelKey];
+  const apiKey = process.env.CHINAAPI_API_KEY;
+  const publicOrigin = publicBaseUrl();
+  if (!apiKey || !/^https:\/\//.test(publicOrigin)) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      'Layanan model ini belum tersedia. Saldo tidak dipotong.\n\n/menu untuk kembali.').catch(() => {});
+    return;
+  }
+  const charge = await beginCharge(dbUserId, config.price);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, config.price)).catch(() => {});
+    return;
+  }
+  let refund = true;
+  let referenceUrl: string | undefined;
+  try {
+    const client = new ChinaVideoClient(apiKey);
+    await client.ensureModel(modelKey);
+    // Never hand a Telegram file URL to the supplier: it contains the bot token.
+    // Serve a cropped JPEG from our existing random-token media endpoint instead.
+    const source = await downloadBuffer(imageUrl);
+    const edge = Number.parseInt(config.resolution);
+    const wide = Math.round(edge * 16 / 9 / 2) * 2;
+    const frame = await sharp(source.buf)
+      .rotate().resize(ratio === '9:16' ? edge : wide, ratio === '9:16' ? wide : edge, { fit: 'cover' })
+      .flatten({ background: '#ffffff' }).jpeg({ quality: 92 }).toBuffer();
+    referenceUrl = await publishMedia(frame, false);
+    const taskId = await client.submit(chinaVideoRequest(modelKey, referenceUrl, prompt, ratio));
+    console.log(`[${userId}] native video accepted model=${modelKey} task=${taskId}`);
+    let lastProgress = -1;
+    await client.poll(taskId, async progress => {
+      if (progress === lastProgress) return;
+      lastProgress = progress;
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+        `Memproses ${config.label} • ${config.duration} detik • ${config.resolution}: ${progress}%.\nHasil dikirim otomatis.`
+      ).catch(() => {});
+    });
+    const output = await client.download(taskId);
+    const facts = await inspectChinaVideo(modelKey, ratio, output);
+    const resultUrl = await publishMedia(output, true);
+    const delivered = await sendResult(chatId, resultUrl,
+      `${config.label} (${ratio} · ${config.duration} detik · ${config.resolution})\n` +
+      `Resolusi: ${facts.width}×${facts.height}\n\n/menu untuk buat lagi`, true);
+    if (!delivered) throw new Error('CHINA_VIDEO_DELIVERY_FAILED');
+    refund = false;
+    markGenSuccess(userId);
+    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+  } catch {
+    // Raw upstream errors can contain account details; keep customer copy neutral.
+    console.error(`[${userId}] native video failed model=${modelKey}; details withheld`);
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `${config.label} tidak berhasil diproses. Saldo akan dikembalikan.\n\n/menu untuk coba lagi.`
+    ).catch(() => {});
+  } finally {
+    try {
+      if (refund) {
+        try {
+          await addSaldo(dbUserId, config.price);
+          await bot.telegram.sendMessage(chatId, `Saldo ${formatRupiah(config.price)} dikembalikan (video tidak berhasil).`).catch(() => {});
+        } catch {
+          const reference = `video-${chatId}-${statusMsgId}`;
+          console.error(`[REFUND_UNCONFIRMED] ref=${reference} dbUserId=${dbUserId} model=${modelKey} amount=${config.price}`);
+          await bot.telegram.sendMessage(chatId,
+            `Pengembalian saldo ${formatRupiah(config.price)} belum dapat dikonfirmasi. Hubungi admin dengan kode ${reference}.`
+          ).catch(() => {});
+        }
+      }
+    } finally {
+      releaseGenerating(dbUserId);
+      if (referenceUrl) {
+        const token = new URL(referenceUrl).pathname.split('/').at(-1)!;
+        const entry = mediaStore.get(token);
+        mediaStore.delete(token);
+        if (entry) await fsp.unlink(entry.filePath).catch(() => {});
+      }
     }
   }
 }

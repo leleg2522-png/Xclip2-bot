@@ -53,3 +53,24 @@ preserving the source image's 16:9 shape, with the requested 30-second duration.
 **How to apply:** Validate the delivered resolution tier and media duration.
 Do not re-encode an otherwise correct native result simply to force the
 requested width; report the measured dimensions.
+
+For the four additional ChinaAPI bot choices, the user set the customer price
+to “2k semua” and requested maximum duration with the lowest native resolution.
+
+**Why:** These are explicitly chosen product settings, not a cost-plus pricing
+formula; normal supplier cost can exceed the customer price.
+
+**How to apply:** Keep Rp2.000 per generation for these four choices unless the
+user changes it. Do not silently increase the price, shorten duration, upscale
+the output, or change other suppliers' prices to compensate for margin.
+
+Seedance 2.0's model-specific catalog duration limit takes precedence over the
+generic video guide's shared request-shape description.
+
+**Why:** The guide says 2.0 shares 2.5's request shape, but the flagship 2.0
+catalog specifically lists 4–15 seconds; the 30-second reference-mode paragraph
+is about 2.5, not proof of a 30-second 2.0 first-frame generation.
+
+**How to apply:** Keep the 2.0 first-frame route at its 15-second catalog maximum
+unless model-specific evidence establishes a different limit. Do not substitute
+2.5 while displaying 2.0.
