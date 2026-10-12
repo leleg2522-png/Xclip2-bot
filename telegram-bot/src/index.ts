@@ -32,6 +32,8 @@ import {
 } from './chinaapi-video';
 import { ChinaApiKeyPool, type ChinaKeyLease } from './chinaapi-key-pool';
 import { registerChinaApiAdmin } from './chinaapi-admin';
+import { generateFlora1080 } from './flora-auto-upscale';
+import { inspectFloraUpscaleVideo, normalizeFlora1080 } from './flora-upscale-media';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -2482,66 +2484,45 @@ async function pollForResult(taskId: string, userId: number, apiKey: string, pol
   throw new Error('Timeout: proses terlalu lama (>10 menit)');
 }
 
-// Best-effort finishing step for selected generated videos. A completed
-// generation is never submitted again if this optional step fails.
+// Flora finishing for selected generated videos. Callers keep their own native
+// fallback or mandatory-1080p refund policy; generation is never repeated.
 async function upscaleGeneratedVideo(
   sourceUrl: string,
   userId: number,
   chatId: number,
   statusMsgId: number
 ): Promise<{ url: string; upscaled: boolean }> {
-  const original = { url: sourceUrl, upscaled: false };
-  try {
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      '⏳ Video sedang diproses. Hasil akan dikirim otomatis.').catch(() => {});
-    const skippedKeys = new Set<string>();
-    let hostedUrl: string | undefined;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const apiKey = await getNextRenderfulPoolKey(skippedKeys);
-      if (!apiKey) {
-        console.warn(`[${userId}] Final video upscale skipped: no available key`);
-        return original;
-      }
-      let submitted = false;
-      try {
-        if (!hostedUrl) {
-          // Renderful fetches a public URL. Host our own copy, not a provider
-          // URL or a Telegram link containing the bot token.
-          const res = await telegramHttp.get(sourceUrl, { responseType: 'arraybuffer', timeout: 300_000 });
-          hostedUrl = await publishMedia(Buffer.from(res.data), true, sourceUrl);
-        }
-        const createRes = await bytedanceUpscalerHttp.post(
-          `${RENDERFUL_BASE}/generations`,
-          {
-            type: 'video-to-video',
-            model: 'bytedance-video-upscaler',
-            video_url: hostedUrl,
-            resolution: '1080p', // Renderful's API value for the public 1K tier.
-          },
-          { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 120_000 }
-        );
-        const taskId = createRes.data?.id;
-        // Missing task id is ambiguous: do not resubmit a possibly billed job.
-        if (!taskId) throw new Error('Upscaler accepted response without task id');
-        submitted = true;
-        const url = await pollForResult(taskId, userId, apiKey, createRes.data?.poll_url, 120);
-        return { url, upscaled: true };
-      } catch (err: any) {
-        const status = err?.response?.status;
-        console.error(`[${userId}] Final video upscale failed: ${describeError(err)}`);
-        // Only an explicit auth/credit rejection proves no job was accepted.
-        if (!submitted && [401, 402, 403].includes(status)) {
-          await markRenderfulPoolKeyDead(apiKey).catch(() => {});
-          skippedKeys.add(apiKey);
-          continue;
-        }
-        return original;
-      }
-    }
-  } catch (err: any) {
-    console.error(`[${userId}] Final video upscale unavailable: ${describeError(err)}`);
-  }
-  return original;
+  await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+    '⏳ Video sedang diproses. Hasil akan dikirim otomatis.').catch(() => {});
+  return generateFlora1080(sourceUrl, {
+    key: getNextFloraKey,
+    disable: markFloraKeyDead,
+    download: async url => {
+      const res = await telegramHttp.get(url, {
+        responseType: 'arraybuffer', timeout: 300_000,
+        maxContentLength: 250 * 1024 * 1024,
+      });
+      return Buffer.from(res.data);
+    },
+    inspect: inspectFloraUpscaleVideo,
+    models: async key => {
+      const res = await floraHttp.get(`${FLORA_BASE}/models`, {
+        headers: { Authorization: `Bearer ${key}` }, params: { type: 'video' },
+      });
+      const models = res.data.models ?? res.data.data ?? res.data;
+      if (!Array.isArray(models)) throw Error('FLORA_UPSCALE_INVALID_CATALOG');
+      return models;
+    },
+    workspace: floraGetWorkspace,
+    upload: (key, workspaceId, bytes) =>
+      floraUploadVideo(key, workspaceId, bytes, `finish-${crypto.randomUUID()}.mp4`),
+    generate: (key, ws, model, params) =>
+      floraGenerate(key, ws, model, params, 'Enhance video resolution; preserve original content.', 'video'),
+    poll: (key, runId) => floraPollRun(key, runId, 20 * 60 * 1000),
+    normalize: normalizeFlora1080,
+    publish: bytes => publishMedia(bytes, true),
+    log: event => console.log(`[${userId}] Final video finishing: ${event}`),
+  });
 }
 
 // ─── Keyboards ────────────────────────────────────────────────────────────────

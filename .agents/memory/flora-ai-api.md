@@ -22,7 +22,7 @@ replay it on another account. A further boundary test needs separate authorizati
 - Flora API 2.18.0 memakai field top-level `model` untuk endpoint ID dari `GET /models`, bukan `model_id`. `model_id` dapat diabaikan sehingga workspace default yang berjalan dan params model tujuan ditolak.
 - Model motion control: `iv2v-kling-2.6-motion` (mixed-to-video).
 - P5 is publicly named “Kling MC V3 Pro P5” but intentionally uses Kling V3
-  **Standard**, not V3 Pro, with mandatory ByteDance 1K/1080p finishing.
+  **Standard**, not V3 Pro, with mandatory 1080p finishing (now Flora/Topaz).
 
   **Why:** The user first requested V3 Standard, then specifically requested this
   public name and finishing step. “Pro P5” is their chosen display label, not

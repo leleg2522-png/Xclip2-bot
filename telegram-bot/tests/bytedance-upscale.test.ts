@@ -37,12 +37,14 @@ const autoUpscale = source.slice(
   source.indexOf('async function upscaleGeneratedVideo('),
   source.indexOf('// ─── Keyboards ───')
 );
-assert.match(autoUpscale, /const original = \{ url: sourceUrl, upscaled: false \}/);
-assert.match(autoUpscale, /publishMedia\(Buffer\.from\(res\.data\), true, sourceUrl\)/);
-assert.match(autoUpscale, /resolution: '1080p'/);
-assert.match(autoUpscale, /submitted = true/);
-assert.match(autoUpscale, /if \(!submitted && \[401, 402, 403\]\.includes\(status\)\)/);
-assert.match(autoUpscale, /return original/);
+// Automatic finishing moved to Flora; the independent Rp500 tool stays Renderful.
+assert.match(autoUpscale, /generateFlora1080\(sourceUrl/);
+assert.match(autoUpscale, /key: getNextFloraKey/);
+assert.match(autoUpscale, /disable: markFloraKeyDead/);
+assert.match(autoUpscale, /floraUploadVideo/);
+assert.match(autoUpscale, /normalize: normalizeFlora1080/);
+assert.match(autoUpscale, /20 \* 60 \* 1000/);
+assert.doesNotMatch(autoUpscale, /getNextRenderfulPoolKey|bytedanceUpscalerHttp|RENDERFUL_BASE/);
 assert.match(source, /if \(!delivered && finalVideo\.upscaled\)/);
 
 console.log('ByteDance Upscaler 1K Renderful pool contract checks passed.');

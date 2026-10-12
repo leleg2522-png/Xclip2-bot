@@ -6,7 +6,7 @@ description: Separate public motion route and evidence distinguishing captured v
 Keep Heygen photo-to-video and Xclip Motion as separate customer models. Heygen
 stays on Heygen Video 1. The user's current Xclip Motion requirement is a
 Wan 3.0 480p generation backend, with uploaded reference videos accepted for
-3–15 seconds, followed by mandatory Renderful/ByteDance upscale to 1080p.
+3–15 seconds, followed by mandatory Flora/Topaz finishing to 1080p.
 
 **Why:** The user requested replacing Xclip Motion's backend with Wan 3.0 480p
 and then accepted a 15-second maximum after the Flora runtime explicitly rejected
@@ -38,7 +38,7 @@ Generate Video list. Heygen stays separate.
 
 **How to apply:** Preserve this grouping when reorganizing menus.
 
-Heygen must be upscaled with ByteDance to the public 1K tier
+Heygen must be finished with Flora/Topaz to the public 1K tier
 before delivery; advertise delivered 1080p without claiming native resolution.
 
 **Why:** The user explicitly requested this finishing step and 1080p bot copy.
