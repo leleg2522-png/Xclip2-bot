@@ -100,3 +100,24 @@ and reserved credits through its balance endpoint.
 **How to apply:** Preflight the correct wallet before paid work, distinguish
 account-bound from workspace-bound credentials, and do not assume rotating keys
 restores credits.
+
+## Gemini Omni via Studio
+
+Flowy's Studio Gemini Omni Flash 1.1 image-to-video path has evidence of a
+completed portrait 4K video with audio. A download and ffprobe inspection
+confirmed 2160×3840, 24 fps, and approximately 11.63 seconds, despite the
+request selecting 10 seconds. Its quote was 450 credits; that is not a
+verified final wallet debit.
+
+**Why:** An uploaded HAR on 2026-10-12 captured two equivalent submissions:
+one failed with upstream invalid-input HTTP 422, and one completed after
+approximately four minutes and twenty-four seconds. The completed output
+was independently downloaded and inspected without submitting another job.
+This distinguishes genuine media delivery from mere catalog or job acceptance.
+
+**How to apply:** Treat Studio integration as feasible but not uniformly
+reliable. Do not assume the curated API-key route supports the same provider
+model merely because Studio does. Authentication was not recorded in the
+captured generation headers, so verify official API-key access separately
+before production integration. Measure actual output duration; do not promise
+exactly the selected duration or automatically retry an accepted failed run.
