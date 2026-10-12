@@ -529,3 +529,17 @@ mtime_ms = 1791773690851
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/f413b7d0-fbeb-4850-a89c-dde2a2f41b31/852682eb-1568-4883-88e0-8609cfd9864b"
 storage_version_token = "1791773792993793"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "YOCMQJ8s_4C1sGB_1uRfr"
+uri = "file://generated-artifacts/flowy-gemini-omni-11-4k.mp4"
+type = "video"
+title = "Hasil tes Gemini Omni Flash 1.1 — Flowy 4K"
+description = "Generate baru melalui endpoint Studio sesuai HAR, memakai foto asli. Terverifikasi 2160×3840, 24 fps, durasi 11,63 detik, dengan audio AAC."
+logical_id = "7f331498-ba07-43c3-89a9-d191772b6cd5"
+content_hash = "sha256:6b1110f09f8cfd2f5b9865efc1009ea8114f44e00a846746efc057d95f2b7c56"
+size = 31953382
+mtime_ms = 1791803413651
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/7f331498-ba07-43c3-89a9-d191772b6cd5/3bec8288-6b64-482a-8c0c-69ceb9893270"
+storage_version_token = "1791803456427060"
+content_type = "video/mp4"

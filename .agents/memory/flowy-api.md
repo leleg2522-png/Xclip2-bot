@@ -117,7 +117,25 @@ This distinguishes genuine media delivery from mere catalog or job acceptance.
 
 **How to apply:** Treat Studio integration as feasible but not uniformly
 reliable. Do not assume the curated API-key route supports the same provider
-model merely because Studio does. Authentication was not recorded in the
-captured generation headers, so verify official API-key access separately
-before production integration. Measure actual output duration; do not promise
+model merely because Studio does. Measure actual output duration; do not promise
 exactly the selected duration or automatically retry an accepted failed run.
+
+The Studio route requires a browser access token rather than a workspace API
+key. Sanitized HAR request headers can omit authentication while the auth-session
+response still contains a usable access token. Treat the entire HAR as sensitive;
+never print, present, or persist that token in project memory.
+
+**Why:** An authorized independent generation using the HAR's Studio session and
+original managed image completed and delivered another verified portrait 4K
+video with audio. The workspace API key authenticated model discovery and a
+450-credit estimate, but both documented reference forms (asset ID and URL)
+were rejected before dispatch with missing required `image_url`. The same API
+key was refused by the Studio endpoint. These are different authentication and
+request contracts, not evidence that the model cannot generate.
+
+**How to apply:** Use the verified Studio contract only with authorized session
+access and account/workspace checks. Do not describe API-key I2V as operational
+until its reference mapping is verified. A successful estimate does not validate
+the actual reference-to-provider mapping. Studio profile credits can be zero
+even when workspace-billed generation succeeds; do not confuse account-profile
+credits with the selected workspace's wallet.
