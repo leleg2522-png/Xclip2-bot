@@ -51,9 +51,14 @@ Several keys belonging to the same account can still share one wallet.
 
 ### Private admin commands
 
-- `/addchinakey`: add one or several keys; the input message is deleted after
+- `/chinaapi`: open the admin menu with **Tambah API Key**, **Cek Jumlah Key**
+  and **Batal** buttons. Counts include total, available, reserved, used and disabled.
+- `/addchinakey` or `/addchinaapikey`: send without arguments to enter keys in
+  the next message, or include keys inline. Batch comma/space/newline entry is supported.
+  The input message is deleted after
   reading, and keys are never echoed. Only private admin chats are allowed.
-- `/chinapool`: counts and key IDs/statuses, without credential values.
+- `/chinapool`, `/chinaapipool` or `/chinaapistatus`: counts and key IDs/statuses,
+  without credential values.
 - `/nonaktifchinakey ID`: disable a key without deleting its record.
 - `/restorechinakey ID`: reactivate only an unused, inactive key after resolving
   the issue. Consumed keys and active leases cannot be restored.
@@ -76,7 +81,7 @@ instead of blindly crediting again.
 
 ## Verification
 
-Run `pnpm run test:china-video` and `pnpm run build` from this directory.
+Run `pnpm run test:china-video`, `pnpm run test:china-admin` and `pnpm run build` from this directory.
 The tests are offline and do not spend credits or connect to the production DB.
 Wan 3.0's 30-second 480p generation was live-verified separately. The other three
 model contracts are based on the current official gateway documentation and

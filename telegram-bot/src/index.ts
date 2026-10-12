@@ -31,6 +31,7 @@ import {
   type ChinaVideoModelKey, type ChinaVideoRatio,
 } from './chinaapi-video';
 import { ChinaApiKeyPool, type ChinaKeyLease } from './chinaapi-key-pool';
+import { registerChinaApiAdmin } from './chinaapi-admin';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -1591,6 +1592,7 @@ async function incrementKlingUsage(dbUserId: number): Promise<number> {
 }
 
 const bot = new Telegraf(BOT_TOKEN);
+registerChinaApiAdmin(bot, chinaKeyPool, requireAdmin);
 
 // Recognizes only genuine transient transport failures (DNS/socket/timeout).
 // Kept deliberately narrow — matching by explicit error code, not free-text —
@@ -4210,33 +4212,6 @@ bot.command('clearleonardopool', async (ctx) => {
 
 // ─── Admin: Flora AI Key Pool (Topaz 4K Upscaler) ────────────────────────────
 
-// Pool administration is private-chat/admin-only. Never echo stored keys.
-bot.command('addchinakey', async (ctx) => {
-  if (!(await requireAdmin(ctx))) return;
-  const raw = ctx.message.text.replace(/^\/addchinakey(?:@\w+)?\s*/i, '').trim();
-  if (raw) await ctx.deleteMessage().catch(() => {});
-  if (ctx.chat.type !== 'private') return ctx.reply('Kelola key hanya melalui chat pribadi bot.');
-  if (!raw) return ctx.reply('Gunakan /addchinakey di chat pribadi admin, diikuti key. Bisa beberapa key dipisahkan koma atau baris baru. Pesan key akan dihapus setelah dibaca.');
-  try {
-    const keys = raw.split(/[\s,]+/).filter(Boolean);
-    const added = await chinaKeyPool.addKeys(keys);
-    const stats = await chinaKeyPool.stats();
-    return ctx.reply(`Pool ChinaAPI diperbarui.\nDitambahkan: ${added}\nDuplikat: ${keys.length - added}\nTersedia: ${stats.available}\nDicadangkan: ${stats.busy}\nTerpakai sekali: ${stats.used}\nNonaktif: ${stats.dead}`);
-  } catch {
-    return ctx.reply('Key belum dapat ditambahkan. Periksa format atau koneksi database. Nilai key tidak ditampilkan.');
-  }
-});
-bot.command('chinapool', async (ctx) => {
-  if (!(await requireAdmin(ctx))) return;
-  if (ctx.chat.type !== 'private') return ctx.reply('Kelola pool melalui chat pribadi bot.');
-  const stats = await chinaKeyPool.stats();
-  const rows = await chinaKeyPool.list();
-  return ctx.reply(
-    `Pool ChinaAPI • 1 key = 1 percobaan generate\nTersedia: ${stats.available}\nDicadangkan: ${stats.busy}\nTerpakai sekali: ${stats.used}\nNonaktif: ${stats.dead}\n\n` +
-    rows.map(row => `ID ${row.id}: ${row.status}${row.busy ? ' (dipakai)' : ''}`).join('\n') +
-    '\n\n/nonaktifchinakey ID\n/restorechinakey ID'
-  );
-});
 for (const command of ['nonaktifchinakey', 'restorechinakey'] as const) {
   bot.command(command, async (ctx) => {
     if (!(await requireAdmin(ctx))) return;

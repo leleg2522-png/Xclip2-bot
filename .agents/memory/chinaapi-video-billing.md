@@ -94,3 +94,12 @@ pool risks violating the one-use rule.
 **How to apply:** Persist consumption before one generation submit. Never restore
 or re-import a consumed key as available after success, failure, timeout or a
 restart. The same job's polling/download may continue with its original key.
+
+ChinaAPI key entry and pool counts must be manageable through the Telegram bot,
+following the existing Picsart workflow.
+
+**Why:** The user requested “buat seperti picsart bisa masukin key lewat bot dan
+cek api key ada berapa”.
+
+**How to apply:** Keep bot-based entry and counts available; database setup scripts
+alone do not satisfy this requirement. Preserve the single-use rule in that UI.
