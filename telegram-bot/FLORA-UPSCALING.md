@@ -1,9 +1,9 @@
-# Automatic 1080p video finishing
+# Legacy Flora 1080p finishing module
 
-The user switched automatic finishing from Renderful to Flora AI.
-`upscaleGeneratedVideo` now uses the existing Railway `flora_key_pool`,
-admin-managed through `/addflorakey` and `/florapoolstatus`.
-It no longer depends on the exhausted Renderful pool.
+Automatic finishing now uses Renderful again, as requested by the user.
+See `AUTOMATIC-UPSCALING.md` for the active route.
+The Flora module and its offline tests remain available but are not wired into
+`upscaleGeneratedVideo`. The following documents that retained module.
 
 The account's live `/models?type=video` catalog must expose
 `video-upscaler-topaz`, `video_url`, and `upscale_factor` in the required range.

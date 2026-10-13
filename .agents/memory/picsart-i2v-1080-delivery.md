@@ -5,13 +5,13 @@ description: Native delivery default and the limited automatic 1K finishing exce
 
 Deliver Picsart videos in their native form by default. Do not use the old
 media-platform video resize/export workflow. Exception: Wan 3.0, the public
-Seedance 2.5 route, and MiniMax H3 should automatically attempt the Flora
-Topaz 1080p finishing pass before delivery, without an extra user step or a
+Seedance 2.5 route, and MiniMax H3 should automatically attempt the Renderful
+ByteDance 1080p finishing pass before delivery, without an extra user step or a
 provider-facing label. If it fails, send the native result instead and label
 that result accurately; never discard a successfully generated video.
 
 The separate Flora MiniMax H3 15-second 480p and Wan 3.0 30-second 480p
-options also automatically attempt the same Flora 1080p finishing pass.
+options also automatically attempt the same Renderful 1080p finishing pass.
 Their upstream generation stays at 480p; do not silently change that contract.
 Keep these separate public choices from the original routes.
 
@@ -20,7 +20,7 @@ same automatic finishing pass, advertised as 1080p. Keep generation parameters
 and prices unchanged. This does not include their separate Video Edit routes.
 
 The separate Flora Seedance 2 option is displayed as Seedance 2 Uncensored
-with 1080p delivery through automatic Flora finishing. Its generation
+with 1080p delivery through automatic Renderful finishing. Its generation
 stays at 480p, 15 seconds, and Rp6,000 with landscape and portrait choices.
 Keep it separate from the original Seedance routes. Uncensored is only a
 public label, not a change to provider content policies.
@@ -42,12 +42,15 @@ The user initially chose direct 480p for Flora Seedance 2, then changed that
 choice to the Uncensored label and automatic Renderful 1080p finishing.
 The user subsequently requested “upscale nya ganti ke flora ai”, replacing
 Renderful only for automatic finishing, not the independent paid upscale menus.
+The user subsequently explicitly chose “Kembali ke Renderful AI”, superseding
+the Flora finishing choice without changing generation models or prices.
 
 **How to apply:** Keep the original generation resolution unchanged and run the
 finishing pass only after a successful generation. Public labels should describe
 the delivered quality, not falsely claim native 1K. Keep delivery-based charging
 and refunds unchanged; an accepted upscale job must not be resubmitted after
 polling or delivery failure.
-Use the existing Railway Flora pool and live Topaz model schema. Upscale enough
-to exceed 1080p, then downsample to an actual 1080p short edge, preserving source
-audio and duration. Never stretch a failed native fallback and call it 1080p.
+Use the existing Railway Renderful pool and ByteDance's 1080p resolution.
+Validate the delivered media, downsample if needed to an actual 1080p short
+edge, and preserve source audio and duration. Never stretch a failed native
+fallback and call it 1080p.

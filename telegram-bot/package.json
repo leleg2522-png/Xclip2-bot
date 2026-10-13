@@ -21,6 +21,7 @@
     "test:audio": "tsx tests/audio-generation.test.ts",
     "test:bytedance-upscale": "tsx tests/bytedance-upscale.test.ts",
     "test:flora-upscale": "tsx tests/flora-auto-upscale.test.ts",
+    "test:renderful-upscale": "tsx tests/renderful-auto-upscale.test.ts",
     "test:flora-video": "tsx tests/flora-video-models.test.ts && tsx tests/flora-video-generation.test.ts",
     "test:china-video": "tsx tests/chinaapi-video.test.ts",
     "test:china-admin": "tsx tests/chinaapi-admin.test.ts",

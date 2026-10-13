@@ -32,7 +32,7 @@ import {
 } from './chinaapi-video';
 import { ChinaApiKeyPool, type ChinaKeyLease } from './chinaapi-key-pool';
 import { registerChinaApiAdmin } from './chinaapi-admin';
-import { generateFlora1080 } from './flora-auto-upscale';
+import { generateRenderful1080 } from './renderful-auto-upscale';
 import { inspectFloraUpscaleVideo, normalizeFlora1080 } from './flora-upscale-media';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -2484,7 +2484,7 @@ async function pollForResult(taskId: string, userId: number, apiKey: string, pol
   throw new Error('Timeout: proses terlalu lama (>10 menit)');
 }
 
-// Flora finishing for selected generated videos. Callers keep their own native
+// Renderful finishing for selected generated videos. Callers keep their own native
 // fallback or mandatory-1080p refund policy; generation is never repeated.
 async function upscaleGeneratedVideo(
   sourceUrl: string,
@@ -2494,9 +2494,9 @@ async function upscaleGeneratedVideo(
 ): Promise<{ url: string; upscaled: boolean }> {
   await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
     '⏳ Video sedang diproses. Hasil akan dikirim otomatis.').catch(() => {});
-  return generateFlora1080(sourceUrl, {
-    key: getNextFloraKey,
-    disable: markFloraKeyDead,
+  return generateRenderful1080(sourceUrl, {
+    key: getNextRenderfulPoolKey,
+    disable: markRenderfulPoolKeyDead,
     download: async url => {
       const res = await telegramHttp.get(url, {
         responseType: 'arraybuffer', timeout: 300_000,
@@ -2505,20 +2505,19 @@ async function upscaleGeneratedVideo(
       return Buffer.from(res.data);
     },
     inspect: inspectFloraUpscaleVideo,
-    models: async key => {
-      const res = await floraHttp.get(`${FLORA_BASE}/models`, {
-        headers: { Authorization: `Bearer ${key}` }, params: { type: 'video' },
+    submit: async (key, videoUrl) => {
+      const res = await bytedanceUpscalerHttp.post(`${RENDERFUL_BASE}/generations`, {
+        type: 'video-to-video',
+        model: 'bytedance-video-upscaler',
+        video_url: videoUrl,
+        resolution: '1080p',
+      }, {
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        timeout: 120_000,
       });
-      const models = res.data.models ?? res.data.data ?? res.data;
-      if (!Array.isArray(models)) throw Error('FLORA_UPSCALE_INVALID_CATALOG');
-      return models;
+      return { id: res.data?.id, pollUrl: res.data?.poll_url };
     },
-    workspace: floraGetWorkspace,
-    upload: (key, workspaceId, bytes) =>
-      floraUploadVideo(key, workspaceId, bytes, `finish-${crypto.randomUUID()}.mp4`),
-    generate: (key, ws, model, params) =>
-      floraGenerate(key, ws, model, params, 'Enhance video resolution; preserve original content.', 'video'),
-    poll: (key, runId) => floraPollRun(key, runId, 20 * 60 * 1000),
+    poll: (key, taskId, pollUrl) => pollForResult(taskId, userId, key, pollUrl, 120),
     normalize: normalizeFlora1080,
     publish: bytes => publishMedia(bytes, true),
     log: event => console.log(`[${userId}] Final video finishing: ${event}`),
