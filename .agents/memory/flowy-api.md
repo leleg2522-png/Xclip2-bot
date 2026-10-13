@@ -3,6 +3,15 @@ name: Flowy API documentation mismatch
 description: Distinguish the public Studio model catalog from narrower docs and curated REST models; verify limits, quotes and wallet context.
 ---
 
+The official documentation is at `https://docs.tryflowy.ai/`, with its page
+index at `/llms.txt`; do not infer a `docs.flowy.ai` hostname from the branding.
+
+**Why:** The product is branded Flowy.ai but its official documentation and
+production API use the `tryflowy.ai` domain.
+
+**How to apply:** Start documentation research from that index. Use the OpenAPI
+server URL for API requests rather than guessing hosts from the product name.
+
 Flowy's rendered reference pages can lag behind its live public OpenAPI.
 Use the live schema plus authenticated model/tool catalogs as the integration
 contract, not only copied examples from the documentation site.
