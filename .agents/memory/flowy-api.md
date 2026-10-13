@@ -99,6 +99,15 @@ understate duration, dimensions or other billed source facts.
 For video upscale, quote the actual duration, dimensions and chosen factor.
 The catalog's representative per-run estimate is not the cost of every video;
 longer clips and larger factors can consume most of the workspace wallet.
+For direct video generations, the model catalog's `estimate` can likewise differ
+substantially from a duration-specific quote, even when its unit is `run`.
+
+**Why:** The authenticated Seedance catalog's representative estimate differed
+from the non-billable quotes for actual requested clip settings.
+
+**How to apply:** Calculate credit-budget answers from `?estimate=true` with
+the requested duration, resolution, ratio and input mode; do not divide the
+catalog's representative run estimate as if it were a per-second tariff.
 
 Multiple keys for one workspace share its wallet; a fresh key does not create
 fresh credits.
