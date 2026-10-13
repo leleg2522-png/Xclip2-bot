@@ -25,7 +25,7 @@ import { KLING_V3_STANDARD, klingV3StandardVideoError, generateKlingV3StandardFl
 import { XCLIP_MOTION, xclipMotionVideoError, prepareXclipMotionReference } from './xclip-motion-media';
 import { generateXclipMotionFlora } from './xclip-motion-flora';
 import { HAR_MODELS, type HarModelKey, type HarAspectRatio } from './picsart-har-models';
-import { generateBananaRenderful } from './banana-renderful';
+import { generateBananaSnapgen } from './banana-snapgen';
 import {
   CHINA_VIDEO_MODELS, ChinaVideoClient, chinaVideoRequest, inspectChinaVideo, isChinaVideoModel, isChinaKeyRejection,
   type ChinaVideoModelKey, type ChinaVideoRatio,
@@ -53,7 +53,7 @@ const BRIDGE_PUBLIC_URL = (process.env.BRIDGE_PUBLIC_URL
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!DATABASE_URL) throw new Error('RAILWAY_DATABASE_URL is required');
 if (!RENDERFUL_API_KEY) console.warn('⚠️ RENDERFUL_API_KEY tidak diset — backend Renderful nonaktif (Kling Motion Control kini pakai Picsart).');
-if (!SNAPGEN_API_KEY) console.warn('⚠️ SNAPGEN_API_KEY tidak diset — backend SnapGen nonaktif (Veo 3.1 Fast/Lite).');
+if (!SNAPGEN_API_KEY) console.warn('⚠️ SNAPGEN_API_KEY tidak diset — backend SnapGen nonaktif (Veo 3.1 Fast/Lite dan Nano Banana).');
 
 // Decodo rotating proxy — set DECODO_PROXY_URL=http://user:pass@gate.decodo.com:port
 const DECODO_PROXY_URL = process.env.DECODO_PROXY_URL;
@@ -5822,7 +5822,7 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
-  // ── Nano Banana image wizard (Renderful, text-to-image or image-to-image) ──
+  // ── Nano Banana image wizard (SnapGen, text-to-image or image-to-image) ──
   if (data === 'mode_nbpro' || data === 'mode_nb2' || data === 'mode_nb2lite') {
     const cfg = IMG_MODELS[data];
     setSession(userId, {
@@ -8012,7 +8012,7 @@ bot.on('text', async (ctx) => {
     return;
   }
 
-  // ── Nano Banana image prompt (Renderful) ──
+  // ── Nano Banana image prompt (SnapGen) ──
   if (session.mode === 'img_wait_prompt') {
     if (!await requireLogin(ctx)) return;
     const draft = getSession(userId);
@@ -10449,7 +10449,7 @@ async function snapgenPollImage(
   throw new Error(`SNAPGEN_TIMEOUT: proses melebihi ${Math.round((maxAttempts * intervalMs) / 60000)} menit`);
 }
 
-// ─── Background: Nano Banana image (Renderful, text-to-image or image-to-image) ──
+// ─── Background: Nano Banana image (SnapGen, text-to-image or image-to-image) ──
 
 async function runImage(
   chatId: number,
@@ -10486,36 +10486,21 @@ async function runImage(
       for (const url of opts.imageUrls) {
         idx++;
         const img = await downloadBuffer(url);
+        const meta = await sharp(img.buf).metadata();
+        if (!['jpeg', 'png'].includes(meta.format || '')) throw Error('BANANA_INVALID_IMAGE');
         images.push({ buffer: img.buf, name: `reference-${idx}.${img.ext}`, mime: img.mime });
         console.log(`[${userId}] ${label} ref image ${idx} — ${img.mime} ${(img.buf.length / 1024).toFixed(1)}KB`);
       }
     }
 
-    const resultUrl = await generateBananaRenderful({
+    const resultUrl = await generateBananaSnapgen({
       model: opts.model, mode: opts.inputMode, prompt, ratio, images,
     }, {
-      getKey: getNextRenderfulPoolKey,
-      markDead: markRenderfulPoolKeyDead,
-      rejectedKey: error => {
-        const code = (error as any)?.response?.status;
-        // Do not rotate on ambiguous timeouts, generic 5xx or provider outages.
-        return [401, 402, 403].includes(code) && isKeyExhaustedError(describeError(error));
-      },
-      host: async image => {
-        const meta = await sharp(image.buffer).metadata();
-        if (!['jpeg', 'png'].includes(meta.format || '')) throw Error('BANANA_INVALID_IMAGE');
-        return publishMedia(image.buffer, false);
-      },
-      submit: async (key, body) => {
-        const response = await bytedanceUpscalerHttp.post(`${RENDERFUL_BASE}/generations`, body, {
-          headers: { Authorization: `Bearer ${key}` },
-        });
-        return response.data?.id;
-      },
-      poll: async (key, id) => pollForResult(id, userId, key),
+      available: !!SNAPGEN_API_KEY,
+      submit: snapgenSubmitImage,
+      poll: uuid => snapgenPollImage(uuid),
       status: async stage => {
-        const text = stage === 'upload' ? 'menyiapkan foto acuan'
-          : stage === 'submit' ? 'mengirim perintah' : 'gambar 4K sedang dibuat';
+        const text = stage === 'submit' ? 'mengirim perintah' : 'gambar 4K sedang dibuat';
         await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
           `🎨 ${label}: ${text}...\nHasil dikirim otomatis.`).catch(() => {});
       },
@@ -10535,7 +10520,7 @@ async function runImage(
     const msg = describeError(err);
     console.error(`[${userId}] ${label} error: ${msg}`);
     let friendly: string;
-    if (msg.includes('Timeout')) {
+    if (/timeout/i.test(msg)) {
       friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
     } else if (msg.includes('BANANA_UNAVAILABLE')) {
       friendly = '❌ Layanan sedang tidak tersedia. Coba lagi nanti.';

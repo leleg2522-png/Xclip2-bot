@@ -62,13 +62,16 @@ The expired HAR token returned 401; incomplete metadata headers returned
 When testing captured workflow capabilities, preserve platform/touchpoint metadata
 alongside authentication before interpreting validation errors.
 
-## Banana Renderful migration scope
+## Banana provider migration scope
 
-Only Banana Pro, Banana Lite and Banana 2 are in the Renderful migration.
+Only Banana Pro, Banana Lite and Banana 2 are in the shared provider migration.
+These packages now use SnapGen AI again, not Renderful.
 Banana 2.1 is explicitly excluded.
 
 **Why:** The user clarified: “yg di ganti banana pro banana lite dan banan 2
 banana 2,1 mah tidak”, superseding the earlier “semua model banana” wording.
+The user later requested returning Pro and Banana 2 to SnapGen and explicitly
+confirmed the scope: “Ya, Pro, Banana 2, dan Lite pakai SnapGen”.
 
 **How to apply:** Do not include Banana 2.1 in broader Banana backend changes
 without a new user request. Existing package prices remain unchanged unless

@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import sharp from 'sharp';
 import { generateBananaRenderful, type BananaApi, type BananaModel } from '../src/banana-renderful';
+import { generateBananaSnapgen } from '../src/banana-snapgen';
 
 const source = fs.readFileSync(path.resolve(__dirname, '../src/index.ts'), 'utf8');
 const models: BananaModel[] = ['nano-banana-pro', 'nano-banana-2', 'nano-banana-2-lite'];
@@ -69,8 +70,10 @@ async function billingTests() {
   const from = source.indexOf('async function runImage(');
   const to = source.indexOf('// Kirim gambar hasil', from);
   const runSource = source.slice(from, to);
-  assert.doesNotMatch(runSource, /snapgenSubmitImage|snapgenPollImage|picsart\./);
-  assert.match(runSource, /bytedanceUpscalerHttp\.post/);
+  assert.match(runSource, /generateBananaSnapgen/);
+  assert.match(runSource, /submit: snapgenSubmitImage/);
+  assert.match(runSource, /snapgenPollImage/);
+  assert.doesNotMatch(runSource, /generateBananaRenderful|getNextRenderfulPoolKey|bytedanceUpscalerHttp|picsart\./);
   const harFrom = source.indexOf('async function runHarModel(');
   assert.match(source.slice(harFrom, source.indexOf('// ─── Background: Kling Motion V3 Standard', harFrom)), /picsart\.generateHarModel/);
   assert.match(source, /banana21:\s*600/);
@@ -92,24 +95,21 @@ async function billingTests() {
           return { buf: Buffer.from('reference'), mime: 'image/png', ext: 'png' };
         },
         sharp: () => ({ metadata: async () => ({ format: 'png' }) }),
-        generateBananaRenderful,
-        getNextRenderfulPoolKey: async () => outcome === 'no-key' ? null : 'fixture-key',
-        markRenderfulPoolKeyDead: async () => {},
-        isKeyExhaustedError: () => false, describeError: (error: any) => error.message,
-        publishMedia: async () => { events.hosts++; return 'https://our-domain.test/dl/reference.png'; },
-        RENDERFUL_BASE: 'https://api.renderful.ai/api/v1',
-        bytedanceUpscalerHttp: { post: async (url: string, body: any, options: any) => {
+        generateBananaSnapgen,
+        SNAPGEN_API_KEY: outcome === 'no-key' ? undefined : 'fixture-key',
+        describeError: (error: any) => error.message,
+        snapgenSubmitImage: async (body: any) => {
           events.submits++;
-          assert.equal(url, 'https://api.renderful.ai/api/v1/generations');
-          assert.equal(options.headers.Authorization, 'Bearer fixture-key');
-          assert.equal(body.resolution, '4k');
-          assert.equal(body.type, mode === 'i2i' ? 'image-to-image' : 'text-to-image');
-          if (outcome === 'provider') throw Error('Renderful internal provider failed');
-          return { data: { id: 'job' } };
-        } },
-        pollForResult: async (id: string, user: number, key: string) => {
-          assert.deepEqual([id, user, key], ['job', 2, 'fixture-key']);
-          return 'https://provider.test/output.png';
+          assert.equal(body.model, 'nano-banana-2');
+          assert.equal(body.aspectRatio, '1:1');
+          assert.equal(body.images.length, mode === 'i2i' ? 1 : 0);
+          assert.equal(body.images.some((image: any) => image.name.includes('PRIVATE')), false);
+          if (outcome === 'provider') throw Error('SnapGen internal provider failed');
+          return { uuid: 'job' };
+        },
+        snapgenPollImage: async (uuid: string) => {
+          assert.equal(uuid, 'job');
+          return { url: 'https://provider.test/output.png' };
         },
         sendImageResult: async (_chat: number, _url: string, caption: string, require4k: boolean) => {
           events.deliveries++; assert.equal(require4k, true); assert.match(caption, /4K/);
@@ -158,6 +158,6 @@ async function main() {
   await contractTests();
   await billingTests();
   await deliveryTests();
-  console.log('Banana Pro/2/Lite share Banana 2 backend: T2I/I2I, 4K, full-resolution delivery, independent prices/refunds, no replay and unchanged Banana 2.1 passed.');
+  console.log('Banana Pro/2/Lite share SnapGen Banana 2 backend: T2I/I2I, 4K delivery, independent prices/refunds and unchanged Banana 2.1 passed; legacy Renderful module contracts also passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
