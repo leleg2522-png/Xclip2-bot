@@ -29,3 +29,4 @@
 - [Heygen and Banana 2.1](picsart-heygen-banana.md) — Xclip Motion: Wan 480p → mandatory Renderful 1080p, 15s reference cap; Heygen and Banana remain independent.
 - [Flowy API](flowy-api.md) — Studio's public catalog includes H3 Max/Turbo I2V; docs and curated REST models are narrower. Verify quotes and limits before migrating.
 - [ChinaAPI video and billing](chinaapi-video-billing.md) — live catalog beats SEO; unlimited key quota is not wallet balance; Wan 3.0 pricing and request fields depend on resolution.
+- [Vinc browser API](vinc-browser-api.md) — completed Seedance 2.5 T2V evidence; sanitized HAR lacks login, and catalog I2V entries do not prove a working upload/generate flow.
