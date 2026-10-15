@@ -49,7 +49,7 @@ async function runnerTest(variant: 'p2' | 'p3', failure?: 'submit-timeout' | 'po
     charges: [] as number[], refunds: [] as number[], dead: [] as number[],
     uploads: [] as any[], submissions: [] as any[], polls: [] as string[],
     deliveries: [] as any[], usage: 0, successes: 0,
-    statuses: [] as string[], messages: [] as string[],
+    statuses: [] as string[], messages: [] as string[], fileLinks: [] as string[],
   };
   const imageBytes = Buffer.from('fixture-image');
   const videoBytes = Buffer.from('fixture-video');
@@ -69,7 +69,10 @@ async function runnerTest(variant: 'p2' | 'p3', failure?: 'submit-timeout' | 'po
       editMessageText: async (_chat: number, _msg: number, _inline: unknown, text: string) => { events.statuses.push(text); },
       sendMessage: async (_chat: number, text: string) => { events.messages.push(text); },
       deleteMessage: async () => {},
-      getFileLink: async (id: string) => ({ href: `https://telegram.test/${id}.mp4` }),
+      getFileLink: async (id: string) => {
+        events.fileLinks.push(id);
+        return { href: `https://telegram.test/${id}.mp4` };
+      },
     } },
     downloadBuffer: async (url: string) => url.includes('photo')
       ? { buf: imageBytes, ext: 'png', mime: 'image/png' }
@@ -128,11 +131,12 @@ async function runnerTest(variant: 'p2' | 'p3', failure?: 'submit-timeout' | 'po
   vm.runInContext(compile(functions), ctx);
 
   await ctx.runKlingEdanbot(
-    1, 2, 3, 4, 'https://telegram.test/photo.png', 'video-id', 14.466667, 'Follow this motion.',
+    1, 2, 3, 4, 'photo-id', 'video-id', 14.466667, 'Follow this motion.',
     { label, model: MODEL, price },
   );
 
   assert.deepEqual(events.charges, [price]);
+  assert.deepEqual(events.fileLinks, ['photo-id', 'video-id']);
   assert.deepEqual(events.refunds, failure ? [price] : []);
   assert.equal(events.submissions.length, 1);
   assert.equal(generateRequests.length, 1, 'An ambiguous submit is never retried');

@@ -8889,6 +8889,9 @@ async function runKlingEdanbot(
   let refund = true;
 
   try {
+    const characterImageUrl = characterUrl.startsWith('http://') || characterUrl.startsWith('https://')
+      ? characterUrl
+      : (await bot.telegram.getFileLink(characterUrl)).href;
     const videoUrl = videoFileId.startsWith('http://') || videoFileId.startsWith('https://')
       ? videoFileId
       : (await bot.telegram.getFileLink(videoFileId)).href;
@@ -8900,7 +8903,7 @@ async function runKlingEdanbot(
     ).catch(() => {});
 
     const [img, vid] = await Promise.all([
-      downloadBuffer(characterUrl),
+      downloadBuffer(characterImageUrl),
       downloadBuffer(videoUrl),
     ]);
     const vidType = detectVideoType(vid.buf, videoUrl);
