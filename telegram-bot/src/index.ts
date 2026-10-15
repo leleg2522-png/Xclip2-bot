@@ -191,8 +191,8 @@ const MODEL_PRICES = {
   flora_seedance_2_480: 10000,
   chat: 100,           // Chat AI per pesan
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
-  kling_p3: 4000,      // Kling MC V3.0 PRO P3 (P5 Standard backend)
-  kling_p2: 4000,      // Kling MC V3 PRO P2 (P5 Standard backend)
+  kling_p3: 4000,      // Kling MC V3.0 PRO P3 (Edanbot)
+  kling_p2: 4000,      // Kling MC V3 PRO P2 (Edanbot)
   kling_p4: 4000,      // Kling MC V3 Pro P4 (P5 Standard backend + 1080p finishing)
   kling_v3_standard: 3500,
   heygen: 2500,
@@ -5093,7 +5093,7 @@ bot.on('callback_query', async (ctx) => {
     });
     return ctx.editMessageText(
       `🎭 *${KLING_P4.label}*\n\nHarga: *${formatRupiah(MODEL_PRICES.kling_p4)}* per video\n\n` +
-      'Hasil: *1K/1080p*.\n\n' +
+      'Resolusi mengikuti hasil asli model.\n\n' +
       '*Langkah 1:* Kirim *foto karakter* (JPG/PNG, maksimal 10MB, min. 300px).\n' +
       'Tampilkan seluruh tubuh dari depan, bukan close-up wajah.\n\n' +
       `Video referensi di langkah berikutnya: *${KLING_P4.minSeconds}–${KLING_P4.maxSeconds} detik*, maksimal *15MB*.`,
@@ -5114,7 +5114,7 @@ bot.on('callback_query', async (ctx) => {
     return ctx.editMessageText(
       `🎭 *Kling MC V3 PRO P2*\n\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.kling_p2)}* per video\n\n` +
-      'Hasil: *1K/1080p*.\n\n' +
+      'Resolusi mengikuti hasil asli model.\n\n' +
       '*Langkah 1:* Kirim *foto karakter* yang ingin dianimasikan.\n\n' +
       '⚠️ *Syarat foto:*\n' +
       '• Tampilkan seluruh tubuh dari depan\n' +
@@ -5133,7 +5133,7 @@ bot.on('callback_query', async (ctx) => {
     return ctx.editMessageText(
       `🎭 *Kling MC V3.0 PRO P3*\n\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.kling_p3)}* per video\n\n` +
-      'Hasil: *1K/1080p*.\n\n' +
+      'Resolusi mengikuti hasil asli model.\n\n' +
       '*Langkah 1:* Kirim *foto karakter* yang ingin dianimasikan.\n\n' +
       '⚠️ *Syarat foto:*\n' +
       '• Tampilkan seluruh tubuh dari depan\n' +
@@ -8623,13 +8623,11 @@ async function runXclipMotion(
 async function runKlingV3Standard(
   chatId: number, userId: number, dbUserId: number, statusMsgId: number,
   imageFileId: string, videoFileId: string, seconds: number | undefined, prompt: string,
-  route: 'p5' | 'p2' | 'p3' | 'p4' = 'p5'
+  route: 'p5' | 'p4' = 'p5'
 ) {
-  const LABEL = route === 'p2' ? 'Kling MC V3 PRO P2' : route === 'p3' ? 'Kling MC V3.0 PRO P3'
-    : route === 'p4' ? KLING_P4.label
+  const LABEL = route === 'p4' ? KLING_P4.label
     : KLING_V3_STANDARD.label;
-  const PRICE = route === 'p2' ? MODEL_PRICES.kling_p2 : route === 'p3' ? MODEL_PRICES.kling_p3
-    : route === 'p4' ? MODEL_PRICES.kling_p4
+  const PRICE = route === 'p4' ? MODEL_PRICES.kling_p4
     : MODEL_PRICES.kling_v3_standard;
   const status = async (text: string) => {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
@@ -8859,7 +8857,7 @@ async function pollEdanbotJob(cookie: string, jobId: string, maxMs = 600_000): P
       },
     });
     const { status, result_url, error } = res.data;
-    if (status !== lastStatus) { lastStatus = status; console.log(`[Edanbot] job ${jobId}: ${status} ${result_url || ''}`); }
+    if (status !== lastStatus) { lastStatus = status; console.log(`[Edanbot] job ${jobId}: ${status}`); }
     if (status === 'completed' && result_url) return result_url;
     if (status === 'failed') throw new Error(`EDANBOT_JOB_FAILED: ${error || 'unknown'}`);
   }
@@ -8895,7 +8893,7 @@ async function runKlingEdanbot(
       ? videoFileId
       : (await bot.telegram.getFileLink(videoFileId)).href;
 
-    console.log(`[${userId}] ${label} started — img: ${characterUrl}, vid: ${videoUrl}, prompt: "${prompt}"`);
+    console.log(`[${userId}] ${label} started — downloading media`);
 
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `⏳ ${label}: mengunduh media...`
@@ -8959,12 +8957,9 @@ async function runKlingEdanbot(
         const resultUrl = await pollEdanbotJob(cookie, jobId, EDANBOT_JOB_TIMEOUT_MS);
 
         await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-          `⏳ ${label}: video selesai dibuat, sedang diproses ke 1080p...`
+          `⏳ ${label}: video selesai dibuat, sedang dikirim...`
         ).catch(() => {});
-        const finished = await upscaleGeneratedVideo(resultUrl, userId, chatId, statusMsgId);
-        if (!finished.upscaled) throw new Error('EDANBOT_1080_FINISH_FAILED');
-
-        const delivered = await sendResult(chatId, finished.url, `🎭 ${label} · 1K/1080p\n\n/menu untuk buat lagi`, true);
+        const delivered = await sendResult(chatId, resultUrl, `🎭 ${label}\n\n/menu untuk buat lagi`, true);
         if (delivered) {
           refund = false;
           await incrementKlingUsage(dbUserId);

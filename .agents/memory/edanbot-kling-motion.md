@@ -3,37 +3,33 @@ name: Kling Motion package routing and legacy Edanbot
 description: P2/P3/P4 follow P5; older backend notes are legacy-only and supplier identities stay hidden.
 ---
 
-# Current P2/P3/P4 routing
+# Current Kling Motion routing
 
-MC P2, P3 and P4 must use the same backend and 1080p finishing as MC P5, while
-retaining separate package names and prices. Edanbot is no longer their public
-generation path.
+P2/P3 use the HAR-verified Edan Bot generation flow and model key
+`kling-motion-26-pro--secondary`. Deliver the provider result directly without
+Renderful finishing; keep the public package labels and prices separate. P4 and
+P5 remain on Kling V3 Standard with mandatory 1080p finishing.
 
-**Why:** The user explicitly requested: “dan juga mc p2 dan p3 pake backend mc p5”.
-The user subsequently requested: “dan juga kling mc p4 ganti backend nya jadi
-kling mc p5”.
+**Why:** The user explicitly switched P2/P3 to the newly supplied Edan Bot HAR
+and then clarified that Renderful upscaling is not needed for those packages.
+This supersedes the earlier P2/P3-to-P5 routing decision only for P2/P3.
 
-**How to apply:** Keep future P5 backend changes consistent across P2/P3/P4 unless
-the user separates them again. Do not revive the Edanbot route or require an
-Edanbot cookie for P2/P3, or restore the old Kling 2.6 generation route for P4.
-Hide supplier identities in customer copy. A finishing failure must refund, not
-deliver native video.
+**How to apply:** Keep P2/P3 native output claims limited to “resolution follows
+the model result”; do not promise 1080p without new evidence. Preserve full
+refunds on generation or delivery failure and never replay ambiguous/accepted
+paid submissions. Keep P4/P5 and Xclip Motion finishing policies unchanged.
 
-# Legacy Edanbot reference only
-
-Before the P5 migration, P2/P3 used **edanbot.digital**, with the HAR-verified
-public key `kling-motion-26-pro`. All instructions below apply only to legacy
-Edanbot integration, not current P2/P3 routing.
+## Edan Bot flow
 
 **Hard rule:** never let any user-facing string (reply/caption/error/filename) leak `edanbot`/`roboneo`/`wavespeed`/`openart`/`meitu`/`meitudata`, and never send the raw `result_url` as a link — always re-upload bytes.
 
 ## Model variants
-- P2 and P3 both use public model key `kling-motion-26-pro`.
-- The latest HAR reported `provider: "dropshot"` for this key; upstream routing is not a permanent contract and must remain hidden from customers.
+- P2 and P3 both submit the HAR-verified public model key `kling-motion-26-pro--secondary`.
+- The HAR response's internal model/provider fields are implementation details and must remain hidden from customers.
 
-**Why:** The user explicitly replaced both public P2 and P3 backends with the newly supplied HAR flow and model key.
+**Why:** The latest supplied HAR completed a Kling MC generation with this key; older HAR evidence used a different key.
 
-**How to apply:** Submit `kling-motion-26-pro` for both P2 and P3 while preserving their separate public labels and prices; the prompt entered after the reference video goes in `fields.prompt` (a `-` means empty prompt). Customer-facing text must not expose the key.
+**How to apply:** Submit `kling-motion-26-pro--secondary` for both P2 and P3 while preserving their separate public labels and prices; the prompt entered after the reference video goes in `fields.prompt` (a `-` means empty prompt). Customer-facing text must not expose the key or supplier.
 
 **Rule:** A HAR containing only job polling and result downloads cannot establish a provider-selection parameter for generation.
 

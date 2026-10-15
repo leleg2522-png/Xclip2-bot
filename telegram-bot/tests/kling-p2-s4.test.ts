@@ -10,9 +10,10 @@ for (const priceKey of ['kling_p2', 'kling_p3']) assert.match(source, new RegExp
 const wrappersFrom = source.indexOf('async function runKlingP2(');
 const wrappersTo = source.indexOf('// ─── Background: Picsart Image-to-Video', wrappersFrom);
 const wrappers = source.slice(wrappersFrom, wrappersTo);
-assert.doesNotMatch(wrappers, /runKlingEdanbot|kling-motion-26-pro/);
-assert.match(wrappers, /prompt,\s*'p2'/);
-assert.match(wrappers, /prompt,\s*'p3'/);
+assert.match(wrappers, /runKlingEdanbot/);
+assert.match(wrappers, /EDANBOT_KLING_MC_MODEL/);
+assert.match(wrappers, /MODEL_PRICES\.kling_p2/);
+assert.match(wrappers, /MODEL_PRICES\.kling_p3/);
 function compile(text: string) {
   return ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
 }
@@ -43,7 +44,7 @@ async function wizard(variant: 'p2' | 'p3', document: boolean) {
   const callbackEnd = variant === 'p2' ? "  if (data === 'mode_klingp3')" : "  if (data === 'mode_rw')";
   await execute(`  if (data === 'mode_kling${variant}')`, callbackEnd, `const data='mode_kling${variant}';`);
   assert.equal(session.mode, `kling${variant}_wait_image`);
-  assert.match(messages.at(-1)!, /1K\/1080p/);
+  assert.match(messages.at(-1)!, /Resolusi mengikuti hasil asli model/);
   assert.match(messages.at(-1)!, /3–30 detik/);
   assert.match(messages.at(-1)!, /4000/);
   ctx.message = document
@@ -94,6 +95,6 @@ async function main() {
     await wizard(variant, false);
     await wizard(variant, true);
   }
-  console.log('P2/P3 use the P5 Standard backend: public names/prices, fresh photo IDs, 3–30s/15MB limits, document input and duplicate-prompt safety passed.');
+  console.log('P2/P3 Edanbot routing: public names/prices, fresh photo IDs, 3–30s/15MB limits, document input and duplicate-prompt safety passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
