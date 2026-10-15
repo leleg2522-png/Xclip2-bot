@@ -108,6 +108,7 @@ const telegramHttp = axios.create({ timeout: 60_000 });
 // tidak terikat IP, dan lewat proxy Decodo malah kena 407 (proxy auth) di Railway.
 const edanbotHttp = axios.create({ timeout: 120_000, proxy: false });
 const EDANBOT_JOB_TIMEOUT_MS = 20 * 60 * 1000;
+const EDANBOT_KLING_MC_MODEL = 'kling-motion-26-pro--secondary';
 
 
 // ─── Database ─────────────────────────────────────────────────────────────────
@@ -8878,10 +8879,6 @@ async function runKlingEdanbot(
     label: string;
     model: string;
     price: number;
-  } = {
-    label: 'Kling MC V3.0 PRO P3',
-    model: 'kling-motion-26-pro',
-    price: MODEL_PRICES.kling_p3,
   }
 ) {
   const label = variant.label;
@@ -8961,7 +8958,13 @@ async function runKlingEdanbot(
 
         const resultUrl = await pollEdanbotJob(cookie, jobId, EDANBOT_JOB_TIMEOUT_MS);
 
-        const delivered = await sendResult(chatId, resultUrl, `🎭 ${label} selesai!\n\n/menu untuk buat lagi`, true);
+        await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+          `⏳ ${label}: video selesai dibuat, sedang diproses ke 1080p...`
+        ).catch(() => {});
+        const finished = await upscaleGeneratedVideo(resultUrl, userId, chatId, statusMsgId);
+        if (!finished.upscaled) throw new Error('EDANBOT_1080_FINISH_FAILED');
+
+        const delivered = await sendResult(chatId, finished.url, `🎭 ${label} · 1K/1080p\n\n/menu untuk buat lagi`, true);
         if (delivered) {
           refund = false;
           await incrementKlingUsage(dbUserId);
@@ -8977,6 +8980,9 @@ async function runKlingEdanbot(
         // Setelah upstream mengembalikan job_id, jangan submit ulang dengan
         // cookie lain karena job pertama mungkin sudah ditagih.
         if (submitted) {
+          if (desc.includes('401') || desc.includes('403') || desc.includes('Unauthorized') || desc.includes('Forbidden')) {
+            await markEdanbotCookieDead(cookieId).catch(() => {});
+          }
           lastErr = err;
           break;
         }
@@ -9032,7 +9038,7 @@ async function runKlingP2(
   videoDuration: number | undefined,
   prompt: string = ''
 ) {
-  return runKlingV3Standard(
+  return runKlingEdanbot(
     chatId,
     userId,
     dbUserId,
@@ -9041,7 +9047,11 @@ async function runKlingP2(
     videoFileId,
     videoDuration,
     prompt,
-    'p2'
+    {
+      label: 'Kling MC V3 PRO P2',
+      model: EDANBOT_KLING_MC_MODEL,
+      price: MODEL_PRICES.kling_p2,
+    },
   );
 }
 
@@ -9055,7 +9065,7 @@ async function runKlingP3(
   videoDuration: number | undefined,
   prompt: string = ''
 ) {
-  return runKlingV3Standard(
+  return runKlingEdanbot(
     chatId,
     userId,
     dbUserId,
@@ -9064,7 +9074,11 @@ async function runKlingP3(
     videoFileId,
     videoDuration,
     prompt,
-    'p3'
+    {
+      label: 'Kling MC V3.0 PRO P3',
+      model: EDANBOT_KLING_MC_MODEL,
+      price: MODEL_PRICES.kling_p3,
+    },
   );
 }
 
