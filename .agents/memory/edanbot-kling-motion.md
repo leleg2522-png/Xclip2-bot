@@ -1,6 +1,6 @@
 ---
-name: Kling Motion package routing and legacy Edanbot
-description: P2/P3/P4 follow P5; older backend notes are legacy-only and supplier identities stay hidden.
+name: Kling Motion package routing and Edanbot
+description: Current P2/P3 Edan Bot route, separate P4/P5 Standard path, native delivery and hidden supplier identities.
 ---
 
 # Current Kling Motion routing
@@ -31,12 +31,6 @@ paid submissions. Keep P4/P5 and Xclip Motion finishing policies unchanged.
 
 **How to apply:** Submit `kling-motion-26-pro--secondary` for both P2 and P3 while preserving their separate public labels and prices; the prompt entered after the reference video goes in `fields.prompt` (a `-` means empty prompt). Customer-facing text must not expose the key or supplier.
 
-**Rule:** A HAR containing only job polling and result downloads cannot establish a provider-selection parameter for generation.
-
-**Why:** The supplied HAR showed a completed Dropshot job but no upload or generate POST; its internal model identifier differed from its public model key.
-
-**How to apply:** Distinguish the public submit key from the internal response model. Compare the existing integration before claiming a backend change, and do not invent a provider field or a direct Dropshot API from a CDN result URL. Require a sanitized upload/generate capture to investigate forced provider routing.
-
 ## API flow (single shared account)
 - Auth: `EDANBOT_COOKIE` secret. It is the value of a Flask **signed** `session=` cookie. Normalize: prepend `session=` if missing (users often paste only the value → 401 without the prefix).
 - **Never route edanbot via Decodo proxy:** on Railway the proxy answers 407 (proxy auth) for these calls. Use a plain no-proxy axios client. The cookie is signed, not IP-bound, so direct calls work from any IP.
@@ -47,7 +41,11 @@ paid submissions. Keep P4/P5 and Xclip Motion finishing policies unchanged.
 Results never cross users: each generate returns a unique `job_id` and is polled per-id. The shared edanbot account only shares the **credit pool** (~200 credits per generation) and provider concurrency — not result ownership.
 
 ## Cookie pool
-Cookies now live in a DB table `edanbot_cookie_pool` (Railway PG) mirroring the other key pools: pick first `available`, validate via `/api/user/info` before use, mark `dead` on 401/403 (upfront or mid-flow), fall back to `EDANBOT_COOKIE` env only if pool empty. Admin commands: `/addedancookie` (newline-separated, `session=` prefix optional), `/edanpool`.
+Cookies live in `edanbot_cookie_pool`. The bot tries available cookies in order,
+marks a cookie dead after a pre-acceptance 401/403, and falls back to the
+`EDANBOT_COOKIE` environment secret only when the pool has no available rows.
+Admin commands: `/addedancookie` (newline-separated, `session=` prefix optional)
+and `/edanpool`.
 
 ## Fragility
 Cookie dies on logout/expiry → all P2 generations 401. Recovery: user re-grabs the `session` cookie for edanbot.digital from browser DevTools and updates `EDANBOT_COOKIE`.
