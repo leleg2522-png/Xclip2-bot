@@ -68,7 +68,7 @@ function harness(outcome = 'success') {
 }
 
 async function main() {
-  assert.equal(ALRIZ_KLING_P5.label, 'Kling MC 2.6 Pro P5');
+  assert.equal(ALRIZ_KLING_P5.label, 'Kling MC V3 Pro P5');
   assert.equal(ALRIZ_KLING_P5.model, 'mc-kling-2.6-pro');
   for (const outcome of ['success', 'result-endpoint', 'poll-transient', 'poll-limit']) {
     const h = harness(outcome);

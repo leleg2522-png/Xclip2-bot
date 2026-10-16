@@ -2,7 +2,7 @@ import axios from 'axios';
 import type { AlrizKeySource } from './alriz-key-pool';
 
 export const ALRIZ_KLING_P5 = {
-  label: 'Kling MC 2.6 Pro P5',
+  label: 'Kling MC V3 Pro P5',
   model: 'mc-kling-2.6-pro',
 } as const;
 const API_BASE = 'https://alrizmotion.my.id/api';
