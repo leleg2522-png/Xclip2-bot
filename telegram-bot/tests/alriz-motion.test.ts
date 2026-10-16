@@ -47,7 +47,11 @@ function harness(outcome = 'success') {
         if (outcome === 'poll-limit' && events.reads === 1) return { status: 429, data: {} };
         if (outcome === 'timeout') return { status: 200, data: { status: 'PROCESSING' } };
         if (outcome === 'failed' || outcome === 'no-stock') {
-          return { status: 200, data: { status: outcome === 'failed' ? 'FAILED' : 'NO_STOCK', error: 'private details' } };
+          return { status: 200, data: {
+            status: outcome === 'failed' ? 'FAILED' : 'NO_STOCK',
+            error_code: outcome === 'failed' ? 'GEN_002' : 'PRIVATE https://private.test',
+            error: 'create HTTP 500: File type not supported https://private.test fixture-private-key',
+          } };
         }
         if (outcome === 'result-endpoint' && !url.endsWith('/result')) {
           return { status: 200, data: { status: 'DONE' } };
@@ -80,6 +84,9 @@ async function main() {
     const h = harness(outcome);
     await assert.rejects(generateKlingAlriz(input, h.api), error => {
       assert.doesNotMatch(String(error), /fixture-private-key|private provider details|https?:/);
+      if (outcome === 'failed') {
+        assert.match(String(error), /code=GEN_002 reason=UNSUPPORTED_FILE_TYPE/);
+      }
       return true;
     });
     assert.equal(h.events.submits, ['missing-key', 'publish', 'telegram-url', 'local-url'].includes(outcome) ? 0 : 1,

@@ -51,6 +51,22 @@ returned HTTP 409 / `JOB_002` until publication finished.
 result endpoint when reconciling dashboard reports, and do not resubmit or call
 the generation failed solely because the download link is not ready yet.
 
+## Alriz reference-hosting compatibility
+
+Do not equate a successful Alriz test using existing CDN references with a
+successful test of the bot's own reference-hosting path.
+
+**Why:** A live CDN-reference test succeeded, but a subsequent bot submission
+was rejected with `GEN_002` / “File type not supported” despite accessible,
+correctly identified JPEG and MP4 bytes. The bot URLs lacked filename extensions.
+URL-based file-type detection is a suspected compatibility issue, not a
+confirmed upstream implementation detail.
+
+**How to apply:** Publish P5 references with their actual file extensions and
+matching MIME types, preserve legacy download links for other callers, and test
+real GET/HEAD responses. Do not claim an upstream failure is resolved solely
+from a mocked generation test or replay an already accepted paid job to check.
+
 ## Edan Bot flow
 
 **Hard rule:** never let any user-facing string (reply/caption/error/filename) leak `edanbot`/`roboneo`/`wavespeed`/`openart`/`meitu`/`meitudata`, and never send the raw `result_url` as a link — always re-upload bytes.

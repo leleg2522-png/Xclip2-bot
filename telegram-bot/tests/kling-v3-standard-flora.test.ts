@@ -144,11 +144,16 @@ async function billingTest(outcome: string, route: 'p5' | 'p4' | 'xclip_motion' 
       assert.equal(input.prompt, 'move');
       assert.equal(Buffer.isBuffer(input.image), true);
       assert.equal(Buffer.isBuffer(input.video), true);
+      await api.publish(input.image, false);
+      await api.publish(input.video, true);
       if (outcome === 'provider') throw Error('ALRIZ_JOB_FAILED');
       await api.status(`⏳ ${ALRIZ_KLING_P5.label}: memproses...`);
       return 'https://example.test/native.mp4';
     },
-    publishMedia: async () => 'https://our-domain.test/dl/reference',
+    publishMedia: async (_bytes: Buffer, _video: boolean, _sourceUrl?: string, includeExtension?: boolean) => {
+      if (route === 'p5') assert.equal(includeExtension, true, 'P5 reference URLs must include their file extension');
+      return 'https://our-domain.test/dl/reference';
+    },
     getNextFloraKey() {}, markFloraKeyDead() {}, floraGetWorkspace() {}, floraUploadAsset() {},
     floraGenerate() {}, floraPollRun() {},
     isFloraKeyExhaustedError: classifierContext.isFloraKeyExhaustedError,

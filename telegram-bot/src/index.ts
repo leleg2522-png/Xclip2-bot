@@ -2351,7 +2351,7 @@ function publicBaseUrl(): string {
 }
 
 // Persist a result buffer to disk and return a public download link on our domain.
-async function publishMedia(buf: Buffer, isVideo: boolean, sourceUrl?: string): Promise<string> {
+async function publishMedia(buf: Buffer, isVideo: boolean, sourceUrl?: string, includeExtension = false): Promise<string> {
   await fsp.mkdir(MEDIA_DIR, { recursive: true });
   // Derive the real format from the bytes (with the URL as a hint) so the link's
   // extension and Content-Type match the actual file (mp4/mov/webm/avi, jpg/png/…).
@@ -2365,7 +2365,7 @@ async function publishMedia(buf: Buffer, isVideo: boolean, sourceUrl?: string): 
     contentType: mime,
     expiresAt: Date.now() + MEDIA_TTL_MS,
   });
-  return `${publicBaseUrl()}/dl/${token}`;
+  return `${publicBaseUrl()}/dl/${token}${includeExtension ? `.${ext}` : ''}`;
 }
 
 // Sweep expired media off disk hourly so we don't leak storage.
@@ -8654,7 +8654,7 @@ async function runKlingV3Standard(
       image: image.buf, video: video.buf, seconds, prompt,
     }, {
       pool: alrizKeyPool,
-      publish: (bytes, isVideo) => publishMedia(bytes, isVideo),
+      publish: (bytes, isVideo) => publishMedia(bytes, isVideo, undefined, true),
       status,
     }) : await generateKlingV3StandardFlora({
       image: { buf: image.buf, name: `character.${image.ext}`, mime: image.mime },
@@ -12414,8 +12414,12 @@ app.post('/bridge/jobs/:id/fail', async (req, res) => {
 // a file we wrote ourselves — it is never used to build a path, so there's no way
 // to traverse the filesystem with it.
 app.get('/dl/:token', (req, res) => {
-  const entry = mediaStore.get(req.params.token);
-  if (!entry || entry.expiresAt < Date.now()) {
+  // Preserve old token-only links while allowing extension-aware upstream fetchers.
+  // Never derive a filesystem path from a request parameter.
+  const [token, requestedExtension, ...extra] = req.params.token.split('.');
+  const entry = extra.length ? undefined : mediaStore.get(token);
+  if (!entry || entry.expiresAt < Date.now()
+    || (requestedExtension !== undefined && entry.filename !== `output.${requestedExtension}`)) {
     res.status(404).send('Link sudah tidak berlaku.');
     return;
   }

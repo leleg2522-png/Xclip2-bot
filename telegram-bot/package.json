@@ -12,7 +12,7 @@
     "test:gomni11flora": "tsx tests/gemini-omni-11-flora.test.ts",
     "test:klingp2": "tsx tests/kling-p2-s4.test.ts",
     "test:klingp4": "tsx tests/kling-p4-flora.test.ts",
-    "test:klingp5": "tsx tests/kling-v3-standard-flora.test.ts && tsx tests/kling-edanbot.test.ts && tsx tests/alriz-motion.test.ts && tsx tests/alriz-pool.test.ts",
+    "test:klingp5": "tsx tests/kling-v3-standard-flora.test.ts && tsx tests/kling-edanbot.test.ts && tsx tests/alriz-motion.test.ts && tsx tests/alriz-pool.test.ts && tsx tests/alriz-reference-hosting.test.ts",
     "setup:alriz-pool": "tsx scripts/setup-alriz-pool.ts",
     "test:xclipmotion": "tsx tests/xclip-motion-flora.test.ts",
     "test:har-models": "tsx tests/picsart-har-models.test.ts",

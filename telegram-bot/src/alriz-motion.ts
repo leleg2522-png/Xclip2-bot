@@ -126,7 +126,15 @@ export async function generateKlingAlriz(
       if (!validMediaUrl(result)) throw new Error(`ALRIZ_INVALID_RESULT_URL job=${jobId}`);
       return result;
     }
-    if (state === 'FAILED' || state === 'NO_STOCK') throw new Error(`ALRIZ_JOB_${state} job=${jobId}`);
+    if (state === 'FAILED' || state === 'NO_STOCK') {
+      const code = typeof job.error_code === 'string' && /^[A-Z0-9_]{1,48}$/.test(job.error_code)
+        ? ` code=${job.error_code}` : '';
+      const detail = typeof job.error === 'string' ? job.error : job.error?.message;
+      // Log only an allowlisted reason, never raw upstream text or private URLs.
+      const reason = typeof detail === 'string' && /file type not supported/i.test(detail)
+        ? ' reason=UNSUPPORTED_FILE_TYPE' : '';
+      throw new Error(`ALRIZ_JOB_${state} job=${jobId}${code}${reason}`);
+    }
     if (!['QUEUED', 'CLAIMING', 'UPLOADING', 'PROCESSING', 'SAVING'].includes(state)) {
       throw new Error(`ALRIZ_INVALID_JOB_STATUS job=${jobId}`);
     }
