@@ -1,6 +1,6 @@
 ---
 name: Kling Motion package routing and Edanbot
-description: P2/P3 Edan Bot native delivery, P4 Standard, P5 Alriz 2.6 Pro, and preserved finishing policies.
+description: P2/P3 Edan Bot native, P4 Standard with finishing, P5 Alriz 2.6 Pro native without Renderful.
 ---
 
 # Current Kling Motion routing
@@ -9,19 +9,21 @@ P2/P3 use the HAR-verified Edan Bot generation flow and model key
 `kling-motion-26-pro--secondary`. Deliver the provider result directly without
 Renderful finishing; keep the public package labels and prices separate. P4
 remains on Kling V3 Standard. P5 uses Alriz `mc-kling-2.6-pro`.
-Both P4 and P5 retain mandatory 1080p finishing.
+P4 retains mandatory 1080p finishing. P5 delivers the native Alriz result directly
+without Renderful finishing.
 
 **Why:** The user explicitly switched P2/P3 to the newly supplied Edan Bot HAR
 and then clarified that Renderful upscaling is not needed for those packages.
 This supersedes the earlier P2/P3-to-P5 routing decision only for P2/P3.
 The user later requested: “gw ingin kling mc p5 di ganti kling mc 2,6 pro dari alriz”.
-That change applies to P5 only, not P4 or P2/P3; it does not request removal
-of P5's existing finishing.
+That change applies to P5 only, not P4 or P2/P3. After inspecting the live native
+P5 result, the user clarified: “gaperlu finishing dari renderfull”.
 
 **How to apply:** Keep P2/P3 native output claims limited to “resolution follows
 the model result”; do not promise 1080p without new evidence. Preserve full
 refunds on generation or delivery failure and never replay ambiguous/accepted
-paid submissions. Keep P4/P5 and Xclip Motion finishing policies unchanged.
+paid submissions. Do not add finishing back to P5; keep P4 and Xclip Motion
+finishing policies unchanged.
 
 ## Alriz credential management
 

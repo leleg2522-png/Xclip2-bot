@@ -5080,7 +5080,7 @@ bot.on('callback_query', async (ctx) => {
     });
     return ctx.editMessageText(
       `🎭 *${ALRIZ_KLING_P5.label}*\n\nHarga: *${formatRupiah(MODEL_PRICES.kling_v3_standard)}* per video\n\n` +
-      'Hasil *1K/1080p*, otomatis di-upscale sebelum dikirim.\n\n' +
+      'Hasil native model, kelas *1K/1080p*, langsung dikirim tanpa upscale tambahan.\n\n' +
       '*Langkah 1:* Kirim *foto karakter* JPG/PNG, maksimal 10MB, min. 300px.\n' +
       'Tampilkan seluruh tubuh dari depan.\n\nVideo referensi: *3–30 detik*, maksimal *15MB*.',
       { parse_mode: 'Markdown' }
@@ -8664,9 +8664,13 @@ async function runKlingV3Standard(
       upload: floraUploadAsset, generate: floraGenerate, poll: floraPollRun,
       exhausted: error => isFloraKeyExhaustedError(describeError(error)), status,
     });
-    const finished = await upscaleGeneratedVideo(url, userId, chatId, statusMsgId);
-    if (!finished.upscaled) throw new Error('KLING_P5_1080_FINISH_FAILED');
-    if (await sendResult(chatId, finished.url, `🎭 ${LABEL} · 1K/1080p\n\n/menu untuk buat lagi`, true)) {
+    let deliveryUrl = url;
+    if (route === 'p4') {
+      const finished = await upscaleGeneratedVideo(url, userId, chatId, statusMsgId);
+      if (!finished.upscaled) throw new Error('KLING_P4_1080_FINISH_FAILED');
+      deliveryUrl = finished.url;
+    }
+    if (await sendResult(chatId, deliveryUrl, `🎭 ${LABEL} · 1K/1080p\n\n/menu untuk buat lagi`, true)) {
       refund = false;
       markGenSuccess(userId);
       if (route === 'p4') {
