@@ -22,6 +22,7 @@ import {
 import { FreebeatBridgeQueue, type BridgeAgent, type BridgeJob } from './freebeat-bridge';
 import { KLING_P4, klingP4VideoError, isFloraWorkspaceSetupError } from './kling-p4-flora';
 import { KLING_V3_STANDARD, klingV3StandardVideoError, generateKlingV3StandardFlora } from './kling-v3-standard-flora';
+import { ALRIZ_KLING_P5, generateKlingAlriz } from './alriz-motion';
 import { XCLIP_MOTION, xclipMotionVideoError, prepareXclipMotionReference } from './xclip-motion-media';
 import { generateXclipMotionFlora } from './xclip-motion-flora';
 import { HAR_MODELS, type HarModelKey, type HarAspectRatio } from './picsart-har-models';
@@ -3151,7 +3152,7 @@ function hargaText(): string {
     `• Kling MC V3 PRO P2 — ${formatRupiah(MODEL_PRICES.kling_p2)} 🔥PROMO\n` +
     `• Kling MC V3.0 PRO P3 — ${formatRupiah(MODEL_PRICES.kling_p3)} 🔥PROMO\n` +
     `• ${KLING_P4.label} (1K/1080p) — ${formatRupiah(MODEL_PRICES.kling_p4)}\n` +
-    `• ${KLING_V3_STANDARD.label} (1K/1080p) — ${formatRupiah(MODEL_PRICES.kling_v3_standard)}\n` +
+    `• ${ALRIZ_KLING_P5.label} (1K/1080p) — ${formatRupiah(MODEL_PRICES.kling_v3_standard)}\n` +
     `• Heygen Video (15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.heygen)}\n` +
     `• Xclip Motion (3–15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.xclip_motion)}\n` +
     `• Nano Banana 2.1 4K (teks/foto) — ${formatRupiah(MODEL_PRICES.banana21)}\n` +
@@ -4404,7 +4405,7 @@ bot.on('callback_query', async (ctx) => {
           [Markup.button.callback('🎭 Kling MC V3.0 PRO P3 🔥PROMO', 'mode_klingp3')],
           [Markup.button.callback(`🎭 ${KLING_P4.label} · 1K · ${formatRupiah(MODEL_PRICES.kling_p4)}`, 'mode_klingp4')],
           [Markup.button.callback(`🕺 Xclip Motion · 1080p · ${formatRupiah(MODEL_PRICES.xclip_motion)}`, 'mode_har_xclip_motion')],
-          [Markup.button.callback(`🎭 ${KLING_V3_STANDARD.label} · 1K · ${formatRupiah(MODEL_PRICES.kling_v3_standard)}`, 'mode_klingv3std')],
+          [Markup.button.callback(`🎭 ${ALRIZ_KLING_P5.label} · 1K · ${formatRupiah(MODEL_PRICES.kling_v3_standard)}`, 'mode_klingv3std')],
           [Markup.button.callback('⬅️ Kembali', 'back_main')],
         ]),
       }
@@ -5074,7 +5075,7 @@ bot.on('callback_query', async (ctx) => {
       klingV3StdVideoFileId: undefined, klingV3StdVideoDuration: undefined,
     });
     return ctx.editMessageText(
-      `🎭 *${KLING_V3_STANDARD.label}*\n\nHarga: *${formatRupiah(MODEL_PRICES.kling_v3_standard)}* per video\n\n` +
+      `🎭 *${ALRIZ_KLING_P5.label}*\n\nHarga: *${formatRupiah(MODEL_PRICES.kling_v3_standard)}* per video\n\n` +
       'Hasil *1K/1080p*, otomatis di-upscale sebelum dikirim.\n\n' +
       '*Langkah 1:* Kirim *foto karakter* JPG/PNG, maksimal 10MB, min. 300px.\n' +
       'Tampilkan seluruh tubuh dari depan.\n\nVideo referensi: *3–30 detik*, maksimal *15MB*.',
@@ -7043,7 +7044,7 @@ bot.on('text', async (ctx) => {
     const raw = ctx.message.text.trim();
     const prompt = raw === '-' ? '' : raw;
     setSession(userId, { mode: 'idle', klingV3StdImageFileId: undefined, klingV3StdVideoFileId: undefined, klingV3StdVideoDuration: undefined });
-    const statusMsg = await ctx.reply(`⏳ Memproses ${KLING_V3_STANDARD.label}...\nHasil dikirim otomatis (~5–20 menit).`);
+    const statusMsg = await ctx.reply(`⏳ Memproses ${ALRIZ_KLING_P5.label}...\nHasil dikirim otomatis (~5–20 menit).`);
     runKlingV3Standard(ctx.chat.id, userId, dbUserId, statusMsg.message_id, imageFileId, videoFileId, seconds, prompt)
       .catch(e => console.error(`[${userId}] KlingV3Standard error:`, describeError(e)));
     return;
@@ -8625,7 +8626,7 @@ async function runKlingV3Standard(
   route: 'p5' | 'p4' = 'p5'
 ) {
   const LABEL = route === 'p4' ? KLING_P4.label
-    : KLING_V3_STANDARD.label;
+    : ALRIZ_KLING_P5.label;
   const PRICE = route === 'p4' ? MODEL_PRICES.kling_p4
     : MODEL_PRICES.kling_v3_standard;
   const status = async (text: string) => {
@@ -8645,7 +8646,13 @@ async function runKlingV3Standard(
       throw new Error('INVALID_CHARACTER_IMAGE');
     }
     const type = detectVideoType(video.buf, videoLink.href);
-    const url = await generateKlingV3StandardFlora({
+    const url = route === 'p5' ? await generateKlingAlriz({
+      image: image.buf, video: video.buf, seconds, prompt,
+    }, {
+      apiKey: process.env.ALRIZ_API_KEY,
+      publish: (bytes, isVideo) => publishMedia(bytes, isVideo),
+      status,
+    }) : await generateKlingV3StandardFlora({
       image: { buf: image.buf, name: `character.${image.ext}`, mime: image.mime },
       video: { buf: video.buf, name: `reference.${type.ext}`, mime: type.mime }, prompt, seconds, publicLabel: LABEL,
     }, {

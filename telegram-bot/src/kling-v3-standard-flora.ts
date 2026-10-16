@@ -16,7 +16,7 @@ export function klingV3StandardVideoError(size?: number, seconds?: number): stri
   }
 }
 
-/** This is actual Kling 3.0 Standard, not the separate P4 Kling 2.6 route. */
+/** Legacy Standard generator retained by P4; P5 now uses Alriz Kling 2.6 Pro. */
 export async function generateKlingV3StandardFlora(
   input: { image: { buf: Buffer; name: string; mime: string }; video: { buf: Buffer; name: string; mime: string }; prompt: string; seconds?: number; publicLabel?: string },
   api: KlingP4Api

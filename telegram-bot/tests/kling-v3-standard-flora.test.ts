@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import { KLING_V3_STANDARD, klingV3StandardVideoError, generateKlingV3StandardFlora } from '../src/kling-v3-standard-flora';
 import { KLING_P4 } from '../src/kling-p4-flora';
+import { ALRIZ_KLING_P5 } from '../src/alriz-motion';
 import type { KlingP4Api } from '../src/kling-p4-flora';
 
 const source = fs.readFileSync(path.resolve(__dirname, '../src/index.ts'), 'utf8');
@@ -107,10 +108,11 @@ async function apiTests() {
 async function billingTest(outcome: string, route: 'p5' | 'p4' | 'xclip_motion' = 'p5') {
   const price = route === 'p4' ? 4000 : 3500;
   const label = route === 'p4' ? KLING_P4.label
-    : route === 'xclip_motion' ? 'Xclip Motion' : KLING_V3_STANDARD.label;
+    : route === 'xclip_motion' ? 'Xclip Motion' : ALRIZ_KLING_P5.label;
   const events = { charges: [] as number[], refunds: [] as number[], releases: 0, upscales: 0, deliveries: 0, successes: 0, usage: 0, messages: [] as string[] };
   const ctx = vm.createContext({
-    MODEL_PRICES: { kling_v3_standard: 3500, xclip_motion: 3500, kling_p2: 4000, kling_p3: 4000, kling_p4: 4000 }, KLING_V3_STANDARD, KLING_P4,
+    MODEL_PRICES: { kling_v3_standard: 3500, xclip_motion: 3500, kling_p2: 4000, kling_p3: 4000, kling_p4: 4000 }, KLING_V3_STANDARD, KLING_P4, ALRIZ_KLING_P5,
+    process: { env: { ALRIZ_API_KEY: 'fixture-key' } },
     HAR_MODELS: { xclip_motion: { label: 'Xclip Motion' } },
     beginCharge: async (_id: number, amount: number, limit: number) => {
       assert.equal(limit, 3); events.charges.push(amount); return { ok: outcome !== 'insufficient', reason: 'insufficient' };
@@ -123,6 +125,7 @@ async function billingTest(outcome: string, route: 'p5' | 'p4' | 'xclip_motion' 
     sharp: () => ({ metadata: async () => ({ format: 'png', width: 600, height: 600 }) }),
     detectVideoType: () => ({ ext: 'mp4', mime: 'video/mp4' }),
     generateKlingV3StandardFlora: async (_input: unknown, api: KlingP4Api) => {
+      assert.equal(route, 'p4', 'Only P4 retains the Standard backend');
       assert.equal((_input as any).publicLabel, label);
       assert.equal(api.exhausted(Error('401 unauthorized')), true);
       assert.equal(api.exhausted(Error('BILLING_NOT_ENOUGH_CREDITS')), true);
@@ -133,6 +136,18 @@ async function billingTest(outcome: string, route: 'p5' | 'p4' | 'xclip_motion' 
       if (outcome === 'provider') throw Error('Flora provider failed https://provider.example.test/private-result');
       return 'https://example.test/native.mp4';
     },
+    generateKlingAlriz: async (input: any, api: any) => {
+      assert.equal(route, 'p5', 'Only P5 moves to Alriz');
+      assert.equal(api.apiKey, 'fixture-key');
+      assert.equal(input.seconds, 10);
+      assert.equal(input.prompt, 'move');
+      assert.equal(Buffer.isBuffer(input.image), true);
+      assert.equal(Buffer.isBuffer(input.video), true);
+      if (outcome === 'provider') throw Error('ALRIZ_JOB_FAILED');
+      await api.status(`⏳ ${ALRIZ_KLING_P5.label}: memproses...`);
+      return 'https://example.test/native.mp4';
+    },
+    publishMedia: async () => 'https://our-domain.test/dl/reference',
     getNextFloraKey() {}, markFloraKeyDead() {}, floraGetWorkspace() {}, floraUploadAsset() {},
     floraGenerate() {}, floraPollRun() {},
     isFloraKeyExhaustedError: classifierContext.isFloraKeyExhaustedError,
@@ -185,7 +200,7 @@ async function wizardTest(documents = false) {
     reply: async (text: string) => { messages.push(text); return { message_id: 44 }; },
     editMessageText: async (text: string) => { messages.push(text); } };
   const sandbox = vm.createContext({
-    ctx, KLING_V3_STANDARD, klingV3StandardVideoError, MODEL_PRICES: { kling_v3_standard: 3500 },
+    ctx, KLING_V3_STANDARD, ALRIZ_KLING_P5, klingV3StandardVideoError, MODEL_PRICES: { kling_v3_standard: 3500 },
     getSession: () => session, setSession: (_id: number, data: any) => Object.assign(session, data),
     requireLogin: async () => true, formatRupiah: (n: number) => `Rp${n.toLocaleString('id-ID')}`,
     getCooldownRemainingMs: () => 0, formatCooldown: () => '', runKlingV3Standard: async (...args: any[]) => { runs.push(args); },
@@ -198,6 +213,7 @@ async function wizardTest(documents = false) {
   }
   await execute("  if (data === 'mode_klingv3std') {", "  if (data === 'mode_klingp4') {", "const data='mode_klingv3std';");
   assert.ok(messages.at(-1)!.includes('Rp3.500')); assert.ok(messages.at(-1)!.includes('1K/1080p'));
+  assert.ok(messages.at(-1)!.includes(ALRIZ_KLING_P5.label));
   const document = () => execute(
     "  if (session.mode === 'klingv3std_wait_prompt') return ctx.reply('Foto dan video",
     "  if (session.mode === 'klingp4_wait_prompt') {\n    return ctx.reply('Foto dan video",
@@ -233,6 +249,6 @@ async function main() {
     await billingTest(outcome);
       await billingTest(outcome, 'p4');
   }
-  console.log('Kling P4/P5: Standard model, 1080p finishing, refunds and no-resubmit tests passed.');
+  console.log('Kling P5 Alriz / P4 Standard: separate routing and labels, 1080p finishing, refunds and wizard tests passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

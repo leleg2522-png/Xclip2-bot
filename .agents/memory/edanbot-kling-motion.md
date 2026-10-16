@@ -1,18 +1,22 @@
 ---
 name: Kling Motion package routing and Edanbot
-description: Current P2/P3 Edan Bot route, separate P4/P5 Standard path, native delivery and hidden supplier identities.
+description: P2/P3 Edan Bot native delivery, P4 Standard, P5 Alriz 2.6 Pro, and preserved finishing policies.
 ---
 
 # Current Kling Motion routing
 
 P2/P3 use the HAR-verified Edan Bot generation flow and model key
 `kling-motion-26-pro--secondary`. Deliver the provider result directly without
-Renderful finishing; keep the public package labels and prices separate. P4 and
-P5 remain on Kling V3 Standard with mandatory 1080p finishing.
+Renderful finishing; keep the public package labels and prices separate. P4
+remains on Kling V3 Standard. P5 uses Alriz `mc-kling-2.6-pro`.
+Both P4 and P5 retain mandatory 1080p finishing.
 
 **Why:** The user explicitly switched P2/P3 to the newly supplied Edan Bot HAR
 and then clarified that Renderful upscaling is not needed for those packages.
 This supersedes the earlier P2/P3-to-P5 routing decision only for P2/P3.
+The user later requested: “gw ingin kling mc p5 di ganti kling mc 2,6 pro dari alriz”.
+That change applies to P5 only, not P4 or P2/P3; it does not request removal
+of P5's existing finishing.
 
 **How to apply:** Keep P2/P3 native output claims limited to “resolution follows
 the model result”; do not promise 1080p without new evidence. Preserve full
