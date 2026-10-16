@@ -49,6 +49,16 @@ assert.throws(() => buildHarModelParams({ model: 'xclip_motion', prompt: 'move',
 assert.throws(() => harWorkflow('xclip_motion'), /XCLIP_MOTION_BACKEND_CHANGED/);
 assert.throws(() => buildHarModelParams({ model: 'heygen', prompt: 'move', ratio: '1:1', imageUrl: image }));
 assert.throws(() => buildHarModelParams({ model: 'banana21_i2i', prompt: 'edit', ratio: '1:1' }));
+for (const ratio of ['1:1', '9:16', '16:9', '4:3', '3:4'] as const) {
+  const params = buildHarModelParams({ model: 'banana21_i2i', prompt: 'combine', ratio, imageUrls: [image, `${image}?second`] });
+  assert.deepEqual(params.imageUrls, [image, `${image}?second`]);
+  assert.equal(params.aspectRatio, ratio);
+  assert.equal(params.imageSize, '4K');
+  assert.deepEqual(JSON.parse(params.options.drive.attributes.aiSDKPayload).imageUrls, params.imageUrls);
+}
+assert.throws(() => buildHarModelParams({ model: 'heygen', prompt: 'move', ratio: '4:3', imageUrl: image }));
+assert.throws(() => buildHarModelParams({ model: 'banana21_i2i', prompt: 'edit', ratio: '1:1', imageUrls: [image, image, image] }));
+assert.throws(() => buildHarModelParams({ model: 'banana21_t2i', prompt: 'draw', ratio: '1:1', imageUrls: [image] }));
 assert.equal(harResultUrl({ url: video }, true), video);
 assert.equal(harResultUrl({ imageUrls: [{ url: image }] }, false), image);
 assert.equal(harResultUrl({ imageUrls: [image] }, false), image);
@@ -57,7 +67,7 @@ assert.equal(harResultUrl({ imageUrls: [] }, false), undefined);
 function compile(text: string) {
   return ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
 }
-async function testBackend(model: HarModelKey, failure?: 'poll-auth' | 'no-url' | 'timeout' | 'get-transient') {
+async function testBackend(model: HarModelKey, failure?: 'poll-auth' | 'no-url' | 'timeout' | 'get-transient', multipleImages = false) {
   const cfg = HAR_MODELS[model], events = { submissions: 0, accounts: 0, dead: 0, gets: 0 };
   const start = backend.indexOf('export async function generateHarModel(');
   const end = backend.indexOf('export type GptImage25Model', start);
@@ -78,6 +88,11 @@ async function testBackend(model: HarModelKey, failure?: 'poll-auth' | 'no-url' 
         events.submissions++;
         assert.equal(url, `https://api.picsart.com${harWorkflow(model)}/submit`);
         assert.equal(data.params.model, cfg.video ? 'heygen-video-1' : 'gemini-nano-banana-2.1');
+        if (multipleImages) {
+          assert.equal(data.params.imageUrls.length, 2);
+          assert.ok(data.params.imageUrls[0].endsWith('first.jpg'));
+          assert.ok(data.params.imageUrls[1].endsWith('second.jpg'));
+        }
         if (failure === 'timeout') throw Error('ETIMEDOUT');
         return { status: 201, data: { response: { id: 'job_fixture' } } };
       },
@@ -96,7 +111,11 @@ async function testBackend(model: HarModelKey, failure?: 'poll-auth' | 'no-url' 
   vm.runInContext(compile(backend.slice(start, end)), ctx);
   const promise = ctx.exports.generateHarModel({
     userId: 1, model, ratio: '9:16', prompt: 'move',
-    image: cfg.needsImage ? { buffer: Buffer.from('image'), name: 'image.jpg', mime: 'image/jpeg' } : undefined,
+    image: cfg.needsImage && !multipleImages ? { buffer: Buffer.from('image'), name: 'image.jpg', mime: 'image/jpeg' } : undefined,
+    images: multipleImages ? [
+      { buffer: Buffer.from('first'), name: 'first.jpg', mime: 'image/jpeg' },
+      { buffer: Buffer.from('second'), name: 'second.jpg', mime: 'image/jpeg' },
+    ] : undefined,
     video: cfg.needsVideo ? { buffer: Buffer.from('video'), name: 'video.mp4', mime: 'video/mp4' } : undefined,
   });
   if (failure && failure !== 'get-transient') await assert.rejects(promise);
@@ -206,6 +225,7 @@ async function main() {
   }
   await testWizard('xclip_motion', true);
   await testWizard('banana21_i2i', true);
+  await testBackend('banana21_i2i', undefined, true);
   for (const error of ['poll-auth', 'no-url', 'timeout', 'get-transient'] as const) await testBackend('heygen', error);
   console.log('Heygen/Banana contracts and billing, plus migrated Xclip Motion wizard checks passed.');
 }

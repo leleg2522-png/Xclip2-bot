@@ -3272,20 +3272,25 @@ export async function generateHarModel(input: {
   prompt: string;
   ratio: HarAspectRatio;
   image?: { buffer: Buffer; name: string; mime: string };
+  images?: Array<{ buffer: Buffer; name: string; mime: string }>;
   video?: { buffer: Buffer; name: string; mime: string };
   onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
 }): Promise<{ url: string; credits?: number }> {
   const cfg = HAR_MODELS[input.model];
-  if (!cfg || cfg.needsImage !== Boolean(input.image) || cfg.needsVideo !== Boolean(input.video)) {
+  const images = input.images ?? (input.image ? [input.image] : []);
+  if (!cfg || (input.images && input.image) || cfg.needsImage !== Boolean(images.length)
+    || cfg.needsVideo !== Boolean(input.video) || images.length > (cfg.video ? 1 : 2)) {
     throw new Error('PICSART_INVALID_HAR_MEDIA');
   }
   return runWithAccount(input.userId, null, async credId => {
     input.onStatus?.('upload');
-    const imageUrl = input.image
-      ? await uploadFile(credId, input.image.buffer, input.image.name, input.image.mime, { gateway: true }) : undefined;
+    const imageUrls: string[] = [];
+    for (const image of images) {
+      imageUrls.push(await uploadFile(credId, image.buffer, image.name, image.mime, { gateway: true }));
+    }
     const videoUrl = input.video
       ? await uploadFile(credId, input.video.buffer, input.video.name, input.video.mime, { gateway: true }) : undefined;
-    const params = buildHarModelParams({ model: input.model, prompt: input.prompt, ratio: input.ratio, imageUrl, videoUrl });
+    const params = buildHarModelParams({ model: input.model, prompt: input.prompt, ratio: input.ratio, imageUrls, videoUrl });
     const path = harWorkflow(input.model);
     const access = await getAccessToken(credId);
     input.onStatus?.('submit');
