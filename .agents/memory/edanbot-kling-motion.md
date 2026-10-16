@@ -23,6 +23,19 @@ the model result”; do not promise 1080p without new evidence. Preserve full
 refunds on generation or delivery failure and never replay ambiguous/accepted
 paid submissions. Keep P4/P5 and Xclip Motion finishing policies unchanged.
 
+## Alriz credential management
+
+Alriz credentials must be managed through the bot's Railway database pool,
+not through a required runtime environment variable or environment fallback.
+
+**Why:** The user requested: “itu apikey nya masukan jadi pool agar gw gausah
+masukin lagi di variables”.
+
+**How to apply:** Preserve database-managed key entry and rotation when changing
+P5. A one-time secure import is fine, but do not make deployment Variables a
+requirement again. Key rotation must still stop after any accepted or ambiguous
+paid submit.
+
 ## Edan Bot flow
 
 **Hard rule:** never let any user-facing string (reply/caption/error/filename) leak `edanbot`/`roboneo`/`wavespeed`/`openart`/`meitu`/`meitudata`, and never send the raw `result_url` as a link — always re-upload bytes.

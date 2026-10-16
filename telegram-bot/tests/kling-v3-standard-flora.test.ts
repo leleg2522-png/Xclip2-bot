@@ -112,7 +112,7 @@ async function billingTest(outcome: string, route: 'p5' | 'p4' | 'xclip_motion' 
   const events = { charges: [] as number[], refunds: [] as number[], releases: 0, upscales: 0, deliveries: 0, successes: 0, usage: 0, messages: [] as string[] };
   const ctx = vm.createContext({
     MODEL_PRICES: { kling_v3_standard: 3500, xclip_motion: 3500, kling_p2: 4000, kling_p3: 4000, kling_p4: 4000 }, KLING_V3_STANDARD, KLING_P4, ALRIZ_KLING_P5,
-    process: { env: { ALRIZ_API_KEY: 'fixture-key' } },
+    alrizKeyPool: { kind: 'fixture-pool' },
     HAR_MODELS: { xclip_motion: { label: 'Xclip Motion' } },
     beginCharge: async (_id: number, amount: number, limit: number) => {
       assert.equal(limit, 3); events.charges.push(amount); return { ok: outcome !== 'insufficient', reason: 'insufficient' };
@@ -136,9 +136,10 @@ async function billingTest(outcome: string, route: 'p5' | 'p4' | 'xclip_motion' 
       if (outcome === 'provider') throw Error('Flora provider failed https://provider.example.test/private-result');
       return 'https://example.test/native.mp4';
     },
-    generateKlingAlriz: async (input: any, api: any) => {
+    generateKlingAlrizFromPool: async (input: any, api: any) => {
       assert.equal(route, 'p5', 'Only P5 moves to Alriz');
-      assert.equal(api.apiKey, 'fixture-key');
+      assert.equal(api.pool.kind, 'fixture-pool');
+      assert.equal(api.apiKey, undefined, 'P5 must not depend on a Variables key');
       assert.equal(input.seconds, 10);
       assert.equal(input.prompt, 'move');
       assert.equal(Buffer.isBuffer(input.image), true);

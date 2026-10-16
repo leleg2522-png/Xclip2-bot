@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { AlrizKeySource } from './alriz-key-pool';
 
 export const ALRIZ_KLING_P5 = {
   label: 'Kling MC 2.6 Pro P5',
@@ -17,6 +18,33 @@ export interface AlrizMotionApi {
   };
   wait?: (ms: number) => Promise<void>;
   maxPolls?: number;
+}
+
+/** Pool only: environment credentials are deliberately not a runtime fallback. */
+export async function generateKlingAlrizFromPool(
+  input: Parameters<typeof generateKlingAlriz>[0],
+  api: Omit<AlrizMotionApi, 'apiKey'> & { pool: AlrizKeySource },
+): Promise<string> {
+  const skipped: number[] = [];
+  while (skipped.length < 20) {
+    const key = await api.pool.next(skipped);
+    if (!key) throw new Error('ALRIZ_POOL_NO_AVAILABLE_KEY');
+    skipped.push(key.id);
+    try {
+      return await generateKlingAlriz(input, { ...api, apiKey: key.apiKey });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      // These are explicit HTTP rejections, not timeouts, missing IDs or accepted jobs.
+      if (/^ALRIZ_SUBMIT_HTTP_(401|402|403)$/.test(message)) {
+        await api.pool.disable(key.id);
+        continue;
+      }
+      // A post-acceptance auth failure retires the key but NEVER resubmits.
+      if (/^ALRIZ_(POLL|RESULT)_HTTP_(401|403)\b/.test(message)) await api.pool.disable(key.id);
+      throw error;
+    }
+  }
+  throw new Error('ALRIZ_POOL_NO_AVAILABLE_KEY');
 }
 
 function validMediaUrl(value: unknown): value is string {

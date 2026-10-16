@@ -22,7 +22,9 @@ import {
 import { FreebeatBridgeQueue, type BridgeAgent, type BridgeJob } from './freebeat-bridge';
 import { KLING_P4, klingP4VideoError, isFloraWorkspaceSetupError } from './kling-p4-flora';
 import { KLING_V3_STANDARD, klingV3StandardVideoError, generateKlingV3StandardFlora } from './kling-v3-standard-flora';
-import { ALRIZ_KLING_P5, generateKlingAlriz } from './alriz-motion';
+import { ALRIZ_KLING_P5, generateKlingAlrizFromPool } from './alriz-motion';
+import { AlrizKeyPool } from './alriz-key-pool';
+import { registerAlrizAdmin } from './alriz-admin';
 import { XCLIP_MOTION, xclipMotionVideoError, prepareXclipMotionReference } from './xclip-motion-media';
 import { generateXclipMotionFlora } from './xclip-motion-flora';
 import { HAR_MODELS, type HarModelKey, type HarAspectRatio } from './picsart-har-models';
@@ -128,6 +130,7 @@ const db = new Pool({
 });
 const freebeatBridge = new FreebeatBridgeQueue(db);
 const chinaKeyPool = new ChinaApiKeyPool(db);
+const alrizKeyPool = new AlrizKeyPool({ query: dbq });
 // CRITICAL: a pooled client can error while idle (server closed the socket).
 // The pg Pool emits 'error' for that; with NO listener Node treats it as an
 // unhandled 'error' event and CRASHES the process — which wipes every
@@ -1596,6 +1599,7 @@ async function incrementKlingUsage(dbUserId: number): Promise<number> {
 
 const bot = new Telegraf(BOT_TOKEN);
 registerChinaApiAdmin(bot, chinaKeyPool, requireAdmin);
+registerAlrizAdmin(bot, alrizKeyPool, requireAdmin);
 
 // Recognizes only genuine transient transport failures (DNS/socket/timeout).
 // Kept deliberately narrow — matching by explicit error code, not free-text —
@@ -8646,10 +8650,10 @@ async function runKlingV3Standard(
       throw new Error('INVALID_CHARACTER_IMAGE');
     }
     const type = detectVideoType(video.buf, videoLink.href);
-    const url = route === 'p5' ? await generateKlingAlriz({
+    const url = route === 'p5' ? await generateKlingAlrizFromPool({
       image: image.buf, video: video.buf, seconds, prompt,
     }, {
-      apiKey: process.env.ALRIZ_API_KEY,
+      pool: alrizKeyPool,
       publish: (bytes, isVideo) => publishMedia(bytes, isVideo),
       status,
     }) : await generateKlingV3StandardFlora({
@@ -12434,6 +12438,7 @@ app.listen(PORT, () => {
       console.log('✅ Sesi Edanbot aktif di pool sudah diganti');
     }
     await ensureOneOverPool();
+    await alrizKeyPool.ensureSchema();
     console.log('✅ Pool Seedance 2.5 siap');
     await freebeatBridge.ensureSchema();
     console.log('✅ Antrean Freebeat Bridge siap');
