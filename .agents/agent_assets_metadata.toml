@@ -543,3 +543,17 @@ mtime_ms = 1791803413651
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/7f331498-ba07-43c3-89a9-d191772b6cd5/3bec8288-6b64-482a-8c0c-69ceb9893270"
 storage_version_token = "1791803456427060"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "UqUV_AeWT7avy2RCstixM"
+uri = "file://generated-artifacts/alriz-p5-live-test/result.mp4"
+type = "video"
+title = "Hasil Tes Kling MC 2.6 Pro P5"
+description = "Video hasil generate: 14,4 detik, 1088 × 1904 piksel, sekitar 60 MB. Hasil native model, belum melalui finishing Renderful."
+logical_id = "d69ee878-ca73-4294-b94d-744ce2d57a66"
+content_hash = "sha256:5193caf71c5dea61de88120a36ba7b817c9a33b4c634b0b574ac559971af044c"
+size = 60144274
+mtime_ms = 1792156818238
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/d69ee878-ca73-4294-b94d-744ce2d57a66/bc7017ad-c6eb-43c5-91cf-e62e1785e79b"
+storage_version_token = "1792156871663173"
+content_type = "video/mp4"

@@ -36,6 +36,19 @@ P5. A one-time secure import is fine, but do not make deployment Variables a
 requirement again. Key rotation must still stop after any accepted or ambiguous
 paid submit.
 
+## Alriz dashboard versus API readiness
+
+A job shown as finished in the Alriz dashboard may still be `PROCESSING` or
+`SAVING` in the API before its downloadable result is published.
+
+**Why:** During a live test the user saw completion in the dashboard while both
+the API detail and list still reported pending states; the result endpoint
+returned HTTP 409 / `JOB_002` until publication finished.
+
+**How to apply:** Keep polling the same accepted job through `SAVING`. Check its
+result endpoint when reconciling dashboard reports, and do not resubmit or call
+the generation failed solely because the download link is not ready yet.
+
 ## Edan Bot flow
 
 **Hard rule:** never let any user-facing string (reply/caption/error/filename) leak `edanbot`/`roboneo`/`wavespeed`/`openart`/`meitu`/`meitudata`, and never send the raw `result_url` as a link — always re-upload bytes.
