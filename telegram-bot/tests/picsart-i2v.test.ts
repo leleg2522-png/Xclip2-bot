@@ -698,10 +698,11 @@ assert.deepEqual(wan, {
 });
 
 const wan3Portrait = buildPicsartI2vParams('wan_v3', prompt, imageUrl, { ratio: '9:16' });
+assert.equal(PICSART_I2V_MODELS.wan_v3.settingsLabel, '30 detik · 1080p native');
 assert.doesNotMatch(JSON.stringify(wan3Portrait), /prime/i);
 assert.deepEqual(wan3Portrait, {
   model: 'wan3.0-video',
-  resolution: '480P',
+  resolution: '1080P',
   duration: 30,
   ratio: '9:16',
   audio: true,
@@ -717,7 +718,7 @@ assert.deepEqual(wan3Portrait, {
         aiSDKPayload: JSON.stringify({
           prompt,
           duration: 30,
-          resolution: '480P',
+          resolution: '1080P',
           aspectRatio: '9:16',
           generateAudio: true,
           enableThinking: true,
@@ -734,6 +735,7 @@ assert.deepEqual(wan3Portrait, {
 
 const wan3Landscape = buildPicsartI2vParams('wan_v3', prompt, imageUrl, { ratio: '16:9' });
 assert.equal(wan3Landscape.ratio, '16:9');
+assert.equal(wan3Landscape.resolution, '1080P');
 
 const wan3InputUrls = Array.from({ length: 6 }, (_, index) => `https://cdn.example.test/reference-${index + 1}.jpg`);
 const wan3MultiImage = buildPicsartI2vParams('wan_v3', prompt, imageUrl, {
@@ -818,7 +820,7 @@ assert.match(botSource, /go12_res_4k/);
 assert.match(botSource, /gomniResolution/);
 assert.match(botSource, /GEMINI_OMNI_12_MAX_IMAGES/);
 assert.doesNotMatch(botSource, /menyiapkan video akhir \$\{opts\.exportResolution\}/);
-assert.match(botSource, /Wan 3\.0 • 30 detik • hingga 1K/);
+assert.match(botSource, /Wan 3\.0 • 30 detik • 1080p/);
 assert.match(botSource, /Seedance 2\.0 Mini 1080p/);
 assert.match(botSource, /Seedance 2 Mini Video Edit 480p/);
 assert.match(botSource, /mode_seedance_mini_edit/);

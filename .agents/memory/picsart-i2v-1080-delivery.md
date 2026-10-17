@@ -4,11 +4,21 @@ description: Native delivery default and the limited automatic 1K finishing exce
 ---
 
 Deliver Picsart videos in their native form by default. Do not use the old
-media-platform video resize/export workflow. Exception: Wan 3.0, the public
-Seedance 2.5 route, and MiniMax H3 should automatically attempt the Renderful
+media-platform video resize/export workflow. Exception: the public
+Seedance 2.5 route and MiniMax H3 should automatically attempt the Renderful
 ByteDance 1080p finishing pass before delivery, without an extra user step or a
 provider-facing label. If it fails, send the native result instead and label
 that result accurately; never discard a successfully generated video.
+
+Picsart Wan 3.0 now requests native 1080p and must not use Renderful finishing.
+This supersedes its earlier automatic finishing exception, but does not change
+the separate Flora Wan option below.
+
+**Why:** The user explicitly requested 1080p in the Picsart backend so Renderful
+is unnecessary.
+
+**How to apply:** Keep Wan's direct Picsart delivery separate from Flora Wan's
+480p generation plus automatic finishing.
 
 The separate Flora MiniMax H3 15-second 480p and Wan 3.0 30-second 480p
 options also automatically attempt the same Renderful 1080p finishing pass.

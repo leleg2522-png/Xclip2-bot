@@ -110,6 +110,19 @@ async function main() {
   const unrelated = harness();
   await unrelated.run('grok_imagine');
   assert.deepEqual(unrelated.events.order, ['generate', 'deliver']);
+  for (const options of [{}, { failDelivery: true }, { generationFails: true }]) {
+    const wan = harness(options);
+    await wan.run('wan_v3');
+    assert.deepEqual(wan.events.order, options.generationFails ? ['generate'] : ['generate', 'deliver']);
+    assert.deepEqual(wan.events.refunds, options.failDelivery || options.generationFails ? wan.events.charges : []);
+    assert.deepEqual(wan.events.releases, [1]);
+    if (!options.generationFails) {
+      assert.equal(wan.events.deliveries.length, 1, 'Wan must not retry delivery through an upscale fallback');
+      assert.equal(wan.events.deliveries[0].url, 'https://example.test/1.mp4');
+      assert.match(wan.events.deliveries[0].caption, /1080p native/);
+      assert.doesNotMatch(wan.events.deliveries[0].caption, /480p|hasil 1K|Renderful/);
+    }
+  }
   const parallel = harness();
   await Promise.all([parallel.run('seedance_2_mini', 11), parallel.run('seedance_2_fast', 22)]);
   assert.equal(parallel.events.deliveries.find(row => row.chatId === 11)?.url, 'https://example.test/11-1080.mp4');

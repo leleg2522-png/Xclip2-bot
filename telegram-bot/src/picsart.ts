@@ -2188,8 +2188,8 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
     pollAttempts: 180,
   },
   wan_v3: {
-    label: 'Wan 3.0 480p',
-    settingsLabel: '30 detik · 480p native',
+    label: 'Wan 3.0 1080p',
+    settingsLabel: '30 detik · 1080p native',
     workflowPath: 'wan/v3/video',
     pool: 'p500',
     pollAttempts: 240,
@@ -2483,7 +2483,7 @@ export function buildPicsartI2vParams(
       const wanReferenceImageUrl = options?.imageUrls?.[0] ?? imageUrl;
       return {
         model: 'wan3.0-video',
-        resolution: '480P',
+        resolution: '1080P',
         duration: 30,
         ratio: options?.ratio ?? '9:16',
         audio: true,
@@ -2499,7 +2499,7 @@ export function buildPicsartI2vParams(
               aiSDKPayload: JSON.stringify({
                 prompt,
                 duration: 30,
-                resolution: '480P',
+                resolution: '1080P',
                 aspectRatio: options?.ratio ?? '9:16',
                 generateAudio: true,
                 enableThinking: true,
