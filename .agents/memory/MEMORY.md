@@ -14,6 +14,7 @@
 - [Picsart account pools](picsart-account-pools.md) — split by credit-at-add; Wan 3.0 Prime (including public Seedance 2.5) intentionally uses any pool so p100 and p500 are eligible
 - [Picsart Seedance 2.5 API](seedance-api.md) — native contract is reference-only; public Seedance 2.5 currently routes through verified Wan 3.0.
 - [Kling Motion package routing](edanbot-kling-motion.md) — P2/P3 Edan Bot native; P4 Standard with finishing; P5 Alriz 2.6 Pro native, DB key pool, no runtime key Variable.
+- [Picsart Kling 4](picsart-kling4.md) — captured T2V completion: 30s/720p/90 credits; I2V quote accepted, but no completed I2V evidence yet.
 - [Paid provider post-submit failover](paid-provider-post-submit-failover.md) — failover may retry only before an upstream paid job is accepted; post-submit auth loss must refund, not resubmit.
 - [OneOver submit timeouts](oneover-submit-timeouts.md) — legacy-only; never retry an ambiguous submit response while old OneOver jobs remain.
 - [Freebeat Windows Bridge](freebeat-windows-bridge.md) — legacy completion only; do not enqueue new public Seedance 2.5 orders.
