@@ -53,3 +53,19 @@ with deviceid, platform, and AI Playground touchpoint headers succeeded.
 **How to apply:** Reuse the existing authenticated Picsart request conventions
 and required Decodo ISP egress; do not interpret a minimal-header HTTP 400 as
 proof that the model or workflow is unsupported.
+
+## Kling 4 Omni public package
+
+Kling 4 Omni is a separate product from both regular Kling 4 and the existing
+Kling Omni v3. Its approved selling price is **Rp8.500 per video**.
+
+**Why:** The user requested “tambahkan kling 4 omni” and explicitly set the
+price to `8500`. The supplied Omni capture shows 30-second, 720p requests with
+a photo reference, but omits all gateway response bodies. HTTP 200 polling
+alone does not establish a completed video or its actual credit usage.
+
+**How to apply:** Preserve the separate model and price. Do not describe Omni
+generation as live-verified from this capture, infer its credit cost from
+regular Kling 4, or assume the v3 audio and multi-shot controls apply to v4.
+Use the provider's options quote for credit preflight, and never submit paid
+test jobs without authorization.

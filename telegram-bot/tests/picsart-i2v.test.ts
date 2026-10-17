@@ -193,6 +193,7 @@ const expectedModels = [
   'kling_v3',
   'kling_v4',
   'kling_v4_t2v',
+  'kling_v4_omni',
   'kling_omni',
   'wan_v2',
   'wan_v3',

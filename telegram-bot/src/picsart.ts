@@ -20,6 +20,7 @@
 
 import axios from 'axios';
 import { buildKling4Params, KLING4_CREDITS } from './picsart-kling4';
+import { buildKling4OmniParams } from './picsart-kling4-omni';
 import { HAR_MODELS, buildHarModelParams, harWorkflow, harResultUrl, type HarModelKey, type HarAspectRatio } from './picsart-har-models';
 import FormData from 'form-data';
 import { HttpsProxyAgent } from 'https-proxy-agent';
@@ -2004,6 +2005,7 @@ export type PicsartI2vModelKey =
   | 'kling_v3'
   | 'kling_v4'
   | 'kling_v4_t2v'
+  | 'kling_v4_omni'
   | 'kling_omni'
   | 'wan_v2'
   | 'wan_v3'
@@ -2171,6 +2173,13 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
     pool: null,
     pollAttempts: 360,
   },
+  kling_v4_omni: {
+    label: 'Kling 4 Omni',
+    settingsLabel: '30 detik · 720p native',
+    workflowPath: 'kling-omni-video',
+    pool: null,
+    pollAttempts: 360,
+  },
   wan_v2: {
     label: 'Wan v2 Image-to-Video',
     settingsLabel: '15 detik · 720p · prompt extend',
@@ -2201,6 +2210,13 @@ export function buildPicsartI2vParams(
   options?: { ratio?: WanV3AspectRatio; outputName?: string; imageUrls?: string[] }
 ): Record<string, unknown> {
   switch (model) {
+    case 'kling_v4_omni':
+      return buildKling4OmniParams({
+        prompt,
+        ratio: options?.ratio ?? '9:16',
+        imageUrl,
+        outputName: options?.outputName,
+      });
     case 'kling_v4':
     case 'kling_v4_t2v':
       return buildKling4Params({
@@ -2637,8 +2653,8 @@ async function submitPicsartI2v(
 ): Promise<string> {
   const cfg = PICSART_I2V_MODELS[model];
   const access = await getAccessToken(credId);
-  const isKling4 = model === 'kling_v4' || model === 'kling_v4_t2v';
-  const usesGateway = model === 'ltx_pro' || model === 'ltx_fast' || model === 'creatify_boreal' || model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni' || model === 'kling_v4' || model === 'kling_v4_t2v';
+  const isKling4 = model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_omni';
+  const usesGateway = model === 'ltx_pro' || model === 'ltx_fast' || model === 'creatify_boreal' || model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni' || isKling4;
   const outputNamePrefix = model === 'ltx_fast'
     ? 'ltx-2-5-fast-ai-playground'
     : model === 'ltx_pro'
@@ -2647,6 +2663,8 @@ async function submitPicsartI2v(
     ? 'creatify-boreal-ai-playground'
     : model === 'wan_v3'
     ? 'storyboard-creation-wan-3-0-ai-playground'
+    : model === 'kling_v4_omni'
+    ? 'kling-4-omni-ai-playground'
     : model === 'kling_v4' || model === 'kling_v4_t2v'
     ? `kling-4-${model === 'kling_v4' ? 'i2v' : 't2v'}-ai-playground`
     : model === 'kling_omni'
@@ -2692,6 +2710,36 @@ async function submitPicsartI2v(
     throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
   }
   return id;
+}
+
+async function preflightKling4OmniCredits(
+  credId: number,
+  prompt: string,
+  imageUrl: string,
+  ratio: WanV3AspectRatio,
+): Promise<void> {
+  // This HAR does not include quote response bodies. Do not assume the regular
+  // Kling 4 credit price applies to Omni; ask the free options endpoint instead.
+  const access = await getAccessToken(credId);
+  const { options: _options, ...params } = buildKling4OmniParams({ prompt, imageUrl, ratio });
+  const quote = await http.post(`${API_BASE}/gw-v2/workflows/kling-omni-video/options`,
+    { params },
+    {
+      headers: commonHeaders({
+        'content-type': 'application/json',
+        authorization: `Bearer ${access}`,
+        'x-app-authorization': X_APP_AUTHORIZATION,
+        'x-sub-package-id': 'subscription_pro_monthly',
+      }),
+      validateStatus: () => true,
+    });
+  const required = quote.data?.response?.credits;
+  if (!ok2xx(quote.status) || typeof required !== 'number' || !Number.isFinite(required) || required <= 0) {
+    throw new Error('PICSART_KLING4_OMNI_QUOTE_UNAVAILABLE');
+  }
+  const { credits } = await getCredits(credId);
+  if (!Number.isFinite(credits)) throw new Error('PICSART_CREDITS_UNKNOWN');
+  if (credits < required) throw new Error(ERR_INSUFFICIENT_CREDITS);
 }
 
 export function getPicsartI2vExportSize(ratio: WanV3AspectRatio): { width: number; height: number } {
@@ -2786,7 +2834,7 @@ async function pollPicsartI2vResult(
   for (let i = 0; i < cfg.pollAttempts; i++) {
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
     opts?.onTick?.(Date.now() - start);
-    const usesGateway = model === 'ltx_pro' || model === 'ltx_fast' || model === 'creatify_boreal' || model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni' || model === 'kling_v4' || model === 'kling_v4_t2v';
+    const usesGateway = model === 'ltx_pro' || model === 'ltx_fast' || model === 'creatify_boreal' || model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni' || model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_omni';
     const workflowBase = usesGateway
       ? `${API_BASE}/gw-v2/workflows/${cfg.pollWorkflowPath ?? cfg.workflowPath}`
       : `${API_BASE}/workflows/${cfg.pollWorkflowPath ?? cfg.workflowPath}`;
@@ -3048,9 +3096,9 @@ export async function generatePicsartI2v(input: {
 }): Promise<{ url: string; credits?: number }> {
   const cfg = PICSART_I2V_MODELS[input.model];
   return runWithAccount(input.userId, cfg.pool, async (credId) => {
-    const isKling4 = input.model === 'kling_v4' || input.model === 'kling_v4_t2v';
+    const isKling4 = input.model === 'kling_v4' || input.model === 'kling_v4_t2v' || input.model === 'kling_v4_omni';
     const textOnly = input.model === 'kling_v4_t2v';
-    if (isKling4) {
+    if (isKling4 && input.model !== 'kling_v4_omni') {
       const { credits } = await getCredits(credId);
       if (!Number.isFinite(credits)) throw new Error('PICSART_CREDITS_UNKNOWN');
       if (credits < KLING4_CREDITS) throw new Error(ERR_INSUFFICIENT_CREDITS);
@@ -3092,6 +3140,9 @@ export async function generatePicsartI2v(input: {
       );
       imageUrls.push(imageUrl);
       console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=upload-complete image=${index + 1}/${imagesToUpload.length}`);
+    }
+    if (input.model === 'kling_v4_omni') {
+      await preflightKling4OmniCredits(credId, input.prompt, imageUrls[0], input.ratio ?? '9:16');
     }
     console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=submit images=${imageUrls.length} ratio=${input.ratio ?? '9:16'}`);
     input.onStatus?.('submit');

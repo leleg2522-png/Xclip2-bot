@@ -223,6 +223,7 @@ const MODEL_PRICES = {
   picsart_ltx_fast: 3000, // LTX 2.5 Fast 20s, native 1080p
   picsart_kling_omni: 3500, // Kling Omni 12s, native 720p
   picsart_kling4: 8000, // Kling 4 I2V/T2V, 30s native 720p
+  picsart_kling4_omni: 8500, // Kling 4 Omni I2V, 30s native 720p
   picsart_seedance_2_mini: 3500, // Seedance 2.0 Mini, native 480p
   picsart_seedance_2_mini_edit: 3500, // Seedance 2.0 Mini Video Edit, native 480p
   picsart_seedance_2_fast_edit: 4000, // Seedance 2.0 Fast Video Edit, native 480p
@@ -237,6 +238,7 @@ const MODEL_PRICES = {
 type ModelKey = keyof typeof MODEL_PRICES;
 
 function getPicsartI2vPrice(model: picsart.PicsartI2vModelKey): number {
+  if (model === 'kling_v4_omni') return MODEL_PRICES.picsart_kling4_omni;
   if (model === 'kling_v4' || model === 'kling_v4_t2v') return MODEL_PRICES.picsart_kling4;
   if (model === 'ltx_pro') return MODEL_PRICES.picsart_ltx_pro;
   if (model === 'ltx_fast') return MODEL_PRICES.picsart_ltx_fast;
@@ -2568,6 +2570,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🎞️ Kling v3 Standard', 'mode_pi2v_kling_v3')],
     [Markup.button.callback('🎬 Kling 4 Image to Video · 30 detik · Rp8.000', 'mode_pi2v_kling_v4')],
     [Markup.button.callback('✍️ Kling 4 Text to Video · 30 detik · Rp8.000', 'mode_pi2v_kling_v4_t2v')],
+    [Markup.button.callback('🎬 Kling 4 Omni · 30 detik · Rp8.500', 'mode_pi2v_kling_v4_omni')],
     [Markup.button.callback('🌐 Kling Omni • 12 detik • 720p', 'mode_pi2v_kling_omni')],
     ...Object.entries(CHINA_VIDEO_MODELS).map(([key, config]) => [
       Markup.button.callback(`${config.label} • ${config.duration} detik • ${config.resolution} • ${formatRupiah(config.price)}`, `mode_china_${key}`),
@@ -3145,6 +3148,7 @@ function hargaText(): string {
     `• Kling v3 Standard — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling 4 Image to Video (30 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_kling4)}\n` +
     `• Kling 4 Text to Video (30 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_kling4)}\n` +
+    `• Kling 4 Omni (30 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_kling4_omni)}\n` +
     `• Kling Omni (12 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_kling_omni)}\n` +
     `• Wan v2 Image-to-Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Wan 3.0 (30 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.picsart_wan_v3)}\n` +
@@ -4897,6 +4901,7 @@ bot.on('callback_query', async (ctx) => {
       'kling_omni',
       'kling_v4',
       'kling_v4_t2v',
+      'kling_v4_omni',
       'wan_v3',
       'pixverse_v6',
     ];
@@ -4984,6 +4989,7 @@ bot.on('callback_query', async (ctx) => {
       || model === 'kling_omni'
       || model === 'kling_v4'
       || model === 'kling_v4_t2v'
+      || model === 'kling_v4_omni'
       || model === 'wan_v3'
       || model === 'pixverse_v6'
     ) {
@@ -6321,6 +6327,7 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
       || model === 'wan_v3'
       || model === 'pixverse_v6'
       || model === 'kling_v4'
+      || model === 'kling_v4_omni'
     ) && session.picsartI2vRatio
       ? `${session.picsartI2vRatio} · ${cfg.settingsLabel}`
       : cfg.settingsLabel;
@@ -7362,7 +7369,7 @@ bot.on('text', async (ctx) => {
     }
     const cfg = picsart.PICSART_I2V_MODELS[model];
     const ratio = activeDraft.picsartI2vRatio;
-    if ((model === 'ltx_pro' || model === 'ltx_fast' || model === 'creatify_boreal' || model === 'kling_v4' || model === 'kling_v4_t2v') && !ratio) {
+    if ((model === 'ltx_pro' || model === 'ltx_fast' || model === 'creatify_boreal' || model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_omni') && !ratio) {
       setSession(userId, { mode: 'idle' });
       return ctx.reply('⚠️ Rasio video belum dipilih. Mulai lagi dari /menu.');
     }
@@ -7379,7 +7386,7 @@ bot.on('text', async (ctx) => {
       picsartI2vPriceKey: undefined,
     });
     const statusMsg = await ctx.reply(
-      `⏳ Memproses ${publicLabel}...\nHasil dikirim otomatis (${model === 'kling_v4' || model === 'kling_v4_t2v' ? 'biasanya 5–30 menit' : 'biasanya 3–10 menit'}).`,
+      `⏳ Memproses ${publicLabel}...\nHasil dikirim otomatis (${model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_omni' ? 'biasanya 5–30 menit' : 'biasanya 3–10 menit'}).`,
       { parse_mode: 'Markdown' }
     );
     runPicsartI2v(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, {
@@ -9128,7 +9135,7 @@ async function runPicsartI2v(
   const cfg = picsart.PICSART_I2V_MODELS[opts.model];
   const label = customerSafeModelLabel(opts.displayLabel ?? cfg.label, cfg.label);
   const seedance1080 = isSeedance2I2vModel(opts.model);
-  const settingsLabel = (seedance1080 || opts.model === 'ltx_pro' || opts.model === 'ltx_fast' || opts.model === 'creatify_boreal' || opts.model === 'wan_v3' || opts.model === 'pixverse_v6' || opts.model === 'kling_v4' || opts.model === 'kling_v4_t2v') && opts.ratio
+  const settingsLabel = (seedance1080 || opts.model === 'ltx_pro' || opts.model === 'ltx_fast' || opts.model === 'creatify_boreal' || opts.model === 'wan_v3' || opts.model === 'pixverse_v6' || opts.model === 'kling_v4' || opts.model === 'kling_v4_t2v' || opts.model === 'kling_v4_omni') && opts.ratio
     ? `${opts.ratio} · ${cfg.settingsLabel}`
     : cfg.settingsLabel;
   const PRICE = opts.priceKey ? MODEL_PRICES[opts.priceKey] : getPicsartI2vPrice(opts.model);
@@ -9169,7 +9176,7 @@ async function runPicsartI2v(
           ? `⏳ ${label}: mengunggah foto ke server... (1/3)`
           : providerStage === 'submit'
             ? `⏳ ${label}: mengirim perintah ke server... (2/3)`
-            : `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Biasanya ${opts.model === 'kling_v4' || opts.model === 'kling_v4_t2v' ? '5–30' : '3–10'} menit. Jangan tutup chat ini.`;
+            : `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Biasanya ${opts.model === 'kling_v4' || opts.model === 'kling_v4_t2v' || opts.model === 'kling_v4_omni' ? '5–30' : '3–10'} menit. Jangan tutup chat ini.`;
         stage = providerStage;
         console.log(`[picsart-i2v] user=${userId} model=${opts.model} label="${label}" stage=${providerStage}`);
         lastEdit = Date.now();
