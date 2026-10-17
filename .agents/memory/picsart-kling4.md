@@ -14,6 +14,15 @@ teks to video”.
 **How to apply:** Keep these workflows separate from the Alriz-backed public
 Kling MC V3 Pro P5 package.
 
+## Approved public price
+
+Both Kling 4 modes cost **Rp8.000 per video** for the 30-second package.
+
+**Why:** The user answered `8000` when asked the selling price for both modes.
+
+**How to apply:** Keep the same selling price for image-to-video and
+text-to-video; preserve full refunds when generation or delivery fails.
+
 ## Evidence and limits
 
 The supplied browser capture contains a completed text-to-video job using

@@ -19,6 +19,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import axios from 'axios';
+import { buildKling4Params, KLING4_CREDITS } from './picsart-kling4';
 import { HAR_MODELS, buildHarModelParams, harWorkflow, harResultUrl, type HarModelKey, type HarAspectRatio } from './picsart-har-models';
 import FormData from 'form-data';
 import { HttpsProxyAgent } from 'https-proxy-agent';
@@ -2001,6 +2002,8 @@ export type PicsartI2vModelKey =
   | 'kling_v26_pro'
   | 'kling_v21_pro'
   | 'kling_v3'
+  | 'kling_v4'
+  | 'kling_v4_t2v'
   | 'kling_omni'
   | 'wan_v2'
   | 'wan_v3'
@@ -2154,6 +2157,20 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
     pool: 'p100',
     pollAttempts: 240,
   },
+  kling_v4: {
+    label: 'Kling 4 Image to Video',
+    settingsLabel: '30 detik · 720p native',
+    workflowPath: 'kling-image-to-video',
+    pool: null,
+    pollAttempts: 360,
+  },
+  kling_v4_t2v: {
+    label: 'Kling 4 Text to Video',
+    settingsLabel: '30 detik · 720p native',
+    workflowPath: 'kling-text-to-video',
+    pool: null,
+    pollAttempts: 360,
+  },
   wan_v2: {
     label: 'Wan v2 Image-to-Video',
     settingsLabel: '15 detik · 720p · prompt extend',
@@ -2184,6 +2201,15 @@ export function buildPicsartI2vParams(
   options?: { ratio?: WanV3AspectRatio; outputName?: string; imageUrls?: string[] }
 ): Record<string, unknown> {
   switch (model) {
+    case 'kling_v4':
+    case 'kling_v4_t2v':
+      return buildKling4Params({
+        mode: model === 'kling_v4' ? 'i2v' : 't2v',
+        prompt,
+        ratio: options?.ratio ?? '9:16',
+        imageUrl: imageUrl || undefined,
+        outputName: options?.outputName,
+      });
     case 'ltx_fast':
       return {
         prompt,
@@ -2611,7 +2637,8 @@ async function submitPicsartI2v(
 ): Promise<string> {
   const cfg = PICSART_I2V_MODELS[model];
   const access = await getAccessToken(credId);
-  const usesGateway = model === 'ltx_pro' || model === 'ltx_fast' || model === 'creatify_boreal' || model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni';
+  const isKling4 = model === 'kling_v4' || model === 'kling_v4_t2v';
+  const usesGateway = model === 'ltx_pro' || model === 'ltx_fast' || model === 'creatify_boreal' || model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni' || model === 'kling_v4' || model === 'kling_v4_t2v';
   const outputNamePrefix = model === 'ltx_fast'
     ? 'ltx-2-5-fast-ai-playground'
     : model === 'ltx_pro'
@@ -2620,6 +2647,8 @@ async function submitPicsartI2v(
     ? 'creatify-boreal-ai-playground'
     : model === 'wan_v3'
     ? 'storyboard-creation-wan-3-0-ai-playground'
+    : model === 'kling_v4' || model === 'kling_v4_t2v'
+    ? `kling-4-${model === 'kling_v4' ? 'i2v' : 't2v'}-ai-playground`
     : model === 'kling_omni'
       ? 'storyboard-creation-kling-v3-omni-ai-playground'
       : 'pixverse-v6-image-ai-playground';
@@ -2651,8 +2680,14 @@ async function submitPicsartI2v(
       }),
       validateStatus: () => true,
     }
-  );
+  ).catch(error => {
+    if (isKling4) throw new Error('PICSART_KLING4_SUBMIT_AMBIGUOUS');
+    throw error;
+  });
   const id = r.data?.response?.id;
+  if (isKling4 && (!ok2xx(r.status) || typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,160}$/.test(id))) {
+    throw new Error(!ok2xx(r.status) ? `PICSART_KLING4_SUBMIT_HTTP_${r.status}` : 'PICSART_KLING4_SUBMIT_NO_JOB_ID');
+  }
   if (!ok2xx(r.status) || !id) {
     throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
   }
@@ -2751,7 +2786,7 @@ async function pollPicsartI2vResult(
   for (let i = 0; i < cfg.pollAttempts; i++) {
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
     opts?.onTick?.(Date.now() - start);
-    const usesGateway = model === 'ltx_pro' || model === 'ltx_fast' || model === 'creatify_boreal' || model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni';
+    const usesGateway = model === 'ltx_pro' || model === 'ltx_fast' || model === 'creatify_boreal' || model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni' || model === 'kling_v4' || model === 'kling_v4_t2v';
     const workflowBase = usesGateway
       ? `${API_BASE}/gw-v2/workflows/${cfg.pollWorkflowPath ?? cfg.workflowPath}`
       : `${API_BASE}/workflows/${cfg.pollWorkflowPath ?? cfg.workflowPath}`;
@@ -3013,6 +3048,13 @@ export async function generatePicsartI2v(input: {
 }): Promise<{ url: string; credits?: number }> {
   const cfg = PICSART_I2V_MODELS[input.model];
   return runWithAccount(input.userId, cfg.pool, async (credId) => {
+    const isKling4 = input.model === 'kling_v4' || input.model === 'kling_v4_t2v';
+    const textOnly = input.model === 'kling_v4_t2v';
+    if (isKling4) {
+      const { credits } = await getCredits(credId);
+      if (!Number.isFinite(credits)) throw new Error('PICSART_CREDITS_UNKNOWN');
+      if (credits < KLING4_CREDITS) throw new Error(ERR_INSUFFICIENT_CREDITS);
+    }
     const inputImages = input.images?.length
       ? input.images
       : input.imageBuffer
@@ -3026,7 +3068,8 @@ export async function generatePicsartI2v(input: {
     )
       ? inputImages.slice(0, PICSART_I2V_MAX_IMAGES)
       : inputImages.slice(0, 1);
-    if (imagesToUpload.length === 0) throw new Error('PICSART_NO_REFERENCE_IMAGE');
+    if (textOnly && imagesToUpload.length > 0) throw new Error('PICSART_KLING4_UNEXPECTED_IMAGE');
+    if (!textOnly && imagesToUpload.length === 0) throw new Error('PICSART_NO_REFERENCE_IMAGE');
 
     const imageUrls: string[] = [];
     for (const [index, image] of imagesToUpload.entries()) {
@@ -3045,7 +3088,7 @@ export async function generatePicsartI2v(input: {
           ? 'pixverse-reference.jpg'
           : (image.name || `reference-${index + 1}.jpg`),
         input.model === 'pixverse_v6' ? 'image/jpeg' : (image.mime || 'image/jpeg'),
-        { gateway: input.model === 'ltx_pro' || input.model === 'ltx_fast' || input.model === 'creatify_boreal' }
+        { gateway: input.model === 'ltx_pro' || input.model === 'ltx_fast' || input.model === 'creatify_boreal' || isKling4 }
       );
       imageUrls.push(imageUrl);
       console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=upload-complete image=${index + 1}/${imagesToUpload.length}`);
@@ -3056,7 +3099,7 @@ export async function generatePicsartI2v(input: {
       credId,
       input.model,
       input.prompt,
-      imageUrls[0],
+      imageUrls[0] ?? '',
       { ratio: input.ratio, imageUrls }
     );
     console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=submit-accepted job=${id}`);
@@ -3084,6 +3127,9 @@ export async function generatePicsartI2v(input: {
         );
         throw new Error(`PICSART_POST_SUBMIT_AUTH_LOST job=${id}`);
       }
+      // Never let generic account failover interpret a post-acceptance error as
+      // permission to submit a second paid Kling 4 job.
+      if (isKling4) throw new Error(`PICSART_KLING4_POST_SUBMIT_FAILED job=${id}`);
       throw e;
     }
   }, { strictPool: cfg.strictPool });
