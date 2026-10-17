@@ -60,7 +60,7 @@ async function wizard(variant: 'p2' | 'p3', document: boolean) {
   const video = () => document
     ? execute(
         `  if (doc.mime_type?.startsWith('video/') && session.mode === 'kling${variant}_wait_video'`,
-        variant === 'p2' ? "  if (doc.mime_type?.startsWith('video/') && session.mode === 'kling_wait_video'" : "  if (doc.mime_type?.startsWith('video/') && session.mode === 'topaz_wait_video'",
+        variant === 'p2' ? "  if (doc.mime_type?.startsWith('video/') && session.mode === 'kling_wait_video'" : "  if (doc.mime_type?.startsWith('video/') && session.mode === 'bytedance_upscale_wait_video'",
         'const doc=ctx.message.document;'
       )
     : execute(
