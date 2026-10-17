@@ -125,7 +125,7 @@ async function billingTest(outcome: string, route: 'p5' | 'p4' | 'xclip_motion' 
     sharp: () => ({ metadata: async () => ({ format: 'png', width: 600, height: 600 }) }),
     detectVideoType: () => ({ ext: 'mp4', mime: 'video/mp4' }),
     generateKlingV3StandardFlora: async (_input: unknown, api: KlingP4Api) => {
-      assert.equal(route, 'p4', 'Only P4 retains the Standard backend');
+      assert.fail('Neither P4 nor P5 may use the Standard backend');
       assert.equal((_input as any).publicLabel, label);
       assert.equal(api.exhausted(Error('401 unauthorized')), true);
       assert.equal(api.exhausted(Error('BILLING_NOT_ENOUGH_CREDITS')), true);
@@ -137,7 +137,8 @@ async function billingTest(outcome: string, route: 'p5' | 'p4' | 'xclip_motion' 
       return 'https://example.test/native.mp4';
     },
     generateKlingAlrizFromPool: async (input: any, api: any) => {
-      assert.equal(route, 'p5', 'Only P5 moves to Alriz');
+      assert.ok(route === 'p4' || route === 'p5', 'Both P4 and P5 use Alriz');
+      assert.equal(input.publicLabel, label);
       assert.equal(api.pool.kind, 'fixture-pool');
       assert.equal(api.apiKey, undefined, 'P5 must not depend on a Variables key');
       assert.equal(input.seconds, 10);
@@ -151,7 +152,7 @@ async function billingTest(outcome: string, route: 'p5' | 'p4' | 'xclip_motion' 
       return 'https://example.test/native.mp4';
     },
     publishMedia: async (_bytes: Buffer, _video: boolean, _sourceUrl?: string, includeExtension?: boolean) => {
-      if (route === 'p5') assert.equal(includeExtension, true, 'P5 reference URLs must include their file extension');
+      assert.equal(includeExtension, true, 'P4/P5 reference URLs must include their file extension');
       return 'https://our-domain.test/dl/reference';
     },
     getNextFloraKey() {}, markFloraKeyDead() {}, floraGetWorkspace() {}, floraUploadAsset() {},
@@ -259,6 +260,6 @@ async function main() {
     await billingTest(outcome);
       await billingTest(outcome, 'p4');
   }
-  console.log('Kling P5 native Alriz / P4 Standard with finishing: separate routes, no P5 upscale calls, refunds and wizard tests passed.');
+  console.log('Kling P4/P5 Alriz: P4 retains finishing, P5 native, refunds and wizard tests passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

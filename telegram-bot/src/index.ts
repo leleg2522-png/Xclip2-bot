@@ -21,7 +21,7 @@ import {
 } from './flora-video-models';
 import { FreebeatBridgeQueue, type BridgeAgent, type BridgeJob } from './freebeat-bridge';
 import { KLING_P4, klingP4VideoError, isFloraWorkspaceSetupError } from './kling-p4-flora';
-import { KLING_V3_STANDARD, klingV3StandardVideoError, generateKlingV3StandardFlora } from './kling-v3-standard-flora';
+import { KLING_V3_STANDARD, klingV3StandardVideoError } from './kling-v3-standard-flora';
 import { ALRIZ_KLING_P5, generateKlingAlrizFromPool } from './alriz-motion';
 import { AlrizKeyPool } from './alriz-key-pool';
 import { registerAlrizAdmin } from './alriz-admin';
@@ -8674,20 +8674,12 @@ async function runKlingV3Standard(
     if (!['jpeg', 'png'].includes(meta.format || '') || (meta.width || 0) < 300 || (meta.height || 0) < 300) {
       throw new Error('INVALID_CHARACTER_IMAGE');
     }
-    const type = detectVideoType(video.buf, videoLink.href);
-    const url = route === 'p5' ? await generateKlingAlrizFromPool({
-      image: image.buf, video: video.buf, seconds, prompt,
+    const url = await generateKlingAlrizFromPool({
+      image: image.buf, video: video.buf, seconds, prompt, publicLabel: LABEL,
     }, {
       pool: alrizKeyPool,
       publish: (bytes, isVideo) => publishMedia(bytes, isVideo, undefined, true),
       status,
-    }) : await generateKlingV3StandardFlora({
-      image: { buf: image.buf, name: `character.${image.ext}`, mime: image.mime },
-      video: { buf: video.buf, name: `reference.${type.ext}`, mime: type.mime }, prompt, seconds, publicLabel: LABEL,
-    }, {
-      getKey: getNextFloraKey, markDead: markFloraKeyDead, workspace: floraGetWorkspace,
-      upload: floraUploadAsset, generate: floraGenerate, poll: floraPollRun,
-      exhausted: error => isFloraKeyExhaustedError(describeError(error)), status,
     });
     let deliveryUrl = url;
     if (route === 'p4') {

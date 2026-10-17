@@ -120,7 +120,8 @@ async function testBilling(delivered: boolean, failure = false, chargeOk = true)
     downloadBuffer: async () => ({ buf: Buffer.from('media'), mime: 'image/png', ext: 'png' }),
     sharp: () => ({ metadata: async () => ({ format: 'png', width: 600, height: 600 }) }),
     detectVideoType: () => ({ ext: 'mp4', mime: 'video/mp4' }),
-    generateKlingV3StandardFlora: async (input: any) => {
+    alrizKeyPool: {},
+    generateKlingAlrizFromPool: async (input: any) => {
       assert.equal(input.publicLabel, KLING_P4.label);
       if (failure) throw Error('failed');
       return 'https://example.test/result.mp4';

@@ -60,7 +60,7 @@ function validMediaUrl(value: unknown): value is string {
 
 /** One paid submit only. Never replay an accepted or ambiguous job. */
 export async function generateKlingAlriz(
-  input: { image: Buffer; video: Buffer; seconds?: number; prompt: string },
+  input: { image: Buffer; video: Buffer; seconds?: number; prompt: string; publicLabel?: string },
   api: AlrizMotionApi,
 ): Promise<string> {
   const key = api.apiKey?.trim();
@@ -79,12 +79,12 @@ export async function generateKlingAlriz(
     proxy: false as const,
   };
   const wait = api.wait ?? (ms => new Promise(resolve => setTimeout(resolve, ms)));
-  await api.status(`⏳ ${ALRIZ_KLING_P5.label}: menyiapkan foto dan video referensi...`);
+  await api.status(`⏳ ${input.publicLabel ?? ALRIZ_KLING_P5.label}: menyiapkan foto dan video referensi...`);
   // Publish our own bytes, never Telegram's bot-token-bearing file URLs.
   const imageUrl = await api.publish(input.image, false);
   const videoUrl = await api.publish(input.video, true);
   if (!validMediaUrl(imageUrl) || !validMediaUrl(videoUrl)) throw new Error('ALRIZ_PUBLIC_MEDIA_URL_REQUIRED');
-  await api.status(`⏳ ${ALRIZ_KLING_P5.label}: mengirim perintah...`);
+  await api.status(`⏳ ${input.publicLabel ?? ALRIZ_KLING_P5.label}: mengirim perintah...`);
   let submitted: Response;
   try {
     submitted = await http.post(`${API_BASE}/jobs`, {
@@ -99,7 +99,7 @@ export async function generateKlingAlriz(
   if (submitted.status < 200 || submitted.status >= 300) throw new Error(`ALRIZ_SUBMIT_HTTP_${submitted.status}`);
   const jobId = submitted.data?.job_id;
   if (typeof jobId !== 'string' || !/^[a-zA-Z0-9_-]{1,160}$/.test(jobId)) throw new Error('ALRIZ_SUBMIT_NO_JOB_ID');
-  await api.status(`⏳ ${ALRIZ_KLING_P5.label}: video sedang dibuat.\nHasil dikirim otomatis.`);
+  await api.status(`⏳ ${input.publicLabel ?? ALRIZ_KLING_P5.label}: video sedang dibuat.\nHasil dikirim otomatis.`);
   for (let attempt = 0; attempt < (api.maxPolls ?? 240); attempt++) {
     await wait(5000);
     let response: Response;
