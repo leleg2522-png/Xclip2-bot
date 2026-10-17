@@ -70,6 +70,18 @@ regular Kling 4, or assume the v3 audio and multi-shot controls apply to v4.
 Use the provider's options quote for credit preflight, and never submit paid
 test jobs without authorization.
 
+The later capture supplied to inspect combined video/image references still
+submits only one `image_list` item and image-only Drive metadata. A GET of an
+MP4 appears separately, but that MP4 is not referenced by the generation
+request. Uploaded project history also records image references only.
+
+**Why:** A video preview being loaded in the browser does not prove that the
+model receives it as a reference.
+
+**How to apply:** Do not claim video-reference support is unsupported globally,
+but require a submitted request that actually includes the reference video
+before implementing that mode. Do not invent video payload fields.
+
 ## Mandatory 1080p delivery for all Kling 4 packages
 
 Kling 4 Omni, Kling 4 Image to Video, and Kling 4 Text to Video must finish
