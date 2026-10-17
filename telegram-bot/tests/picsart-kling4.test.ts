@@ -191,11 +191,12 @@ async function wizardTest(model: typeof models[number], ratio: '9:16' | '16:9') 
     getSession: () => state, setSession: (_id: number, patch: any) => Object.assign(state, patch),
     requireLogin: async () => true, isPicsartI2vModelKey: (key: string) => key in picsart.PICSART_I2V_MODELS,
     supportsMultiplePicsartI2vImages: () => false,
-    picsartI2vRatioKeyboard: () => ({}), picsartI2vPublicSettings: (_model: string, settings: string) => settings,
+    picsartI2vRatioKeyboard: () => ({}), isSeedance2I2vModel: () => false,
     formatRupiah: (n: number) => `Rp${n}`, getCooldownRemainingMs: () => 0,
     runPicsartI2v: async (...args: any[]) => { calls.push(args); }, console: { error() {} },
   });
   vm.runInContext(compile(fragment(app, 'function getPicsartI2vPrice(', '\n//')), ctx);
+  vm.runInContext(compile(fragment(app, 'function picsartI2vPublicSettings(', 'function supportsMultiplePicsartI2vImages(')), ctx);
   const run = async (code: string) => vm.runInContext(compile(`(async () => { ${code} })()`), ctx);
   ctx.data = `mode_pi2v_${model}`;
   await run(fragment(app, "if (data.startsWith('mode_pi2v_')) {", "if (data === 'mode_kling')"));
@@ -207,6 +208,8 @@ async function wizardTest(model: typeof models[number], ratio: '9:16' | '16:9') 
   await run(ratioBranch);
   assert.equal(state.mode, t2v ? 'picsart_i2v_wait_prompt' : 'picsart_i2v_wait_image');
   assert.ok(messages.at(-1)!.includes(`Rp${price}`));
+  assert.match(messages.at(-1)!, /1080p/);
+  assert.doesNotMatch(messages.at(-1)!, /720p native|1080p native/);
   if (!t2v) {
     await run(fragment(app, "if (session.mode === 'picsart_i2v_wait_image')", "if (session.mode === 'oneover_wait_image')"));
     assert.equal(state.mode, 'picsart_i2v_wait_prompt');
@@ -222,13 +225,16 @@ async function wizardTest(model: typeof models[number], ratio: '9:16' | '16:9') 
   assert.equal(calls.length, 1, 'Stale prompt/ratio events cannot submit another job');
 }
 
-async function billingTest(model: typeof models[number], outcome: string) {
+async function billingTest(model: typeof models[number], outcome: string, ratio: '9:16' | '16:9') {
   const price = model === 'kling_v4_omni' ? 8500 : 8000;
-  const events = { charges: [] as number[], refunds: [] as number[], deliveries: 0, released: 0, success: 0 };
+  const events = { charges: [] as number[], refunds: [] as number[], deliveries: 0, released: 0, success: 0, stages: [] as string[] };
+  const finishedOutput = 'https://bot.example.test/kling4-1080p.mp4';
   const ctx = vm.createContext({
     picsart: { ...picsart, generatePicsartI2v: async (input: any) => {
       assert.equal(input.model, model);
+      assert.equal(input.ratio, ratio);
       assert.equal(input.images.length, model === 'kling_v4_t2v' ? 0 : 1);
+      events.stages.push('generate');
       if (outcome === 'provider') throw Error('PICSART_KLING4_POST_SUBMIT_FAILED');
       return { url: output, credits: 90 };
     } },
@@ -244,21 +250,37 @@ async function billingTest(model: typeof models[number], outcome: string) {
     releaseGenerating: () => { events.released++; }, markGenSuccess: () => { events.success++; },
     incrementKlingUsage: async () => 1,
     bot: { telegram: { editMessageText: async () => {}, deleteMessage: async () => {}, sendMessage: async () => {} } },
-    upscaleGeneratedVideo: async () => { throw Error('Kling 4 must never use finishing'); },
+    upscaleGeneratedVideo: async (url: string) => {
+      events.stages.push('upscale');
+      assert.equal(url, output, 'Finishing must use the generated native video');
+      if (outcome === 'upscale-error') throw Error('Renderful failed');
+      if (outcome === 'upscale-fallback') return { url: output, upscaled: false };
+      return { url: finishedOutput, upscaled: true };
+    },
     sendResult: async (_chat: number, url: string, caption: string) => {
-      events.deliveries++; assert.equal(url, output); assert.match(caption, /720p native/);
-      assert.doesNotMatch(caption, /1080|Renderful|Picsart/i); return outcome !== 'delivery';
+      events.stages.push('delivery');
+      events.deliveries++;
+      assert.equal(url, finishedOutput, 'Never deliver native fallback for any Kling 4 mode');
+      assert.match(caption, /1080p/);
+      assert.ok(caption.includes(ratio));
+      assert.doesNotMatch(caption, /720|1080p native|Renderful|Picsart/i);
+      if (outcome === 'delivery-error') throw Error('Telegram unavailable');
+      return outcome !== 'delivery';
     },
     console: { log() {}, error() {}, warn() {} },
   });
   vm.runInContext(compile(fragment(app, 'function getPicsartI2vPrice(', '\n//')), ctx);
   vm.runInContext(compile(fragment(app, 'async function runPicsartI2v(', '// ─── Background: Native Picsart Seedance 2.5')), ctx);
-  await ctx.runPicsartI2v(1, 2, 3, 4, 'A landscape', { model, imageUrls: model === 'kling_v4_t2v' ? [] : [image], ratio: '16:9' });
+  await ctx.runPicsartI2v(1, 2, 3, 4, 'A landscape', { model, imageUrls: model === 'kling_v4_t2v' ? [] : [image], ratio });
   assert.deepEqual(events.charges, [price]);
   assert.deepEqual(events.refunds, ['success', 'insufficient'].includes(outcome) ? [] : [price]);
   assert.equal(events.released, outcome === 'insufficient' ? 0 : 1);
   assert.equal(events.success, outcome === 'success' ? 1 : 0);
-  assert.equal(events.deliveries, ['success', 'delivery'].includes(outcome) ? 1 : 0);
+  assert.equal(events.deliveries, ['success', 'delivery', 'delivery-error'].includes(outcome) ? 1 : 0);
+  assert.deepEqual(events.stages, outcome === 'insufficient' ? []
+    : outcome === 'provider' ? ['generate']
+    : outcome.startsWith('upscale-') ? ['generate', 'upscale']
+    : ['generate', 'upscale', 'delivery']);
 }
 
 async function main() {
@@ -271,12 +293,18 @@ async function main() {
       for (const outcome of ['quote-http', 'quote-invalid', 'quote-timeout']) await backendTest(model, outcome);
     }
     for (const ratio of ['9:16', '16:9'] as const) await wizardTest(model, ratio);
-    for (const outcome of ['success', 'provider', 'delivery', 'insufficient']) await billingTest(model, outcome);
+    for (const ratio of ['9:16', '16:9'] as const) {
+      for (const outcome of ['success', 'provider', 'delivery', 'delivery-error', 'insufficient', 'upscale-error', 'upscale-fallback']) {
+        await billingTest(model, outcome, ratio);
+      }
+    }
     assert.ok(app.includes(`'mode_pi2v_${model}'`), 'Both modes have a menu button');
   }
   assert.match(app, /picsart_kling4:\s*8000/);
   assert.match(app, /picsart_kling4_omni:\s*8500/);
-  assert.ok(app.includes('• Kling 4 Omni (30 detik · 720p)'));
-  console.log('Kling 4 I2V/T2V and Omni: HAR payloads, gateway upload/submit/poll, quote-based Omni credit preflight, no paid replay, both ratio wizards, Rp8000/Rp8500 billing/refunds and native delivery passed.');
+  for (const name of ['Kling 4 Image to Video', 'Kling 4 Text to Video', 'Kling 4 Omni']) {
+    assert.ok(app.includes(`• ${name} (30 detik · 1080p)`));
+  }
+  console.log('Kling 4 I2V/T2V and Omni: unchanged native HAR generation, mandatory Renderful 1080p delivery, both ratios, unchanged prices, no 720p fallback, full failure refunds and no paid replay passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

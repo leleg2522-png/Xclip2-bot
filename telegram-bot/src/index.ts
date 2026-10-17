@@ -222,8 +222,8 @@ const MODEL_PRICES = {
   picsart_ltx_pro: 2500, // LTX 2.5 Pro 10s, native 1080p
   picsart_ltx_fast: 3000, // LTX 2.5 Fast 20s, native 1080p
   picsart_kling_omni: 3500, // Kling Omni 12s, native 720p
-  picsart_kling4: 8000, // Kling 4 I2V/T2V, 30s native 720p
-  picsart_kling4_omni: 8500, // Kling 4 Omni I2V, 30s native 720p
+  picsart_kling4: 8000, // Kling 4 I2V/T2V, 30s with mandatory 1080p finishing
+  picsart_kling4_omni: 8500, // Kling 4 Omni I2V, 30s with mandatory 1080p finishing
   picsart_seedance_2_mini: 3500, // Seedance 2.0 Mini, native 480p
   picsart_seedance_2_mini_edit: 3500, // Seedance 2.0 Mini Video Edit, native 480p
   picsart_seedance_2_fast_edit: 4000, // Seedance 2.0 Fast Video Edit, native 480p
@@ -2568,9 +2568,9 @@ function mainMenuKeyboard() {
     [Markup.button.callback('⚡ Kling v3 Turbo', 'mode_pi2v_kling_v3_turbo')],
     [Markup.button.callback('🎭 Kling v2.6 Pro', 'mode_pi2v_kling_v26_pro')],
     [Markup.button.callback('🎞️ Kling v3 Standard', 'mode_pi2v_kling_v3')],
-    [Markup.button.callback('🎬 Kling 4 Image to Video · 30 detik · Rp8.000', 'mode_pi2v_kling_v4')],
-    [Markup.button.callback('✍️ Kling 4 Text to Video · 30 detik · Rp8.000', 'mode_pi2v_kling_v4_t2v')],
-    [Markup.button.callback('🎬 Kling 4 Omni · 30 detik · Rp8.500', 'mode_pi2v_kling_v4_omni')],
+    [Markup.button.callback('🎬 Kling 4 Image to Video · 30 detik · 1080p · Rp8.000', 'mode_pi2v_kling_v4')],
+    [Markup.button.callback('✍️ Kling 4 Text to Video · 30 detik · 1080p · Rp8.000', 'mode_pi2v_kling_v4_t2v')],
+    [Markup.button.callback('🎬 Kling 4 Omni · 30 detik · 1080p · Rp8.500', 'mode_pi2v_kling_v4_omni')],
     [Markup.button.callback('🌐 Kling Omni • 12 detik • 720p', 'mode_pi2v_kling_omni')],
     ...Object.entries(CHINA_VIDEO_MODELS).map(([key, config]) => [
       Markup.button.callback(`${config.label} • ${config.duration} detik • ${config.resolution} • ${formatRupiah(config.price)}`, `mode_china_${key}`),
@@ -2627,6 +2627,9 @@ function isSeedance2I2vModel(model: picsart.PicsartI2vModelKey): boolean {
 }
 
 function picsartI2vPublicSettings(model: picsart.PicsartI2vModelKey, settings: string): string {
+  if (model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_omni') {
+    return settings.replace('720p native', '1080p');
+  }
   if (isSeedance2I2vModel(model)) return settings.replace('480p native', '1080p');
   if (model === 'wan_v3') return settings.replace('480p native', 'hasil hingga 1K');
   return settings;
@@ -3146,9 +3149,9 @@ function hargaText(): string {
     `• Kling v3 Turbo — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v2.6 Pro — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v3 Standard — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
-    `• Kling 4 Image to Video (30 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_kling4)}\n` +
-    `• Kling 4 Text to Video (30 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_kling4)}\n` +
-    `• Kling 4 Omni (30 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_kling4_omni)}\n` +
+    `• Kling 4 Image to Video (30 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_kling4)}\n` +
+    `• Kling 4 Text to Video (30 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_kling4)}\n` +
+    `• Kling 4 Omni (30 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_kling4_omni)}\n` +
     `• Kling Omni (12 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_kling_omni)}\n` +
     `• Wan v2 Image-to-Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Wan 3.0 (30 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.picsart_wan_v3)}\n` +
@@ -9135,6 +9138,7 @@ async function runPicsartI2v(
   const cfg = picsart.PICSART_I2V_MODELS[opts.model];
   const label = customerSafeModelLabel(opts.displayLabel ?? cfg.label, cfg.label);
   const seedance1080 = isSeedance2I2vModel(opts.model);
+  const kling4HD = opts.model === 'kling_v4' || opts.model === 'kling_v4_t2v' || opts.model === 'kling_v4_omni';
   const settingsLabel = (seedance1080 || opts.model === 'ltx_pro' || opts.model === 'ltx_fast' || opts.model === 'creatify_boreal' || opts.model === 'wan_v3' || opts.model === 'pixverse_v6' || opts.model === 'kling_v4' || opts.model === 'kling_v4_t2v' || opts.model === 'kling_v4_omni') && opts.ratio
     ? `${opts.ratio} · ${cfg.settingsLabel}`
     : cfg.settingsLabel;
@@ -9197,14 +9201,20 @@ async function runPicsartI2v(
       },
     });
 
-    stage = 'delivery';
-    const finalVideo = (opts.model === 'wan_v3' || seedance1080)
+    stage = 'finishing';
+    const finalVideo = (opts.model === 'wan_v3' || seedance1080 || kling4HD)
       ? await upscaleGeneratedVideo(result.url, userId, chatId, statusMsgId)
       : { url: result.url, upscaled: false };
+    // Kling 4 promises 1080p delivery: a failed finishing pass must refund,
+    // never silently deliver the native 720p source instead.
+    if (kling4HD && !finalVideo.upscaled) throw new Error('KLING4_1080_FINISH_FAILED');
+    stage = 'delivery';
     const deliveredLabel = seedance1080
       ? label.replace('1080p', finalVideo.upscaled ? '1080p' : '480p')
       : opts.model === 'wan_v3' && finalVideo.upscaled ? 'Wan 3.0' : label;
-    const deliveredSettings = seedance1080
+    const deliveredSettings = kling4HD
+      ? settingsLabel.replace('720p native', '1080p')
+      : seedance1080
       ? settingsLabel.replace('480p native', finalVideo.upscaled ? '1080p' : '480p')
       : opts.model === 'wan_v3'
         ? settingsLabel.replace('480p native', finalVideo.upscaled ? 'hasil 1K' : '480p asli')
@@ -9215,7 +9225,7 @@ async function runPicsartI2v(
       `🧩 ${deliveredLabel} (${deliveredSettings})\n\n/menu untuk buat lagi`,
       true
     ).catch(() => false);
-    if (!delivered && finalVideo.upscaled) {
+    if (!delivered && finalVideo.upscaled && !kling4HD) {
       const originalCaption = seedance1080
         ? `🧩 ${label.replace('1080p', '480p')} (${settingsLabel.replace('480p native', '480p')})\n\n/menu untuk buat lagi`
         : `🧩 ${label} (${settingsLabel} · hasil asli)\n\n/menu untuk buat lagi`;
@@ -9238,7 +9248,9 @@ async function runPicsartI2v(
       err?.stack ? `\n${err.stack}` : ''
     );
     let friendly = '❌ Gagal memproses. Coba lagi nanti.';
-    if (msg.includes('PICSART_TIMEOUT')) {
+    if (kling4HD && stage === 'finishing') {
+      friendly = '❌ Video gagal disiapkan ke 1080p. Saldo akan dikembalikan penuh.';
+    } else if (msg.includes('PICSART_TIMEOUT')) {
       friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
     } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
       friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';

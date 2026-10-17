@@ -69,3 +69,17 @@ generation as live-verified from this capture, infer its credit cost from
 regular Kling 4, or assume the v3 audio and multi-shot controls apply to v4.
 Use the provider's options quote for credit preflight, and never submit paid
 test jobs without authorization.
+
+## Mandatory 1080p delivery for all Kling 4 packages
+
+Kling 4 Omni, Kling 4 Image to Video, and Kling 4 Text to Video must finish
+through Renderful at 1080p before delivery. Their approved prices are unchanged.
+
+**Why:** The user requested “gw ingin hasil nya di upscale dulu di renderfull
+agar 1080p”, then explicitly added “kling 4 juga”.
+
+**How to apply:** Keep upstream generation at native 720p and advertise delivered
+1080p, not native 1080p. If finishing fails or returns its native fallback, do
+not send the 720p video; refund the full charge. Failed delivery must also refund
+without falling back to 720p or resubmitting either paid job. Do not extend this
+rule to the older Kling Omni v3 or Motion Control packages.
