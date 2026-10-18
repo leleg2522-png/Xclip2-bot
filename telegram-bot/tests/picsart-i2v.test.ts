@@ -787,7 +787,7 @@ assert.match(botSource, /mode_pi2v_wan_v3/);
 assert.match(botSource, /mode_pi2v_pixverse_v6/);
 assert.match(botSource, /mode_pi2v_kling_omni/);
 assert.match(botSource, /picsart_kling_omni: 3500/);
-assert.match(botSource, /picsart_wan_v3: 5000/);
+assert.match(botSource, /picsart_wan_v3: 3000/);
 assert.match(botSource, /picsart_seedance_2_mini: 3500/);
 assert.match(botSource, /picsart_seedance_2: 4000/);
 assert.match(botSource, /gemini_omni: 2500/);

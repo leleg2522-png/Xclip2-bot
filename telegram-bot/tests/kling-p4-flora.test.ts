@@ -6,7 +6,7 @@ import ts from 'typescript';
 import { KLING_P4, klingP4VideoError, generateKlingP4Flora, type KlingP4Api } from '../src/kling-p4-flora';
 
 const source = fs.readFileSync(path.resolve(__dirname, '../src/index.ts'), 'utf8');
-assert.match(source, /kling_p4:\s*4000/);
+assert.match(source, /kling_p4:\s*2500/);
 assert.match(source, /mode_klingp4:\s*'klingp4'/);
 for (const mode of ['image', 'video', 'prompt']) {
   assert.ok(source.includes(`'klingp4_wait_${mode}'`));
@@ -108,7 +108,7 @@ const compiled = ts.transpileModule(source.slice(start, end), {
 async function testBilling(delivered: boolean, failure = false, chargeOk = true) {
   const events = { charges: [] as number[], refunds: [] as number[], releases: 0, successes: 0 };
   const ctx = vm.createContext({
-    MODEL_PRICES: { kling_p4: 4000 }, KLING_P4,
+    MODEL_PRICES: { kling_p4: 2500 }, KLING_P4,
     beginCharge: async (_id: number, price: number, max: number) => {
       assert.equal(max, 3); events.charges.push(price); return { ok: chargeOk, reason: 'insufficient' };
     },
@@ -143,8 +143,8 @@ async function testBilling(delivered: boolean, failure = false, chargeOk = true)
   });
   vm.runInContext(compiled, ctx);
   await ctx.runKlingP4(1, 2, 3, 4, 'image', 'video', 10, 'prompt');
-  assert.deepEqual(events.charges, [4000]);
-  assert.deepEqual(events.refunds, !chargeOk || (delivered && !failure) ? [] : [4000]);
+  assert.deepEqual(events.charges, [2500]);
+  assert.deepEqual(events.refunds, !chargeOk || (delivered && !failure) ? [] : [2500]);
   assert.equal(events.releases, chargeOk ? 1 : 0);
   assert.equal(events.successes, chargeOk && delivered && !failure ? 1 : 0);
 }
@@ -171,7 +171,7 @@ async function testWizard() {
   };
   const sandbox = vm.createContext({
     ctx, KLING_P4, klingP4VideoError,
-    MODEL_PRICES: { kling_p4: 4000 },
+    MODEL_PRICES: { kling_p4: 2500 },
     getSession: () => session,
     setSession: (_id: number, data: any) => Object.assign(session, data),
     requireLogin: async () => true,
@@ -206,7 +206,7 @@ async function testWizard() {
   );
   await open();
   assert.equal(session.mode, 'klingp4_wait_image');
-  assert.ok(messages.at(-1)!.includes('Rp4.000'));
+  assert.ok(messages.at(-1)!.includes('Rp2.500'));
   ctx.message = { photo: [{ file_id: 'photo_id', width: 800, height: 800, file_size: 1000 }] };
   await photo();
   assert.equal(session.mode, 'klingp4_wait_video');

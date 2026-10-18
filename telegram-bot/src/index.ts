@@ -196,8 +196,8 @@ const MODEL_PRICES = {
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
   kling_p3: 4000,      // Kling MC V3.0 PRO P3 (Edanbot)
   kling_p2: 4000,      // Kling MC V3 PRO P2 (Edanbot)
-  kling_p4: 4000,      // Kling MC V3 Pro P4 (P5 Standard backend + 1080p finishing)
-  kling_v3_standard: 3500,
+  kling_p4: 2500,      // Kling MC V3 Pro P4 (Alriz backend + 1080p finishing)
+  kling_v3_standard: 2500, // Kling MC V3 Pro P5 (Alriz native)
   heygen: 2500,
   xclip_motion: 3500,
   banana21: 600,
@@ -228,7 +228,7 @@ const MODEL_PRICES = {
   picsart_seedance_2_fast_edit: 4000, // Seedance 2.0 Fast Video Edit, native 480p
   picsart_seedance_2_video_edit: 4500, // Seedance 2 Video Edit, native 480p
   picsart_seedance_2: 4000, // Seedance 2.0 Mini/Fast/Standard, native 480p
-  picsart_wan_v3: 5000, // Wan 3.0 30s, native 1080p
+  picsart_wan_v3: 3000, // Wan 3.0 30s, native 1080p
   picsart_seedance_25_480: 11000, // Public Seedance 2.5 native gateway, 480p
   oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video

@@ -33,7 +33,7 @@ function harness(options: { upscale?: boolean; failDelivery?: boolean; failUpsca
     console: { log() {}, warn() {}, error() {} },
     MODEL_PRICES: {},
     customerSafeModelLabel: (label: string) => label,
-    getPicsartI2vPrice: (model: string) => model === 'seedance_2_mini' ? 3500 : 4000,
+    getPicsartI2vPrice: (model: string) => model === 'wan_v3' ? 3000 : model === 'seedance_2_mini' ? 3500 : 4000,
     beginCharge: async (_: number, price: number) => { events.charges.push(price); return { ok: true }; },
     chargeFailMsg: () => 'Saldo tidak cukup',
     downloadBuffer: async () => ({ buf: Buffer.from('fixture'), mime: 'image/jpeg' }),
@@ -113,6 +113,7 @@ async function main() {
   for (const options of [{}, { failDelivery: true }, { generationFails: true }]) {
     const wan = harness(options);
     await wan.run('wan_v3');
+    assert.deepEqual(wan.events.charges, [3000]);
     assert.deepEqual(wan.events.order, options.generationFails ? ['generate'] : ['generate', 'deliver']);
     assert.deepEqual(wan.events.refunds, options.failDelivery || options.generationFails ? wan.events.charges : []);
     assert.deepEqual(wan.events.releases, [1]);
