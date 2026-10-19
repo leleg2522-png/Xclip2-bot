@@ -2160,16 +2160,16 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
     pollAttempts: 240,
   },
   kling_v4: {
-    label: 'Kling 4 Image to Video',
+    label: 'Kling 4 1080p · Image to Video',
     settingsLabel: '30 detik · 720p native',
-    workflowPath: 'kling-image-to-video',
+    workflowPath: 'kling-omni-video',
     pool: null,
     pollAttempts: 360,
   },
   kling_v4_t2v: {
-    label: 'Kling 4 Text to Video',
+    label: 'Kling 4 1080p · Text to Video',
     settingsLabel: '30 detik · 720p native',
-    workflowPath: 'kling-text-to-video',
+    workflowPath: 'kling-omni-video',
     pool: null,
     pollAttempts: 360,
   },
@@ -2224,6 +2224,7 @@ export function buildPicsartI2vParams(
         prompt,
         ratio: options?.ratio ?? '9:16',
         imageUrl: imageUrl || undefined,
+        imageUrls: options?.imageUrls,
         outputName: options?.outputName,
       });
     case 'ltx_fast':
@@ -3113,6 +3114,7 @@ export async function generatePicsartI2v(input: {
       || input.model === 'seedance_2_fast'
       || input.model === 'seedance_2'
       || input.model === 'wan_v3'
+      || input.model === 'kling_v4'
     )
       ? inputImages.slice(0, PICSART_I2V_MAX_IMAGES)
       : inputImages.slice(0, 1);

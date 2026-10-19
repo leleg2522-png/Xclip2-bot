@@ -95,10 +95,24 @@ The user wants the public name “Kling 4 1080p”, removal of the separate Omni
 choice, and support for up to five images plus video references.
 
 **How to apply:** Obtain an actual reference-bearing submit payload before
-implementing video or multi-image fields. If another upload appears unchanged,
+implementing video fields. If another upload appears unchanged,
 compare its content first and request just the submit Request Payload as an
-alternative; do not ask repeatedly for the same HAR. These requested backend
-and menu changes are not yet implemented.
+alternative; do not ask repeatedly for the same HAR.
+
+A distinct later capture completed image-to-video using the same Flash backend
+with one `image_list` entry and matching metadata `imageUrls`. This verifies
+single-image generation, not a completed five-image or video-reference run.
+
+**Why:** The user's requested public replacement is Flash under the label
+“Kling 4 1080p”, without a separate Omni offering. The bot can collect up to
+five images using the evidenced list field, but video-reference fields remain
+unknown and must not be invented.
+
+**How to apply:** Preserve the Flash backend and Rp8,000 price for both public
+Kling 4 modes, the five-image input cap, and mandatory Renderful 1080p finishing.
+Keep the separate Omni choice inaccessible, including from old menu buttons.
+Treat video references as blocked pending a submitted payload containing them;
+do not mistake additional uploads or an MP4 preview for a reference in submit.
 
 ## Mandatory 1080p delivery for all Kling 4 packages
 

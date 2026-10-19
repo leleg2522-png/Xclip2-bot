@@ -25,19 +25,19 @@ function parameterTests() {
   for (const model of models) {
     const t2v = model === 'kling_v4_t2v';
     const omni = model === 'kling_v4_omni';
-    assert.equal(picsart.PICSART_I2V_MODELS[model].workflowPath, omni ? 'kling-omni-video' : t2v ? 'kling-text-to-video' : 'kling-image-to-video');
+    assert.equal(picsart.PICSART_I2V_MODELS[model].workflowPath, 'kling-omni-video');
     assert.equal(picsart.PICSART_I2V_MODELS[model].pool, null);
     assert.equal(picsart.PICSART_I2V_MODELS[model].pollAttempts, 360);
     assert.equal(picsart.shouldExportPicsartI2v(model), false);
     for (const ratio of ['9:16', '16:9'] as const) {
       const p = picsart.buildPicsartI2vParams(model, ' A landscape ', t2v ? '' : image, { ratio }) as any;
       assert.equal(p.prompt, 'A landscape');
-      assert.equal(p.model_name, omni ? 'kling-v4-omni' : 'kling-v4');
+      assert.equal(p.model_name, 'kling-v4-omni');
       assert.equal(p.duration, '30');
       assert.equal(p.resolution, '720p');
       assert.equal(p.aspect_ratio, ratio);
-      assert.equal(p.image, t2v || omni ? undefined : image);
-      if (omni) {
+      assert.equal(p.image, undefined);
+      if (!t2v) {
         assert.deepEqual(p.image_list, [{ image_url: image }]);
         for (const field of ['sound', 'mode', 'multi_shot', 'shot_type', 'video_list']) {
           assert.equal(p[field], undefined, `Do not invent Omni request fields: ${field}`);
@@ -47,8 +47,8 @@ function parameterTests() {
       assert.equal(metadata.duration, 30);
       assert.equal(metadata.resolution, '720p');
       assert.equal(metadata.aspectRatio, ratio);
-      assert.equal(p.options.drive.attributes.model, omni ? 'kling-v4-omni' : 'kling-v4');
-      if (omni) {
+      assert.equal(p.options.drive.attributes.model, 'kling-v4-omni');
+      if (!t2v) {
         assert.deepEqual(metadata.imageUrls, [image]);
         assert.equal(metadata.referType, 'feature');
         assert.equal(metadata.generateAudio, undefined);
@@ -60,6 +60,11 @@ function parameterTests() {
   assert.throws(() => buildKling4Params({ mode: 't2v', prompt: 'a', ratio: '9:16', imageUrl: image }), /UNEXPECTED_IMAGE/);
   assert.throws(() => buildKling4Params({ mode: 't2v', prompt: '', ratio: '9:16' }), /INVALID_INPUT/);
   assert.throws(() => buildKling4Params({ mode: 't2v', prompt: 'a', ratio: '4:3' as any }), /INVALID_INPUT/);
+  const images = Array.from({ length: 5 }, (_, n) => `https://cdn.example.test/ref-${n}.jpg`);
+  const multi = picsart.buildPicsartI2vParams('kling_v4', 'a', images[0], { imageUrls: images }) as any;
+  assert.deepEqual(multi.image_list, images.map(image_url => ({ image_url })));
+  assert.deepEqual(JSON.parse(multi.options.drive.attributes.aiSDKPayload).imageUrls, images);
+  assert.throws(() => buildKling4Params({ mode: 'i2v', prompt: 'a', ratio: '9:16', imageUrls: [...images, image] }), /TOO_MANY_IMAGES/);
   for (const imageUrl of ['', 'http://example.test/photo.jpg', 'https://user:pass@example.test/photo.jpg']) {
     assert.throws(() => buildKling4OmniParams({ prompt: 'a', ratio: '9:16', imageUrl }), /IMAGE_REQUIRED/);
   }
@@ -68,10 +73,10 @@ function parameterTests() {
   assert.equal(picsart.buildPicsartI2vParams('kling_omni', 'a', image).model_name, 'kling-v3-omni', 'Existing Omni v3 is unchanged');
 }
 
-async function backendTest(model: typeof models[number], outcome = 'success') {
+async function backendTest(model: typeof models[number], outcome = 'success', imageCount = 1) {
   const t2v = model === 'kling_v4_t2v';
   const omni = model === 'kling_v4_omni';
-  const workflow = omni ? 'kling-omni-video' : `kling-${t2v ? 'text' : 'image'}-to-video`;
+  const workflow = 'kling-omni-video';
   const events = { accounts: 0, uploads: 0, quotes: 0, posts: 0, gets: 0, dead: 0 };
   const context = vm.createContext({
     exports: {}, Buffer, PICSART_I2V_MODELS: picsart.PICSART_I2V_MODELS,
@@ -130,9 +135,12 @@ async function backendTest(model: typeof models[number], outcome = 'success') {
         events.posts++;
         assert.equal(url, `https://api.picsart.com/gw-v2/workflows/${workflow}/submit`);
         assert.equal(config.headers.authorization, 'Bearer fixture-access-token');
-        assert.equal(body.params.model_name, omni ? 'kling-v4-omni' : 'kling-v4');
-        assert.equal(body.params.image, t2v || omni ? undefined : image);
-        if (omni) assert.equal(body.params.image_list[0].image_url, image);
+        assert.equal(body.params.model_name, 'kling-v4-omni');
+        assert.equal(body.params.image, undefined);
+        if (!t2v) {
+          assert.equal(body.params.image_list[0].image_url, image);
+          assert.equal(body.params.image_list.length, imageCount);
+        }
         assert.equal(body.params.duration, '30');
         if (outcome === 'submit-timeout') throw Error('ETIMEDOUT');
         if (outcome === 'submit-error') return { status: 500, data: { message: 'PICSART_INSUFFICIENT_CREDITS' } };
@@ -162,7 +170,7 @@ async function backendTest(model: typeof models[number], outcome = 'success') {
   vm.runInContext(compile(blocks.join('\n')), context);
   const promise = context.exports.generatePicsartI2v({
     userId: 2, model, prompt: 'A landscape', ratio: '16:9',
-    images: t2v ? [] : [{ buffer: Buffer.from('photo'), name: 'reference.jpg', mime: 'image/jpeg' }],
+    images: t2v ? [] : Array.from({ length: imageCount }, () => ({ buffer: Buffer.from('photo'), name: 'reference.jpg', mime: 'image/jpeg' })),
   });
   if (['success', 'low-first', 'transient'].includes(outcome)) {
     assert.equal((await promise).url, output);
@@ -172,7 +180,7 @@ async function backendTest(model: typeof models[number], outcome = 'success') {
   assert.equal(events.accounts, ['low-first', 'no-credits'].includes(outcome) ? 2 : 1);
   assert.equal(events.uploads, omni
     ? (['low-first', 'no-credits'].includes(outcome) ? 2 : 1)
-    : t2v || ['no-credits', 'unknown-credits'].includes(outcome) ? 0 : 1);
+    : t2v || ['no-credits', 'unknown-credits'].includes(outcome) ? 0 : imageCount);
   assert.equal(events.quotes, omni ? events.accounts : 0);
   assert.equal(events.dead, outcome === 'poll-auth' ? 1 : 0);
 }
@@ -190,7 +198,8 @@ async function wizardTest(model: typeof models[number], ratio: '9:16' | '16:9') 
       answerCbQuery: async () => {} },
     getSession: () => state, setSession: (_id: number, patch: any) => Object.assign(state, patch),
     requireLogin: async () => true, isPicsartI2vModelKey: (key: string) => key in picsart.PICSART_I2V_MODELS,
-    supportsMultiplePicsartI2vImages: () => false,
+    supportsMultiplePicsartI2vImages: (key: string) => key === 'kling_v4',
+    picsartI2vAddPhotoKeyboard: () => ({}),
     picsartI2vRatioKeyboard: () => ({}), isSeedance2I2vModel: () => false,
     formatRupiah: (n: number) => `Rp${n}`, getCooldownRemainingMs: () => 0,
     runPicsartI2v: async (...args: any[]) => { calls.push(args); }, console: { error() {} },
@@ -211,7 +220,12 @@ async function wizardTest(model: typeof models[number], ratio: '9:16' | '16:9') 
   assert.match(messages.at(-1)!, /1080p/);
   assert.doesNotMatch(messages.at(-1)!, /720p native|1080p native/);
   if (!t2v) {
-    await run(fragment(app, "if (session.mode === 'picsart_i2v_wait_image')", "if (session.mode === 'oneover_wait_image')"));
+    const photoBranch = fragment(app, "if (session.mode === 'picsart_i2v_wait_image')", "if (session.mode === 'oneover_wait_image')");
+    for (let n = 1; n <= 5; n++) {
+      await run(photoBranch);
+      assert.equal(state.picsartI2vImageUrls.length, n);
+      assert.equal(state.mode, n === 5 ? 'picsart_i2v_wait_prompt' : 'picsart_i2v_wait_image');
+    }
     assert.equal(state.mode, 'picsart_i2v_wait_prompt');
   } else assert.match(messages.at(-1)!, /Tidak perlu foto/);
   const promptBranch = fragment(app, "if (session.mode === 'picsart_i2v_wait_prompt')", '// ── OneOver Seedance 2.5 image-to-video prompt');
@@ -219,7 +233,7 @@ async function wizardTest(model: typeof models[number], ratio: '9:16' | '16:9') 
   assert.equal(calls.length, 1);
   assert.equal(calls[0][5].model, model);
   assert.equal(calls[0][5].ratio, ratio);
-  assert.deepEqual(Array.from(calls[0][5].imageUrls), t2v ? [] : [image]);
+  assert.deepEqual(Array.from(calls[0][5].imageUrls), t2v ? [] : Array(5).fill(image));
   assert.equal(state.mode, 'idle');
   await run(promptBranch); await run(ratioBranch);
   assert.equal(calls.length, 1, 'Stale prompt/ratio events cannot submit another job');
@@ -285,12 +299,19 @@ async function billingTest(model: typeof models[number], outcome: string, ratio:
 
 async function main() {
   parameterTests();
+  await backendTest('kling_v4', 'success', 5);
+  const publicHelpers = vm.createContext({ picsart });
+  vm.runInContext(compile(fragment(app, 'function isPicsartI2vModelKey(', 'function picsartI2vRatioKeyboard(')), publicHelpers);
+  assert.equal(publicHelpers.isPicsartI2vModelKey('kling_v4_omni'), false, 'Old Omni buttons cannot start an order');
+  assert.equal(publicHelpers.isPicsartI2vModelKey('kling_v4'), true);
+  assert.equal(publicHelpers.supportsMultiplePicsartI2vImages('kling_v4'), true);
   for (const model of models) {
     for (const outcome of ['success', 'low-first', 'no-credits', 'unknown-credits', 'transient', 'submit-timeout', 'submit-error', 'no-id', 'poll-auth', 'poll-credits', 'result-failed', 'result-http']) {
       await backendTest(model, outcome);
     }
     if (model === 'kling_v4_omni') {
       for (const outcome of ['quote-http', 'quote-invalid', 'quote-timeout']) await backendTest(model, outcome);
+      continue; // Historical backend contract only; the public Omni package is removed.
     }
     for (const ratio of ['9:16', '16:9'] as const) await wizardTest(model, ratio);
     for (const ratio of ['9:16', '16:9'] as const) {
@@ -301,10 +322,10 @@ async function main() {
     assert.ok(app.includes(`'mode_pi2v_${model}'`), 'Both modes have a menu button');
   }
   assert.match(app, /picsart_kling4:\s*8000/);
-  assert.match(app, /picsart_kling4_omni:\s*8500/);
-  for (const name of ['Kling 4 Image to Video', 'Kling 4 Text to Video', 'Kling 4 Omni']) {
-    assert.ok(app.includes(`• ${name} (30 detik · 1080p)`));
+  assert.doesNotMatch(app, /picsart_kling4_omni:\s*8500|Markup\.button\.callback\([^\n]*mode_pi2v_kling_v4_omni/);
+  for (const mode of ['Image to Video', 'Text to Video']) {
+    assert.ok(app.includes(`• Kling 4 1080p · ${mode} (30 detik)`));
   }
-  console.log('Kling 4 I2V/T2V and Omni: unchanged native HAR generation, mandatory Renderful 1080p delivery, both ratios, unchanged prices, no 720p fallback, full failure refunds and no paid replay passed.');
+  console.log('Kling 4 Flash I2V/T2V: five-image wizard and payload, Omni option removed, mandatory 1080p finishing, prices/refunds and no paid replay passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

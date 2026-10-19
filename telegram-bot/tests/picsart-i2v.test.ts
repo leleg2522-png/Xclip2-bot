@@ -373,7 +373,7 @@ assert.equal(botSource.includes('menu_picsart_i2v'), false);
 assert.equal(botSource.includes('Picsart I2V (8 Model)'), false);
 assert.equal(botSource.includes("Markup.button.callback('🧩 Picsart"), false);
 assert.equal(botSource.includes('`🧩 *Picsart'), false);
-for (const model of expectedModels.filter(model => model !== 'kling_v21_pro')) {
+for (const model of expectedModels.filter(model => model !== 'kling_v21_pro' && model !== 'kling_v4_omni')) {
   assert.equal(botSource.includes(`mode_pi2v_${model}`), true);
 }
 
