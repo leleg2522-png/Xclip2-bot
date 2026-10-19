@@ -82,6 +82,24 @@ model receives it as a reference.
 but require a submitted request that actually includes the reference video
 before implementing that mode. Do not invent video payload fields.
 
+## Flash naming and reference evidence
+
+A later completed text-only capture identifies the UI's Kling 4 Flash as
+`kling-v4-omni` on the Omni workflow, native 720p, 30 seconds, and 90 credits.
+It does not submit any reference images or videos. Do not infer a separate
+Flash model ID from the UI name.
+
+**Why:** Multiple uploads under different filenames were byte-identical copies
+of that same text-only capture; re-uploading it did not add reference evidence.
+The user wants the public name “Kling 4 1080p”, removal of the separate Omni
+choice, and support for up to five images plus video references.
+
+**How to apply:** Obtain an actual reference-bearing submit payload before
+implementing video or multi-image fields. If another upload appears unchanged,
+compare its content first and request just the submit Request Payload as an
+alternative; do not ask repeatedly for the same HAR. These requested backend
+and menu changes are not yet implemented.
+
 ## Mandatory 1080p delivery for all Kling 4 packages
 
 Kling 4 Omni, Kling 4 Image to Video, and Kling 4 Text to Video must finish
