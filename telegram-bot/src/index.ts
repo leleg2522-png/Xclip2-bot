@@ -197,7 +197,7 @@ const MODEL_PRICES = {
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
   kling_p3: 4000,      // Kling MC V3.0 PRO P3 (Edanbot)
   kling_p2: 4000,      // Kling MC V3 PRO P2 (Edanbot)
-  kling_p4: 2500,      // Kling MC V3 Pro P4 (Alriz backend + 1080p finishing)
+  kling_p4: 2500,      // Kling MC V3 Pro P4 (Alriz native)
   kling_v3_standard: 2500, // Kling MC V3 Pro P5 (Alriz native)
   heygen: 2500,
   xclip_motion: 3500,
@@ -8644,13 +8644,7 @@ async function runKlingV3Standard(
       publish: (bytes, isVideo) => publishMedia(bytes, isVideo, undefined, true),
       status,
     });
-    let deliveryUrl = url;
-    if (route === 'p4') {
-      const finished = await upscaleGeneratedVideo(url, userId, chatId, statusMsgId);
-      if (!finished.upscaled) throw new Error('KLING_P4_1080_FINISH_FAILED');
-      deliveryUrl = finished.url;
-    }
-    if (await sendResult(chatId, deliveryUrl, `🎭 ${LABEL} · 1K/1080p\n\n/menu untuk buat lagi`, true)) {
+    if (await sendResult(chatId, url, `🎭 ${LABEL} · 1K/1080p\n\n/menu untuk buat lagi`, true)) {
       refund = false;
       markGenSuccess(userId);
       if (route === 'p4') {

@@ -1,6 +1,6 @@
 ---
 name: Kling Motion package routing and Edanbot
-description: P2/P3 Edan Bot native; P4/P5 share Alriz 2.6 Pro, with finishing retained only for P4.
+description: P2/P3 Edan Bot native; P4/P5 share Alriz 2.6 Pro and deliver directly without Renderful.
 ---
 
 # Current Kling Motion routing
@@ -11,25 +11,25 @@ Renderful finishing; keep the public package labels and prices separate. P4
 and P5 use Alriz `mc-kling-2.6-pro` and the same database key pool.
 Its customer-facing name must remain **Kling MC V3 Pro P5**, independently
 of the underlying provider model version.
-P4 retains mandatory 1080p finishing. P5 delivers the native Alriz result directly
-without Renderful finishing.
+P4 and P5 deliver the native Alriz result directly without Renderful finishing.
 
 **Why:** The user explicitly switched P2/P3 to the newly supplied Edan Bot HAR
 and then clarified that Renderful upscaling is not needed for those packages.
 This supersedes the earlier P2/P3-to-P5 routing decision only for P2/P3.
 The user later requested: “gw ingin kling mc p5 di ganti kling mc 2,6 pro dari alriz”.
 The user subsequently requested “kling mc p4 ganti backend nya sama seperti p5”,
-extending that backend choice to P4 without changing its price or finishing policy.
+extending that backend choice to P4 without changing its price.
 After inspecting the live native
 P5 result, the user clarified: “gaperlu finishing dari renderfull”.
 The user then requested the displayed name “kling mc v3 pro” and specified P5;
 this is a display-name change, not a request to switch the underlying model.
+The user subsequently clarified for P4: “lah ga perlu upscale lagi itu p4”.
 
 **How to apply:** Keep P2/P3 native output claims limited to “resolution follows
 the model result”; do not promise 1080p without new evidence. Preserve full
 refunds on generation or delivery failure and never replay ambiguous/accepted
-paid submissions. Do not add finishing back to P5; keep P4 and Xclip Motion
-finishing policies unchanged.
+paid submissions. Do not add finishing back to P4 or P5. Keep Xclip Motion's
+separate finishing policy unchanged.
 
 ## Alriz credential management
 

@@ -128,12 +128,12 @@ async function testBilling(delivered: boolean, failure = false, chargeOk = true)
       if (failure) throw Error('failed');
       return 'https://example.test/result.mp4';
     },
-    upscaleGeneratedVideo: async () => ({ url: 'https://example.test/1080.mp4', upscaled: true }),
+    upscaleGeneratedVideo: async () => { assert.fail('P4 must never call Renderful'); },
     getNextFloraKey() {}, markFloraKeyDead() {}, floraGetWorkspace() {},
     floraUploadAsset() {}, floraGenerate() {}, floraPollRun() {}, isFloraKeyExhaustedError() {},
     sendResult: async (_chat: number, _url: string, caption: string, video: boolean) => {
       assert.ok(caption.includes(KLING_P4.label)); assert.ok(caption.includes('1K/1080p'));
-      assert.equal(_url, 'https://example.test/1080.mp4');
+      assert.equal(_url, 'https://example.test/result.mp4');
       assert.equal(video, true); return delivered;
     },
     incrementKlingUsage: async () => {}, markGenSuccess: () => { events.successes++; },

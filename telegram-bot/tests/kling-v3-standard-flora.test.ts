@@ -161,13 +161,13 @@ async function billingTest(outcome: string, route: 'p5' | 'p4' | 'xclip_motion' 
     floraGenerate() {}, floraPollRun() {},
     isFloraKeyExhaustedError: classifierContext.isFloraKeyExhaustedError,
     upscaleGeneratedVideo: async (url: string) => {
-      assert.equal(route, 'p4', 'P5 must deliver native Alriz output without any finishing');
+      assert.equal(route, 'xclip_motion', 'P4/P5 must deliver native Alriz output without any finishing');
       events.upscales++; assert.equal(url, 'https://example.test/native.mp4');
       if (outcome === 'upscale-error') throw Error('UPSCALER_FAILED');
       return { url: 'https://example.test/1080.mp4', upscaled: outcome !== 'upscale-fallback' };
     },
     sendResult: async (_chat: number, url: string, caption: string, video: boolean) => {
-      events.deliveries++; assert.equal(url, route === 'p5' ? 'https://example.test/native.mp4' : 'https://example.test/1080.mp4');
+      events.deliveries++; assert.equal(url, route !== 'xclip_motion' ? 'https://example.test/native.mp4' : 'https://example.test/1080.mp4');
       assert.ok(caption.includes(label)); assert.ok(caption.includes('1K/1080p'));
       if (route === 'xclip_motion') assert.doesNotMatch(caption, /P5|Kling/i);
       assert.doesNotMatch(caption, /flora|standard|renderful/i); assert.equal(video, true);
@@ -195,13 +195,13 @@ async function billingTest(outcome: string, route: 'p5' | 'p4' | 'xclip_motion' 
     await ctx.runKlingV3Standard(1, 2, 3, 4, 'image', 'video', 10, 'move');
   }
   assert.deepEqual(events.charges, [price]);
-  const succeeds = outcome === 'success' || (route === 'p5' && ['upscale-fallback', 'upscale-error'].includes(outcome));
+  const succeeds = outcome === 'success' || (route !== 'xclip_motion' && ['upscale-fallback', 'upscale-error'].includes(outcome));
   assert.deepEqual(events.refunds, succeeds || outcome === 'insufficient' ? [] : [price]);
   assert.equal(events.releases, outcome === 'insufficient' ? 0 : 1);
   assert.equal(events.successes, succeeds ? 1 : 0);
-  assert.equal(events.usage, route === 'p4' && outcome === 'success' ? 1 : 0);
+  assert.equal(events.usage, route === 'p4' && succeeds ? 1 : 0);
   assert.equal(events.deliveries, succeeds || outcome === 'delivery' ? 1 : 0);
-  assert.equal(events.upscales, route === 'p5' || ['insufficient', 'provider'].includes(outcome) ? 0 : 1);
+  assert.equal(events.upscales, route !== 'xclip_motion' || ['insufficient', 'provider'].includes(outcome) ? 0 : 1);
   if (route === 'xclip_motion') {
     assert.doesNotMatch(events.messages.join(' '), /Flora|Picsart|Renderful|P5|Kling|provider\.example/i);
   }
@@ -262,6 +262,6 @@ async function main() {
     await billingTest(outcome);
       await billingTest(outcome, 'p4');
   }
-  console.log('Kling P4/P5 Alriz: P4 retains finishing, P5 native, refunds and wizard tests passed.');
+  console.log('Kling P4/P5 Alriz: both native without finishing, refunds and wizard tests passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
