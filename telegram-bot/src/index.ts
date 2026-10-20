@@ -36,6 +36,7 @@ import { ChinaApiKeyPool, type ChinaKeyLease } from './chinaapi-key-pool';
 import { registerChinaApiAdmin } from './chinaapi-admin';
 import { generateRenderful1080 } from './renderful-auto-upscale';
 import { inspectFloraUpscaleVideo, normalizeFlora1080 } from './flora-upscale-media';
+import { retryTelegramFileRead, redactTelegramToken } from './telegram-file-retry';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -272,7 +273,7 @@ function describeError(err: any): string {
     const stackLine = typeof err?.stack === 'string' ? err.stack.split('\n').slice(0, 2).join(' | ') : '';
     parts.push(stackLine || (typeof err === 'object' ? JSON.stringify(err).slice(0, 200) : String(err)) || 'unknown error (pesan kosong)');
   }
-  return parts.join(' ');
+  return redactTelegramToken(parts.join(' '));
 }
 
 // Provider and bridge names are internal implementation details. Customer-facing
@@ -8624,10 +8625,14 @@ async function runKlingV3Standard(
   let refund = true;
   try {
     const [imageLink, videoLink] = await Promise.all([
-      /^https?:\/\//.test(imageFileId) ? { href: imageFileId } : bot.telegram.getFileLink(imageFileId),
-      bot.telegram.getFileLink(videoFileId),
+      /^https?:\/\//.test(imageFileId) ? { href: imageFileId }
+        : retryTelegramFileRead(() => bot.telegram.getFileLink(imageFileId)),
+      retryTelegramFileRead(() => bot.telegram.getFileLink(videoFileId)),
     ]);
-    const [image, video] = await Promise.all([downloadBuffer(imageLink.href), downloadBuffer(videoLink.href)]);
+    const [image, video] = await Promise.all([
+      retryTelegramFileRead(() => downloadBuffer(imageLink.href)),
+      retryTelegramFileRead(() => downloadBuffer(videoLink.href)),
+    ]);
     const meta = await sharp(image.buf).metadata();
     if (!['jpeg', 'png'].includes(meta.format || '') || (meta.width || 0) < 300 || (meta.height || 0) < 300) {
       throw new Error('INVALID_CHARACTER_IMAGE');

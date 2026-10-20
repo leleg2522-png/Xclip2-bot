@@ -4,6 +4,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { KLING_P4, klingP4VideoError, generateKlingP4Flora, type KlingP4Api } from '../src/kling-p4-flora';
+import { retryTelegramFileRead } from '../src/telegram-file-retry';
 
 const source = fs.readFileSync(path.resolve(__dirname, '../src/index.ts'), 'utf8');
 assert.match(source, /kling_p4:\s*2500/);
@@ -117,6 +118,7 @@ async function testBilling(delivered: boolean, failure = false, chargeOk = true)
       editMessageText: async () => {}, sendMessage: async () => {}, deleteMessage: async () => {},
       getFileLink: async (id: string) => ({ href: `https://example.test/${id}` }),
     } },
+    retryTelegramFileRead: (read: () => Promise<unknown>) => retryTelegramFileRead(read, async () => {}),
     downloadBuffer: async () => ({ buf: Buffer.from('media'), mime: 'image/png', ext: 'png' }),
     sharp: () => ({ metadata: async () => ({ format: 'png', width: 600, height: 600 }) }),
     detectVideoType: () => ({ ext: 'mp4', mime: 'video/mp4' }),

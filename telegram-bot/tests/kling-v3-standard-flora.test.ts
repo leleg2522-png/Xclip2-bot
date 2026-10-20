@@ -7,6 +7,7 @@ import { KLING_V3_STANDARD, klingV3StandardVideoError, generateKlingV3StandardFl
 import { KLING_P4 } from '../src/kling-p4-flora';
 import { ALRIZ_KLING_P5 } from '../src/alriz-motion';
 import type { KlingP4Api } from '../src/kling-p4-flora';
+import { retryTelegramFileRead, redactTelegramToken } from '../src/telegram-file-retry';
 
 const source = fs.readFileSync(path.resolve(__dirname, '../src/index.ts'), 'utf8');
 assert.equal(KLING_V3_STANDARD.label, 'Kling MC V3 Pro P5');
@@ -58,7 +59,7 @@ function compile(text: string) {
 }
 // Use the production string-based classifier so runner tests catch an Error
 // object being passed directly to raw.toLowerCase().
-const classifierContext = vm.createContext({});
+const classifierContext = vm.createContext({ redactTelegramToken });
 for (const [startMarker, endMarker] of [
   ['function describeError(', '// Provider and bridge names'],
   ['function isFloraKeyExhaustedError(', 'function isFloraRetryablePreSubmitError('],
@@ -121,6 +122,7 @@ async function billingTest(outcome: string, route: 'p5' | 'p4' | 'xclip_motion' 
     bot: { telegram: { editMessageText: async (_chat: number, _msg: number, _inline: unknown, text: string) => { events.messages.push(text); },
       sendMessage: async (_chat: number, text: string) => { events.messages.push(text); }, deleteMessage: async () => {},
       getFileLink: async (id: string) => ({ href: `https://example.test/${id}` }) } },
+    retryTelegramFileRead: (read: () => Promise<unknown>) => retryTelegramFileRead(read, async () => {}),
     downloadBuffer: async () => ({ buf: Buffer.from('fixture'), mime: 'image/png', ext: 'png' }),
     sharp: () => ({ metadata: async () => ({ format: 'png', width: 600, height: 600 }) }),
     detectVideoType: () => ({ ext: 'mp4', mime: 'video/mp4' }),
