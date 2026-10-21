@@ -224,6 +224,8 @@ const MODEL_PRICES = {
   picsart_ltx_fast: 3000, // LTX 2.5 Fast 20s, native 1080p
   picsart_kling_omni: 3500, // Kling Omni 12s, native 720p
   picsart_kling4: 8000, // Kling 4 I2V/T2V, 30s with mandatory 1080p finishing
+  picsart_kling4_10: 3500,
+  picsart_kling4_15: 5000,
   picsart_seedance_2_mini: 3500, // Seedance 2.0 Mini, native 480p
   picsart_seedance_2_mini_edit: 3500, // Seedance 2.0 Mini Video Edit, native 480p
   picsart_seedance_2_fast_edit: 4000, // Seedance 2.0 Fast Video Edit, native 480p
@@ -237,9 +239,14 @@ const MODEL_PRICES = {
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
 
-function getPicsartI2vPrice(model: picsart.PicsartI2vModelKey): number {
+function getPicsartI2vPrice(model: picsart.PicsartI2vModelKey, duration: Kling4Duration = 30): number {
   if (model === 'kling_v4_omni') throw new Error('MODEL_REMOVED');
-  if (model === 'kling_v4' || model === 'kling_v4_t2v') return MODEL_PRICES.picsart_kling4;
+  if (model === 'kling_v4' || model === 'kling_v4_t2v') {
+    if (duration === 10) return MODEL_PRICES.picsart_kling4_10;
+    if (duration === 15) return MODEL_PRICES.picsart_kling4_15;
+    if (duration === 30) return MODEL_PRICES.picsart_kling4;
+    throw new Error('PICSART_KLING4_INVALID_DURATION');
+  }
   if (model === 'ltx_pro') return MODEL_PRICES.picsart_ltx_pro;
   if (model === 'ltx_fast') return MODEL_PRICES.picsart_ltx_fast;
   if (model === 'creatify_boreal') return MODEL_PRICES.picsart_creatify_boreal;
@@ -2564,8 +2571,8 @@ function mainMenuKeyboard() {
     [Markup.button.callback('⚡ Kling v3 Turbo', 'mode_pi2v_kling_v3_turbo')],
     [Markup.button.callback('🎭 Kling v2.6 Pro', 'mode_pi2v_kling_v26_pro')],
     [Markup.button.callback('🎞️ Kling v3 Standard', 'mode_pi2v_kling_v3')],
-    [Markup.button.callback('🎬 Kling 4 1080p · Image to Video · 10/15/30 detik · Rp8.000', 'mode_pi2v_kling_v4')],
-    [Markup.button.callback('✍️ Kling 4 1080p · Text to Video · 10/15/30 detik · Rp8.000', 'mode_pi2v_kling_v4_t2v')],
+    [Markup.button.callback(`🎬 Kling 4 1080p · Image to Video · 10/15/30 detik · mulai ${formatRupiah(getPicsartI2vPrice('kling_v4', 10))}`, 'mode_pi2v_kling_v4')],
+    [Markup.button.callback(`✍️ Kling 4 1080p · Text to Video · 10/15/30 detik · mulai ${formatRupiah(getPicsartI2vPrice('kling_v4_t2v', 10))}`, 'mode_pi2v_kling_v4_t2v')],
     [Markup.button.callback('🌐 Kling Omni • 12 detik • 720p', 'mode_pi2v_kling_omni')],
     ...Object.entries(CHINA_VIDEO_MODELS).map(([key, config]) => [
       Markup.button.callback(`${config.label} • ${config.duration} detik • ${config.resolution} • ${formatRupiah(config.price)}`, `mode_china_${key}`),
@@ -3143,8 +3150,8 @@ function hargaText(): string {
     `• Kling v3 Turbo — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v2.6 Pro — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v3 Standard — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
-    `• Kling 4 1080p · Image to Video (10/15/30 detik) — ${formatRupiah(MODEL_PRICES.picsart_kling4)}\n` +
-    `• Kling 4 1080p · Text to Video (10/15/30 detik) — ${formatRupiah(MODEL_PRICES.picsart_kling4)}\n` +
+    `• Kling 4 1080p · Image to Video (10/15/30 detik) — ${KLING4_DURATIONS.map(duration => `${duration} detik ${formatRupiah(getPicsartI2vPrice('kling_v4', duration))}`).join(' / ')}\n` +
+    `• Kling 4 1080p · Text to Video (10/15/30 detik) — ${KLING4_DURATIONS.map(duration => `${duration} detik ${formatRupiah(getPicsartI2vPrice('kling_v4_t2v', duration))}`).join(' / ')}\n` +
     `• Kling Omni (12 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_kling_omni)}\n` +
     `• Wan v2 Image-to-Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Wan 3.0 (30 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_wan_v3)}\n` +
@@ -4889,7 +4896,7 @@ bot.on('callback_query', async (ctx) => {
     }
     setSession(userId, { mode: 'picsart_i2v_wait_ratio', picsartI2vDuration: duration });
     return ctx.editMessageText(
-      `Kling 4 1080p · ${duration} detik\nHarga: ${formatRupiah(MODEL_PRICES.picsart_kling4)} per video\n\nPilih rasio video:`,
+      `Kling 4 1080p · ${duration} detik\nHarga: ${formatRupiah(getPicsartI2vPrice(session.picsartI2vModel!, duration))} per video\n\nPilih rasio video:`,
       picsartI2vRatioKeyboard()
     );
   }
@@ -4931,7 +4938,7 @@ bot.on('callback_query', async (ctx) => {
     return ctx.editMessageText(
       `🌀 *${displayLabel}*\n\n` +
       `Parameter: *${ratio} · ${picsartI2vPublicSettings(model, cfg.settingsLabel, session.picsartI2vDuration)}*\n` +
-      `Harga: *${formatRupiah(getPicsartI2vPrice(model))}* per video\n\n` +
+      `Harga: *${formatRupiah(getPicsartI2vPrice(model, session.picsartI2vDuration))}* per video\n\n` +
       (model === 'kling_v4_t2v'
         ? '*Langkah terakhir:* Kirim *prompt teks* (deskripsi adegan). Tidak perlu foto.'
         : supportsMultiplePicsartI2vImages(model)
@@ -5019,7 +5026,7 @@ bot.on('callback_query', async (ctx) => {
         (model === 'kling_v4' || model === 'kling_v4_t2v' ? '*Langkah 1:* Pilih durasi video:' : '*Langkah 1:* Pilih rasio video:'),
         { parse_mode: 'Markdown', ...(model === 'kling_v4' || model === 'kling_v4_t2v'
           ? Markup.inlineKeyboard([
-            KLING4_DURATIONS.map(duration => Markup.button.callback(`${duration} detik`, `picsart_duration_${duration}`)),
+            KLING4_DURATIONS.map(duration => Markup.button.callback(`${duration} detik · ${formatRupiah(getPicsartI2vPrice(model, duration))}`, `picsart_duration_${duration}`)),
             [Markup.button.callback('« Kembali', 'back_main')],
           ])
           : picsartI2vRatioKeyboard()) }
@@ -9127,7 +9134,8 @@ async function runPicsartI2v(
   const settingsLabel = (seedance1080 || opts.model === 'ltx_pro' || opts.model === 'ltx_fast' || opts.model === 'creatify_boreal' || opts.model === 'wan_v3' || opts.model === 'pixverse_v6' || kling4HD) && opts.ratio
     ? `${opts.ratio} · ${nativeSettings}`
     : nativeSettings;
-  const PRICE = opts.priceKey ? MODEL_PRICES[opts.priceKey] : getPicsartI2vPrice(opts.model);
+  const PRICE = kling4HD ? getPicsartI2vPrice(opts.model, opts.duration)
+    : opts.priceKey ? MODEL_PRICES[opts.priceKey] : getPicsartI2vPrice(opts.model);
   let stage = 'charge';
   const charge = await beginCharge(dbUserId, PRICE, 3);
   if (!charge.ok) {

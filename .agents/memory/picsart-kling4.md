@@ -29,12 +29,15 @@ Kling MC V3 Pro P5 package.
 
 ## Approved public price
 
-Both Kling 4 modes cost **Rp8.000 per video** for the 30-second package.
+Both Kling 4 modes cost **Rp3.500 for 10 seconds**, **Rp5.000 for 15 seconds**,
+and **Rp8.000 for 30 seconds**.
 
-**Why:** The user answered `8000` when asked the selling price for both modes.
+**Why:** The user answered `8000` for the original 30-second package, then set
+“harga 10 detik 3,5 k 15 detik 5k” after requesting duration choices.
 
-**How to apply:** Keep the same selling price for image-to-video and
-text-to-video; preserve full refunds when generation or delivery fails.
+**How to apply:** Keep the same duration-based prices for image-to-video and
+text-to-video; charge and fully refund the selected duration's price when
+generation or delivery fails.
 
 ## Evidence and limits
 
@@ -121,7 +124,7 @@ single-image generation, not a completed five-image or video-reference run.
 five images using the evidenced list field, but video-reference fields remain
 unknown and must not be invented.
 
-**How to apply:** Preserve the Flash backend and Rp8,000 price for both public
+**How to apply:** Preserve the Flash backend and duration-based prices for both public
 Kling 4 modes, the five-image input cap, and mandatory Renderful 1080p finishing.
 Keep the separate Omni choice inaccessible, including from old menu buttons.
 Treat video references as blocked pending a submitted payload containing them;
