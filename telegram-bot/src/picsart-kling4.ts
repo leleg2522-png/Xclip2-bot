@@ -2,6 +2,8 @@ export const KLING4_MODEL = 'kling-v4-omni';
 export const KLING4_DURATION_SECONDS = 30;
 export const KLING4_RESOLUTION = '720p';
 export const KLING4_CREDITS = 90;
+export const KLING4_DURATIONS = [10, 15, 30] as const;
+export type Kling4Duration = typeof KLING4_DURATIONS[number];
 
 export function buildKling4Params(input: {
   mode: 'i2v' | 't2v';
@@ -9,8 +11,11 @@ export function buildKling4Params(input: {
   ratio: '9:16' | '16:9';
   imageUrl?: string;
   imageUrls?: string[];
+  duration?: Kling4Duration;
   outputName?: string;
 }): Record<string, unknown> {
+  const duration = input.duration ?? KLING4_DURATION_SECONDS;
+  if (!(KLING4_DURATIONS as readonly number[]).includes(duration)) throw new Error('PICSART_KLING4_INVALID_DURATION');
   if (!input.prompt.trim() || !['9:16', '16:9'].includes(input.ratio)) {
     throw new Error('PICSART_KLING4_INVALID_INPUT');
   }
@@ -30,7 +35,7 @@ export function buildKling4Params(input: {
   return {
     prompt: input.prompt.trim(),
     aspect_ratio: input.ratio,
-    duration: String(KLING4_DURATION_SECONDS),
+    duration: String(duration),
     model_name: KLING4_MODEL,
     resolution: KLING4_RESOLUTION,
     ...(input.mode === 'i2v' ? { image_list: imageUrls.map(image_url => ({ image_url })) } : {}),
@@ -43,7 +48,7 @@ export function buildKling4Params(input: {
           aiSDKPayload: JSON.stringify({
             prompt: input.prompt.trim(),
             aspectRatio: input.ratio,
-            duration: KLING4_DURATION_SECONDS,
+            duration,
             resolution: KLING4_RESOLUTION,
             referType: 'feature',
             ...(input.mode === 'i2v' ? { imageUrls } : {}),

@@ -5,6 +5,19 @@ description: Captured Kling 4 T2V completion, I2V quote acceptance, native setti
 
 # Kling 4 contracts
 
+## Public duration selection
+
+Both public Kling 4 modes offer 10, 15, or 30 seconds; do not keep the bot
+restricted to the originally captured 30-second package.
+
+**Why:** The user requested “tambahkan pilihan durasi untuk kling 4 jadi kasih
+opsi durasi 10 detik 15 detik atau 30 detik”.
+
+**How to apply:** Preserve the duration selection across reference collection,
+submission, and result captions. Short-duration credit quotes are not proof
+of a completed generation; only 30-second Flash completion is evidenced by
+the supplied captures. Keep mandatory 1080p finishing for all durations.
+
 The user requested both image-to-video and text-to-video as new bot features,
 separate from Kling Motion Control P5.
 

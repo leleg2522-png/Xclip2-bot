@@ -19,7 +19,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import axios from 'axios';
-import { buildKling4Params, KLING4_CREDITS } from './picsart-kling4';
+import { buildKling4Params, KLING4_CREDITS, KLING4_DURATIONS, type Kling4Duration } from './picsart-kling4';
 import { buildKling4OmniParams } from './picsart-kling4-omni';
 import { HAR_MODELS, buildHarModelParams, harWorkflow, harResultUrl, type HarModelKey, type HarAspectRatio } from './picsart-har-models';
 import FormData from 'form-data';
@@ -2207,7 +2207,7 @@ export function buildPicsartI2vParams(
   model: PicsartI2vModelKey,
   prompt: string,
   imageUrl: string,
-  options?: { ratio?: WanV3AspectRatio; outputName?: string; imageUrls?: string[] }
+  options?: { ratio?: WanV3AspectRatio; outputName?: string; imageUrls?: string[]; duration?: Kling4Duration }
 ): Record<string, unknown> {
   switch (model) {
     case 'kling_v4_omni':
@@ -2225,6 +2225,7 @@ export function buildPicsartI2vParams(
         ratio: options?.ratio ?? '9:16',
         imageUrl: imageUrl || undefined,
         imageUrls: options?.imageUrls,
+        duration: options?.duration,
         outputName: options?.outputName,
       });
     case 'ltx_fast':
@@ -2650,7 +2651,7 @@ async function submitPicsartI2v(
   model: PicsartI2vModelKey,
   prompt: string,
   imageUrl: string,
-  options?: { ratio?: WanV3AspectRatio; outputName?: string; imageUrls?: string[] }
+  options?: { ratio?: WanV3AspectRatio; outputName?: string; imageUrls?: string[]; duration?: Kling4Duration }
 ): Promise<string> {
   const cfg = PICSART_I2V_MODELS[model];
   const access = await getAccessToken(credId);
@@ -2718,11 +2719,14 @@ async function preflightKling4OmniCredits(
   prompt: string,
   imageUrl: string,
   ratio: WanV3AspectRatio,
+  shortInput?: { mode: 'i2v' | 't2v'; duration: Kling4Duration; imageUrls: string[] },
 ): Promise<void> {
-  // This HAR does not include quote response bodies. Do not assume the regular
-  // Kling 4 credit price applies to Omni; ask the free options endpoint instead.
+  // Quote legacy Omni and shorter Flash durations rather than assuming their
+  // credit price matches the captured 30-second generation.
   const access = await getAccessToken(credId);
-  const { options: _options, ...params } = buildKling4OmniParams({ prompt, imageUrl, ratio });
+  const { options: _options, ...params } = shortInput
+    ? buildKling4Params({ prompt, ratio, ...shortInput })
+    : buildKling4OmniParams({ prompt, imageUrl, ratio });
   const quote = await http.post(`${API_BASE}/gw-v2/workflows/kling-omni-video/options`,
     { params },
     {
@@ -3092,14 +3096,19 @@ export async function generatePicsartI2v(input: {
   imageName?: string;
   imageMime?: string;
   ratio?: WanV3AspectRatio;
+  duration?: Kling4Duration;
   onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
   const cfg = PICSART_I2V_MODELS[input.model];
+  const publicKling4 = input.model === 'kling_v4' || input.model === 'kling_v4_t2v';
+  if (publicKling4 && !(KLING4_DURATIONS as readonly number[]).includes(input.duration ?? 30)) {
+    throw new Error('PICSART_KLING4_INVALID_DURATION');
+  }
   return runWithAccount(input.userId, cfg.pool, async (credId) => {
     const isKling4 = input.model === 'kling_v4' || input.model === 'kling_v4_t2v' || input.model === 'kling_v4_omni';
     const textOnly = input.model === 'kling_v4_t2v';
-    if (isKling4 && input.model !== 'kling_v4_omni') {
+    if (publicKling4 && (input.duration ?? 30) === 30) {
       const { credits } = await getCredits(credId);
       if (!Number.isFinite(credits)) throw new Error('PICSART_CREDITS_UNKNOWN');
       if (credits < KLING4_CREDITS) throw new Error(ERR_INSUFFICIENT_CREDITS);
@@ -3146,6 +3155,11 @@ export async function generatePicsartI2v(input: {
     if (input.model === 'kling_v4_omni') {
       await preflightKling4OmniCredits(credId, input.prompt, imageUrls[0], input.ratio ?? '9:16');
     }
+    if (publicKling4 && input.duration && input.duration !== 30) {
+      await preflightKling4OmniCredits(credId, input.prompt, imageUrls[0] ?? '', input.ratio ?? '9:16', {
+        mode: textOnly ? 't2v' : 'i2v', duration: input.duration, imageUrls,
+      });
+    }
     console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=submit images=${imageUrls.length} ratio=${input.ratio ?? '9:16'}`);
     input.onStatus?.('submit');
     const id = await submitPicsartI2v(
@@ -3153,7 +3167,7 @@ export async function generatePicsartI2v(input: {
       input.model,
       input.prompt,
       imageUrls[0] ?? '',
-      { ratio: input.ratio, imageUrls }
+      { ratio: input.ratio, imageUrls, duration: input.duration }
     );
     console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=submit-accepted job=${id}`);
     input.onStatus?.('poll');

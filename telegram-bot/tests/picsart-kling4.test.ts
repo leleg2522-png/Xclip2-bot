@@ -4,7 +4,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import ts from 'typescript';
 import * as picsart from '../src/picsart';
-import { buildKling4Params, KLING4_CREDITS } from '../src/picsart-kling4';
+import { buildKling4Params, KLING4_CREDITS, KLING4_DURATIONS } from '../src/picsart-kling4';
 import { buildKling4OmniParams } from '../src/picsart-kling4-omni';
 
 const backend = fs.readFileSync(path.resolve(__dirname, '../src/picsart.ts'), 'utf8');
@@ -60,6 +60,16 @@ function parameterTests() {
   assert.throws(() => buildKling4Params({ mode: 't2v', prompt: 'a', ratio: '9:16', imageUrl: image }), /UNEXPECTED_IMAGE/);
   assert.throws(() => buildKling4Params({ mode: 't2v', prompt: '', ratio: '9:16' }), /INVALID_INPUT/);
   assert.throws(() => buildKling4Params({ mode: 't2v', prompt: 'a', ratio: '4:3' as any }), /INVALID_INPUT/);
+  for (const duration of KLING4_DURATIONS) {
+    for (const mode of ['i2v', 't2v'] as const) {
+      const params = buildKling4Params({ mode, prompt: 'test', ratio: '16:9', duration, ...(mode === 'i2v' ? { imageUrl: image } : {}) }) as any;
+      assert.equal(params.duration, String(duration));
+      assert.equal(JSON.parse(params.options.drive.attributes.aiSDKPayload).duration, duration);
+    }
+  }
+  for (const duration of [0, 5, 20, 60, NaN]) {
+    assert.throws(() => buildKling4Params({ mode: 't2v', prompt: 'a', ratio: '9:16', duration: duration as any }), /INVALID_DURATION/);
+  }
   const images = Array.from({ length: 5 }, (_, n) => `https://cdn.example.test/ref-${n}.jpg`);
   const multi = picsart.buildPicsartI2vParams('kling_v4', 'a', images[0], { imageUrls: images }) as any;
   assert.deepEqual(multi.image_list, images.map(image_url => ({ image_url })));
@@ -73,14 +83,14 @@ function parameterTests() {
   assert.equal(picsart.buildPicsartI2vParams('kling_omni', 'a', image).model_name, 'kling-v3-omni', 'Existing Omni v3 is unchanged');
 }
 
-async function backendTest(model: typeof models[number], outcome = 'success', imageCount = 1) {
+async function backendTest(model: typeof models[number], outcome = 'success', imageCount = 1, duration: 10 | 15 | 30 = 30) {
   const t2v = model === 'kling_v4_t2v';
   const omni = model === 'kling_v4_omni';
   const workflow = 'kling-omni-video';
   const events = { accounts: 0, uploads: 0, quotes: 0, posts: 0, gets: 0, dead: 0 };
   const context = vm.createContext({
     exports: {}, Buffer, PICSART_I2V_MODELS: picsart.PICSART_I2V_MODELS,
-    PICSART_I2V_MAX_IMAGES: 5, KLING4_CREDITS,
+    PICSART_I2V_MAX_IMAGES: 5, KLING4_CREDITS, KLING4_DURATIONS, buildKling4Params,
     buildPicsartI2vParams: picsart.buildPicsartI2vParams,
     buildKling4OmniParams,
     extractPicsartVideoUrl: picsart.extractPicsartVideoUrl,
@@ -118,13 +128,14 @@ async function backendTest(model: typeof models[number], outcome = 'success', im
       post: async (url: string, body: any, config: any) => {
         if (url.endsWith('/options')) {
           events.quotes++;
-          assert.equal(omni, true);
+           assert.ok(omni || duration !== 30);
           assert.equal(url, 'https://api.picsart.com/gw-v2/workflows/kling-omni-video/options');
           assert.equal(config.headers.authorization, 'Bearer fixture-access-token');
           assert.equal(body.params.model_name, 'kling-v4-omni');
-          assert.equal(body.params.duration, '30');
+           assert.equal(body.params.duration, String(duration));
           assert.equal(body.params.resolution, '720p');
-          assert.equal(body.params.image_list[0].image_url, image);
+           if (!t2v) assert.equal(body.params.image_list[0].image_url, image);
+           else assert.equal(body.params.image_list, undefined);
           assert.equal(body.params.options, undefined);
           if (outcome === 'quote-timeout') throw Error('ETIMEDOUT');
           return {
@@ -141,7 +152,7 @@ async function backendTest(model: typeof models[number], outcome = 'success', im
           assert.equal(body.params.image_list[0].image_url, image);
           assert.equal(body.params.image_list.length, imageCount);
         }
-        assert.equal(body.params.duration, '30');
+        assert.equal(body.params.duration, String(duration));
         if (outcome === 'submit-timeout') throw Error('ETIMEDOUT');
         if (outcome === 'submit-error') return { status: 500, data: { message: 'PICSART_INSUFFICIENT_CREDITS' } };
         return { status: 201, data: { response: { id: outcome === 'no-id' ? undefined : 'job-kling4' } } };
@@ -169,7 +180,7 @@ async function backendTest(model: typeof models[number], outcome = 'success', im
   ];
   vm.runInContext(compile(blocks.join('\n')), context);
   const promise = context.exports.generatePicsartI2v({
-    userId: 2, model, prompt: 'A landscape', ratio: '16:9',
+    userId: 2, model, prompt: 'A landscape', ratio: '16:9', duration,
     images: t2v ? [] : Array.from({ length: imageCount }, () => ({ buffer: Buffer.from('photo'), name: 'reference.jpg', mime: 'image/jpeg' })),
   });
   if (['success', 'low-first', 'transient'].includes(outcome)) {
@@ -180,18 +191,20 @@ async function backendTest(model: typeof models[number], outcome = 'success', im
   assert.equal(events.accounts, ['low-first', 'no-credits'].includes(outcome) ? 2 : 1);
   assert.equal(events.uploads, omni
     ? (['low-first', 'no-credits'].includes(outcome) ? 2 : 1)
+    : duration !== 30 ? t2v ? 0 : imageCount
     : t2v || ['no-credits', 'unknown-credits'].includes(outcome) ? 0 : imageCount);
-  assert.equal(events.quotes, omni ? events.accounts : 0);
+  assert.equal(events.quotes, omni || duration !== 30 ? events.accounts : 0);
   assert.equal(events.dead, outcome === 'poll-auth' ? 1 : 0);
 }
 
-async function wizardTest(model: typeof models[number], ratio: '9:16' | '16:9') {
+async function wizardTest(model: typeof models[number], ratio: '9:16' | '16:9', duration: 10 | 15 | 30 = 30) {
   const t2v = model === 'kling_v4_t2v';
   const price = model === 'kling_v4_omni' ? 8500 : 8000;
   const state: any = { mode: 'idle', dbUserId: 2, picsartI2vImageUrl: image, picsartI2vImageUrls: [image] };
   const messages: string[] = [], calls: any[][] = [];
   const ctx = vm.createContext({
-    picsart, session: state, userId: 1, fileUrl: image, MODEL_PRICES: { picsart_kling4: 8000, picsart_kling4_omni: 8500 },
+    picsart, KLING4_DURATIONS, session: state, userId: 1, fileUrl: image, MODEL_PRICES: { picsart_kling4: 8000, picsart_kling4_omni: 8500 },
+    Markup: { inlineKeyboard: (buttons: any) => ({ buttons }), button: { callback: (text: string, data: string) => ({ text, data }) } },
     ctx: { chat: { id: 5 }, message: { text: 'A landscape' },
       reply: async (text: string) => { messages.push(text); return { message_id: 6 }; },
       editMessageText: async (text: string) => { messages.push(text); },
@@ -209,7 +222,17 @@ async function wizardTest(model: typeof models[number], ratio: '9:16' | '16:9') 
   const run = async (code: string) => vm.runInContext(compile(`(async () => { ${code} })()`), ctx);
   ctx.data = `mode_pi2v_${model}`;
   await run(fragment(app, "if (data.startsWith('mode_pi2v_')) {", "if (data === 'mode_kling')"));
+  assert.equal(state.mode, 'picsart_i2v_wait_duration');
+  const durationBranch = fragment(app, "if (data.startsWith('picsart_duration_')) {", "if (data.startsWith('picsart_ratio_')) {");
+  ctx.data = 'picsart_duration_20';
+  await run(durationBranch);
+  assert.equal(state.mode, 'picsart_i2v_wait_duration', 'Invalid duration cannot advance');
+  ctx.data = `picsart_duration_${duration}`;
+  await run(durationBranch);
   assert.equal(state.mode, 'picsart_i2v_wait_ratio');
+  assert.equal(state.picsartI2vDuration, duration);
+  await run(durationBranch);
+  assert.equal(state.mode, 'picsart_i2v_wait_ratio', 'Stale duration cannot advance');
   assert.equal(state.picsartI2vImageUrl, undefined);
   assert.equal(state.picsartI2vImageUrls, undefined);
   ctx.data = ratio === '16:9' ? 'picsart_ratio_169' : 'picsart_ratio_916';
@@ -218,6 +241,7 @@ async function wizardTest(model: typeof models[number], ratio: '9:16' | '16:9') 
   assert.equal(state.mode, t2v ? 'picsart_i2v_wait_prompt' : 'picsart_i2v_wait_image');
   assert.ok(messages.at(-1)!.includes(`Rp${price}`));
   assert.match(messages.at(-1)!, /1080p/);
+  assert.ok(messages.at(-1)!.includes(`${duration} detik`));
   assert.doesNotMatch(messages.at(-1)!, /720p native|1080p native/);
   if (!t2v) {
     const photoBranch = fragment(app, "if (session.mode === 'picsart_i2v_wait_image')", "if (session.mode === 'oneover_wait_image')");
@@ -233,13 +257,14 @@ async function wizardTest(model: typeof models[number], ratio: '9:16' | '16:9') 
   assert.equal(calls.length, 1);
   assert.equal(calls[0][5].model, model);
   assert.equal(calls[0][5].ratio, ratio);
+  assert.equal(calls[0][5].duration, duration);
   assert.deepEqual(Array.from(calls[0][5].imageUrls), t2v ? [] : Array(5).fill(image));
   assert.equal(state.mode, 'idle');
   await run(promptBranch); await run(ratioBranch);
   assert.equal(calls.length, 1, 'Stale prompt/ratio events cannot submit another job');
 }
 
-async function billingTest(model: typeof models[number], outcome: string, ratio: '9:16' | '16:9') {
+async function billingTest(model: typeof models[number], outcome: string, ratio: '9:16' | '16:9', duration: 10 | 15 | 30 = 30) {
   const price = model === 'kling_v4_omni' ? 8500 : 8000;
   const events = { charges: [] as number[], refunds: [] as number[], deliveries: 0, released: 0, success: 0, stages: [] as string[] };
   const finishedOutput = 'https://bot.example.test/kling4-1080p.mp4';
@@ -247,6 +272,7 @@ async function billingTest(model: typeof models[number], outcome: string, ratio:
     picsart: { ...picsart, generatePicsartI2v: async (input: any) => {
       assert.equal(input.model, model);
       assert.equal(input.ratio, ratio);
+       assert.equal(input.duration, duration);
       assert.equal(input.images.length, model === 'kling_v4_t2v' ? 0 : 1);
       events.stages.push('generate');
       if (outcome === 'provider') throw Error('PICSART_KLING4_POST_SUBMIT_FAILED');
@@ -277,6 +303,7 @@ async function billingTest(model: typeof models[number], outcome: string, ratio:
       assert.equal(url, finishedOutput, 'Never deliver native fallback for any Kling 4 mode');
       assert.match(caption, /1080p/);
       assert.ok(caption.includes(ratio));
+       assert.ok(caption.includes(`${duration} detik`));
       assert.doesNotMatch(caption, /720|1080p native|Renderful|Picsart/i);
       if (outcome === 'delivery-error') throw Error('Telegram unavailable');
       return outcome !== 'delivery';
@@ -285,7 +312,7 @@ async function billingTest(model: typeof models[number], outcome: string, ratio:
   });
   vm.runInContext(compile(fragment(app, 'function getPicsartI2vPrice(', '\n//')), ctx);
   vm.runInContext(compile(fragment(app, 'async function runPicsartI2v(', '// ─── Background: Native Picsart Seedance 2.5')), ctx);
-  await ctx.runPicsartI2v(1, 2, 3, 4, 'A landscape', { model, imageUrls: model === 'kling_v4_t2v' ? [] : [image], ratio });
+  await ctx.runPicsartI2v(1, 2, 3, 4, 'A landscape', { model, imageUrls: model === 'kling_v4_t2v' ? [] : [image], ratio, duration });
   assert.deepEqual(events.charges, [price]);
   assert.deepEqual(events.refunds, ['success', 'insufficient'].includes(outcome) ? [] : [price]);
   assert.equal(events.released, outcome === 'insufficient' ? 0 : 1);
@@ -313,10 +340,16 @@ async function main() {
       for (const outcome of ['quote-http', 'quote-invalid', 'quote-timeout']) await backendTest(model, outcome);
       continue; // Historical backend contract only; the public Omni package is removed.
     }
-    for (const ratio of ['9:16', '16:9'] as const) await wizardTest(model, ratio);
-    for (const ratio of ['9:16', '16:9'] as const) {
-      for (const outcome of ['success', 'provider', 'delivery', 'delivery-error', 'insufficient', 'upscale-error', 'upscale-fallback']) {
-        await billingTest(model, outcome, ratio);
+    for (const duration of KLING4_DURATIONS) {
+      await backendTest(model, 'success', model === 'kling_v4' ? 5 : 1, duration);
+      if (duration !== 30) {
+        for (const failure of ['quote-http', 'quote-invalid', 'quote-timeout']) await backendTest(model, failure, 1, duration);
+      }
+      for (const ratio of ['9:16', '16:9'] as const) await wizardTest(model, ratio, duration);
+      for (const ratio of ['9:16', '16:9'] as const) {
+        for (const outcome of ['success', 'provider', 'delivery', 'delivery-error', 'insufficient', 'upscale-error', 'upscale-fallback']) {
+          await billingTest(model, outcome, ratio, duration);
+        }
       }
     }
     assert.ok(app.includes(`'mode_pi2v_${model}'`), 'Both modes have a menu button');
@@ -324,8 +357,8 @@ async function main() {
   assert.match(app, /picsart_kling4:\s*8000/);
   assert.doesNotMatch(app, /picsart_kling4_omni:\s*8500|Markup\.button\.callback\([^\n]*mode_pi2v_kling_v4_omni/);
   for (const mode of ['Image to Video', 'Text to Video']) {
-    assert.ok(app.includes(`• Kling 4 1080p · ${mode} (30 detik)`));
+    assert.ok(app.includes(`• Kling 4 1080p · ${mode} (10/15/30 detik)`));
   }
-  console.log('Kling 4 Flash I2V/T2V: five-image wizard and payload, Omni option removed, mandatory 1080p finishing, prices/refunds and no paid replay passed.');
+  console.log('Kling 4 I2V/T2V: 10/15/30-second wizard, payload, quotes, captions, five images, mandatory 1080p, refunds and no paid replay passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
