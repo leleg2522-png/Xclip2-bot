@@ -225,7 +225,7 @@ const MODEL_PRICES = {
   picsart_kling_omni: 3500, // Kling Omni 12s, native 720p
   picsart_kling4: 8000, // Kling 4 I2V/T2V, 30s with mandatory 1080p finishing
   picsart_kling4_10: 3500,
-  picsart_kling4_15: 5000,
+  picsart_kling4_15: 4000,
   picsart_seedance_2_mini: 3500, // Seedance 2.0 Mini, native 480p
   picsart_seedance_2_mini_edit: 3500, // Seedance 2.0 Mini Video Edit, native 480p
   picsart_seedance_2_fast_edit: 4000, // Seedance 2.0 Fast Video Edit, native 480p

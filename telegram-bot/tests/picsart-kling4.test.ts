@@ -199,11 +199,11 @@ async function backendTest(model: typeof models[number], outcome = 'success', im
 
 async function wizardTest(model: typeof models[number], ratio: '9:16' | '16:9', duration: 10 | 15 | 30 = 30) {
   const t2v = model === 'kling_v4_t2v';
-  const price = model === 'kling_v4_omni' ? 8500 : duration === 10 ? 3500 : duration === 15 ? 5000 : 8000;
+  const price = model === 'kling_v4_omni' ? 8500 : duration === 10 ? 3500 : duration === 15 ? 4000 : 8000;
   const state: any = { mode: 'idle', dbUserId: 2, picsartI2vImageUrl: image, picsartI2vImageUrls: [image] };
   const messages: string[] = [], calls: any[][] = [];
   const ctx = vm.createContext({
-    picsart, KLING4_DURATIONS, session: state, userId: 1, fileUrl: image, MODEL_PRICES: { picsart_kling4: 8000, picsart_kling4_10: 3500, picsart_kling4_15: 5000, picsart_kling4_omni: 8500 },
+    picsart, KLING4_DURATIONS, session: state, userId: 1, fileUrl: image, MODEL_PRICES: { picsart_kling4: 8000, picsart_kling4_10: 3500, picsart_kling4_15: 4000, picsart_kling4_omni: 8500 },
     Markup: { inlineKeyboard: (buttons: any) => ({ buttons }), button: { callback: (text: string, data: string) => ({ text, data }) } },
     ctx: { chat: { id: 5 }, message: { text: 'A landscape' },
       reply: async (text: string) => { messages.push(text); return { message_id: 6 }; },
@@ -266,7 +266,7 @@ async function wizardTest(model: typeof models[number], ratio: '9:16' | '16:9', 
 }
 
 async function billingTest(model: typeof models[number], outcome: string, ratio: '9:16' | '16:9', duration: 10 | 15 | 30 = 30) {
-  const price = model === 'kling_v4_omni' ? 8500 : duration === 10 ? 3500 : duration === 15 ? 5000 : 8000;
+  const price = model === 'kling_v4_omni' ? 8500 : duration === 10 ? 3500 : duration === 15 ? 4000 : 8000;
   const events = { charges: [] as number[], refunds: [] as number[], deliveries: 0, released: 0, success: 0, stages: [] as string[] };
   const finishedOutput = 'https://bot.example.test/kling4-1080p.mp4';
   const ctx = vm.createContext({
@@ -279,7 +279,7 @@ async function billingTest(model: typeof models[number], outcome: string, ratio:
       if (outcome === 'provider') throw Error('PICSART_KLING4_POST_SUBMIT_FAILED');
       return { url: output, credits: 90 };
     } },
-    MODEL_PRICES: { picsart_kling4: 8000, picsart_kling4_10: 3500, picsart_kling4_15: 5000, picsart_kling4_omni: 8500 },
+    MODEL_PRICES: { picsart_kling4: 8000, picsart_kling4_10: 3500, picsart_kling4_15: 4000, picsart_kling4_omni: 8500 },
     customerSafeModelLabel: (name: string) => name, isSeedance2I2vModel: () => false,
     supportsMultiplePicsartI2vImages: () => false,
     downloadBuffer: async () => ({ buf: Buffer.from('photo'), ext: 'jpg', mime: 'image/jpeg' }),
@@ -357,7 +357,7 @@ async function main() {
   }
   assert.match(app, /picsart_kling4:\s*8000/);
   assert.match(app, /picsart_kling4_10:\s*3500/);
-  assert.match(app, /picsart_kling4_15:\s*5000/);
+  assert.match(app, /picsart_kling4_15:\s*4000/);
   assert.doesNotMatch(app, /picsart_kling4_omni:\s*8500|Markup\.button\.callback\([^\n]*mode_pi2v_kling_v4_omni/);
   for (const mode of ['Image to Video', 'Text to Video']) {
     assert.ok(app.includes(`• Kling 4 1080p · ${mode} (10/15/30 detik)`));
