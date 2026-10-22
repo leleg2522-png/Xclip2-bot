@@ -19,6 +19,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import axios from 'axios';
+import { createPicsartConnection } from './picsart-connection';
 import { buildKling4Params, KLING4_CREDITS, KLING4_DURATIONS, type Kling4Duration } from './picsart-kling4';
 import { buildKling4OmniParams } from './picsart-kling4-omni';
 import { HAR_MODELS, buildHarModelParams, harWorkflow, harResultUrl, type HarModelKey, type HarAspectRatio } from './picsart-har-models';
@@ -38,9 +39,15 @@ const DEVICE_ID = process.env.PICSART_DEVICE_ID || "a.c.mq6gtspz.7f0f162c-5ab2-4
 const USER_AGENT = process.env.PICSART_UA ||
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
 
+// ISP is primary; auto mode temporarily uses direct egress on proxy failures
+// and probes ISP for recovery. Accepted/ambiguous paid jobs are never replayed.
+const PICSART_PROXY_MODE = (process.env.PICSART_PROXY_MODE ?? 'auto').trim().toLowerCase();
+if (!['auto', 'direct', 'isp'].includes(PICSART_PROXY_MODE)) {
+  throw new Error('PICSART_PROXY_MODE_INVALID: gunakan auto, direct atau isp');
+}
 const DECODO_PROXY_USERNAME = process.env.DECODO_PROXY_USERNAME?.trim();
 const DECODO_PROXY_PASSWORD = process.env.DECODO_PROXY_PASSWORD?.trim();
-if (!DECODO_PROXY_USERNAME || !DECODO_PROXY_PASSWORD) {
+if (PICSART_PROXY_MODE !== 'direct' && (!DECODO_PROXY_USERNAME || !DECODO_PROXY_PASSWORD)) {
   throw new Error(
     'DECODO_PROXY_CONFIG_MISSING: DECODO_PROXY_USERNAME dan DECODO_PROXY_PASSWORD wajib diisi; ' +
     'Picsart direct egress sengaja dinonaktifkan'
@@ -55,17 +62,22 @@ function createDecodoProxyAgent(port: string): HttpsProxyAgent<string> {
   );
 }
 
-const decodoPrimaryAgent = createDecodoProxyAgent(process.env.DECODO_PROXY_PORT || '10003');
-console.log(
-  `[picsart:proxy] Decodo ISP active host=${decodoPrimaryAgent.proxy.hostname} ` +
-  `port=${decodoPrimaryAgent.proxy.port}; direct egress disabled`
-);
+const decodoPrimaryAgent = PICSART_PROXY_MODE !== 'direct'
+  ? createDecodoProxyAgent(process.env.DECODO_PROXY_PORT || '10003')
+  : undefined;
+if (decodoPrimaryAgent) {
+  console.log(
+    `[picsart:proxy] Decodo ISP active host=${decodoPrimaryAgent.proxy.hostname} ` +
+    `port=${decodoPrimaryAgent.proxy.port}; mode=${PICSART_PROXY_MODE}; ` +
+    (PICSART_PROXY_MODE === 'auto' ? 'direct fallback enabled' : 'direct egress disabled')
+  );
+} else {
+  console.log('[picsart:proxy] DIRECT forced; hosting IP visible to Picsart');
+}
 
-const http = axios.create({
-  timeout: 120_000,
-  proxy: false,
-  httpAgent: decodoPrimaryAgent,
-  httpsAgent: decodoPrimaryAgent,
+const http = createPicsartConnection({
+  mode: PICSART_PROXY_MODE as 'auto' | 'isp' | 'direct',
+  agent: decodoPrimaryAgent,
 });
 
 // Picsart returns any 2xx (e.g. 200 OK or 201 Created) on success.
@@ -731,11 +743,12 @@ export async function uploadFile(
     } catch (e: any) {
       const msg = String(e?.message ?? e);
       const transient = e?.code === 'ECONNABORTED'
+        || /status 407\b/.test(msg)
         || /ETIMEDOUT|ECONNRESET|EPIPE|socket hang up|timeout/i.test(msg);
       if (attempt < 2 && transient) {
         console.log(
-          `[picsart:upload] ${filename} Decodo ISP attempt failed; ` +
-          `retrying once through the same static ISP IP: ${msg}`
+          `[picsart:upload] ${filename} upload attempt failed; ` +
+          `retrying once through the same configured connection: ${msg}`
         );
         await new Promise((resolve) => setTimeout(resolve, 2_000));
         continue;

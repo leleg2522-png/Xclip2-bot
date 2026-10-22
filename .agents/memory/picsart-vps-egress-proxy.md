@@ -5,7 +5,25 @@ description: Rules for hiding Railway behind static Decodo ISP proxy endpoints
 
 # Picsart Decodo ISP egress
 
-**Rule:** Route every Picsart refresh, upload, submit, and poll request through the static Decodo ISP proxy. Fail closed when Decodo credentials are missing; never silently expose Railway with direct egress.
+**Current rule:** Keep Decodo ISP primary. Automatically use direct Railway
+egress when the proxy fails and return to ISP after a free recovery probe.
+Do not disable ISP globally as the outage workaround.
+
+**Why:** After being told Picsart would see Railway's IP during fallback, the
+user requested a temporary workaround and corrected the implementation:
+“jangan nonaktifkan tapi kaya buat agar mereka bisa beralih”.
+This supersedes the earlier always-ISP/no-direct-fallback rule.
+
+**How to apply:** Switch transport, never rerun paid generation orchestration.
+Retry safe reads/free requests through direct egress, preserve the same accepted
+job ID for polling, and never replay an ambiguous paid submit. Explicit proxy
+407 rejection precedes upstream acceptance; multipart bodies must be rebuilt
+before retry. Return to ISP only after a successful connectivity probe, not
+merely because a cooldown expired.
+
+**Normal ISP rule (when restored):** Route every Picsart refresh, upload, submit,
+and poll through the static Decodo ISP proxy. In ISP mode fail closed when
+credentials are missing; do not silently fall back to direct egress.
 
 **Why:** Self-hosted VPS CONNECT tunnels were intermittently reset, while direct Railway egress exposed the hosting IP. Decodo's ISP endpoints provide managed intermediary IPs without the VPS tunnel dependency.
 
