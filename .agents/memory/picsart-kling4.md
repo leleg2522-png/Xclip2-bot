@@ -15,8 +15,12 @@ opsi durasi 10 detik 15 detik atau 30 detik”.
 
 **How to apply:** Preserve the duration selection across reference collection,
 submission, and result captions. Short-duration credit quotes are not proof
-of a completed generation; only 30-second Flash completion is evidenced by
-the supplied captures. Keep mandatory 1080p finishing for all durations.
+of a completed generation. In addition to the captured 30-second completion,
+an authorized 10-second text-only Flash test completed through the separately
+supplied Decodo datacenter pool: 30 quoted/used credits and a verified native
+720p video. This does not verify I2V uploads, 15-second completion, Railway
+runtime configuration, or 1080p finishing. Keep mandatory 1080p finishing for
+customer delivery at all durations.
 
 The user requested both image-to-video and text-to-video as new bot features,
 separate from Kling Motion Control P5.
@@ -29,11 +33,12 @@ Kling MC V3 Pro P5 package.
 
 ## Approved public price
 
-Both Kling 4 modes cost **Rp3.500 for 10 seconds**, **Rp5.000 for 15 seconds**,
+Both Kling 4 modes cost **Rp3.500 for 10 seconds**, **Rp4.000 for 15 seconds**,
 and **Rp8.000 for 30 seconds**.
 
 **Why:** The user answered `8000` for the original 30-second package, then set
-“harga 10 detik 3,5 k 15 detik 5k” after requesting duration choices.
+“harga 10 detik 3,5 k 15 detik 5k” after requesting duration choices. The user
+subsequently revised the 15-second price: “harga 15 detik jadi 4k saja”.
 
 **How to apply:** Keep the same duration-based prices for image-to-video and
 text-to-video; charge and fully refund the selected duration's price when
