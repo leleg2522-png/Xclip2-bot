@@ -1,6 +1,6 @@
 - [Leonardo AI i2v endpoint](leonardo-i2v.md) — correct image-to-video endpoint is /generations-image-to-video with model strings KLING2_1/KLING2_5; Kling 2.6 does not exist on Leonardo AI
 - [Picsart AI Playground internal API](picsart-ai-playground-api.md) — undocumented upload→submit→poll flow; auth is fragile browser session cookie (expires); HAR sanitizes cookies, use Copy-as-cURL
-- [Picsart Wan 3.0 video](picsart-wan3-video.md) — request native 1080P and deliver directly, no Renderful; historical completed HAR only verified 480p.
+- [Picsart Wan 3.0 video](picsart-wan3-video.md) — request native 720P and deliver directly, no Renderful; historical completed HAR only verified 480p.
 - [Video delivery](picsart-i2v-1080-delivery.md) — selected Wan/MiniMax routes and Seedance 2 I2V variants use automatic finishing; Seedance 2/Mini/Fast advertise 1080p.
 - [Picsart PixVerse v6](picsart-pixverse-v6.md) — v6 requests direct 720p/15s without export; ratio is determined by the cropped source frame.
 - [Browser Use Cloud v2 proxy](browser-use-cloud-proxy.md) — "unusual activity" login block = proxy-region mismatch; set sessionSettings.proxyCountryCode to account's country (default proxy is US)

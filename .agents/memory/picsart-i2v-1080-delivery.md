@@ -10,12 +10,12 @@ ByteDance 1080p finishing pass before delivery, without an extra user step or a
 provider-facing label. If it fails, send the native result instead and label
 that result accurately; never discard a successfully generated video.
 
-Picsart Wan 3.0 now requests native 1080p and must not use Renderful finishing.
+Picsart Wan 3.0 now requests native 720p and must not use Renderful finishing.
 This supersedes its earlier automatic finishing exception, but does not change
 the separate Flora Wan option below.
 
-**Why:** The user explicitly requested 1080p in the Picsart backend so Renderful
-is unnecessary.
+**Why:** The user requested native delivery without Renderful, then revised Wan
+to 720p: “buat wan jadi 720 p”.
 
 **How to apply:** Keep Wan's direct Picsart delivery separate from Flora Wan's
 480p generation plus automatic finishing.
