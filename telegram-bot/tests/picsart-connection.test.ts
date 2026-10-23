@@ -64,10 +64,18 @@ async function main() {
   const secrets = { DECODO_PROXY_USERNAME: 'fixture:user', DECODO_PROXY_PASSWORD: 'fixture@password' };
   const auto = startup(secrets);
   assert.equal(auto.config.mode, 'auto', 'ISP primary with automatic fallback is the default');
-  assert.equal(auto.agents.length, 1);
+  assert.equal(auto.agents.length, 10);
   assert.equal(auto.agents[0].proxy.hostname, 'isp.decodo.com');
   assert.equal(auto.agents[0].proxy.port, '10003');
   assert.equal(auto.config.agent, auto.agents[0]);
+  assert.deepEqual(Array.from(auto.agents, agent => agent.proxy.port),
+    ['10003', '10001', '10002', '10004', '10005', '10006', '10007', '10008', '10009', '10010']);
+  assert.equal(auto.config.agents.length, 10);
+  const custom = startup({ ...secrets, DECODO_PROXY_PORTS: '10008,10005,10008' });
+  assert.deepEqual(Array.from(custom.agents, agent => agent.proxy.port), ['10008', '10005']);
+  for (const ports of ['', '10000', '63001', 'bad', Array.from({ length: 11 }, (_, i) => 10001 + i).join(',')]) {
+    assert.throws(() => startup({ ...secrets, DECODO_PROXY_PORTS: ports }), /DECODO_PROXY_PORTS_INVALID/);
+  }
   assert.doesNotMatch(auto.logs.join(' '), /fixture|password/);
   assert.equal(startup({ ...secrets, PICSART_PROXY_MODE: 'isp' }).config.mode, 'isp');
   assert.equal(startup({ PICSART_PROXY_MODE: 'direct' }).agents.length, 0);

@@ -39,8 +39,8 @@ const DEVICE_ID = process.env.PICSART_DEVICE_ID || "a.c.mq6gtspz.7f0f162c-5ab2-4
 const USER_AGENT = process.env.PICSART_UA ||
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
 
-// ISP is primary; auto mode temporarily uses direct egress on proxy failures
-// and probes ISP for recovery. Accepted/ambiguous paid jobs are never replayed.
+// ISP is primary; auto mode tries the ISP pool before direct egress and probes
+// ISP for recovery. Accepted/ambiguous paid jobs are never replayed.
 const PICSART_PROXY_MODE = (process.env.PICSART_PROXY_MODE ?? 'auto').trim().toLowerCase();
 if (!['auto', 'direct', 'isp'].includes(PICSART_PROXY_MODE)) {
   throw new Error('PICSART_PROXY_MODE_INVALID: gunakan auto, direct atau isp');
@@ -62,13 +62,24 @@ function createDecodoProxyAgent(port: string): HttpsProxyAgent<string> {
   );
 }
 
-const decodoPrimaryAgent = PICSART_PROXY_MODE !== 'direct'
-  ? createDecodoProxyAgent(process.env.DECODO_PROXY_PORT || '10003')
-  : undefined;
+// Decodo static ISP ports address the purchased pool. Preserve the configured
+// primary and country/username; never use rotating port 10000 mid-workflow.
+const decodoPrimaryPort = process.env.DECODO_PROXY_PORT || '10003';
+const decodoPorts = [...new Set((process.env.DECODO_PROXY_PORTS
+  ?? [decodoPrimaryPort, ...Array.from({ length: 10 }, (_, i) => String(10001 + i))]
+    .filter((port, index, all) => all.indexOf(port) === index).slice(0, 10).join(','))
+  .split(/[\s,]+/).filter(Boolean))];
+if (PICSART_PROXY_MODE !== 'direct' && (!decodoPorts.length || decodoPorts.length > 10
+  || decodoPorts.some(port => !/^\d+$/.test(port) || Number(port) < 10001 || Number(port) > 63000))) {
+  throw new Error('DECODO_PROXY_PORTS_INVALID: isi 1–10 port ISP statis (10001–63000)');
+}
+const decodoAgents = PICSART_PROXY_MODE !== 'direct'
+  ? decodoPorts.map(createDecodoProxyAgent) : [];
+const decodoPrimaryAgent = decodoAgents[0];
 if (decodoPrimaryAgent) {
   console.log(
     `[picsart:proxy] Decodo ISP active host=${decodoPrimaryAgent.proxy.hostname} ` +
-    `port=${decodoPrimaryAgent.proxy.port}; mode=${PICSART_PROXY_MODE}; ` +
+    `port=${decodoPrimaryAgent.proxy.port}; pool=${decodoAgents.length}; mode=${PICSART_PROXY_MODE}; ` +
     (PICSART_PROXY_MODE === 'auto' ? 'direct fallback enabled' : 'direct egress disabled')
   );
 } else {
@@ -78,6 +89,7 @@ if (decodoPrimaryAgent) {
 const http = createPicsartConnection({
   mode: PICSART_PROXY_MODE as 'auto' | 'isp' | 'direct',
   agent: decodoPrimaryAgent,
+  agents: decodoAgents,
 });
 
 // Picsart returns any 2xx (e.g. 200 OK or 201 Created) on success.

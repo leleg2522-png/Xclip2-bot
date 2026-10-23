@@ -4,6 +4,8 @@ export type PicsartConnectionMode = 'auto' | 'isp' | 'direct';
 type RouteConfig = InternalAxiosRequestConfig & {
   _picsartRoute?: 'isp' | 'direct';
   _picsartDirectRetry?: boolean;
+  _picsartProxyIndex?: number;
+  _picsartTriedProxies?: number[];
 };
 const NETWORK_CODES = new Set([
   'ECONNRESET', 'ECONNREFUSED', 'ECONNABORTED', 'ETIMEDOUT',
@@ -14,25 +16,29 @@ const NETWORK_CODES = new Set([
 export function createPicsartConnection(options: {
   mode: PicsartConnectionMode;
   agent?: unknown;
+  agents?: readonly unknown[];
   adapter?: AxiosAdapter;
-  probe?: () => Promise<boolean>;
+  probe?: (agent: unknown, index: number) => Promise<boolean>;
   now?: () => number;
   log?: (message: string) => void;
   recoveryDelayMs?: number;
 }): AxiosInstance {
-  if (options.mode !== 'direct' && !options.agent) throw new Error('DECODO_PROXY_CONFIG_MISSING');
+  const agents = options.agents?.length ? [...options.agents] : options.agent ? [options.agent] : [];
+  if (options.mode !== 'direct' && !agents.length) throw new Error('DECODO_PROXY_CONFIG_MISSING');
   const client = axios.create({ timeout: 120_000, proxy: false, ...(options.adapter ? { adapter: options.adapter } : {}) });
-  const probeClient = axios.create({
-    timeout: 10_000, proxy: false, httpAgent: options.agent, httpsAgent: options.agent,
-  });
+  const probeClient = axios.create({ timeout: 10_000, proxy: false });
   const now = options.now ?? Date.now;
   const log = options.log ?? console.log;
   const recoveryDelay = options.recoveryDelayMs ?? 60_000;
-  const probe = options.probe ?? (async () => {
-    const response = await probeClient.get('https://api.picsart.com/', { validateStatus: () => true });
+  const probe = options.probe ?? (async (agent: unknown) => {
+    const response = await probeClient.get('https://api.picsart.com/', {
+      httpAgent: agent, httpsAgent: agent, validateStatus: () => true,
+    });
     return response.status >= 200 && response.status < 400;
   });
   let route: 'isp' | 'direct' = options.mode === 'direct' ? 'direct' : 'isp';
+  let activeProxy = 0;
+  const unavailableUntil = agents.map(() => 0);
   let probeAt = 0;
   let probing: Promise<void> | undefined;
 
@@ -40,18 +46,58 @@ export function createPicsartConnection(options: {
     if (route === 'direct') return;
     route = 'direct';
     probeAt = now() + recoveryDelay;
-    log('[picsart:proxy] ISP unavailable; switching to DIRECT; hosting IP visible to Picsart; ISP recovery check after 60s on next request');
+    log('[picsart:proxy] No healthy ISP endpoint available; switching to DIRECT; hosting IP visible to Picsart; ISP recovery check after 60s on next request');
+  }
+
+  function candidatesAfter(index: number): number[] {
+    return agents.map((_, offset) => (index + offset + 1) % agents.length)
+      .filter(candidate => unavailableUntil[candidate] <= now());
+  }
+
+  async function findHealthy(candidates: number[]): Promise<number | undefined> {
+    // Free connectivity checks run in parallel, bounded to ten configured
+    // endpoints. Do not spend 120 seconds retrying the paid request on each IP.
+    const results = await Promise.all(candidates.map(async index => {
+      try {
+        if (await probe(agents[index], index)) return index;
+      } catch { /* Never expose credentials, proxy URLs or request configs. */ }
+      unavailableUntil[index] = now() + recoveryDelay;
+      return undefined;
+    }));
+    return results.find(index => index !== undefined && unavailableUntil[index] <= now());
+  }
+
+  async function switchAfterFailure(failedProxy: number, reason: string) {
+    unavailableUntil[failedProxy] = now() + recoveryDelay;
+    // Late failures from an older endpoint must not displace a healthy one.
+    if (route === 'isp' && activeProxy !== failedProxy && unavailableUntil[activeProxy] <= now()) return;
+    if (!probing) {
+      probing = (async () => {
+        log(`[picsart:proxy] ISP endpoint #${failedProxy + 1} failed (${reason}); checking remaining ISP endpoints`);
+        const next = await findHealthy(candidatesAfter(failedProxy));
+        if (next === undefined) {
+          fallback();
+        } else {
+          activeProxy = next;
+          route = 'isp';
+          log(`[picsart:proxy] Switching to ISP endpoint #${next + 1}/${agents.length}; direct fallback not needed`);
+        }
+      })().finally(() => { probing = undefined; });
+    }
+    await probing;
   }
 
   async function recover() {
     if (options.mode !== 'auto' || route !== 'direct' || now() < probeAt) return;
     if (!probing) {
       probing = (async () => {
-        // Only a free connectivity probe goes through ISP. No paid job is replayed.
+        // Only free connectivity probes go through ISP. No paid job is replayed.
         try {
-          if (await probe()) {
+          const next = await findHealthy(candidatesAfter(activeProxy));
+          if (next !== undefined) {
+            activeProxy = next;
             route = 'isp';
-            log('[picsart:proxy] ISP connectivity recovered; switching back to Decodo');
+            log(`[picsart:proxy] ISP connectivity recovered; switching back to Decodo endpoint #${next + 1}/${agents.length}`);
           }
         } catch { /* Stay direct; never log proxy credentials or request configs. */ }
         finally { probeAt = now() + recoveryDelay; }
@@ -63,9 +109,13 @@ export function createPicsartConnection(options: {
   client.interceptors.request.use(async (config: RouteConfig) => {
     if (!config._picsartDirectRetry) await recover();
     config._picsartRoute = config._picsartDirectRetry ? 'direct' : route;
+    config._picsartProxyIndex = config._picsartRoute === 'isp' ? activeProxy : undefined;
+    if (config._picsartProxyIndex !== undefined) {
+      config._picsartTriedProxies = [...(config._picsartTriedProxies ?? []), config._picsartProxyIndex];
+    }
     config.proxy = false;
-    config.httpAgent = config._picsartRoute === 'isp' ? options.agent : undefined;
-    config.httpsAgent = config._picsartRoute === 'isp' ? options.agent : undefined;
+    config.httpAgent = config._picsartRoute === 'isp' ? agents[activeProxy] : undefined;
+    config.httpsAgent = config.httpAgent;
     return config;
   });
 
@@ -88,21 +138,27 @@ export function createPicsartConnection(options: {
     config: RouteConfig | undefined,
     proxyRejected: boolean,
     networkFailure: boolean,
-  ): Promise<AxiosResponse> | undefined {
+    reason: string,
+  ): Promise<AxiosResponse | undefined> | undefined {
     if (options.mode !== 'auto' || config?._picsartRoute !== 'isp'
       || config._picsartDirectRetry || (!proxyRejected && !networkFailure)) return;
-    fallback();
-    if (!mayReplay(config, proxyRejected)) return;
-    return client.request({ ...config, _picsartDirectRetry: true } as RouteConfig);
+    return (async () => {
+      await switchAfterFailure(config._picsartProxyIndex ?? 0, reason);
+      if (!mayReplay(config, proxyRejected)) return;
+      if (route === 'isp' && config._picsartTriedProxies?.includes(activeProxy)) return;
+      return client.request({ ...config, _picsartDirectRetry: route === 'direct' } as RouteConfig);
+    })();
   }
 
   client.interceptors.response.use(
-    response => handleFailure(response.config as RouteConfig, response.status === 407, false) ?? response,
-    error => {
-      const replay = handleFailure(
+    async response => (await handleFailure(response.config as RouteConfig, response.status === 407, false, 'PROXY_AUTH_407')) ?? response,
+    async error => {
+      const code = error?.code ?? error?.cause?.code;
+      const replay = await handleFailure(
         error?.config,
         error?.response?.status === 407,
-        NETWORK_CODES.has(error?.code ?? error?.cause?.code),
+        NETWORK_CODES.has(code),
+        error?.response?.status === 407 ? 'PROXY_AUTH_407' : NETWORK_CODES.has(code) ? code : 'NETWORK_FAILURE',
       );
       return replay ?? Promise.reject(error);
     },
