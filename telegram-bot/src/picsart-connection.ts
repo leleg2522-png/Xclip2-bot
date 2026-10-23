@@ -17,6 +17,8 @@ export function createPicsartConnection(options: {
   mode: PicsartConnectionMode;
   agent?: unknown;
   agents?: readonly unknown[];
+  /** ISP agents first; optional datacenter agents follow as the second tier. */
+  ispAgentCount?: number;
   adapter?: AxiosAdapter;
   probe?: (agent: unknown, index: number) => Promise<boolean>;
   now?: () => number;
@@ -24,6 +26,8 @@ export function createPicsartConnection(options: {
   recoveryDelayMs?: number;
 }): AxiosInstance {
   const agents = options.agents?.length ? [...options.agents] : options.agent ? [options.agent] : [];
+  const ispCount = options.ispAgentCount ?? agents.length;
+  if (!Number.isInteger(ispCount) || ispCount < 0 || ispCount > agents.length) throw Error('PROXY_POOL_ORDER_INVALID');
   if (options.mode !== 'direct' && !agents.length) throw new Error('DECODO_PROXY_CONFIG_MISSING');
   const client = axios.create({ timeout: 120_000, proxy: false, ...(options.adapter ? { adapter: options.adapter } : {}) });
   const probeClient = axios.create({ timeout: 10_000, proxy: false });
@@ -46,7 +50,13 @@ export function createPicsartConnection(options: {
     if (route === 'direct') return;
     route = 'direct';
     probeAt = now() + recoveryDelay;
-    log('[picsart:proxy] No healthy ISP endpoint available; switching to DIRECT; hosting IP visible to Picsart; ISP recovery check after 60s on next request');
+    log('[picsart:proxy] No healthy ISP/datacenter endpoint available; switching to DIRECT; hosting IP visible to Picsart; proxy recovery check after 60s on next request');
+  }
+
+  function endpointLabel(index: number): string {
+    return index < ispCount
+      ? `ISP endpoint #${index + 1}/${ispCount}`
+      : `DATACENTER endpoint #${index - ispCount + 1}/${agents.length - ispCount}`;
   }
 
   function candidatesAfter(index: number): number[] {
@@ -55,16 +65,23 @@ export function createPicsartConnection(options: {
   }
 
   async function findHealthy(candidates: number[]): Promise<number | undefined> {
-    // Free connectivity checks run in parallel, bounded to ten configured
-    // endpoints. Do not spend 120 seconds retrying the paid request on each IP.
-    const results = await Promise.all(candidates.map(async index => {
-      try {
-        if (await probe(agents[index], index)) return index;
-      } catch { /* Never expose credentials, proxy URLs or request configs. */ }
-      unavailableUntil[index] = now() + recoveryDelay;
-      return undefined;
-    }));
-    return results.find(index => index !== undefined && unavailableUntil[index] <= now());
+    // ISP must be exhausted before trying datacenter. Only free checks run in
+    // parallel within a tier; never replay a paid submit as a health check.
+    for (const tier of [
+      candidates.filter(index => index < ispCount),
+      candidates.filter(index => index >= ispCount),
+    ]) {
+      const results = await Promise.all(tier.map(async index => {
+        try {
+          if (await probe(agents[index], index)) return index;
+        } catch { /* Never expose credentials, proxy URLs or request configs. */ }
+        unavailableUntil[index] = now() + recoveryDelay;
+        return undefined;
+      }));
+      const healthy = results.find(index => index !== undefined && unavailableUntil[index] <= now());
+      if (healthy !== undefined) return healthy;
+    }
+    return undefined;
   }
 
   async function switchAfterFailure(failedProxy: number, reason: string) {
@@ -73,14 +90,15 @@ export function createPicsartConnection(options: {
     if (route === 'isp' && activeProxy !== failedProxy && unavailableUntil[activeProxy] <= now()) return;
     if (!probing) {
       probing = (async () => {
-        log(`[picsart:proxy] ISP endpoint #${failedProxy + 1} failed (${reason}); checking remaining ISP endpoints`);
+        log(`[picsart:proxy] ${endpointLabel(failedProxy)} failed (${reason}); checking remaining proxy endpoints`);
         const next = await findHealthy(candidatesAfter(failedProxy));
         if (next === undefined) {
           fallback();
         } else {
           activeProxy = next;
           route = 'isp';
-          log(`[picsart:proxy] Switching to ISP endpoint #${next + 1}/${agents.length}; direct fallback not needed`);
+          if (next >= ispCount) probeAt = now() + recoveryDelay;
+          log(`[picsart:proxy] Switching to ${endpointLabel(next)}; direct fallback not needed`);
         }
       })().finally(() => { probing = undefined; });
     }
@@ -88,16 +106,18 @@ export function createPicsartConnection(options: {
   }
 
   async function recover() {
-    if (options.mode !== 'auto' || route !== 'direct' || now() < probeAt) return;
+    const recoverIsp = route === 'isp' && activeProxy >= ispCount && ispCount > 0;
+    if (options.mode !== 'auto' || (route !== 'direct' && !recoverIsp) || now() < probeAt) return;
     if (!probing) {
       probing = (async () => {
         // Only free connectivity probes go through ISP. No paid job is replayed.
         try {
-          const next = await findHealthy(candidatesAfter(activeProxy));
+          const candidates = candidatesAfter(activeProxy);
+          const next = await findHealthy(recoverIsp ? candidates.filter(index => index < ispCount) : candidates);
           if (next !== undefined) {
             activeProxy = next;
             route = 'isp';
-            log(`[picsart:proxy] ISP connectivity recovered; switching back to Decodo endpoint #${next + 1}/${agents.length}`);
+            log(`[picsart:proxy] Proxy connectivity recovered; switching back to ${endpointLabel(next)}`);
           }
         } catch { /* Stay direct; never log proxy credentials or request configs. */ }
         finally { probeAt = now() + recoveryDelay; }

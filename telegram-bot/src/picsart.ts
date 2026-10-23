@@ -39,8 +39,8 @@ const DEVICE_ID = process.env.PICSART_DEVICE_ID || "a.c.mq6gtspz.7f0f162c-5ab2-4
 const USER_AGENT = process.env.PICSART_UA ||
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
 
-// ISP is primary; auto mode tries the ISP pool before direct egress and probes
-// ISP for recovery. Accepted/ambiguous paid jobs are never replayed.
+// ISP is primary; auto mode tries ISP -> datacenter -> direct, recovering ISP
+// automatically. Accepted/ambiguous paid jobs are never replayed.
 const PICSART_PROXY_MODE = (process.env.PICSART_PROXY_MODE ?? 'auto').trim().toLowerCase();
 if (!['auto', 'direct', 'isp'].includes(PICSART_PROXY_MODE)) {
   throw new Error('PICSART_PROXY_MODE_INVALID: gunakan auto, direct atau isp');
@@ -76,6 +76,25 @@ if (PICSART_PROXY_MODE !== 'direct' && (!decodoPorts.length || decodoPorts.lengt
 const decodoAgents = PICSART_PROXY_MODE !== 'direct'
   ? decodoPorts.map(createDecodoProxyAgent) : [];
 const decodoPrimaryAgent = decodoAgents[0];
+// Separate product and credentials: never overwrite or reuse the ISP password.
+// Existing securely supplied test credentials are a supported migration alias.
+const hasDcCredentials = Boolean(process.env.DECODO_DC_PROXY_USERNAME || process.env.DECODO_DC_PROXY_PASSWORD);
+const dcUsername = (hasDcCredentials ? process.env.DECODO_DC_PROXY_USERNAME : process.env.DECODO_TEST_USERNAME)?.trim();
+const dcPassword = (hasDcCredentials ? process.env.DECODO_DC_PROXY_PASSWORD : process.env.DECODO_TEST_PASSWORD)?.trim();
+if (PICSART_PROXY_MODE === 'auto' && Boolean(dcUsername) !== Boolean(dcPassword)) {
+  throw Error('DECODO_DC_PROXY_CONFIG_MISSING: username dan password datacenter harus diisi berpasangan');
+}
+const dcPorts = [...new Set((process.env.DECODO_DC_PROXY_PORTS
+  ?? Array.from({ length: 10 }, (_, i) => String(10001 + i)).join(',')).split(/[\s,]+/).filter(Boolean))];
+const dcEnabled = PICSART_PROXY_MODE === 'auto' && Boolean(dcUsername && dcPassword);
+if (dcEnabled && (!dcPorts.length || dcPorts.length > 10
+  || dcPorts.some(port => !/^\d+$/.test(port) || Number(port) < 10001 || Number(port) > 63000))) {
+  throw Error('DECODO_DC_PROXY_PORTS_INVALID: isi 1–10 port datacenter statis (10001–63000)');
+}
+const dcAgents = dcEnabled ? dcPorts.map(port => new HttpsProxyAgent(
+  `http://${encodeURIComponent(dcUsername!)}:${encodeURIComponent(dcPassword!)}@` +
+  `${process.env.DECODO_DC_PROXY_HOST || 'dc.decodo.com'}:${port}`
+)) : [];
 if (decodoPrimaryAgent) {
   console.log(
     `[picsart:proxy] Decodo ISP active host=${decodoPrimaryAgent.proxy.hostname} ` +
@@ -85,11 +104,17 @@ if (decodoPrimaryAgent) {
 } else {
   console.log('[picsart:proxy] DIRECT forced; hosting IP visible to Picsart');
 }
+if (PICSART_PROXY_MODE === 'auto') {
+  console.log(dcAgents.length
+    ? `[picsart:proxy] DATACENTER backup ready host=${dcAgents[0].proxy.hostname}; pool=${dcAgents.length}; order=ISP->DATACENTER->DIRECT`
+    : '[picsart:proxy] DATACENTER backup not configured; set datacenter credentials to enable');
+}
 
 const http = createPicsartConnection({
   mode: PICSART_PROXY_MODE as 'auto' | 'isp' | 'direct',
   agent: decodoPrimaryAgent,
-  agents: decodoAgents,
+  agents: [...decodoAgents, ...dcAgents],
+  ispAgentCount: decodoAgents.length,
 });
 
 // Picsart returns any 2xx (e.g. 200 OK or 201 Created) on success.

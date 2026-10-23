@@ -7,14 +7,17 @@ description: Rules for hiding Railway behind static Decodo ISP proxy endpoints
 
 **Current rule:** Keep Decodo ISP primary. The user says there are ten ISP IPs
 and requests that they be used in turn when a connection fails. Try the other
-ISP endpoints before direct Railway egress; recover ISP automatically.
+ISP endpoints, then the separately supplied datacenter pool, before direct
+Railway egress; recover ISP automatically.
 Do not disable ISP globally as the outage workaround.
 
 **Why:** After being told Picsart would see Railway's IP during fallback, the
 user requested a temporary workaround and corrected the implementation:
 “jangan nonaktifkan tapi kaya buat agar mereka bisa beralih”.
 They subsequently requested: “itu kan kita ada 10 ip ya bergantian saja”.
-This supersedes both always-ISP/no-direct-fallback and single-endpoint-only
+After an authorized datacenter generation succeeded, the user requested
+“tambahkan jalur ke request nya”. Add datacenter as a backup, not a replacement
+for ISP. This supersedes always-ISP/no-direct-fallback and single-endpoint-only
 rules. Rotation is failover on errors, not random IP changes on every request.
 
 **How to apply:** Switch transport, never rerun paid generation orchestration.
@@ -22,7 +25,7 @@ Retry safe reads/free requests through direct egress, preserve the same accepted
 job ID for polling, and never replay an ambiguous paid submit. Explicit proxy
 407 rejection precedes upstream acceptance; multipart bodies must be rebuilt
 before retry. Keep a healthy ISP endpoint stable, check alternatives with free
-connectivity probes, and use direct only if none is available. Return to ISP
+connectivity probes, and use direct only if neither proxy pool is available. Return to ISP
 only after a successful connectivity probe, not merely because a cooldown
 expired. Preserve existing country targeting and credentials.
 
@@ -67,8 +70,9 @@ geolocation checks when connectivity permits, and distinguish proxy rejection
 Railway's effective configuration or connectivity.
 
 **Rule:** Treat `dc.decodo.com` datacenter proxy credentials and
-`isp.decodo.com` ISP credentials as separate product configurations. A supplied
-datacenter pool is not authorization to replace the production ISP route.
+`isp.decodo.com` ISP credentials as separate product configurations. The user
+authorized adding the datacenter pool to the request routing, not replacing
+the production ISP configuration.
 
 **Why:** Proxy authentication failed with the previously saved credentials,
 while separately supplied datacenter credentials worked. That difference does
@@ -76,5 +80,5 @@ not establish a provider outage or prove the production ISP password is wrong.
 
 **How to apply:** Test the exact product endpoint with its securely supplied
 credentials. Distinguish basic IP-check success from authenticated Picsart
-generation, and obtain approval before switching production from ISP to
-datacenter egress.
+generation. Keep ISP first, datacenter second, direct last; do not overwrite
+ISP credentials with the new datacenter credentials.

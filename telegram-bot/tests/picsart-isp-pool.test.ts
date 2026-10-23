@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { AxiosError, type AxiosAdapter } from 'axios';
 import { createPicsartConnection } from '../src/picsart-connection';
 
-function harness(size = 10) {
+function harness(size = 10, ispAgentCount = size) {
   const agents = Array.from({ length: size }, (_, index) => ({ index }));
   const reads: Array<{ index: number; url: string }> = [], probes: number[] = [], logs: string[] = [];
   const failing = new Set([0]);
@@ -21,7 +21,7 @@ function harness(size = 10) {
     return { status: 200, statusText: 'OK', config, headers: {}, data: {} };
   };
   const client = createPicsartConnection({
-    mode: 'auto', agents, adapter, now: () => clock, log: text => logs.push(text),
+    mode: 'auto', agents, ispAgentCount, adapter, now: () => clock, log: text => logs.push(text),
     probe: async (agent, index) => {
       assert.equal(agent, agents[index]);
       probes.push(index);
@@ -108,6 +108,47 @@ async function main() {
   assert.equal(multipart.reads.length, 1);
   await multipart.client.post('https://upload.picsart.com/v2/files', 'rebuilt-upload');
   assert.equal(multipart.reads.at(-1)!.index, 1);
-  console.log('Picsart ISP pool: ten-endpoint failover, cooldown, direct last, pool recovery, concurrency, stream safety and no ambiguous paid replay passed.');
+
+  // With two pools, healthy ISP must win without checking any datacenter IP.
+  const primaryWins = harness(20, 10);
+  await primaryWins.client.get('https://api.picsart.com/');
+  assert.deepEqual(primaryWins.reads.map(read => read.index), [0, 1]);
+  assert.ok(primaryWins.probes.every(index => index < 10));
+
+  // All ISP unavailable -> datacenter, not direct. Rotate within datacenter,
+  // then recover back to primary ISP after a shared free probe.
+  const dc = harness(20, 10);
+  for (let index = 0; index < 10; index++) dc.probeFailing.add(index);
+  await dc.client.get('https://api.picsart.com/');
+  assert.deepEqual(dc.reads.map(read => read.index), [0, 10]);
+  assert.deepEqual(dc.probes.slice(0, 9), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.ok(dc.logs.some(text => text.includes('DATACENTER endpoint #1/10')));
+  assert.ok(!dc.logs.some(text => text.includes('switching to DIRECT')));
+  const beforeDcRetry = dc.probes.length;
+  dc.failing.add(10); dc.probeFailing.add(10);
+  await dc.client.get('https://api.picsart.com/workflows/model/existing-job/result');
+  assert.equal(dc.reads.at(-1)!.index, 11);
+  assert.ok(dc.probes.slice(beforeDcRetry).every(index => index >= 10));
+  dc.advance(); dc.probeFailing.delete(3);
+  const beforeRecovery = dc.probes.length;
+  await dc.client.get('https://api.picsart.com/');
+  assert.equal(dc.reads.at(-1)!.index, 3);
+  assert.ok(dc.probes.slice(beforeRecovery).every(index => index < 10));
+
+  const bothDown = harness(20, 10);
+  for (let index = 0; index < 20; index++) bothDown.probeFailing.add(index);
+  await bothDown.client.get('https://api.picsart.com/');
+  assert.deepEqual(bothDown.reads.map(read => read.index), [0, -1]);
+  assert.equal(bothDown.probes.length, 19, 'Check both pools before exposing the hosting IP');
+
+  // Paid-submit ambiguity is still never replayed when a DC backup exists.
+  const paidDc = harness(20, 10);
+  for (let index = 0; index < 10; index++) paidDc.probeFailing.add(index);
+  await assert.rejects(paidDc.client.post('https://api.picsart.com/gw-v2/workflows/model/submit', { params: {} }));
+  assert.equal(paidDc.reads.length, 1);
+  await paidDc.client.get('https://api.picsart.com/workflows/model/existing-job/result');
+  assert.equal(paidDc.reads.at(-1)!.index, 10);
+  assert.ok(paidDc.reads.at(-1)!.url.includes('existing-job'));
+  console.log('Picsart proxy pools: ISP -> datacenter -> direct, rotation, ISP recovery, concurrency, stream safety and no ambiguous paid replay passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
