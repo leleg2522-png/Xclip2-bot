@@ -65,3 +65,16 @@ count is not proof that all ten belong to the selected country.
 geolocation checks when connectivity permits, and distinguish proxy rejection
 (407) from geographic/provider outage. Never claim a Replit check establishes
 Railway's effective configuration or connectivity.
+
+**Rule:** Treat `dc.decodo.com` datacenter proxy credentials and
+`isp.decodo.com` ISP credentials as separate product configurations. A supplied
+datacenter pool is not authorization to replace the production ISP route.
+
+**Why:** Proxy authentication failed with the previously saved credentials,
+while separately supplied datacenter credentials worked. That difference does
+not establish a provider outage or prove the production ISP password is wrong.
+
+**How to apply:** Test the exact product endpoint with its securely supplied
+credentials. Distinguish basic IP-check success from authenticated Picsart
+generation, and obtain approval before switching production from ISP to
+datacenter egress.
