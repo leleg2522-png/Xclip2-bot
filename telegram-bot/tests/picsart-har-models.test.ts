@@ -136,6 +136,7 @@ async function testWizard(model: HarModelKey, documents = false) {
   };
   const sandbox = vm.createContext({
     ctx, HAR_MODELS, klingV3StandardVideoError, xclipMotionVideoError, MODEL_PRICES: { heygen: 2500, xclip_motion: 3500, banana21: 600 },
+    userModelPrice: async (_id: number, _model: string, normal: number) => normal,
     getSession: () => session, setSession: (_id: number, data: any) => Object.assign(session, data),
     requireLogin: async () => true, getCooldownRemainingMs: () => 0, formatCooldown: () => '',
     formatRupiah: (price: number) => `${price}`,
@@ -247,6 +248,7 @@ async function testBilling(model: HarModelKey, outcome: 'success' | 'delivery' |
   };
   const ctx = vm.createContext({
     HAR_MODELS, MODEL_PRICES: prices,
+    userModelPrice: async (_id: number, _model: string, normal: number) => normal,
     beginCharge: async (_id: number, amount: number, limit: number) => {
       assert.equal(limit, 3); events.charges.push(amount);
       return { ok: outcome !== 'insufficient', reason: 'insufficient' };

@@ -11,6 +11,7 @@ import path from 'path';
 import crypto from 'crypto';
 import * as picsart from './picsart';
 import * as klikqris from './klikqris';
+import { activateOctoberPromo, octoberPromoStatus, octoberPromoPrice, octoberPromoText, type OctoberPromoStatus } from './october-topup-promo';
 import * as oneover from './oneover';
 import {
   FLORA_480_VIDEO_MODELS,
@@ -239,6 +240,13 @@ const MODEL_PRICES = {
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
 
+async function userModelPrice(dbUserId: number, model: string, normal: number): Promise<number> {
+  // Never infer eligibility from saldo: manual credits, refunds and referrals
+  // are not qualifying paid top-ups. No cached eligibility after payment.
+  if (!['kling_v21_pro', 'heygen', 'pixverse_v6', 'minimax_h3', 'seedance_2_mini'].includes(model)) return normal;
+  return octoberPromoPrice(model, normal, await octoberPromoStatus(db, dbUserId));
+}
+
 function getPicsartI2vPrice(model: picsart.PicsartI2vModelKey, duration: Kling4Duration = 30): number {
   if (model === 'kling_v4_omni') throw new Error('MODEL_REMOVED');
   if (model === 'kling_v4' || model === 'kling_v4_t2v') {
@@ -356,6 +364,7 @@ async function ensureBalanceSchema(): Promise<void> {
   await db.query(
     `CREATE TABLE IF NOT EXISTS bot_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`
   );
+  await activateOctoberPromo(db);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by INTEGER`);
   await db.query(`
     CREATE TABLE IF NOT EXISTS autoapp_key_pool (
@@ -3123,7 +3132,8 @@ const IMG_RATIO_MAP: Record<string, string> = {
 const TOPUP_MIN = 25000;
 const TOPUP_MAX = 2_000_000;
 
-function hargaText(): string {
+function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false }): string {
+  const promoPrice = (model: string, normal: number) => octoberPromoPrice(model, normal, promo);
   return (
     '💵 *Tarif per generate:*\n\n' +
     '🎬 *Video*\n' +
@@ -3131,12 +3141,12 @@ function hargaText(): string {
     `• Veo 3.1 Fast (Full HD) — ${formatRupiah(MODEL_PRICES.veo_fast)}\n` +
     `• Veo 3.1 Lite (Full HD) — ${formatRupiah(MODEL_PRICES.veo_lite)}\n` +
     `• Veo 3.1 Lite 720p (8 detik) — ${formatRupiah(MODEL_PRICES.picsart_veo31_4k)}\n` +
-    `• MiniMax H3 (15 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.picsart_minimax_h3)}\n` +
+    `• MiniMax H3 (15 detik · hingga 1K) — ${formatRupiah(promoPrice('minimax_h3', MODEL_PRICES.picsart_minimax_h3))}\n` +
     `• Gemini Omni — ${formatRupiah(MODEL_PRICES.gemini_omni)}\n` +
     `• Gemini Omni 1.2 (360p native · 10 detik) — ${formatRupiah(MODEL_PRICES.gemini_omni_12)}\n` +
     `• Chat AI — ${formatRupiah(MODEL_PRICES.chat)}/pesan\n` +
     `• Runway Gen-4.5 — ${formatRupiah(MODEL_PRICES.runway)}\n` +
-    `• Seedance 2.0 Mini 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_mini'))}\n` +
+    `• Seedance 2.0 Mini 1080p — ${formatRupiah(promoPrice('seedance_2_mini', getPicsartI2vPrice('seedance_2_mini')))}\n` +
     `• Seedance 2.0 Fast 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_fast'))}\n` +
     `• Seedance 2.0 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
     `• Seedance 2.5 I2V (hingga 1K) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25_480)}\n` +
@@ -3155,8 +3165,8 @@ function hargaText(): string {
     `• Kling Omni (12 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_kling_omni)}\n` +
     `• Wan v2 Image-to-Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Wan 3.0 (30 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_wan_v3)}\n` +
-    `• PixVerse v6 (15 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
-    `• Kling 2.1 Pro (10 detik) — ${formatRupiah(MODEL_PRICES.kling_21_pro)}\n` +
+    `• PixVerse v6 (15 detik · 720p) — ${formatRupiah(promoPrice('pixverse_v6', MODEL_PRICES.picsart_i2v))}\n` +
+    `• Kling 2.1 Pro (10 detik) — ${formatRupiah(promoPrice('kling_v21_pro', MODEL_PRICES.kling_21_pro))}\n` +
     `• Kling 2.1 P2 (10 detik) — ${formatRupiah(MODEL_PRICES.kling_21_p2)}\n` +
     `• Gemini Omni Flash 1.1 (10 detik · 1080p) — ${formatRupiah(MODEL_PRICES.gemini_omni_11_flora)}\n` +
     `• MiniMax H3 Uncensored (15 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.flora_minimax_h3_480)}\n` +
@@ -3170,7 +3180,7 @@ function hargaText(): string {
     `• Kling MC V3.0 PRO P3 — ${formatRupiah(MODEL_PRICES.kling_p3)} 🔥PROMO\n` +
     `• ${KLING_P4.label} (1K/1080p) — ${formatRupiah(MODEL_PRICES.kling_p4)}\n` +
     `• ${ALRIZ_KLING_P5.label} (1K/1080p) — ${formatRupiah(MODEL_PRICES.kling_v3_standard)}\n` +
-    `• Heygen Video (15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.heygen)}\n` +
+    `• Heygen Video (15 detik · 1080p) — ${formatRupiah(promoPrice('heygen', MODEL_PRICES.heygen))}\n` +
     `• Xclip Motion (3–15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.xclip_motion)}\n` +
     `• Nano Banana 2.1 4K (teks/foto) — ${formatRupiah(MODEL_PRICES.banana21)}\n` +
     `• ByteDance Upscaler 1K — ${formatRupiah(MODEL_PRICES.bytedance_upscale)}\n` +
@@ -3186,7 +3196,7 @@ function hargaText(): string {
     `• Nano Banana 2 — ${formatRupiah(MODEL_PRICES.nb_2)}\n` +
     `• Nano Banana 2 Lite — ${formatRupiah(MODEL_PRICES.nb_2lite)}\n\n` +
     'Saldo hanya dipotong kalau hasilnya *berhasil terkirim*. Gagal = saldo balik.\n\n' +
-    'Ketik /topup untuk isi saldo · /saldo untuk cek.'
+    'Ketik /topup untuk isi saldo · /saldo untuk cek.' + octoberPromoText(promo)
   );
 }
 
@@ -3279,7 +3289,8 @@ async function reconcileTopupOrder(
     if (credited && opts.notify) {
       await bot.telegram.sendMessage(
         credited.telegramId,
-        `✅ Pembayaran diterima!\n\n💰 Saldo +${formatRupiah(credited.amount)}\nSaldo sekarang: *${formatRupiah(credited.newSaldo)}*\n\nKetik /menu untuk mulai generate.`,
+        `✅ Pembayaran diterima!\n\n💰 Saldo +${formatRupiah(credited.amount)}\nSaldo sekarang: *${formatRupiah(credited.newSaldo)}*\n\nKetik /menu untuk mulai generate.` +
+          octoberPromoText(await octoberPromoStatus(db, credited.dbUserId)),
         { parse_mode: 'Markdown' }
       ).catch(() => {});
     }
@@ -3392,7 +3403,7 @@ bot.command('saldo', async (ctx) => {
 
 bot.command('harga', async (ctx) => {
   if (!await requireLogin(ctx)) return;
-  return ctx.reply(hargaText(), { parse_mode: 'Markdown' });
+  return ctx.reply(hargaText(await octoberPromoStatus(db, getSession(ctx.from.id).dbUserId!)), { parse_mode: 'Markdown' });
 });
 
 bot.command('endchat', async (ctx) => {
@@ -3464,7 +3475,8 @@ bot.command('topup', async (ctx) => {
   }
   setSession(ctx.from.id, { mode: 'idle' });
   return ctx.reply(
-    '💳 *Isi Saldo (QRIS)*\n\nPilih nominal top-up:',
+    '💳 *Isi Saldo (QRIS)*\n\nPilih nominal top-up:' +
+      octoberPromoText(await octoberPromoStatus(db, getSession(ctx.from.id).dbUserId!)),
     { parse_mode: 'Markdown', ...topupNominalKeyboard() }
   );
 });
@@ -4325,7 +4337,8 @@ bot.on('callback_query', async (ctx) => {
     }
     setSession(userId, { mode: 'idle', generationDraft: false, generationDraftKind: undefined });
     return ctx.reply(
-      '💳 *Isi Saldo (QRIS)*\n\nPilih nominal top-up:',
+      '💳 *Isi Saldo (QRIS)*\n\nPilih nominal top-up:' +
+        octoberPromoText(await octoberPromoStatus(db, getSession(userId).dbUserId!)),
       { parse_mode: 'Markdown', ...topupNominalKeyboard() }
     );
   }
@@ -4342,7 +4355,8 @@ bot.on('callback_query', async (ctx) => {
   }
 
   if (data === 'menu_harga') {
-    return ctx.reply(hargaText(), { parse_mode: 'Markdown' });
+    if (!await requireLogin(ctx)) return;
+    return ctx.reply(hargaText(await octoberPromoStatus(db, getSession(userId).dbUserId!)), { parse_mode: 'Markdown' });
   }
 
   if (data === 'menu_referral') {
@@ -4433,7 +4447,7 @@ bot.on('callback_query', async (ctx) => {
     setSession(userId, { mode: 'kling21_wait_image', kling21ImageUrl: undefined });
     return ctx.editMessageText(
       `🎬 *Kling 2.1 Pro (10 detik)*\n\n` +
-      `Harga: *${formatRupiah(MODEL_PRICES.kling_21_pro)}* per video\n\n` +
+      `Harga: *${formatRupiah(await userModelPrice(getSession(userId).dbUserId!, 'kling_v21_pro', MODEL_PRICES.kling_21_pro))}* per video\n\n` +
       '*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
       { parse_mode: 'Markdown' }
     );
@@ -4938,7 +4952,7 @@ bot.on('callback_query', async (ctx) => {
     return ctx.editMessageText(
       `🌀 *${displayLabel}*\n\n` +
       `Parameter: *${ratio} · ${picsartI2vPublicSettings(model, cfg.settingsLabel, session.picsartI2vDuration)}*\n` +
-      `Harga: *${formatRupiah(getPicsartI2vPrice(model, session.picsartI2vDuration))}* per video\n\n` +
+      `Harga: *${formatRupiah(await userModelPrice(session.dbUserId!, model, getPicsartI2vPrice(model, session.picsartI2vDuration)))}* per video\n\n` +
       (model === 'kling_v4_t2v'
         ? '*Langkah terakhir:* Kirim *prompt teks* (deskripsi adegan). Tidak perlu foto.'
         : supportsMultiplePicsartI2vImages(model)
@@ -5044,7 +5058,7 @@ bot.on('callback_query', async (ctx) => {
     return ctx.editMessageText(
       `🧩 *${cfg.label}*\n\n` +
       `Parameter: *${cfg.settingsLabel}*\n` +
-      `Harga: *${formatRupiah(getPicsartI2vPrice(model))}* per video\n\n` +
+      `Harga: *${formatRupiah(await userModelPrice(getSession(userId).dbUserId!, model, getPicsartI2vPrice(model)))}* per video\n\n` +
       '*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
       { parse_mode: 'Markdown' }
     );
@@ -5091,7 +5105,7 @@ bot.on('callback_query', async (ctx) => {
       );
     }
     return ctx.editMessageText(
-      `*${cfg.label}*\nHarga: *${formatRupiah(MODEL_PRICES[cfg.priceKey])}* per ${cfg.video ? 'video' : 'gambar'}.\n` +
+      `*${cfg.label}*\nHarga: *${formatRupiah(await userModelPrice(getSession(userId).dbUserId!, model, MODEL_PRICES[cfg.priceKey]))}* per ${cfg.video ? 'video' : 'gambar'}.\n` +
       `${cfg.video ? 'Output: 15 detik · 1080p.' : 'Output: 1 gambar · 4K.'}\n\nPilih rasio:`,
       { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
         [Markup.button.callback('📱 9:16', 'har_ratio_916'), Markup.button.callback('🖥️ 16:9', 'har_ratio_169')],
@@ -5406,7 +5420,7 @@ bot.on('callback_query', async (ctx) => {
       minimaxH3ReferenceVideoUrl: undefined,
     });
     return ctx.editMessageText(
-      `🎬 *MiniMax H3*\n\nDurasi: *15 detik*\nHarga: *${formatRupiah(MODEL_PRICES.picsart_minimax_h3)}*\n\nPilih mode:`,
+      `🎬 *MiniMax H3*\n\nDurasi: *15 detik*\nHarga: *${formatRupiah(await userModelPrice(getSession(userId).dbUserId!, 'minimax_h3', MODEL_PRICES.picsart_minimax_h3))}*\n\nPilih mode:`,
       { parse_mode: 'Markdown', ...minimaxH3InputKeyboard() }
     );
   }
@@ -8524,7 +8538,7 @@ async function runHarModel(
     return;
   }
   const cfg = HAR_MODELS[job.model];
-  const PRICE = MODEL_PRICES[cfg.priceKey];
+  const PRICE = await userModelPrice(dbUserId, job.model, MODEL_PRICES[cfg.priceKey]);
   const status = async (text: string) => {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
   };
@@ -9134,8 +9148,9 @@ async function runPicsartI2v(
   const settingsLabel = (seedance1080 || opts.model === 'ltx_pro' || opts.model === 'ltx_fast' || opts.model === 'creatify_boreal' || opts.model === 'wan_v3' || opts.model === 'pixverse_v6' || kling4HD) && opts.ratio
     ? `${opts.ratio} · ${nativeSettings}`
     : nativeSettings;
-  const PRICE = kling4HD ? getPicsartI2vPrice(opts.model, opts.duration)
-    : opts.priceKey ? MODEL_PRICES[opts.priceKey] : getPicsartI2vPrice(opts.model);
+  const PRICE = await userModelPrice(dbUserId, opts.model,
+    kling4HD ? getPicsartI2vPrice(opts.model, opts.duration)
+      : opts.priceKey ? MODEL_PRICES[opts.priceKey] : getPicsartI2vPrice(opts.model));
   let stage = 'charge';
   const charge = await beginCharge(dbUserId, PRICE, 3);
   if (!charge.ok) {
@@ -10166,7 +10181,7 @@ async function runMinimaxH3(
     resolution: picsart.MinimaxH3OutputResolution;
   }
 ) {
-  const PRICE = MODEL_PRICES.picsart_minimax_h3;
+  const PRICE = await userModelPrice(dbUserId, 'minimax_h3', MODEL_PRICES.picsart_minimax_h3);
   const label = 'MiniMax H3';
   const charge = await beginCharge(dbUserId, PRICE, 3);
   if (!charge.ok) {

@@ -34,6 +34,7 @@ function harness(options: { upscale?: boolean; failDelivery?: boolean; failUpsca
     MODEL_PRICES: {},
     customerSafeModelLabel: (label: string) => label,
     getPicsartI2vPrice: (model: string) => model === 'wan_v3' ? 3000 : model === 'seedance_2_mini' ? 3500 : 4000,
+    userModelPrice: async (_id: number, _model: string, normal: number) => normal,
     beginCharge: async (_: number, price: number) => { events.charges.push(price); return { ok: true }; },
     chargeFailMsg: () => 'Saldo tidak cukup',
     downloadBuffer: async () => ({ buf: Buffer.from('fixture'), mime: 'image/jpeg' }),
@@ -120,8 +121,8 @@ async function main() {
     if (!options.generationFails) {
       assert.equal(wan.events.deliveries.length, 1, 'Wan must not retry delivery through an upscale fallback');
       assert.equal(wan.events.deliveries[0].url, 'https://example.test/1.mp4');
-      assert.match(wan.events.deliveries[0].caption, /1080p native/);
-      assert.doesNotMatch(wan.events.deliveries[0].caption, /480p|hasil 1K|Renderful/);
+      assert.match(wan.events.deliveries[0].caption, /720p native/);
+      assert.doesNotMatch(wan.events.deliveries[0].caption, /1080p|480p|hasil 1K|Renderful/);
     }
   }
   const parallel = harness();
