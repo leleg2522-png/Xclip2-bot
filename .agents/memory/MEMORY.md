@@ -32,3 +32,4 @@
 - [Flowy API](flowy-api.md) — Studio's public catalog includes H3 Max/Turbo I2V; docs and curated REST models are narrower. Verify quotes and limits before migrating.
 - [ChinaAPI video and billing](chinaapi-video-billing.md) — live catalog beats SEO; unlimited key quota is not wallet balance; Wan 3.0 pricing and request fields depend on resolution.
 - [Vinc browser API](vinc-browser-api.md) — completed Seedance 2.5 T2V evidence; sanitized HAR lacks login, and catalog I2V entries do not prove a working upload/generate flow.
+- [NovAI Seedance API](novai-seedance-api.md) — main-domain API works; Seedance 2.5 is listed, but trial video submit returned 403 despite advertised trial support.
