@@ -1,5 +1,6 @@
 import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
+import { retiredSeedanceVideoEditGuard } from './retired-seedance-video-edit';
 import FormData from 'form-data';
 import { Client, Pool } from 'pg';
 import { HttpsProxyAgent } from 'https-proxy-agent';
@@ -2569,9 +2570,6 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🕹️ Kling Motion Control', 'menu_kling_list')],
     [Markup.button.callback('🎬 Heygen Video · 15 detik · 1080p', 'mode_har_heygen')],
     [Markup.button.callback('🌊 Seedance 2.0 Mini 1080p', 'mode_pi2v_seedance_2_mini')],
-    [Markup.button.callback('🎬 Seedance 2 Mini Video Edit 480p', 'mode_seedance_mini_edit')],
-    [Markup.button.callback('⚡ Seedance 2 Fast Video Edit 480p', 'mode_seedance_fast_edit')],
-    [Markup.button.callback('🌊 Seedance 2 Video Edit 480p', 'mode_seedance_2_edit')],
     [Markup.button.callback('🌊 Seedance 2.0 Fast 1080p', 'mode_pi2v_seedance_2_fast')],
     [Markup.button.callback('🌊 Seedance 2.0 1080p', 'mode_pi2v_seedance_2')],
     [Markup.button.callback('🌊 Seedance 2.5 • Teks / Gambar • 1080p', 'mode_oneover_seedance25')],
@@ -3153,9 +3151,6 @@ function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false 
     `• Seedance 2.0 Fast 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_fast'))}\n` +
     `• Seedance 2.0 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
     `• Seedance 2.5 Teks / Gambar (30s, 1080p) — ${formatRupiah(MODEL_PRICES.alriz_seedance_25)}\n` +
-    `• Seedance 2 Mini Video Edit 480p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_mini_edit)}\n` +
-    `• Seedance 2 Fast Video Edit 480p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_fast_edit)}\n` +
-    `• Seedance 2 Video Edit 480p — ${formatRupiah(MODEL_PRICES.picsart_seedance_2_video_edit)}\n` +
     `• Grok Imagine Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Creatify Boreal (20 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_creatify_boreal)}\n` +
     `• LTX 2.5 PRO (10 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_ltx_pro)}\n` +
@@ -3350,6 +3345,23 @@ async function pollPendingTopups(): Promise<void> {
 
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
+
+// Register before every handler so old buttons/media/prompts cannot reach billing.
+bot.use(retiredSeedanceVideoEditGuard({
+  mode: userId => getSession(userId).mode,
+  reset: userId => setSession(userId, {
+    mode: 'idle', generationDraft: false, generationDraftKind: undefined,
+    seedanceMiniEditRatio: undefined, seedanceMiniEditVideoFileId: undefined,
+    seedanceMiniEditVideoMime: undefined, seedanceMiniEditImageFileId: undefined,
+    seedanceMiniEditImageFileIds: undefined,
+    seedanceFastEditRatio: undefined, seedanceFastEditVideoFileId: undefined,
+    seedanceFastEditVideoMime: undefined, seedanceFastEditImageFileId: undefined,
+    seedanceFastEditImageFileIds: undefined,
+    seedance2EditRatio: undefined, seedance2EditVideoFileId: undefined,
+    seedance2EditVideoMime: undefined, seedance2EditImageFileId: undefined,
+    seedance2EditImageFileIds: undefined,
+  }),
+}));
 
 bot.start(async (ctx) => {
   setSession(ctx.from.id, { mode: 'idle', generationDraft: false, generationDraftKind: undefined });

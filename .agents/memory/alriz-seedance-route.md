@@ -18,3 +18,13 @@ input contract.
 **How to apply:** Keep provider-specific names internal in customer copy.
 Never retry an accepted or ambiguous paid submit on another key; refund
 delivery failures instead.
+
+The user requested “hapus semua seedance video edit”. Remove every Seedance
+Video Edit variant (Mini, Fast, and standard) from public availability, including
+old buttons and unfinished edit drafts. This does not remove Seedance
+text/image-to-video generation.
+
+**Why:** The user asked to remove all Seedance video editing, not generation.
+
+**How to apply:** Do not reintroduce Video Edit when updating Seedance menus.
+Allow already accepted jobs to finish; do not delete billing history.
