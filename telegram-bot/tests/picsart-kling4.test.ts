@@ -215,6 +215,7 @@ async function wizardTest(model: typeof models[number], ratio: '9:16' | '16:9', 
     picsartI2vAddPhotoKeyboard: () => ({}),
     picsartI2vRatioKeyboard: () => ({}), isSeedance2I2vModel: () => false,
     formatRupiah: (n: number) => `Rp${n}`, getCooldownRemainingMs: () => 0,
+    userModelPrice: async (_id: number, _model: string, price: number) => price,
     runPicsartI2v: async (...args: any[]) => { calls.push(args); }, console: { error() {} },
   });
   vm.runInContext(compile(fragment(app, 'function getPicsartI2vPrice(', '\n//')), ctx);
@@ -280,6 +281,7 @@ async function billingTest(model: typeof models[number], outcome: string, ratio:
       return { url: output, credits: 90 };
     } },
     MODEL_PRICES: { picsart_kling4: 8000, picsart_kling4_10: 3500, picsart_kling4_15: 4000, picsart_kling4_omni: 8500 },
+    userModelPrice: async (_id: number, _model: string, price: number) => price,
     customerSafeModelLabel: (name: string) => name, isSeedance2I2vModel: () => false,
     supportsMultiplePicsartI2vImages: () => false,
     downloadBuffer: async () => ({ buf: Buffer.from('photo'), ext: 'jpg', mime: 'image/jpeg' }),
@@ -312,7 +314,7 @@ async function billingTest(model: typeof models[number], outcome: string, ratio:
     console: { log() {}, error() {}, warn() {} },
   });
   vm.runInContext(compile(fragment(app, 'function getPicsartI2vPrice(', '\n//')), ctx);
-  vm.runInContext(compile(fragment(app, 'async function runPicsartI2v(', '// ─── Background: Native Picsart Seedance 2.5')), ctx);
+  vm.runInContext(compile(fragment(app, 'async function runPicsartI2v(', '// ─── Background: Alriz Seedance 2.5')), ctx);
   await ctx.runPicsartI2v(1, 2, 3, 4, 'A landscape', { model, imageUrls: model === 'kling_v4_t2v' ? [] : [image], ratio, duration });
   assert.deepEqual(events.charges, [price]);
   assert.deepEqual(events.refunds, ['success', 'insufficient'].includes(outcome) ? [] : [price]);

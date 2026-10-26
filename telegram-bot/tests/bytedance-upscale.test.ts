@@ -30,7 +30,8 @@ assert.match(source, /customerSafeModelLabel[\s\S]*Renderful/);
 
 // The requested Picsart routes and the two new Flora variants get the finishing pass.
 assert.match(source, /\(seedance1080 \|\| kling4HD\)\s*\?\s*await upscaleGeneratedVideo\(result\.url, userId, chatId, statusMsgId\)/);
-assert.match(source, /async function runPicsartSeedance25\([\s\S]*?const finalVideo = await upscaleGeneratedVideo\(result\.url, userId, chatId, statusMsgId\)/);
+assert.match(source, /async function runPicsartSeedance25\([\s\S]*?const resultUrl = await generateAlrizSeedance25/);
+assert.doesNotMatch(source.slice(source.indexOf('async function runPicsartSeedance25('), source.indexOf('// ─── Background: Seedance 2 Video Edit pipelines')), /upscaleGeneratedVideo/);
 assert.match(source, /async function runMinimaxH3\([\s\S]*?const finalVideo = await upscaleGeneratedVideo\(result\.url, userId, chatId, statusMsgId\)/);
 assert.match(source, /async function runFlora480Video\([\s\S]*?const finalVideo = config\.autoUpscale\s*\? await upscaleGeneratedVideo\(resultUrl, userId, chatId, statusMsgId\)/);
 const autoUpscale = source.slice(

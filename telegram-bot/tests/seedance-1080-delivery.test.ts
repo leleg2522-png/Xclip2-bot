@@ -6,7 +6,7 @@ import { PICSART_I2V_MODELS } from '../src/picsart';
 
 const source = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 const helpers = source.slice(source.indexOf('function isSeedance2I2vModel('), source.indexOf('function picsartI2vRatioKeyboard('));
-const runner = source.slice(source.indexOf('async function runPicsartI2v('), source.indexOf('// ─── Background: Native Picsart Seedance 2.5'));
+const runner = source.slice(source.indexOf('async function runPicsartI2v('), source.indexOf('// ─── Background: Alriz Seedance 2.5'));
 assert.ok(helpers && runner);
 const executable = ts.transpileModule(helpers + runner, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
