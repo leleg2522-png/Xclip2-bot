@@ -4,7 +4,7 @@ import type { AlrizKeySource } from './alriz-key-pool';
 export const SEEDANCE25_RATIOS = ['16:9', '9:16', '1:1', '3:4', '4:3', '21:9'] as const;
 export type Seedance25Settings = {
   mode: 't2v' | 'start' | 'start_end' | 'reference';
-  resolution: 720 | 1080;
+  resolution: 1080;
   audio: boolean;
   ratio: string;
 };
@@ -30,7 +30,7 @@ export function buildAlrizSeedance25(
   settings: Seedance25Settings, prompt: string, images: string[],
 ) {
   if (!['t2v', 'start', 'start_end', 'reference'].includes(settings.mode)
-    || ![720, 1080].includes(settings.resolution) || typeof settings.audio !== 'boolean'
+    || settings.resolution !== 1080 || typeof settings.audio !== 'boolean'
     || ![...SEEDANCE25_RATIOS, ...(settings.mode === 't2v' ? [] : ['auto'])].includes(settings.ratio as any)
     || !prompt.trim() || prompt.length > 20000) throw Error('SEEDANCE25_INVALID_SETTINGS');
   const count = images.length;

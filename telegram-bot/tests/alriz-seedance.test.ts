@@ -11,9 +11,10 @@ for (const ratio of SEEDANCE25_RATIOS) {
   assert.equal(buildAlrizSeedance25({ ...settings, ratio }, 'text', []).aspect_ratio, ratio);
 }
 assert.deepEqual(buildAlrizSeedance25({ ...settings, mode: 'start', ratio: 'auto' }, 'text', [image]).start_url, image);
-const end = buildAlrizSeedance25({ ...settings, mode: 'start_end', resolution: 720 }, 'text', [image, image]);
+const end = buildAlrizSeedance25({ ...settings, mode: 'start_end' }, 'text', [image, image]);
 assert.equal(end.end_url, image);
-assert.equal(end.resolution, 720);
+assert.equal(end.resolution, 1080);
+assert.throws(() => buildAlrizSeedance25({ ...settings, resolution: 720 as 1080 }, 'text', []), /INVALID_SETTINGS/);
 assert.deepEqual(buildAlrizSeedance25({ ...settings, mode: 'reference' }, 'text', [image, image, image]).ref_urls, [image, image, image]);
 for (const [mode, count] of [['t2v', 1], ['start', 0], ['start_end', 1], ['reference', 4]] as const) {
   assert.throws(() => buildAlrizSeedance25({ ...settings, mode }, 'text', Array(count).fill(image)), /INVALID_IMAGES/);

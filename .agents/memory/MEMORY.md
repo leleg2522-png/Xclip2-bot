@@ -33,4 +33,4 @@
 - [ChinaAPI video and billing](chinaapi-video-billing.md) — live catalog beats SEO; unlimited key quota is not wallet balance; Wan 3.0 pricing and request fields depend on resolution.
 - [Vinc browser API](vinc-browser-api.md) — completed Seedance 2.5 T2V evidence; sanitized HAR lacks login, and catalog I2V entries do not prove a working upload/generate flow.
 - [NovAI Seedance API](novai-seedance-api.md) — main-domain API works; Seedance 2.5 is listed, but trial video submit returned 403 despite advertised trial support.
-- [Alriz Seedance 2.5 route](alriz-seedance-route.md) — public Seedance 2.5 uses Alriz for text/image inputs and all supported choices; no video reference, 30s fixed.
+- [Alriz Seedance 2.5 route](alriz-seedance-route.md) — public Seedance 2.5 uses Alriz, Rp5,000/video and 1080p only; no video reference, 30s fixed.
