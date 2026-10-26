@@ -431,6 +431,13 @@ async function handleCreditError(credId: number): Promise<'discard' | 'skip'> {
   }
 }
 
+// Only an explicit submit rejection may rotate accounts here. Never match a
+// wrapped post-submit/poll error, timeout, or an ambiguous successful response.
+export function isPicsartSubmitTokenRejection(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /^PICSART_SUBMIT_FAILED(?: status|:)?\s+401(?:\s*:|\s)/.test(message);
+}
+
 // Run a generation for `userId` on its assigned account. If that account is
 // dead (token rejected) or out of credits, transparently move the user to
 // another available account and retry — so a single exhausted account never
@@ -461,6 +468,19 @@ async function runWithAccount<T>(
         `[picsart:account] user=${userId} pool=${poolFilter ?? 'any'} ` +
         `cred=${credId} attempt=${attempt + 1}/${ceiling} failed: ${msg || e?.name || 'unknown error'}`
       );
+      if (isPicsartSubmitTokenRejection(e)) {
+        // HTTP 401 rejected the submit: no accepted job is being replayed.
+        // Quarantine this credential so subsequent users do not hit it again.
+        await q(
+          `UPDATE picsart_credentials SET status = 'dead', dead_at = NOW(), updated_at = NOW() WHERE id = $1`,
+          [credId]
+        );
+        notifyOwner(
+          `⚠️ Akun Picsart #${credId} ditolak saat submit (401). ` +
+          'Sudah ditandai dead; bot mencoba akun lain. Tidak ada job diterima pada submit ini.'
+        );
+        continue;
+      }
       if (msg.includes('PICSART_REFRESH_DEAD')) {
         // Account already marked 'dead' inside doRefresh — move to next account.
         continue;
