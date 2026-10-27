@@ -1,6 +1,7 @@
 import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
 import { retiredSeedanceVideoEditGuard } from './retired-seedance-video-edit';
+import { generateBananaSnapgen } from './banana-snapgen';
 import FormData from 'form-data';
 import { Client, Pool } from 'pg';
 import { HttpsProxyAgent } from 'https-proxy-agent';
@@ -60,7 +61,7 @@ const BRIDGE_PUBLIC_URL = (process.env.BRIDGE_PUBLIC_URL
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!DATABASE_URL) throw new Error('RAILWAY_DATABASE_URL is required');
 if (!RENDERFUL_API_KEY) console.warn('⚠️ RENDERFUL_API_KEY tidak diset — backend Renderful nonaktif (Kling Motion Control kini pakai Picsart).');
-if (!SNAPGEN_API_KEY) console.warn('⚠️ SNAPGEN_API_KEY tidak diset — backend SnapGen nonaktif (Veo 3.1 Fast/Lite).');
+if (!SNAPGEN_API_KEY) console.warn('⚠️ SNAPGEN_API_KEY tidak diset — backend SnapGen nonaktif (Veo 3.1 Fast/Lite dan Banana Pro/2/Lite).');
 
 // Decodo rotating proxy — set DECODO_PROXY_URL=http://user:pass@gate.decodo.com:port
 const DECODO_PROXY_URL = process.env.DECODO_PROXY_URL;
@@ -211,9 +212,9 @@ const MODEL_PRICES = {
   veo_lite: 1500,      // Veo 3.1 Lite Full HD (SnapGen, with audio)
   picsart_veo31_4k: 2500, // Veo 3.1 Lite native 720p
   picsart_minimax_h3: 4000, // MiniMax H3 Max, 15s image-to-video / start-end frame
-  nb_pro: 500,         // Nano Banana Pro package (Picsart Banana 2.1)
-  nb_2: 500,           // Nano Banana 2 package (Picsart Banana 2.1)
-  nb_2lite: 500,       // Nano Banana 2 Lite package (Picsart Banana 2.1)
+  nb_pro: 500,         // Nano Banana Pro package (SnapGen, shared Banana 2 backend)
+  nb_2: 500,           // Nano Banana 2 package (SnapGen)
+  nb_2lite: 500,       // Nano Banana 2 Lite package (SnapGen, shared Banana 2 backend)
   seedream: 500,       // Seedream 2.7 4K (Picsart, image-to-image)
   gpt_image: 500,      // GPT Image 2 (Picsart openai-image-editing)
   gpt_image_25: 600,   // GPT Image 2.5 Sunburst / Flare
@@ -5947,7 +5948,7 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
-  // ── Nano Banana image wizard (Banana 2.1, text-to-image or image-to-image) ──
+  // ── Nano Banana image wizard (SnapGen, text-to-image or image-to-image) ──
   if (data === 'mode_nbpro' || data === 'mode_nb2' || data === 'mode_nb2lite') {
     const cfg = IMG_MODELS[data];
     setSession(userId, {
@@ -5960,7 +5961,7 @@ bot.on('callback_query', async (ctx) => {
     });
     return ctx.editMessageText(
       `${cfg.label} · 4K\n\nGenerate gambar (${formatRupiah(MODEL_PRICES[cfg.priceKey])}).\n` +
-      `Memakai model Nano Banana 2.1.\n\nPilih rasio gambar:`,
+      `Teks atau foto acuan menjadi gambar.\n\nPilih rasio gambar:`,
       { parse_mode: 'Markdown', ...imgRatioKeyboard() }
     );
   }
@@ -10525,7 +10526,7 @@ async function snapgenPollImage(
   throw new Error(`SNAPGEN_TIMEOUT: proses melebihi ${Math.round((maxAttempts * intervalMs) / 60000)} menit`);
 }
 
-// ─── Background: Nano Banana packages (Picsart Banana 2.1, T2I/I2I) ──
+// ─── Background: Nano Banana packages (SnapGen, T2I/I2I) ──
 
 async function runImage(
   chatId: number,
@@ -10543,7 +10544,7 @@ async function runImage(
 ) {
   const entry = Object.values(IMG_MODELS).find((m) => m.model === opts.model);
   const label = entry ? entry.label : '🍌 Nano Banana';
-  const ratio = (opts.ratio ?? '1:1') as HarAspectRatio;
+  const ratio = opts.ratio ?? '1:1';
   const PRICE = MODEL_PRICES[opts.priceKey];
   console.log(`[${userId}] ${label} started — mode: ${opts.inputMode}, ratio: ${ratio}`);
 
@@ -10569,20 +10570,21 @@ async function runImage(
       }
     }
 
-    const result = await picsart.generateHarModel({
-      userId: dbUserId,
-      model: opts.inputMode === 'i2i' ? 'banana21_i2i' : 'banana21_t2i',
-      prompt, ratio, images,
-      onStatus: stage => {
-        const text = stage === 'upload' ? 'menyiapkan foto acuan'
-          : stage === 'submit' ? 'mengirim perintah' : 'gambar 4K sedang dibuat';
-        void bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+    const outputUrl = await generateBananaSnapgen({
+      model: opts.model, mode: opts.inputMode, prompt, ratio, images,
+    }, {
+      available: !!SNAPGEN_API_KEY,
+      submit: snapgenSubmitImage,
+      poll: uuid => snapgenPollImage(uuid),
+      status: async stage => {
+        const text = stage === 'submit' ? 'mengirim perintah' : 'gambar 4K sedang dibuat';
+        await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
           `🎨 ${label}: ${text}...\nHasil dikirim otomatis.`).catch(() => {});
       },
     });
 
     const caption = `🎨 ${label} (${ratio} · 4K)\n\n/menu untuk buat lagi`;
-    const delivered = await sendImageResult(chatId, result.url, caption, true);
+    const delivered = await sendImageResult(chatId, outputUrl, caption, true);
     if (delivered) {
       refund = false;
       const newCount = await incrementKlingUsage(dbUserId);

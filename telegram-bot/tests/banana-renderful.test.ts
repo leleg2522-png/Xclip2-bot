@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { generateBananaSnapgen } from '../src/banana-snapgen';
 import sharp from 'sharp';
 import { generateBananaRenderful, type BananaApi, type BananaModel } from '../src/banana-renderful';
 
@@ -69,17 +70,19 @@ async function billingTests() {
   const from = source.indexOf('async function runImage(');
   const to = source.indexOf('// Kirim gambar hasil', from);
   const runSource = source.slice(from, to);
-  assert.match(runSource, /picsart\.generateHarModel/);
-  assert.match(runSource, /'banana21_i2i' : 'banana21_t2i'/);
-  assert.doesNotMatch(runSource, /generateBananaSnapgen|snapgenSubmitImage|snapgenPollImage|generateBananaRenderful|getNextRenderfulPoolKey|bytedanceUpscalerHttp/);
+  assert.match(runSource, /generateBananaSnapgen/);
+  assert.match(runSource, /submit: snapgenSubmitImage/);
+  assert.match(runSource, /snapgenPollImage\(uuid\)/);
+  assert.doesNotMatch(runSource, /picsart\.generateHarModel|generateBananaRenderful|getNextRenderfulPoolKey|bytedanceUpscalerHttp/);
   const harFrom = source.indexOf('async function runHarModel(');
   assert.match(source.slice(harFrom, source.indexOf('// ─── Background: Kling Motion V3 Standard', harFrom)), /picsart\.generateHarModel/);
   assert.match(source, /banana21:\s*600/);
   for (let i = 0; i < models.length; i++) for (const mode of ['t2i', 'i2i'] as const) {
-    for (const outcome of ['success', 'provider', 'delivery', 'insufficient', 'no-key', 'download', 'low-resolution']) {
+    for (const outcome of ['success', 'provider', 'poll-failed', 'delivery', 'insufficient', 'no-key', 'download', 'low-resolution']) {
       const events = { charges: [] as number[], refunds: [] as number[], submits: 0, hosts: 0, deliveries: 0, releases: 0, success: 0, messages: [] as string[] };
       const context = vm.createContext({
-        Buffer, process: { env: {} },
+        Buffer, process: { env: {} }, generateBananaSnapgen,
+        SNAPGEN_API_KEY: outcome === 'no-key' ? undefined : 'fixture-only',
         IMG_MODELS: { model: { model: models[i], label: 'Banana public' } }, MODEL_PRICES: prices,
         beginCharge: async (_id: number, amount: number) => { events.charges.push(amount); return { ok: outcome !== 'insufficient', reason: 'insufficient' }; },
         chargeFailMsg: () => 'Saldo kurang',
@@ -94,18 +97,20 @@ async function billingTests() {
         },
         sharp: () => ({ metadata: async () => ({ format: 'png' }) }),
         describeError: (error: any) => error.message,
-        picsart: { generateHarModel: async (body: any) => {
-          if (outcome === 'no-key') throw Error('PICSART_NO_ACCOUNTS');
+        snapgenSubmitImage: async (body: any) => {
           events.submits++;
-          assert.equal(body.userId, 3);
-          assert.equal(body.model, mode === 'i2i' ? 'banana21_i2i' : 'banana21_t2i');
-          assert.equal(body.ratio, '1:1');
+          assert.equal(body.model, 'nano-banana-2');
+          assert.equal(body.aspectRatio, '1:1');
           assert.equal(body.images.length, mode === 'i2i' ? 2 : 0);
           assert.equal(body.images.some((image: any) => image.name.includes('PRIVATE')), false);
-          body.onStatus('upload'); body.onStatus('submit'); body.onStatus('poll');
-          if (outcome === 'provider') throw Error('Picsart internal provider failed');
+          if (outcome === 'provider') throw Error('SnapGen internal provider failed');
+          return { uuid: 'accepted-fixture' };
+        },
+        snapgenPollImage: async (uuid: string) => {
+          assert.equal(uuid, 'accepted-fixture');
+          if (outcome === 'poll-failed') throw Error('SnapGen polling failed');
           return { url: 'https://provider.test/output.png' };
-        } },
+        },
         sendImageResult: async (_chat: number, _url: string, caption: string, require4k: boolean) => {
           events.deliveries++; assert.equal(require4k, true); assert.match(caption, /4K/);
           return !['delivery', 'low-resolution'].includes(outcome);
@@ -121,6 +126,8 @@ async function billingTests() {
       assert.deepEqual(events.charges, [prices[keys[i]]]);
       assert.deepEqual(events.refunds, failed ? [prices[keys[i]]] : []);
       assert.equal(events.releases, outcome === 'insufficient' ? 0 : 1);
+      assert.ok(events.submits <= 1, 'Never replay a rejected, ambiguous or accepted paid job');
+      if (['no-key', 'insufficient'].includes(outcome)) assert.equal(events.submits, 0);
       assert.doesNotMatch(events.messages.join(' '), /Renderful|SnapGen|Picsart|PRIVATE/i);
       if (['success', 'delivery', 'low-resolution'].includes(outcome)) assert.equal(events.deliveries, 1);
     }
@@ -153,6 +160,6 @@ async function main() {
   await contractTests();
   await billingTests();
   await deliveryTests();
-  console.log('Banana Pro/2/Lite share Picsart Banana 2.1: T2I/I2I, two references, 4K delivery, independent prices/refunds and unchanged separate Banana 2.1 package passed; legacy Renderful contracts also passed.');
+  console.log('Banana Pro/2/Lite use SnapGen: T2I/I2I, two references, 4K delivery, independent prices/refunds and unchanged separate Banana 2.1 package passed; legacy Renderful contracts also passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

@@ -65,16 +65,17 @@ alongside authentication before interpreting validation errors.
 ## Banana provider migration scope
 
 Only Banana Pro, Banana Lite and Banana 2 are in the shared provider migration.
-These packages use Picsart Banana 2.1 for both text-to-image and image-to-image.
+These packages use SnapGen AI for both text-to-image and image-to-image.
 The separate Banana 2.1 package remains unchanged.
 
 **Why:** The user clarified: “yg di ganti banana pro banana lite dan banan 2
 banana 2,1 mah tidak”, superseding the earlier “semua model banana” wording.
-The latest request supersedes the previous SnapGen choice: “buat agar nanobanana
-pro dan banana2 dan lite memakai banana 2,1 dari picsart”.
+The latest request restores SnapGen: “buat banana pro dan banana lite dan juga
+banan2 kembali ke snapgen ai”, superseding the previous Picsart migration.
 
 **How to apply:** Preserve the three public package names and their individual
-prices, while routing all three to Picsart Banana 2.1. Do not change the separate
+prices, while routing all three through the shared SnapGen Banana 2 backend.
+Do not change the separate
 Banana 2.1 package's price or wizard as part of this migration.
 
 ## Shared Banana package backend

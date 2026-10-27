@@ -54,7 +54,8 @@ async function main() {
   // Exercise the actual multipart adapter and URL parsing offline.
   const source = fs.readFileSync(path.resolve(__dirname, '../src/index.ts'), 'utf8');
   const start = source.indexOf('async function snapgenSubmitImage(');
-  const end = source.indexOf('// ─── Background: Nano Banana image', start);
+  const end = source.indexOf('// ─── Background: Nano Banana packages', start);
+  assert.ok(start >= 0 && end > start, 'Limit the adapter test to SnapGen submit/poll helpers');
   for (const immediate of [false, true]) {
     let submits = 0;
     let polls = 0;
