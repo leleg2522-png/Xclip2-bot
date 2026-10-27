@@ -4,6 +4,7 @@
   "description": "Telegram bot for Kling 2.6 Pro Motion Control video generation via Renderful.ai",
   "main": "dist/index.js",
   "scripts": {
+    "test:topup": "tsx tests/klikqris-mypg.test.ts",
     "test:october-promo": "tsx tests/october-topup-promo.test.ts",
     "dev": "tsx src/index.ts",
     "build": "tsc",

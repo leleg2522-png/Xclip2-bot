@@ -3225,18 +3225,17 @@ async function startTopupFlow(
     return;
   }
 
-  const orderId = `XCLIP-${telegramId}-${Date.now()}`;
+  const orderId = klikqris.createTopupOrderId(telegramId);
   let order: klikqris.QrisOrder;
   try {
     order = await klikqris.createQris(orderId, amount, `Top-up saldo XclipAI ${formatRupiah(amount)}`);
   } catch (e: any) {
-    console.error(`[${telegramId}] KlikQRIS create error:`, e?.response?.data ?? e?.message ?? e);
+    console.error(`[${telegramId}] KlikQRIS My PG create error:`, e?.response?.status ?? e?.code ?? 'invalid gateway response');
     await ctx.reply('❌ Gagal membuat QRIS. Coba lagi sebentar lagi.');
     return;
   }
 
-  const expiresAt = order.expiredAt ? new Date(order.expiredAt.replace(' ', 'T')) : null;
-  const validExpires = expiresAt && !isNaN(expiresAt.getTime()) ? expiresAt : null;
+  const validExpires = klikqris.parseQrisExpiry(order.expiredAt);
   try {
     await createTopupOrder(orderId, dbUserId, telegramId, order.amount, order.totalAmount, order.qrisUrl ?? order.directUrl, validExpires);
   } catch (e: any) {
@@ -3245,12 +3244,14 @@ async function startTopupFlow(
     return;
   }
 
-  const menit = order.expiredMinutes ?? 5;
+  const menit = validExpires
+    ? Math.max(1, Math.ceil((validExpires.getTime() - Date.now()) / 60_000))
+    : order.expiredMinutes;
   const caption =
     `💳 *Top-up ${formatRupiah(order.amount)}*\n\n` +
     `Bayar tepat *${formatRupiah(order.totalAmount)}* (sudah termasuk kode unik).\n` +
     `Scan QRIS di atas pakai aplikasi bank / e-wallet apa pun.\n\n` +
-    `⏳ Berlaku *${menit} menit*.\n` +
+    (menit && Number.isFinite(menit) ? `⏳ Berlaku sekitar *${menit} menit*.\n` : '⏳ Bayar sebelum batas waktu pada halaman pembayaran.\n') +
     `Saldo otomatis masuk setelah dibayar. Cek manual: /cekbayar`;
 
   try {
@@ -3283,6 +3284,18 @@ async function reconcileTopupOrder(
   }
 
   if (klikqris.isPaidStatus(status.status)) {
+    // Trust the stored nominal, not an arbitrary provider amount. MY PG's status
+    // endpoint omits amount, but must match the exact payable total saved at create.
+    const expected = await db.query(
+      'SELECT amount, total_amount FROM topup_orders WHERE order_id = $1',
+      [orderId]
+    );
+    const invoice = expected.rows[0];
+    if (!invoice || Number(invoice.total_amount) !== status.totalAmount
+      || (status.amount !== undefined && Number(invoice.amount) !== status.amount)) {
+      console.warn(`[topup] jumlah pembayaran tidak cocok ${orderId}; saldo tidak dikreditkan`);
+      return 'pending';
+    }
     const credited = await markTopupPaidAndCredit(orderId);
     if (credited && opts.notify) {
       await bot.telegram.sendMessage(
@@ -12388,7 +12401,7 @@ app.listen(PORT, () => {
   if (klikqris.klikqrisConfigured()) {
     void pollPendingTopups(); // sekali langsung saat startup — pulihkan order tertunda
     setInterval(() => { void pollPendingTopups(); }, 15_000);
-    console.log('✅ Poller top-up KlikQRIS aktif (cek tiap 15 detik)');
+    console.log('✅ Poller top-up KlikQRIS My PG aktif (order lama tetap didukung; cek tiap 15 detik)');
   } else {
     console.warn('⚠️ KLIKQRIS_API_KEY / KLIKQRIS_MERCHANT_ID belum diset — fitur /topup nonaktif');
   }

@@ -22,7 +22,21 @@ Each of the 8 run* flows follows this exact shape:
 
 # KlikQRIS top-up settlement (polling, no webhook)
 
-Endpoints: `POST https://klikqris.com/api/qris/create` (send `callback_url:''`), `GET https://klikqris.com/api/qris/status/{order_id}`. Headers: `x-api-key` + `id_merchant`. `order_id = XCLIP-<telegramId>-<Date.now()>`. Credit user the round `amount`; user pays `total_amount` (has a unique code appended). `qris_image` is a base64 data URL; expiry ~5 min.
+The user switched new top-ups from ordinary KlikQRIS to **MY PG**, still within
+KlikQRIS, because the ordinary service was unavailable. Do not confuse this with
+renaming a Telegram menu or switching to an unrelated provider.
+
+**Why:** User said “yg sekarang klikqris lagi ga bisa yg biasa nah kita pake yg
+my pg ini dari klikqris”.
+
+**How to apply:** Keep outstanding ordinary KlikQRIS invoices on their original
+status route; never recreate an ambiguous invoice on a different route. Credit
+the stored requested nominal, not the payable total (which includes the unique
+code), only after confirming the matching payment.
+
+The dashboard documentation link `/pg/dokumentasi` requires login, but the
+public portal at https://www.klikqris.com/dokumentasi-api includes the MY PG tab.
+Check that public portal before asking the user for screenshots or credentials.
 
 ## Settlement design (survived architect review — earlier naive version failed)
 - **`markTopupPaidAndCredit` uses `WHERE status <> 'PAID'`, NOT `= 'PENDING'`.** This is deliberate: a payment can land AFTER we locally marked the order EXPIRED. Crediting from any non-PAID status recovers late payments while staying anti-double (only one call can flip to PAID + credit, in one transaction).

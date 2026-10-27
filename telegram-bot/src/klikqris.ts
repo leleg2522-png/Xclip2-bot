@@ -1,48 +1,56 @@
 import axios from 'axios';
 
-// KlikQRIS — gateway QRIS Indonesia. Mode polling (tanpa webhook): kita create
-// order lalu cek status sendiri berkala sampai PAID / expired.
-//   Create : POST https://klikqris.com/api/qris/create   (callback_url dikosongkan)
-//   Status : GET  https://klikqris.com/api/qris/status/{order_id}
-// Semua request pakai header x-api-key + id_merchant dari secret.
+// MY PG uses the merchant's own QRIS. Polling avoids accepting unverified webhooks.
+// Public contract: https://www.klikqris.com/dokumentasi-api (MY PG tab).
+const BASE = 'https://klikqris.com/api';
+const MYPG_PREFIX = 'XCLIP-MYPG-';
+type Transport = Pick<ReturnType<typeof axios.create>, 'post' | 'get'>;
 
-const KLIKQRIS_BASE = 'https://klikqris.com/api';
-const API_KEY = process.env.KLIKQRIS_API_KEY;
-const MERCHANT_ID = process.env.KLIKQRIS_MERCHANT_ID;
-
-export function klikqrisConfigured(): boolean {
-  return !!API_KEY && !!MERCHANT_ID;
+export function createTopupOrderId(telegramId: number, timestamp = Date.now()): string {
+  return `${MYPG_PREFIX}${telegramId}-${timestamp}`;
 }
 
-const http = axios.create({ timeout: 30_000 });
-
-function headers() {
-  return {
-    'Content-Type': 'application/json',
-    'x-api-key': API_KEY ?? '',
-    'id_merchant': MERCHANT_ID ?? '',
-  };
+export function isMyPgOrder(orderId: string): boolean {
+  return orderId.startsWith(MYPG_PREFIX);
 }
 
-// Amount dari KlikQRIS datang sebagai string "1000.00" — bulatkan ke integer Rupiah.
-function parseAmount(v: any): number {
-  const n = Math.round(Number(v));
-  return Number.isFinite(n) ? n : 0;
+function parseAmount(value: unknown): number {
+  if ((typeof value !== 'string' && typeof value !== 'number') || String(value).trim() === '') {
+    throw new Error('KLIKQRIS_INVALID_AMOUNT');
+  }
+  const amount = Number(value);
+  if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error('KLIKQRIS_INVALID_AMOUNT');
+  return amount;
 }
 
-// qris_image datang sebagai data URL "data:image/png;base64,....." — ambil base64-nya saja.
-function stripDataUrl(s?: string): string | undefined {
-  if (!s) return undefined;
-  const marker = 'base64,';
-  const i = s.indexOf(marker);
-  return i >= 0 ? s.slice(i + marker.length) : s;
+function paymentUrl(value: unknown): string | undefined {
+  if (value == null || value === '') return undefined;
+  if (typeof value !== 'string') throw new Error('KLIKQRIS_INVALID_PAYMENT_URL');
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password) throw new Error();
+  } catch { throw new Error('KLIKQRIS_INVALID_PAYMENT_URL'); }
+  return value;
+}
+
+function stripDataUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value) return undefined;
+  return value.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, '');
+}
+
+/** Naive gateway timestamps are in WIB, not the Railway server's timezone. */
+export function parseQrisExpiry(value?: string): Date | null {
+  if (!value) return null;
+  const normalized = value.trim().replace(' ', 'T');
+  const date = new Date(/(?:Z|[+-]\d\d:\d\d)$/i.test(normalized) ? normalized : `${normalized}+07:00`);
+  return Number.isFinite(date.getTime()) ? date : null;
 }
 
 export interface QrisOrder {
   orderId: string;
-  amount: number;         // nominal bulat (yang dikreditkan ke saldo)
-  totalAmount: number;    // yang harus dibayar user (nominal + kode unik)
-  status: string;         // PENDING | SUCCESS | ...
+  amount: number;
+  totalAmount: number;
+  status: string;
   qrisImageBase64?: string;
   qrisUrl?: string;
   directUrl?: string;
@@ -50,65 +58,88 @@ export interface QrisOrder {
   expiredMinutes?: number;
 }
 
-export async function createQris(
-  orderId: string,
-  amount: number,
-  keterangan: string
-): Promise<QrisOrder> {
-  const res = await http.post(
-    `${KLIKQRIS_BASE}/qris/create`,
-    {
-      order_id: orderId,
-      id_merchant: MERCHANT_ID,
-      amount,
-      keterangan,
-      callback_url: '',
-    },
-    { headers: headers() }
-  );
-  const d = res.data?.data ?? {};
-  return {
-    orderId: d.order_id ?? orderId,
-    amount: parseAmount(d.amount ?? amount),
-    totalAmount: parseAmount(d.total_amount ?? amount),
-    status: String(d.status ?? 'PENDING').toUpperCase(),
-    qrisImageBase64: stripDataUrl(d.qris_image),
-    qrisUrl: d.qris_url,
-    directUrl: d.direct_url,
-    expiredAt: d.expired_at,
-    expiredMinutes: d.expired_menit != null ? Number(d.expired_menit) : undefined,
-  };
-}
-
 export interface QrisStatus {
   orderId: string;
-  amount: number;
+  amount?: number; // MY PG status responses may omit the requested amount.
   totalAmount: number;
   status: string;
   paidAt?: string | null;
 }
 
-export async function checkQrisStatus(orderId: string): Promise<QrisStatus> {
-  const res = await http.get(
-    `${KLIKQRIS_BASE}/qris/status/${encodeURIComponent(orderId)}`,
-    { headers: headers() }
-  );
-  const d = res.data?.data ?? {};
+export function createKlikqrisClient(config: {
+  apiKey?: string;
+  merchantId?: string;
+  http?: Transport;
+}) {
+  const http = config.http ?? axios.create({ timeout: 30_000 });
+  function headers() {
+    if (!config.apiKey || !config.merchantId) throw new Error('KLIKQRIS_NOT_CONFIGURED');
+    return {
+      'Content-Type': 'application/json',
+      'x-api-key': config.apiKey,
+      id_merchant: config.merchantId,
+    };
+  }
+  function data(response: any, orderId: string) {
+    const payload = response.data;
+    if (payload?.status !== true || !payload.data || payload.data.order_id !== orderId) {
+      throw new Error('KLIKQRIS_INVALID_RESPONSE');
+    }
+    if (typeof payload.data.status !== 'string' || !payload.data.status.trim()) {
+      throw new Error('KLIKQRIS_MISSING_STATUS');
+    }
+    return payload.data;
+  }
   return {
-    orderId: d.order_id ?? orderId,
-    amount: parseAmount(d.amount),
-    totalAmount: parseAmount(d.total_amount),
-    status: String(d.status ?? 'PENDING').toUpperCase(),
-    paidAt: d.paid_at ?? null,
+    configured: () => !!config.apiKey && !!config.merchantId,
+    async createQris(orderId: string, amount: number, keterangan: string): Promise<QrisOrder> {
+      if (!isMyPgOrder(orderId)) throw new Error('KLIKQRIS_NEW_ORDER_REQUIRES_MYPG');
+      parseAmount(amount);
+      // No automatic retries or fallback creates: a timeout may hide an accepted invoice.
+      const response = await http.post(`${BASE}/qrisv2/create`, {
+        order_id: orderId, id_merchant: config.merchantId, amount, keterangan,
+      }, { headers: headers() });
+      const d = data(response, orderId);
+      const requested = parseAmount(d.amount);
+      const total = parseAmount(d.total_amount);
+      if (requested !== amount || total < amount) throw new Error('KLIKQRIS_AMOUNT_MISMATCH');
+      const qrisUrl = paymentUrl(d.qris_url);
+      const directUrl = paymentUrl(d.direct_url);
+      const qrisImageBase64 = stripDataUrl(d.qris_image);
+      if (!qrisUrl && !directUrl && !qrisImageBase64) throw new Error('KLIKQRIS_MISSING_PAYMENT_DETAILS');
+      return {
+        orderId, amount, totalAmount: total, status: d.status.toUpperCase(),
+        qrisUrl, directUrl, qrisImageBase64, expiredAt: d.expired_at,
+        expiredMinutes: d.expired_menit != null ? Number(d.expired_menit) : undefined,
+      };
+    },
+    async checkQrisStatus(orderId: string): Promise<QrisStatus> {
+      const auth = headers();
+      const path = isMyPgOrder(orderId)
+        ? `/qrisv2/status/${encodeURIComponent(config.merchantId!)}/${encodeURIComponent(orderId)}`
+        : `/qris/status/${encodeURIComponent(orderId)}`;
+      const response = await http.get(`${BASE}${path}`, { headers: auth });
+      const d = data(response, orderId);
+      return {
+        orderId, status: d.status.toUpperCase(), totalAmount: parseAmount(d.total_amount),
+        amount: d.amount == null ? undefined : parseAmount(d.amount), paidAt: d.paid_at ?? null,
+      };
+    },
   };
 }
 
+const client = createKlikqrisClient({
+  apiKey: process.env.KLIKQRIS_API_KEY,
+  merchantId: process.env.KLIKQRIS_MERCHANT_ID,
+});
+export const klikqrisConfigured = client.configured;
+export const createQris = client.createQris;
+export const checkQrisStatus = client.checkQrisStatus;
+
 export function isPaidStatus(status: string): boolean {
-  const s = status.toUpperCase();
-  return s === 'SUCCESS' || s === 'PAID' || s === 'SETTLED';
+  return ['SUCCESS', 'PAID', 'SETTLED'].includes(status.toUpperCase());
 }
 
 export function isExpiredStatus(status: string): boolean {
-  const s = status.toUpperCase();
-  return s === 'EXPIRED' || s === 'FAILED' || s === 'CANCELLED' || s === 'CANCELED';
+  return ['EXPIRED', 'FAILED', 'CANCELLED', 'CANCELED'].includes(status.toUpperCase());
 }
