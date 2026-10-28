@@ -12,7 +12,7 @@
 - [October top-up promotion](october-topup-promo.md) — one new paid Rp200k top-up unlocks Rp1,500 on five selected models until 31 October 2026 WIB; no cumulative/old payments.
 - [Flora AI API](flora-ai-api.md) — generate pakai params.image_url/video_url (bukan inputs[]); upload form_fields snake_case; "1 key 1 task" salah (paralel jalan); tak ada endpoint saldo credits
 - [XclipAI referral scheme](xclip-referral-scheme.md) — 5% dari SETIAP top-up undangan masuk saldo utama pengundang; bonus cair hanya saat order PAID, idempotent via UNIQUE(order_id)
-- [Picsart account pools](picsart-account-pools.md) — split by credit-at-add; Wan 3.0 Prime (including public Seedance 2.5) intentionally uses any pool so p100 and p500 are eligible
+- [Picsart account pools](picsart-account-pools.md) — ~50-credit pool for all Picsart routes except Seedance 2.5 and Kling 4 30s; public Seedance 2.5 stays on Alriz.
 - [Picsart Seedance 2.5 API](seedance-api.md) — historical reference-only Picsart contract; new public Seedance 2.5 orders use Alriz instead.
 - [Kling Motion package routing](edanbot-kling-motion.md) — P2/P3 Edan Bot native; P4/P5 share Alriz DB key pool and deliver directly without Renderful.
 - [Picsart Kling 4 and Omni](picsart-kling4.md) — all Kling 4 modes require Renderful 1080p before delivery; no native fallback. Omni Rp8.500; credit cost uses quotes.

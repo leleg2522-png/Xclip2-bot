@@ -92,6 +92,7 @@ async function backendTest(model: typeof models[number], outcome = 'success', im
     exports: {}, Buffer, PICSART_I2V_MODELS: picsart.PICSART_I2V_MODELS,
     PICSART_I2V_MAX_IMAGES: 5, KLING4_CREDITS, KLING4_DURATIONS, buildKling4Params,
     buildPicsartI2vParams: picsart.buildPicsartI2vParams,
+    picsartI2vAccountPolicy: picsart.picsartI2vAccountPolicy,
     buildKling4OmniParams,
     extractPicsartVideoUrl: picsart.extractPicsartVideoUrl,
     isPicsartPostSubmitAuthFailure: picsart.isPicsartPostSubmitAuthFailure,
@@ -103,7 +104,7 @@ async function backendTest(model: typeof models[number], outcome = 'success', im
     getAccessToken: async () => 'fixture-access-token',
     getCredits: async (id: number) => ({ credits: outcome === 'unknown-credits' ? NaN : outcome === 'no-credits' || (outcome === 'low-first' && id === 7) ? 10 : 200 }),
     runWithAccount: async (_id: number, pool: unknown, fn: any) => {
-      assert.equal(pool, null);
+      assert.equal(pool, omni || duration === 30 ? null : 'p100');
       for (const id of [7, 8]) {
         events.accounts++;
         try { return await fn(id); } catch (error) {
