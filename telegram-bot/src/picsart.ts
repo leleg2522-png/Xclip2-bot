@@ -326,8 +326,8 @@ async function loadCredential(credId: number): Promise<CredRow | null> {
 // Uncategorized accounts (pool IS NULL, i.e. all pre-existing accounts) are a
 // WILDCARD: they match every pool request, so routing never starves them.
 export type PicsartPool = 'p500' | 'p100';
-// Kling Motion Control uses the low-credit (~50) pool, like other non-exempt models.
-export const KLING_MOTION_CONTROL_POOL: PicsartPool | null = 'p100';
+// All Picsart models may use either credit tier, including Motion Control.
+export const KLING_MOTION_CONTROL_POOL: PicsartPool | null = null;
 
 // Pick the account for a user (sticky 1-user-1-account, now PER pool key).
 //  • If the user already has an assignment for this pool to an available,
@@ -444,12 +444,11 @@ async function runWithAccount<T>(
   userId: number,
   poolFilter: PicsartPool | null,
   fn: (credId: number) => Promise<T>,
-  options?: { strictPool?: boolean; preservePool?: boolean }
 ): Promise<T> {
-  // All Picsart routes use the low-credit pool unless explicitly exempted
-  // (legacy Seedance 2.5 or Kling 4 at 30 seconds). No premium/legacy fallback.
-  if (!options?.preservePool) poolFilter = 'p100';
-  const strictPool = poolFilter === 'p100' || (options?.strictPool ?? false);
+  // Credit-tier tags remain useful for administration, not model restrictions.
+  // Override historical callers so every generation can use either tier.
+  // Model-specific credit preflight and explicit rejected-submit handling remain.
+  poolFilter = null;
   const tried: number[] = [];
   let lastErr: unknown = null;
   // Try every account in the pool before giving up (acquireAccount returns null
@@ -458,7 +457,7 @@ async function runWithAccount<T>(
   const poolCount = await q(`SELECT COUNT(*)::int AS n FROM picsart_credentials`);
   const ceiling = Math.min(MAX_ACCOUNT_ATTEMPTS, Math.max(1, poolCount.rows[0]?.n ?? 1));
   for (let attempt = 0; attempt < ceiling; attempt++) {
-    const credId = await acquireAccount(userId, poolFilter, tried, strictPool);
+    const credId = await acquireAccount(userId, poolFilter, tried, false);
     if (credId == null) break;
     tried.push(credId);
     try {
@@ -2055,7 +2054,7 @@ export async function generateSeedance(input: {
       }
       throw e;
     }
-  }, { strictPool: true, preservePool: true });
+  });
 }
 
 // ─── Picsart Image-to-Video models captured from the AI Playground HAR ───────
@@ -2135,8 +2134,7 @@ type PicsartI2vModelConfig = {
   settingsLabel: string;
   workflowPath: string;
   pollWorkflowPath?: string;
-  // Historical pool preference; picsartI2vAccountPolicy applies the current
-  // low-credit policy, retaining this preference only for exempt Kling 4 30s.
+  // Historical pool metadata; generation uses all credit tiers.
   pool: PicsartPool | null;
   strictPool?: boolean;
   pollAttempts: number;
@@ -2278,13 +2276,10 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
 };
 
 export function picsartI2vAccountPolicy(
-  model: PicsartI2vModelKey,
-  duration?: Kling4Duration,
-): { pool: PicsartPool | null; preservePool: boolean } {
-  const kling4 = model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_omni';
-  // Omitted duration is 30 seconds; the retired Omni variant is fixed at 30.
-  const exempt = kling4 && (model === 'kling_v4_omni' || (duration ?? 30) === 30);
-  return { pool: exempt ? PICSART_I2V_MODELS[model].pool : 'p100', preservePool: exempt };
+  _model: PicsartI2vModelKey,
+  _duration?: Kling4Duration,
+): { pool: PicsartPool | null } {
+  return { pool: null };
 }
 
 export function buildPicsartI2vParams(
@@ -3284,7 +3279,7 @@ export async function generatePicsartI2v(input: {
       if (isKling4) throw new Error(`PICSART_KLING4_POST_SUBMIT_FAILED job=${id}`);
       throw e;
     }
-  }, { strictPool: cfg.strictPool, preservePool: accountPolicy.preservePool });
+  });
 }
 
 // ─── Seedream 2.7 4K & GPT Image 2 (image generation via Picsart workflows) ──

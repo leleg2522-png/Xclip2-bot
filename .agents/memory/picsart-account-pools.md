@@ -16,21 +16,16 @@ Accounts are split by their **current credit balance AT ADD-TIME** (owner's expl
 
 ## Current model routing overrides earlier pool decisions
 
-All Picsart models other than Seedance 2.5 and Kling 4 at 30 seconds must
-use the ~50-credit account pool (existing low-credit category). Do not fall
-back to premium or uncategorized accounts for these models, including Motion
-Control, Seedance 2.0, Wan, Gemini, image, and audio routes.
+All Picsart models may use both ~50-credit accounts and accounts above 50,
+without model-specific pool restrictions or exceptions. This supersedes the
+earlier low-pool-only instruction and Seedance/Kling duration exemptions.
 
-**Why:** User said “selain seedance 2,5 dan juga kling 4 30 detik yg lain nya
-pake kredit yg 50 picsart”. This supersedes earlier premium/any-pool routing.
+**Why:** User clarified “semua model piscart bisa pake kredi 50 dan di atas 50”.
 
-**How to apply:** Preserve existing routing for Kling 4 30-second jobs and
-Seedance 2.5 only. Public Seedance 2.5 remains on Alriz; do not migrate
-non-Picsart providers. Keep credit-at-add classification unchanged.
-
-**p500 excludes legacy wildcards**: `acquireAccount` only picks `c.pool = 'p500'` accounts for p500 requests — legacy NULL-pool accounts are excluded. This prevents old ~50-credit accounts from being assigned to expensive models. NULL wildcards still apply for null and p100 pool requests.
-
-**Why:** user buys from two sellers delivering different credit tiers and wants to manage credit per generation-model.
+**How to apply:** Keep credit-at-add classification for administration, but
+allow either tier for generation. Preserve per-job credit checks and paid-job
+retry safeguards. Public Seedance 2.5 remains on Alriz; do not migrate
+non-Picsart providers.
 
 ## Sticky assignment is per (user_id, pool)
 `picsart_user_accounts` PK migrated from `user_id` to composite `(user_id, pool)`. A user can hold one sticky account per pool key (`'p100'`, `'p500'`, or `'any'`; Kling Motion Control Picsart uses `'any'`). Legacy rows default to pool `'any'`.

@@ -104,7 +104,7 @@ async function backendTest(model: typeof models[number], outcome = 'success', im
     getAccessToken: async () => 'fixture-access-token',
     getCredits: async (id: number) => ({ credits: outcome === 'unknown-credits' ? NaN : outcome === 'no-credits' || (outcome === 'low-first' && id === 7) ? 10 : 200 }),
     runWithAccount: async (_id: number, pool: unknown, fn: any) => {
-      assert.equal(pool, omni || duration === 30 ? null : 'p100');
+      assert.equal(pool, null);
       for (const id of [7, 8]) {
         events.accounts++;
         try { return await fn(id); } catch (error) {

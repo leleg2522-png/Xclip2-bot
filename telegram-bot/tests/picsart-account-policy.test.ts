@@ -15,51 +15,46 @@ const compiled = ts.transpileModule(source.slice(from, to), {
 
 async function main() {
   for (const model of Object.keys(PICSART_I2V_MODELS) as Array<keyof typeof PICSART_I2V_MODELS>) {
-    const kling4 = ['kling_v4', 'kling_v4_t2v', 'kling_v4_omni'].includes(model);
     const policy = picsartI2vAccountPolicy(model);
-    assert.deepEqual(policy, { pool: kling4 ? null : 'p100', preservePool: kling4 });
+    assert.deepEqual(policy, { pool: null });
   }
   for (const model of ['kling_v4', 'kling_v4_t2v'] as const) {
     for (const duration of [5, 10, 15, 20, 25, 30] as const) {
       const policy = picsartI2vAccountPolicy(model, duration);
-      assert.equal(policy.pool, duration === 30 ? null : 'p100');
-      assert.equal(policy.preservePool, duration === 30);
+      assert.equal(policy.pool, null);
     }
   }
 
-  // Exercise actual account wrapper: historic null/p500 preferences cannot
-  // consume premium or unclassified accounts outside the two exceptions.
+  // Exercise actual account wrapper: no historic caller may restrict selection
+  // to just low-credit or premium accounts.
   for (const requestedPool of [null, 'p500', 'p100']) {
-    for (const preservePool of [false, true]) {
       for (const exhausted of [false, true]) {
         let acquired = 0;
         let submitted = 0;
-        const expected = preservePool ? requestedPool : 'p100';
         const ctx = vm.createContext({
           MAX_ACCOUNT_ATTEMPTS: 3,
           q: async () => ({ rows: [{ n: 3 }] }),
           acquireAccount: async (_user: number, pool: unknown, _exclude: number[], strict: boolean) => {
             acquired++;
-            assert.equal(pool, expected);
-            assert.equal(strict, expected === 'p100');
+            assert.equal(pool, null);
+            assert.equal(strict, false);
             return exhausted ? null : 7;
           },
           console: { error() {} },
         });
         vm.runInContext(compiled, ctx);
-        const run = () => ctx.runWithAccount(1, requestedPool, async () => { submitted++; return 'ok'; }, { preservePool });
+        const run = () => ctx.runWithAccount(1, requestedPool, async () => { submitted++; return 'ok'; });
         if (exhausted) await assert.rejects(run());
         else assert.equal(await run(), 'ok');
         assert.equal(acquired, 1);
         assert.equal(submitted, exhausted ? 0 : 1);
       }
-    }
   }
-  // Exemption must be wired to the actual generation wrappers.
+  // Neither the legacy Seedance path nor Kling 4 keeps a special restriction.
   const legacySeedance = source.slice(source.indexOf('export async function generateSeedance('), source.indexOf('type PicsartI2vModelConfig'));
-  assert.match(legacySeedance, /strictPool: true, preservePool: true/);
+  assert.doesNotMatch(legacySeedance, /preservePool|strictPool: true/);
   assert.match(source, /picsartI2vAccountPolicy\(input\.model, input\.duration\)/);
-  assert.match(source, /preservePool: accountPolicy\.preservePool/);
-  console.log('Picsart low-credit routing, strict selection, no fallback, Kling 4 duration exemptions and legacy Seedance exemption passed (offline).');
+  assert.doesNotMatch(source, /preservePool/);
+  console.log('All Picsart models and Kling 4 durations can use every credit tier; no model-specific pool restriction; exhausted pool stops without submit (offline).');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
