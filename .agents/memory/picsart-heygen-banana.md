@@ -73,6 +73,8 @@ banana 2,1 mah tidak”, superseding the earlier “semua model banana” wordin
 The user cancelled the later SnapGen request with “tidak jadi deh” and
 subsequently corrected that Banana must not move to SnapGen. Treat that
 cancellation as cancelling the provider change, not merely stopping further work.
+When asked to clarify “kembalikan itu banan ke awal”, the user explicitly
+selected “Tetap Picsart”, not Renderful or SnapGen.
 
 **How to apply:** Preserve the three public package names and their individual
 prices, while routing all three through the shared Picsart Banana 2.1 backend.
