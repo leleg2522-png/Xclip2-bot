@@ -557,3 +557,17 @@ mtime_ms = 1792156818238
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/d69ee878-ca73-4294-b94d-744ce2d57a66/bc7017ad-c6eb-43c5-91cf-e62e1785e79b"
 storage_version_token = "1792156871663173"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "hYgiHAkoGsxFC9oY0Lb2a"
+uri = "file://generated-artifacts/aiveed-image-test-1793292633539/smartwatch.png"
+type = "image"
+title = "Hasil tes Aiveed — Banana 2.1"
+description = "Generate nyata lewat API Aiveed. Prompt foto produk jam tangan, biaya 8 kredit, PNG 768×768 piksel meskipun request memakai label 1K."
+logical_id = "30aa65dc-0a2a-48ec-b924-64dd8373fb46"
+content_hash = "sha256:1bcfbe35e37bb716e1aa5e5ee1a349b532a7d99103990128d3f5e7557031bc9d"
+size = 314265
+mtime_ms = 1793292741163
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/30aa65dc-0a2a-48ec-b924-64dd8373fb46/4df27265-8394-4528-bd70-c46b72dc20ac"
+storage_version_token = "1793292777905865"
+content_type = "image/png"
