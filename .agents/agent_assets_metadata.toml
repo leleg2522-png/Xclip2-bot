@@ -599,3 +599,10 @@ mtime_ms = 1793296417443
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/8d50f3da-4b75-49e6-b53a-ba9e9ad8c395/0c5e846e-5296-4e8e-b294-717af1e146f3"
 storage_version_token = "1793296439619190"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "djrDjAzpTpTMQ5A-Q2aVT"
+uri = "file://generated-artifacts/deapi-minimax-t2v-test/coastal-car-minimax.mp4"
+type = "video"
+title = "Tes DeAPI — MiniMax H3 Turbo"
+description = "Text-to-video dengan prompt pembanding yang sama: mobil merah di jalan pesisir saat sunset. Hasil aktual 768×512, 24 fps, 5,21 detik; biaya final US$0,08510506."
