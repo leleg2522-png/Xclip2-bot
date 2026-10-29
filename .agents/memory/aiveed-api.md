@@ -4,9 +4,10 @@ description: Live image-test caveats, rate limits, and output resolution verific
 ---
 
 Do not equate Aiveed's requested image resolution with actual delivered pixels.
-A Banana 2.1 text-to-image test requested `1K` but delivered a valid 768×768 PNG,
-with 8 credits charged. This proves image generation works, not true 1024px output
-or any other model/resolution.
+Banana 2.1 text-to-image and image-to-image tests requested `1K` but both
+delivered valid 768×768 PNGs, with 8 credits charged each. The image edit
+changed the watch material while preserving the reference composition.
+This proves both modes work, not true 1024px output or any other model/resolution.
 
 **Why:** The first successful image test exposed a mismatch between the resolution
 label and the downloaded image metadata.

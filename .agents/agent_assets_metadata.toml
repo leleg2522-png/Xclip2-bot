@@ -571,3 +571,17 @@ mtime_ms = 1793292741163
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/30aa65dc-0a2a-48ec-b924-64dd8373fb46/4df27265-8394-4528-bd70-c46b72dc20ac"
 storage_version_token = "1793292777905865"
 content_type = "image/png"
+
+[[outputs]]
+id = "45izFQlrOoFab2dM40RIF"
+uri = "file://generated-artifacts/aiveed-i2i-test-1793292871637/gold-watch.png"
+type = "image"
+title = "Aiveed image-to-image — jam tangan emas"
+description = "Banana 2.1 mengedit foto jam sebelumnya: bodi dan tali menjadi emas, komposisi tetap terjaga. Hasil PNG 768×768, biaya 8 kredit."
+logical_id = "3c627150-ff9e-4013-b9a1-0351dd6e1a29"
+content_hash = "sha256:61dc3a21c4631ef5ba2a6da0862c4d8f64cbbfcefcbf3cf9560cf496d3e129ee"
+size = 307846
+mtime_ms = 1793292915706
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/3c627150-ff9e-4013-b9a1-0351dd6e1a29/e0737473-f169-4148-b81f-92605e68e458"
+storage_version_token = "1793292941320262"
+content_type = "image/png"
