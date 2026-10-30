@@ -649,3 +649,31 @@ mtime_ms = 1793393351651
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/914f2f70-e9e6-4e7e-81ae-e090860a1bb8/dae91bb2-b1a9-467e-82e1-96cf786e61b7"
 storage_version_token = "1793393422555353"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "NQedS7f3PRzxIEQ7SwqAK"
+uri = "file://generated-artifacts/deapi-microdrama-two-characters/scene-1.mp4"
+type = "video"
+title = "Tes dua karakter — adegan pertengkaran"
+description = "Adegan pertama sudah selesai: 10,16 detik, 768×1344, dengan track audio. Adegan lanjutan masih diproses; ini belum video gabungan final."
+logical_id = "b89af6a7-21b7-4498-827f-ce427aff9c08"
+content_hash = "sha256:5059af61e96e8b7103b95d6d11feb2188e2a24361151be59ac11f98db1059255"
+size = 1525389
+mtime_ms = 1793394342648
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/b89af6a7-21b7-4498-827f-ce427aff9c08/f68f1383-c756-4a47-ba2b-d74b9c3a904a"
+storage_version_token = "1793394458192236"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "KunkEwUxUsGHc2hDWxEge"
+uri = "file://generated-artifacts/deapi-microdrama-two-characters/rumah-ibu-minimax-dua-karakter.mp4"
+type = "video"
+title = "Rumah Ibu — Dua Karakter Bertengkar"
+description = "Versi lengkap: 20,33 detik, dua adegan tersambung, vertikal 9:16, 756×1344 tanpa upscale. MiniMax H3 DeAPI; pertengkaran dan dorongan bahu ringan dengan dialog Indonesia."
+logical_id = "dba9dbf8-6be4-4c89-b46e-7bef11f545fd"
+content_hash = "sha256:d34a33d9055785dcb5910e766dc22018851aa65a37b74bf42c27905d5b9f24e0"
+size = 6653911
+mtime_ms = 1793394855811
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/dba9dbf8-6be4-4c89-b46e-7bef11f545fd/80b25544-c992-4b3d-af35-8579070f2e86"
+storage_version_token = "1793394916782631"
+content_type = "video/mp4"
