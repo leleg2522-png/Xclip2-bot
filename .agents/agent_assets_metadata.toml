@@ -635,3 +635,17 @@ mtime_ms = 1793390304703
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/d515a244-2963-471f-9c25-49c1bf71d260/aceaec44-ecfc-4570-9c3f-63fbbb0cd44f"
 storage_version_token = "1793390325598544"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "xI11hy6FvWSRyck15oVJt"
+uri = "file://generated-artifacts/deapi-microdrama-minimax/pesan-terakhir-minimax.mp4"
+type = "video"
+title = "Pesan Terakhir — Tes Microdrama MiniMax"
+description = "Dua adegan tersambung, 20,33 detik, vertikal 9:16, 756×1344 tanpa upscale. Audio/dialog Indonesia dihasilkan oleh MiniMax H3 DeAPI."
+logical_id = "914f2f70-e9e6-4e7e-81ae-e090860a1bb8"
+content_hash = "sha256:cb934b4274193faa04e9abeea179c263ad1b96ef21bb10ef49c93fd09039ba60"
+size = 6012972
+mtime_ms = 1793393351651
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/914f2f70-e9e6-4e7e-81ae-e090860a1bb8/dae91bb2-b1a9-467e-82e1-96cf786e61b7"
+storage_version_token = "1793393422555353"
+content_type = "video/mp4"
