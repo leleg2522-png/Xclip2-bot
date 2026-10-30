@@ -19,6 +19,38 @@ before Telegram handlers start; failure disables only this feature.
 
 ## Workflow
 
+### Aktivasi manual pada service Railway yang sudah ada
+
+1. Tunggu pekerjaan video aktif selesai sebelum deploy. Restart bisa memutus
+   pekerjaan fitur lama dan menghapus file/link unduhan sementara.
+2. Pastikan perubahan folder `telegram-bot/` sudah dikirim ke repo dan branch
+   yang menjadi sumber **service bot yang sekarang**. Perubahan lokal di Replit
+   tidak otomatis menjadi kode build Railway; redeploy versi lama saja tidak
+   akan menambahkan fitur ini.
+3. Pada **Variables** service bot tersebut, tambahkan `BUATSIMPEL_API_KEY` dan
+   `DEAPI_API_KEY` menggunakan nilai aslinya secara privat. Jangan mengganti
+   token Telegram, koneksi database, atau key fitur lain. Bila key DeAPI sudah
+   ada, tidak perlu membuat key baru.
+4. `MICRODRAMA_LLM_MODEL=gpt-6-luna` bersifat opsional. Contoh nama variabel
+   tanpa kredensial ada di `.env.example`; file itu bukan konfigurasi rahasia.
+5. Pertahankan service dan konfigurasi deploy yang sudah berjalan. Paket bot
+   memakai `telegram-bot/Dockerfile` dengan konteks build folder `telegram-bot`
+   (menginstal ffmpeg dan menjalankan `node dist/index.js`). Jangan membuat
+   service/salinan bot kedua dengan token Telegram yang sama.
+6. Deploy kode terbaru, lalu periksa log startup: `Microdrama admin storage
+   ready` menandakan tabel fitur berhasil disiapkan. Jika muncul `Microdrama
+   storage initialization failed`, fitur ini nonaktif; jangan mengirim render
+   berbayar sebelum penyimpanan siap.
+7. Dari akun admin, buka chat pribadi bot dan jalankan `/microdrama`, buat
+   naskah, lalu minta estimasi. Berhenti sebelum **Setuju biaya & render** bila
+   hanya ingin memeriksa aktivasi tanpa biaya video. Pembuatan naskah tetap
+   memakai kuota LLM. Akun non-admin tidak boleh mengakses fitur ini.
+
+Status deploy dan runtime Railway perlu diperiksa langsung pada service yang
+benar. Lulus build/test lokal bukan bukti fitur sudah aktif di Railway.
+
+### Penggunaan
+
 1. Open a private conversation and send `/microdrama`.
 2. Choose **Microdrama baru** and send an idea. This consumes LLM quota.
 3. Review the title, characters, location, actions and Indonesian dialogue.
