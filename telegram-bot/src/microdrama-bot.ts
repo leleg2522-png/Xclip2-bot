@@ -1,7 +1,7 @@
 import { Markup, type Telegraf } from 'telegraf';
 import type { PgDramaStore, DramaProject } from './microdrama-store';
 import { BuatSimpelWriter } from './microdrama-plan';
-import { DeapiDramaRenderer } from './microdrama-deapi';
+import type { DramaRenderer } from './microdrama-deapi';
 import { FfmpegDramaMedia } from './microdrama-media';
 import { MicrodramaEngine } from './microdrama-engine';
 
@@ -33,11 +33,11 @@ export function registerMicrodrama(
   bot: Telegraf<any>, store: PgDramaStore, requireAdmin: (ctx: any) => Promise<boolean>,
   authorized: (owner: number) => Promise<boolean>,
   deliver: (p: DramaProject, video: Buffer) => Promise<string | undefined>,
-  clients?: { writer?: BuatSimpelWriter; renderer?: DeapiDramaRenderer; media?: FfmpegDramaMedia },
+  clients: { writer?: BuatSimpelWriter; renderer: DramaRenderer; media?: FfmpegDramaMedia },
 ) {
   const inputOwners = new Set<number>();
   const writer = clients?.writer || new BuatSimpelWriter(process.env.BUATSIMPEL_API_KEY || '');
-  const configured = () => Boolean(process.env.BUATSIMPEL_API_KEY && process.env.DEAPI_API_KEY);
+  const configured = () => Boolean(process.env.BUATSIMPEL_API_KEY);
   async function present(p: DramaProject) {
     let text = `Microdrama admin • ${p.id.slice(0, 8)}\nStatus: ${p.status}\nModel naskah: ${p.model}\n`;
     if (p.plan) {
@@ -62,7 +62,7 @@ export function registerMicrodrama(
     if (p.status === 'idea' || p.status === 'revision') inputOwners.add(p.owner);
   }
   const engine = new MicrodramaEngine({
-    store, writer, renderer: clients?.renderer || new DeapiDramaRenderer(process.env.DEAPI_API_KEY || ''),
+    store, writer, renderer: clients.renderer,
     media: clients?.media || new FfmpegDramaMedia(), authorized, deliver, present,
     notify: (p, text) => sendText(bot, p.chat, text),
   });
@@ -71,7 +71,7 @@ export function registerMicrodrama(
     if (!await requireAdmin(ctx)) return false;
     if (ctx.chat?.type !== 'private') { await ctx.reply('Microdrama admin hanya tersedia di chat pribadi bot.'); return false; }
     if (!configured()) {
-      await ctx.reply('Microdrama belum dikonfigurasi: BUATSIMPEL_API_KEY dan DEAPI_API_KEY harus tersedia di environment bot yang menjalankannya.');
+      await ctx.reply('Microdrama belum dikonfigurasi: BUATSIMPEL_API_KEY harus tersedia di environment bot. Key video DeAPI dikelola lewat /deapipool di database.');
       return false;
     }
     if (!store.ready) {

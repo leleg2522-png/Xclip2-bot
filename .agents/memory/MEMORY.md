@@ -35,6 +35,6 @@
 - [NovAI Seedance API](novai-seedance-api.md) — main-domain API works; Seedance 2.5 is listed, but trial video submit returned 403 despite advertised trial support.
 - [Alriz Seedance 2.5 route](alriz-seedance-route.md) — public Seedance 2.5 uses Alriz, Rp5,000/video and 1080p only; no video reference, 30s fixed.
 - [Aiveed API](aiveed-api.md) — image test succeeded; Banana 2.1 requested 1K delivered 768px; honor polling rate limits without resubmitting.
-- [DeAPI model access](deapi-account-catalog.md) — API catalogue is account-scoped; Seedance 2.5 exists publicly but the tested key is plan-blocked.
+- [DeAPI model access and keys](deapi-account-catalog.md) — catalogue is account-scoped; Seedance is plan-blocked; user wants bot credentials pooled in the Railway DB.
 - [Microdrama LLM provider](microdrama-llm-provider.md) — user selected BUAT SIMPEL as the microdrama brain; specific model remains undecided.
 - [Rekalume image HAR](rekalume-image-har.md) — Banana Pro edit completed at real 1K/4K; sanitized capture lacks auth, so it cannot independently replay generation.

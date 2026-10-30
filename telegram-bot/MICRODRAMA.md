@@ -5,9 +5,11 @@ menu or call any customer saldo deduction/refund functions.
 
 ## Configuration
 
-The process running the bot needs `BUATSIMPEL_API_KEY`, `DEAPI_API_KEY`, and its
-existing Telegram/PostgreSQL credentials. Credentials in the Replit workspace
-are not automatically configured on a separate Railway service.
+The process running the bot needs `BUATSIMPEL_API_KEY` and its existing
+Telegram/PostgreSQL credentials. DeAPI credentials come exclusively from the
+Railway `deapi_key_pool` table; there is no runtime `DEAPI_API_KEY` fallback.
+Credentials in the Replit workspace are not automatically configured on a
+separate Railway service.
 
 `MICRODRAMA_LLM_MODEL` optionally selects the initial LLM gateway alias
 (default `gpt-6-luna`). `/microdramamodel` lists live enabled aliases and lets
@@ -27,10 +29,9 @@ before Telegram handlers start; failure disables only this feature.
    yang menjadi sumber **service bot yang sekarang**. Perubahan lokal di Replit
    tidak otomatis menjadi kode build Railway; redeploy versi lama saja tidak
    akan menambahkan fitur ini.
-3. Pada **Variables** service bot tersebut, tambahkan `BUATSIMPEL_API_KEY` dan
-   `DEAPI_API_KEY` menggunakan nilai aslinya secara privat. Jangan mengganti
-   token Telegram, koneksi database, atau key fitur lain. Bila key DeAPI sudah
-   ada, tidak perlu membuat key baru.
+3. Pada **Variables** service bot tersebut, tambahkan `BUATSIMPEL_API_KEY`
+   secara privat. Key DeAPI disimpan di database, bukan Variables bot.
+   Jangan mengganti token Telegram, koneksi database, atau key fitur lain.
 4. `MICRODRAMA_LLM_MODEL=gpt-6-luna` bersifat opsional. Contoh nama variabel
    tanpa kredensial ada di `.env.example`; file itu bukan konfigurasi rahasia.
 5. Pertahankan service dan konfigurasi deploy yang sudah berjalan. Paket bot
@@ -48,6 +49,31 @@ before Telegram handlers start; failure disables only this feature.
 
 Status deploy dan runtime Railway perlu diperiksa langsung pada service yang
 benar. Lulus build/test lokal bukan bukti fitur sudah aktif di Railway.
+
+### Pool key DeAPI
+
+Admin dapat menggunakan `/deapipool`, `/adddeapikey KEY`, `/nonaktifdeapikey ID`,
+dan `/restoredeapikey ID` di chat pribadi bot. Batch input didukung, maksimal
+100 key per pesan. Pesan berisi key dihapus setelah dibaca; daftar hanya
+menampilkan ID dan status, bukan key atau potongannya.
+
+Key reusable, dipilih bergantian secara atomik. Pergantian akun hanya terjadi
+saat quote non-billable: 401 menonaktifkan key; 402/403 hanya melewati akun
+tersebut untuk permintaan ini, karena 403 bisa berarti batas paket/izin.
+Tidak ada pengecekan saldo lewat endpoint account yang bisa menolak izin.
+
+Sebelum submit, ID key disimpan bersama marker percobaan. Submit, polling,
+dan pemulihan job selalu memakai key asal, termasuk jika key telah
+dinonaktifkan untuk pemilihan baru. Job lama tanpa ID key tidak ditebak atau
+dipindah akun. Tidak ada penghapusan/edit nilai key agar binding job tetap
+stabil; tambahkan key baru lalu nonaktifkan ID lama.
+
+`pnpm --dir telegram-bot run setup:deapi-pool -- --apply` mengimpor satu kali
+`DEAPI_API_KEY` yang ada di environment setup ke database Railway. Script
+memeriksa tabel penanda target bot, menggunakan transaksi, dan tidak mencetak
+nilai kredensial. Menjalankan ulang tidak menduplikasi atau mengaktifkan
+kembali key yang dinonaktifkan. Bot tidak memerlukan variabel itu setelah
+impor, dan tidak mengimpor ulang otomatis saat restart.
 
 ### Penggunaan
 
@@ -102,6 +128,9 @@ Generation can take tens of minutes. Continuity/lip-sync are not guaranteed.
 authorization, replay-protection, Telegram handler and real ffmpeg fixture
 checks. `pnpm --dir telegram-bot run build` compiles the bot. No live paid
 render is required by the test suite.
+
+`pnpm --dir telegram-bot run test:deapi-pool` checks rotation, persistent
+credential binding, admin access and redaction without live paid requests.
 
 `pnpm --dir telegram-bot run test:microdrama-pg` additionally checks real
 cross-connection locks and schema constraints in a disposable schema on the

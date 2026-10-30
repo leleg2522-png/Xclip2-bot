@@ -20,6 +20,8 @@ export function dramaError(error: unknown): string {
   if (code === 'LLM_MODEL_UNAVAILABLE') return 'Model naskah sedang tidak tersedia. Pilih model aktif lewat /microdramamodel.';
   if (code.startsWith('LLM_')) return 'Permintaan naskah belum berhasil. Tidak diulang otomatis; permintaan ini mungkin sudah memakai kuota LLM.';
   if (code === 'DEAPI_JOB_FAILED') return 'Provider menyatakan salah satu klip gagal. Tidak ada pengiriman ulang job berbayar.';
+  if (code === 'DEAPI_POOL_NO_USABLE_KEY') return 'Tidak ada key DeAPI yang dapat dipakai untuk model ini. Periksa /deapipool dan akses/saldo akun provider. Belum ada submit klip berikutnya.';
+  if (code === 'DEAPI_JOB_KEY_UNKNOWN' || code === 'DEAPI_JOB_KEY_MISSING') return 'Key asal job ini belum teridentifikasi atau tidak ditemukan di pool. Job tidak dikirim ulang dan tidak dipindah ke akun lain.';
   if (code === 'DEAPI_QUOTE_OVER_LIMIT' || code === 'DRAMA_BUDGET_CHANGED') return 'Harga tidak valid, melebihi batas US$0,30 per klip, atau naik dari persetujuan. Submit berikutnya dihentikan.';
   if (code === 'DRAMA_ADMIN_REVOKED') return 'Akses admin tidak lagi aktif. Submit berikutnya dihentikan.';
   if (code === 'DRAMA_APPROVAL_EXPIRED') return 'Estimasi sudah kedaluwarsa. Minta estimasi baru sebelum menyetujui render.';
@@ -122,16 +124,18 @@ export class MicrodramaEngine {
         if (!await this.d.authorized(p.owner)) throw new Error('DRAMA_ADMIN_REVOKED');
         const frame = n ? await this.d.media.lastFrame(videos[n - 1]) : undefined;
         const prompt = scenePrompt(p.plan, n);
-        const price = await this.d.renderer.quote(prompt, frame);
+        const prepared = this.d.renderer.prepare ? await this.d.renderer.prepare(prompt, frame)
+          : { price: await this.d.renderer.quote(prompt, frame), keyId: undefined };
+        const { price, keyId } = prepared;
         if (!Number.isFinite(p.quotes[n]) || price > p.quotes[n] + 0.000001) throw new Error('DRAMA_BUDGET_CHANGED');
         await this.d.notify(p, `Memproses adegan ${n + 1}/2. Estimasi klip ${cost(price)}. Antrean provider dapat memakan puluhan menit.`);
         // Write-ahead marker BEFORE making a paid call. Missing ID after any failure permanently blocks resubmit.
-        job.attempted = true; job.price = price; await save();
-        job.id = await this.d.renderer.submit(prompt, 71 + n, frame);
+        job.attempted = true; job.price = price; job.keyId = keyId; await save();
+        job.id = await this.d.renderer.submit(prompt, 71 + n, frame, job.keyId);
         await save();
       }
       if (!job.url) {
-        try { job.url = await this.d.renderer.poll(job.id); }
+        try { job.url = await this.d.renderer.poll(job.id, job.keyId); }
         catch (e) {
           if (e instanceof Error && e.message === 'DEAPI_JOB_FAILED') { job.failed = true; await save(); }
           throw e;

@@ -1,9 +1,10 @@
 import { MICRODRAMA_SETTINGS } from './microdrama-plan';
 
 export interface DramaRenderer {
+  prepare?(prompt: string, frame?: Buffer): Promise<{ price: number; keyId: number }>;
   quote(prompt: string, frame?: Buffer): Promise<number>;
-  submit(prompt: string, seed: number, frame?: Buffer): Promise<string>;
-  poll(id: string): Promise<string>;
+  submit(prompt: string, seed: number, frame?: Buffer, keyId?: number): Promise<string>;
+  poll(id: string, keyId?: number): Promise<string>;
   download(url: string): Promise<Buffer>;
 }
 

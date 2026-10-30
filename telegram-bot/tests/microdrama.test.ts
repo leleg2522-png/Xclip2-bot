@@ -295,7 +295,7 @@ async function engineTests() {
 
 async function handlerTests() {
   const oldBuat = process.env.BUATSIMPEL_API_KEY, oldDeapi = process.env.DEAPI_API_KEY;
-  process.env.BUATSIMPEL_API_KEY = 'offline-key'; process.env.DEAPI_API_KEY = 'offline-key';
+  process.env.BUATSIMPEL_API_KEY = 'offline-key'; delete process.env.DEAPI_API_KEY;
   try {
     const f = fixture();
     const commands = new Map<string, any>();

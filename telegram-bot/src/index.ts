@@ -44,6 +44,9 @@ import { KLING4_DURATIONS, type Kling4Duration } from './picsart-kling4';
 import { generateKlingV3Pro, KLING_V3_PRO } from './kling-v3-pro-edan';
 import { PgDramaStore } from './microdrama-store';
 import { registerMicrodrama } from './microdrama-bot';
+import { DeapiKeyPool } from './deapi-key-pool';
+import { registerDeapiAdmin } from './deapi-admin';
+import { PooledDeapiRenderer } from './deapi-pooled-renderer';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -139,6 +142,7 @@ const db = new Pool({
 const freebeatBridge = new FreebeatBridgeQueue(db);
 const chinaKeyPool = new ChinaApiKeyPool(db);
 const alrizKeyPool = new AlrizKeyPool({ query: dbq });
+const deapiKeyPool = new DeapiKeyPool({ query: dbq });
 // CRITICAL: a pooled client can error while idle (server closed the socket).
 // The pg Pool emits 'error' for that; with NO listener Node treats it as an
 // unhandled 'error' event and CRASHES the process — which wipes every
@@ -1621,6 +1625,7 @@ async function incrementKlingUsage(dbUserId: number): Promise<number> {
 const bot = new Telegraf(BOT_TOKEN);
 registerChinaApiAdmin(bot, chinaKeyPool, requireAdmin);
 registerAlrizAdmin(bot, alrizKeyPool, requireAdmin);
+registerDeapiAdmin(bot, deapiKeyPool, requireAdmin);
 const microdramaStore = new PgDramaStore(db);
 registerMicrodrama(bot, microdramaStore, requireAdmin, async owner => {
   const result = await db.query('SELECT is_admin FROM users WHERE telegram_id=$1', [owner]);
@@ -1643,7 +1648,7 @@ registerMicrodrama(bot, microdramaStore, requireAdmin, async owner => {
   const url = await publishMedia(video, true);
   await bot.telegram.sendMessage(project.chat, `${caption}\n\nDownload sementara (segera simpan):\n${url}`);
   return undefined;
-});
+}, { renderer: new PooledDeapiRenderer(deapiKeyPool) });
 
 // Recognizes only genuine transient transport failures (DNS/socket/timeout).
 // Kept deliberately narrow — matching by explicit error code, not free-text —
@@ -12504,6 +12509,7 @@ app.listen(PORT, () => {
     console.error('ChinaAPI pool initialization failed; credential details withheld');
   }
   try {
+    await deapiKeyPool.ensureSchema();
     await microdramaStore.ensureSchema();
     console.log('Microdrama admin storage ready');
   } catch {

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { Pool } from 'pg';
 import { PgDramaStore } from '../src/microdrama-store';
+import { DeapiKeyPool } from '../src/deapi-key-pool';
 
 async function main() {
   const connectionString = process.env.DATABASE_URL;
@@ -17,6 +18,18 @@ async function main() {
     await admin.query(`CREATE SCHEMA ${schema}`);
     const store = new PgDramaStore(pool);
     await store.ensureSchema();
+    const keys = new DeapiKeyPool(pool);
+    await keys.ensureSchema();
+    assert.equal(await keys.addKeys(['fixture-deapi-key-1', 'fixture-deapi-key-2', 'fixture-deapi-key-1']), 2);
+    assert.equal(await keys.addKeys(['fixture-deapi-key-1']), 0);
+    const key1 = await keys.next(), key2 = await keys.next();
+    assert.notEqual(key1!.id, key2!.id);
+    await keys.disable(key1!.id);
+    assert.equal((await keys.get(key1!.id))!.apiKey, key1!.apiKey);
+    assert.equal((await keys.next())!.id, key2!.id);
+    await keys.restore(key1!.id);
+    assert.deepEqual(await keys.stats(), { available: 2, dead: 0 });
+    assert.ok((await keys.list()).every(k => !('api_key' in k)));
     const p = await store.create(1, 1, 'test-model');
     await assert.rejects(store.create(1, 1, 'test-model'), (e: any) => e.code === '23505');
     let release!: () => void, acquired!: () => void;

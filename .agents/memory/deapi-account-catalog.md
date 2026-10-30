@@ -23,3 +23,11 @@ Do not promise rapid turnaround from the short output duration. Two sequential h
 **Why:** Provider throughput varied substantially between tests; chaining a last-frame continuation also prevents those two dependent scenes from running in parallel.
 
 **How to apply:** Separate automation from speed guarantees. For faster episode pipelines, consider independent scenes generated in parallel from approved character references; do not describe dependent continuation scenes as parallelizable.
+
+## Bot credential management
+
+Manage DeAPI credentials as a pool in the bot's Railway database.
+
+**Why:** The user explicitly requested “buatkan pool api untuk de api di DB”. A database-managed pool avoids requiring hosting-variable changes for each additional key.
+
+**How to apply:** Preserve database-managed credential selection when changing the microdrama renderer. Keep accepted jobs tied to their original account; adding or disabling a pool key must not move an existing paid job to another account.

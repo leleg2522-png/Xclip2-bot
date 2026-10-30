@@ -5,7 +5,7 @@ import type { DramaPlan } from './microdrama-plan';
 export type DramaStatus = 'idea' | 'writing' | 'draft' | 'revision' | 'quoting' | 'quoted'
   | 'rendering' | 'paused' | 'uncertain' | 'failed' | 'ready' | 'delivered' | 'cancelled';
 export interface DramaJob {
-  attempted?: boolean; id?: string; url?: string; price?: number; failed?: boolean;
+  attempted?: boolean; id?: string; url?: string; price?: number; failed?: boolean; keyId?: number;
 }
 export interface DramaProject {
   id: string; owner: number; chat: number; status: DramaStatus; model: string;
