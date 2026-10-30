@@ -42,6 +42,8 @@ import { inspectFloraUpscaleVideo, normalizeFlora1080 } from './flora-upscale-me
 import { retryTelegramFileRead, redactTelegramToken } from './telegram-file-retry';
 import { KLING4_DURATIONS, type Kling4Duration } from './picsart-kling4';
 import { generateKlingV3Pro, KLING_V3_PRO } from './kling-v3-pro-edan';
+import { PgDramaStore } from './microdrama-store';
+import { registerMicrodrama } from './microdrama-bot';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -1619,6 +1621,29 @@ async function incrementKlingUsage(dbUserId: number): Promise<number> {
 const bot = new Telegraf(BOT_TOKEN);
 registerChinaApiAdmin(bot, chinaKeyPool, requireAdmin);
 registerAlrizAdmin(bot, alrizKeyPool, requireAdmin);
+const microdramaStore = new PgDramaStore(db);
+registerMicrodrama(bot, microdramaStore, requireAdmin, async owner => {
+  const result = await db.query('SELECT is_admin FROM users WHERE telegram_id=$1', [owner]);
+  return result.rows[0]?.is_admin === true;
+}, async (project, video) => {
+  const caption = `${project.plan!.title}\nMicrodrama • ~20 detik • 9:16 • native audio • tanpa upscale`;
+  if (video.length <= 48 * 1024 * 1024) {
+    try {
+      const result = await bot.telegram.sendVideo(project.chat, { source: video, filename: 'microdrama.mp4' },
+        { caption, supports_streaming: true });
+      return result.video.file_id;
+    } catch {
+      // Delivery fallback only. Never generate another clip because a Telegram upload failed.
+      try {
+        const result = await bot.telegram.sendDocument(project.chat, { source: video, filename: 'microdrama.mp4' }, { caption });
+        return result.document.file_id;
+      } catch {}
+    }
+  }
+  const url = await publishMedia(video, true);
+  await bot.telegram.sendMessage(project.chat, `${caption}\n\nDownload sementara (segera simpan):\n${url}`);
+  return undefined;
+});
 
 // Recognizes only genuine transient transport failures (DNS/socket/timeout).
 // Kept deliberately narrow — matching by explicit error code, not free-text —
@@ -12477,6 +12502,12 @@ app.listen(PORT, () => {
     if (process.env.CHINAAPI_API_KEY) await chinaKeyPool.addKeys([process.env.CHINAAPI_API_KEY]);
   } catch {
     console.error('ChinaAPI pool initialization failed; credential details withheld');
+  }
+  try {
+    await microdramaStore.ensureSchema();
+    console.log('Microdrama admin storage ready');
+  } catch {
+    console.error('Microdrama storage initialization failed; feature disabled, details withheld');
   }
   bot.launch({ allowedUpdates: ['message', 'callback_query'] });
   console.log('✅ Bot berjalan...');
