@@ -13,4 +13,10 @@ The microdrama workflow belongs in the existing XclipAI Telegram bot, not a stan
 
 **Why:** The user selected “Bot Telegram XclipAI” when asked where the workflow should run.
 
-**How to apply:** Scope the user-facing workflow inside the existing bot. Admin-only versus public access and billing still require a decision.
+**How to apply:** Scope the user-facing workflow inside the existing bot.
+
+Release the initial microdrama feature to admins only.
+
+**Why:** The user selected “Khusus admin dulu (recommended)” when asked who should have initial access.
+
+**How to apply:** Enforce the bot's existing admin authorization on commands and callbacks. Do not expose the feature publicly or add customer saldo charges without a separate decision.
