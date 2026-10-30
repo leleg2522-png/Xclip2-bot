@@ -103,3 +103,11 @@ and `/edanpool`.
 
 ## Fragility
 Cookie dies on logout/expiry → all P2 generations 401. Recovery: user re-grabs the `session` cookie for edanbot.digital from browser DevTools and updates `EDANBOT_COOKIE`.
+
+## Separate Kling v3 Pro image-to-video product
+
+The user explicitly requested: “hapus kling v3 standar dan gantikan dengan kling v3 pro dari edanweb ini”, with the public name “Kling v3 Pro 1080”.
+
+**Why:** This replaces the old Standard image-to-video offering, not the separate Kling v3 Turbo or any Motion Control package. Similar Kling naming must not cause unrelated routes to be migrated.
+
+**How to apply:** Keep that replacement scoped to the former Standard offering. The submitted HAR verifies the Edanweb `kling-3` image-to-video flow at 9:16, 15 seconds, 1080p, audio enabled, with start/end images; this is distinct from Edanweb motion-control models.

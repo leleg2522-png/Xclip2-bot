@@ -41,6 +41,7 @@ import { generateRenderful1080 } from './renderful-auto-upscale';
 import { inspectFloraUpscaleVideo, normalizeFlora1080 } from './flora-upscale-media';
 import { retryTelegramFileRead, redactTelegramToken } from './telegram-file-retry';
 import { KLING4_DURATIONS, type Kling4Duration } from './picsart-kling4';
+import { generateKlingV3Pro, KLING_V3_PRO } from './kling-v3-pro-edan';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -2580,7 +2581,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🎨 PixVerse v6 • 15 detik • 720p', 'mode_pi2v_pixverse_v6')],
     [Markup.button.callback('⚡ Kling v3 Turbo', 'mode_pi2v_kling_v3_turbo')],
     [Markup.button.callback('🎭 Kling v2.6 Pro', 'mode_pi2v_kling_v26_pro')],
-    [Markup.button.callback('🎞️ Kling v3 Standard', 'mode_pi2v_kling_v3')],
+    [Markup.button.callback(`🎞️ ${KLING_V3_PRO.label}`, 'mode_pi2v_kling_v3')],
     [Markup.button.callback(`🎬 Kling 4 1080p · Image to Video · 10/15/30 detik · mulai ${formatRupiah(getPicsartI2vPrice('kling_v4', 10))}`, 'mode_pi2v_kling_v4')],
     [Markup.button.callback(`✍️ Kling 4 1080p · Text to Video · 10/15/30 detik · mulai ${formatRupiah(getPicsartI2vPrice('kling_v4_t2v', 10))}`, 'mode_pi2v_kling_v4_t2v')],
     [Markup.button.callback('🌐 Kling Omni • 12 detik • 720p', 'mode_pi2v_kling_omni')],
@@ -2646,11 +2647,16 @@ function picsartI2vPublicSettings(model: picsart.PicsartI2vModelKey, settings: s
 }
 
 function supportsMultiplePicsartI2vImages(model?: picsart.PicsartI2vModelKey): boolean {
-  return model === 'seedance_2_mini'
+  return model === 'kling_v3'
+    || model === 'seedance_2_mini'
     || model === 'seedance_2_fast'
     || model === 'seedance_2'
     || model === 'kling_v4'
     || model === 'wan_v3';
+}
+
+function maxPicsartI2vImages(model?: picsart.PicsartI2vModelKey): number {
+  return model === 'kling_v3' ? KLING_V3_PRO.maxImages : picsart.PICSART_I2V_MAX_IMAGES;
 }
 
 function picsartI2vRatioKeyboard() {
@@ -3157,7 +3163,7 @@ function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false 
     `• LTX 2.5 Fast (20 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_ltx_fast)}\n` +
     `• Kling v3 Turbo — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling v2.6 Pro — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
-    `• Kling v3 Standard — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
+    `• ${KLING_V3_PRO.label} (15 detik) — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling 4 1080p · Image to Video (10/15/30 detik) — ${KLING4_DURATIONS.map(duration => `${duration} detik ${formatRupiah(getPicsartI2vPrice('kling_v4', duration))}`).join(' / ')}\n` +
     `• Kling 4 1080p · Text to Video (10/15/30 detik) — ${KLING4_DURATIONS.map(duration => `${duration} detik ${formatRupiah(getPicsartI2vPrice('kling_v4_t2v', duration))}`).join(' / ')}\n` +
     `• Kling Omni (12 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_kling_omni)}\n` +
@@ -5035,14 +5041,16 @@ bot.on('callback_query', async (ctx) => {
         || !session.picsartI2vModel
         || !supportsMultiplePicsartI2vImages(session.picsartI2vModel)
         || imageCount < 1
-        || imageCount >= picsart.PICSART_I2V_MAX_IMAGES
+        || imageCount >= maxPicsartI2vImages(session.picsartI2vModel)
       ) {
       return ctx.answerCbQuery('Sesi sudah berubah, ulangi dari /menu.').catch(() => {});
     }
       const model = session.picsartI2vModel;
       const label = session.picsartI2vDisplayLabel ?? picsart.PICSART_I2V_MODELS[model].label;
     return ctx.editMessageText(
-      `🌀 *${label}*\n\n📸 Kirim *foto acuan ke-${imageCount + 1}* (maksimal ${picsart.PICSART_I2V_MAX_IMAGES} foto).`,
+      model === 'kling_v3'
+        ? `🎞️ *${label}*\n\nKirim *foto frame akhir* untuk tujuan transisi video.`
+        : `🌀 *${label}*\n\n📸 Kirim *foto acuan ke-${imageCount + 1}* (maksimal ${maxPicsartI2vImages(model)} foto).`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -5124,7 +5132,9 @@ bot.on('callback_query', async (ctx) => {
       `🧩 *${cfg.label}*\n\n` +
       `Parameter: *${cfg.settingsLabel}*\n` +
       `Harga: *${formatRupiah(await userModelPrice(getSession(userId).dbUserId!, model, getPicsartI2vPrice(model)))}* per video\n\n` +
-      '*Langkah 1:* Kirim *foto acuan* untuk video kamu.',
+      (model === 'kling_v3'
+        ? '*Langkah 1:* Kirim *foto frame awal*. Setelah itu kamu bisa menambahkan *frame akhir* atau langsung lanjut ke prompt.'
+        : '*Langkah 1:* Kirim *foto acuan* untuk video kamu.'),
       { parse_mode: 'Markdown' }
     );
   }
@@ -6158,9 +6168,9 @@ function imgAddPhotoKeyboard() {
   ]);
 }
 
-function picsartI2vAddPhotoKeyboard(count: number) {
+function picsartI2vAddPhotoKeyboard(count: number, model?: picsart.PicsartI2vModelKey) {
   return Markup.inlineKeyboard([
-    [Markup.button.callback(`➕ Tambah Foto (${count}/${picsart.PICSART_I2V_MAX_IMAGES})`, 'picsart_i2v_add_photo')],
+    [Markup.button.callback(model === 'kling_v3' ? '➕ Tambah Frame Akhir' : `➕ Tambah Foto (${count}/${picsart.PICSART_I2V_MAX_IMAGES})`, 'picsart_i2v_add_photo')],
     [Markup.button.callback('✅ Lanjut ke Prompt', 'picsart_i2v_photos_done')],
   ]);
 }
@@ -6429,9 +6439,10 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
       : cfg.settingsLabel;
     const publicSettingsLabel = picsartI2vPublicSettings(model, settingsLabel, session.picsartI2vDuration);
     if (supportsMultiplePicsartI2vImages(model)) {
+      const maxImages = maxPicsartI2vImages(model);
       const imageUrls = [...(session.picsartI2vImageUrls ?? []), fileUrl]
-        .slice(0, picsart.PICSART_I2V_MAX_IMAGES);
-      const reachedLimit = imageUrls.length >= picsart.PICSART_I2V_MAX_IMAGES;
+        .slice(0, maxImages);
+      const reachedLimit = imageUrls.length >= maxImages;
       setSession(userId, {
         picsartI2vImageUrl: imageUrls[0],
         picsartI2vImageUrls: imageUrls,
@@ -6439,16 +6450,19 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
       });
       if (reachedLimit) {
         return ctx.reply(
-          `✅ ${picsart.PICSART_I2V_MAX_IMAGES} foto acuan untuk *${displayLabel}* diterima (maksimal ${picsart.PICSART_I2V_MAX_IMAGES}).\n\n` +
+          (model === 'kling_v3'
+            ? `✅ Frame awal dan frame akhir untuk *${displayLabel}* diterima.\n\n`
+            : `✅ ${maxImages} foto acuan untuk *${displayLabel}* diterima (maksimal ${maxImages}).\n\n`) +
           `Parameter: *${publicSettingsLabel}*\n\n` +
           '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).',
           { parse_mode: 'Markdown' }
         );
       }
       return ctx.reply(
-        `✅ Foto acuan ke-${imageUrls.length} untuk *${displayLabel}* diterima!\n\n` +
-        `Kirim foto berikutnya (maksimal ${picsart.PICSART_I2V_MAX_IMAGES}) atau lanjut ke prompt.`,
-        { parse_mode: 'Markdown', ...picsartI2vAddPhotoKeyboard(imageUrls.length) }
+        (model === 'kling_v3'
+          ? `✅ Frame awal untuk *${displayLabel}* diterima!\n\nKirim frame akhir (opsional) atau lanjut ke prompt.`
+          : `✅ Foto acuan ke-${imageUrls.length} untuk *${displayLabel}* diterima!\n\nKirim foto berikutnya (maksimal ${maxImages}) atau lanjut ke prompt.`),
+        { parse_mode: 'Markdown', ...picsartI2vAddPhotoKeyboard(imageUrls.length, model) }
       );
     }
     setSession(userId, { picsartI2vImageUrl: fileUrl, mode: 'picsart_i2v_wait_prompt' });
@@ -9179,6 +9193,71 @@ async function runKlingP3(
 
 // ─── Background: Picsart Image-to-Video ───────────────────────────────────────
 
+async function runKlingV3Pro(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  imageUrls: string[]
+) {
+  const label = KLING_V3_PRO.label;
+  const price = getPicsartI2vPrice('kling_v3');
+  const charge = await beginCharge(dbUserId, price, 3);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, price)).catch(() => {});
+    return;
+  }
+  let refund = true;
+  try {
+    if (imageUrls.length < 1 || imageUrls.length > KLING_V3_PRO.maxImages) {
+      throw new Error('KLING_V3_PRO_INVALID_INPUT');
+    }
+    const images = await Promise.all(imageUrls.map(async (url, index) => {
+      const image = await downloadBuffer(url);
+      return { buffer: image.buf, name: `frame-${index + 1}.${image.ext}`, mime: image.mime };
+    }));
+    const result = await generateKlingV3Pro(prompt, images, {
+      cookies: getAvailableEdanbotCookies,
+      markDead: markEdanbotCookieDead,
+      upload: (cookie, image) => uploadToEdanbot(cookie, image.buffer, image.name, image.mime),
+      submit: async (cookie, body) => {
+        const response = await edanbotHttp.post('https://edanbot.digital/api/generate', body, {
+          headers: { cookie, origin: 'https://edanbot.digital', referer: 'https://edanbot.digital/dashboard' },
+        });
+        return response.data?.job_id;
+      },
+      poll: (cookie, jobId) => pollEdanbotJob(cookie, jobId, EDANBOT_JOB_TIMEOUT_MS),
+      onStatus: stage => {
+        const text = stage === 'upload' ? 'mengunggah frame...'
+          : stage === 'submit' ? 'mengirim permintaan...'
+          : 'video sedang dibuat. Hasil akan dikirim otomatis.';
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, `⏳ ${label}: ${text}`).catch(() => {});
+      },
+    });
+    const delivered = await sendResult(chatId, result.url,
+      `🎞️ ${label} (${KLING_V3_PRO.settingsLabel})\n\n/menu untuk buat lagi`, true);
+    if (!delivered) throw new Error('KLING_V3_PRO_DELIVERY_FAILED');
+    refund = false;
+    await incrementKlingUsage(dbUserId);
+    markGenSuccess(userId);
+    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    console.log(`[${userId}] ${label} done — job ${result.jobId}`);
+  } catch (error: unknown) {
+    // Do not log Axios objects: request config contains the account cookie.
+    console.error(`[${userId}] Kling v3 Pro failed: ${describeError(error)}`);
+    const text = `❌ ${label} gagal diproses atau dikirim. Saldo dikembalikan penuh.\n\n/menu untuk coba lagi`;
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, text)
+      .catch(() => bot.telegram.sendMessage(chatId, text).catch(() => {}));
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, price).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(price)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
 async function runPicsartI2v(
   chatId: number,
   userId: number,
@@ -9194,6 +9273,10 @@ async function runPicsartI2v(
     priceKey?: 'picsart_wan_v3' | 'kling_21_pro';
   }
 ) {
+  // Keep existing callback IDs working, but never submit the retired Standard route.
+  if (opts.model === 'kling_v3') {
+    return runKlingV3Pro(chatId, userId, dbUserId, statusMsgId, prompt, opts.imageUrls);
+  }
   const cfg = picsart.PICSART_I2V_MODELS[opts.model];
   const label = customerSafeModelLabel(opts.displayLabel ?? cfg.label, cfg.label);
   const seedance1080 = isSeedance2I2vModel(opts.model);

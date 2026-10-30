@@ -2218,8 +2218,8 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
     pollAttempts: 180,
   },
   kling_v3: {
-    label: 'Kling v3 Standard',
-    settingsLabel: '9:16 · 12 detik · audio · Standard',
+    label: 'Kling v3 Pro 1080',
+    settingsLabel: '9:16 · 15 detik · 1080p · audio',
     workflowPath: 'kling-image-to-video',
     pool: null,
     pollAttempts: 180,
@@ -2504,18 +2504,7 @@ export function buildPicsartI2vParams(
         options: {},
       };
     case 'kling_v3':
-      return {
-        prompt,
-        aspect_ratio: '9:16',
-        duration: '12',
-        model_name: 'kling-v3',
-        image: imageUrl,
-        sound: 'on',
-        mode: 'std',
-        multi_shot: false,
-        shot_type: 'customize',
-        options: {},
-      };
+      throw new Error('KLING_V3_PRO_USES_EDANBOT');
     case 'kling_omni':
       return {
         prompt,

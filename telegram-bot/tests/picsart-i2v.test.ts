@@ -623,19 +623,8 @@ assert.deepEqual(kling21, {
   options: {},
 });
 
-const klingV3 = buildPicsartI2vParams('kling_v3', prompt, imageUrl);
-assert.deepEqual(klingV3, {
-  prompt,
-  aspect_ratio: '9:16',
-  duration: '12',
-  model_name: 'kling-v3',
-  image: imageUrl,
-  sound: 'on',
-  mode: 'std',
-  multi_shot: false,
-  shot_type: 'customize',
-  options: {},
-});
+assert.throws(() => buildPicsartI2vParams('kling_v3', prompt, imageUrl), /KLING_V3_PRO_USES_EDANBOT/);
+assert.equal(PICSART_I2V_MODELS.kling_v3.label, 'Kling v3 Pro 1080');
 
 const klingOmni = buildPicsartI2vParams('kling_omni', prompt, imageUrl);
 assert.deepEqual(klingOmni, {
