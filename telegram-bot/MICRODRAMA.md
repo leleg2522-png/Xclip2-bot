@@ -1,7 +1,95 @@
-# Microdrama — admin-only prototype
+# AI episode director — admin only
 
 This feature is part of the existing XclipAI bot. It does not expose a public
 menu or call any customer saldo deduction/refund functions.
+
+## Episode 1–20 menit
+
+`/microdrama` atau `/episode` membuka sutradara episode. Pilih tombol durasi
+atau ketik `/microdrama 7`; semua bilangan bulat 1–20 didukung. Pilihan awal
+yang disarankan 1 menit. Status: `/microdramastatus`.
+
+1. Kirim ide. BUAT SIMPEL menyusun bible (alur, wajah/pakaian/suara karakter,
+   lokasi, gaya visual). Revisi bible tersedia sebelum membuat referensi.
+2. Minta estimasi dan setujui **biaya referensi**. Gambar menggunakan FLUX.2
+   Klein; maksimal dua karakter dewasa dan tiga lokasi. Ada cadangan dua
+   gambar ulang yang hanya dikirim bila diminta.
+3. Periksa gambar di Telegram. `/episoderef char_ID` atau
+   `/episoderef loc_ID` mengulang gambar dalam cadangan tersebut. Kunci
+   referensi untuk memulai penulisan storyboard.
+4. Sutradara menulis dua adegan per menit, tiga shot per adegan, sepuluh
+   detik per shot: **6–120 shot**. Kamera, blocking, kondisi awal/akhir,
+   dialog dan kedua prompt disimpan per shot. Unduh melalui
+   `/episodescript`. Ini storyboard **tertulis**, bukan gambar hasil render.
+5. Minta estimasi **produksi** dan setujui batas USD. Estimasi mencakup
+   gambar storyboard, video MiniMax, transkripsi, dan maksimal dua retake
+   total. Harga actual dicek lagi sebelum tiap submit. Quote gambar memakai
+   jumlah referensi terbesar agar adegan dengan dua karakter tidak menerima
+   anggaran terlalu kecil.
+6. Gambar storyboard memakai referensi wajah + lokasi yang disetujui
+   (maksimal tiga input). LLM vision memeriksa gambar sebelum submit video.
+   Hanya shot kedua dalam suatu adegan yang boleh memakai last-frame shot
+   pertama; tidak ada rantai last-frame sepanjang episode.
+7. Video dirender dengan native audio. Tiga sampel frame diperiksa terhadap
+   referensi. Audio ditranskripsi terpisah dan dicocokkan dengan dialog.
+   Ada paling banyak satu retake otomatis per shot dan dua secara keseluruhan.
+   Submit ambigu atau kegagalan provider **bukan** alasan retry otomatis.
+8. Penolakan QA dijeda jika cadangan otomatis habis. Admin melihat
+   storyboard atau pratinjau klip yang bermasalah sebelum memilih retake
+   tambahan dalam cadangan atau menerima secara eksplisit meski ada catatan.
+   Override dicatat dan disebutkan pada hasil final.
+9. Penyuntingan lokal memotong tiap shot ke sepuluh detik, menormalkan
+   volume, menggabungkan video 756×1344 (9:16 tanpa upscale), lalu menambahkan
+   track subtitle berbasis waktu transkripsi. File SRT juga dikirim terpisah;
+   tampilan subtitle pada player Telegram tidak dijamin.
+
+**Biaya:** persetujuan quote berlaku sepuluh menit. Batas USD hanya untuk
+media, bukan tagihan LLM. Bible, revisi, naskah, dan pemeriksaan vision memakai
+kuota LLM terpisah; jumlah permintaan ditampilkan. Saldo bot tidak dipotong.
+Reservasi biaya konservatif tidak dibatalkan hanya karena respons submit
+hilang; biaya provider yang sudah terpakai tidak otomatis kembali.
+
+**Waktu/kualitas:** render berurutan dapat memerlukan berjam-jam hingga lebih
+dari sehari untuk episode panjang. Pemeriksaan vision berbasis sampel dan
+transkripsi bukan jaminan identitas wajah/suara, akurasi semua dialog, atau
+lip-sync sempurna. Native audio menggunakan arahan suara, belum referensi
+suara/voice cloning. Belum ada musik latar tambahan.
+
+**Jeda/pemulihan:** tombol jeda dicatat di kolom terpisah agar penyimpanan
+progres tidak menghapus permintaan jeda. Job yang sudah diterima disimpan;
+tidak ada submit berikutnya setelah pemeriksaan jeda. Resume memakai ID job
+dan akun asal. Submit tanpa ID terkonfirmasi diblokir dari pengiriman ulang.
+Permintaan LLM yang terputus perlu pemulihan eksplisit karena pengulangan
+dapat memakai kuota lagi. Menghentikan saat proyek masih sibuk meminta jeda;
+setelah berhenti pada checkpoint, tekan hentikan lagi untuk menutup proyek.
+
+Referensi dan storyboard JPEG tersimpan immutable di PostgreSQL. Video
+intermediate hanya cache lokal sementara; cache yang hilang dicoba pulihkan
+dari **job yang sama**, selama provider masih menyimpan hasil. Tidak ada
+regenerasi berbayar bila hasil lama sudah hilang. Video final besar disajikan
+melalui mekanisme download bot yang sudah ada: maksimal 24 jam dan hilang
+pada restart. Simpan file segera; ini belum arsip video permanen.
+
+### Prototipe lama
+
+Prototipe dua-shot sekitar 20 detik tetap terpisah:
+`/microdramatest` dan `/microdramateststatus`. Job lama tidak dikonversi atau
+ditimpa menjadi episode. Satu admin hanya boleh mempunyai satu proyek aktif.
+`/microdramamodel` berlaku untuk default proyek baru pada kedua alur.
+
+### Verifikasi lokal
+
+- `pnpm --dir telegram-bot run test:episode`: perjalanan Telegram offline,
+  rentang durasi, budget, locking referensi, paid-submit safety, retake/QA,
+  pemulihan, dan penyuntingan FFmpeg **60 detik** memakai media sintetis.
+- `pnpm --dir telegram-bot run test:microdrama`: regresi prototipe lama.
+- `pnpm --dir telegram-bot run test:microdrama-pg`: schema sementara di
+  database **development**, termasuk asset immutable dan jeda lintas save.
+- `pnpm --dir telegram-bot run build`.
+
+Tes otomatis tidak mengirim job media live dan tidak melakukan deploy.
+Uji penuh episode berbayar harus tetap dimulai secara sadar di bot setelah
+estimasi aktual disetujui.
 
 ## Configuration
 
@@ -19,7 +107,7 @@ the identity of the model behind them. There is no automatic model fallback.
 The existing Dockerfile already installs `ffmpeg`/`ffprobe`. Schema setup runs
 before Telegram handlers start; failure disables only this feature.
 
-## Workflow
+## Deployment dan referensi prototipe
 
 ### Aktivasi manual pada service Railway yang sudah ada
 

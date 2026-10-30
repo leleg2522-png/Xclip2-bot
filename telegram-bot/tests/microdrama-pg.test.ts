@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { Pool } from 'pg';
 import { PgDramaStore } from '../src/microdrama-store';
 import { DeapiKeyPool } from '../src/deapi-key-pool';
+import { newEpisode } from '../src/episode-types';
 
 async function main() {
   const connectionString = process.env.DATABASE_URL;
@@ -30,7 +31,17 @@ async function main() {
     await keys.restore(key1!.id);
     assert.deepEqual(await keys.stats(), { available: 2, dead: 0 });
     assert.ok((await keys.list()).every(k => !('api_key' in k)));
-    const p = await store.create(1, 1, 'test-model');
+    const p = await store.create(1, 1, 'test-model', newEpisode(20));
+    assert.equal((await store.latest(1))?.episode?.minutes, 20, 'Episode duration must persist atomically at creation');
+    await store.putAsset(p.id, 'char_RAKA', Buffer.from('locked-reference'));
+    await store.putAsset(p.id, 'char_RAKA', Buffer.from('must-not-overwrite'));
+    assert.equal((await store.asset(p.id, 'char_RAKA')).toString(), 'locked-reference');
+    await store.requestPause(p.id, 999);
+    assert.equal(await store.paused(p.id, 1), false, 'Wrong owner cannot pause another episode');
+    await store.requestPause(p.id, 1); assert.equal(await store.paused(p.id, 1), true);
+    await store.withLock(p.id, 1, async (project, save) => { project.status = 'draft'; await save(); });
+    assert.equal(await store.paused(p.id, 1), true, 'Progress save must not erase an asynchronous pause request');
+    await store.requestPause(p.id, 1, false); assert.equal(await store.paused(p.id, 1), false);
     await assert.rejects(store.create(1, 1, 'test-model'), (e: any) => e.code === '23505');
     let release!: () => void, acquired!: () => void;
     const barrier = new Promise<void>(r => { release = r; });

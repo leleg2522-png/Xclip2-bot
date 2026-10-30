@@ -47,6 +47,8 @@ import { registerMicrodrama } from './microdrama-bot';
 import { DeapiKeyPool } from './deapi-key-pool';
 import { registerDeapiAdmin } from './deapi-admin';
 import { PooledDeapiRenderer } from './deapi-pooled-renderer';
+import { DeapiEpisodeApi } from './episode-api';
+import { registerEpisode } from './episode-bot';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
@@ -1627,6 +1629,7 @@ registerChinaApiAdmin(bot, chinaKeyPool, requireAdmin);
 registerAlrizAdmin(bot, alrizKeyPool, requireAdmin);
 registerDeapiAdmin(bot, deapiKeyPool, requireAdmin);
 const microdramaStore = new PgDramaStore(db);
+function registerLegacyMicrodrama() {
 registerMicrodrama(bot, microdramaStore, requireAdmin, async owner => {
   const result = await db.query('SELECT is_admin FROM users WHERE telegram_id=$1', [owner]);
   return result.rows[0]?.is_admin === true;
@@ -1648,7 +1651,46 @@ registerMicrodrama(bot, microdramaStore, requireAdmin, async owner => {
   const url = await publishMedia(video, true);
   await bot.telegram.sendMessage(project.chat, `${caption}\n\nDownload sementara (segera simpan):\n${url}`);
   return undefined;
-}, { renderer: new PooledDeapiRenderer(deapiKeyPool) });
+}, { renderer: new PooledDeapiRenderer(deapiKeyPool), commands: ['microdramatest', 'microdramateststatus'] });
+}
+registerEpisode(bot, microdramaStore, requireAdmin, async owner => {
+  const r = await db.query('SELECT is_admin FROM users WHERE telegram_id=$1', [owner]);
+  return r.rows[0]?.is_admin === true;
+}, new DeapiEpisodeApi(deapiKeyPool), async (project, files) => {
+  const e = project.episode;
+  const overrides = e.shots.filter(w => w.takes[w.accepted!]?.quality?.overridden).length;
+  const caption = `${e.bible!.title}\nEpisode • ${e.minutes} menit • 9:16 • native audio • tanpa upscale` +
+    (overrides ? `\n${overrides} shot diterima manual meski ada catatan QA.` : '');
+  let sent = false;
+  if ((await fsp.stat(files.video)).size <= 48 * 1024 * 1024) {
+    try {
+      const r = await bot.telegram.sendVideo(project.chat, { source: createReadStream(files.video), filename: 'episode.mp4' },
+        { caption, supports_streaming: true });
+      project.fileId = r.video.file_id; sent = true;
+    } catch {
+      try {
+        const r = await bot.telegram.sendDocument(project.chat, { source: createReadStream(files.video), filename: 'episode.mp4' }, { caption });
+        project.fileId = r.document.file_id; sent = true;
+      } catch {}
+    }
+  }
+  if (!sent) {
+    const url = await publishEpisodeFile(files.video);
+    await bot.telegram.sendMessage(project.chat, `${caption}\n\nDownload sementara 24 jam (hilang jika server restart; segera simpan):\n${url}`);
+  }
+  if ((await fsp.stat(files.subtitles)).size) await bot.telegram.sendDocument(project.chat,
+    { source: createReadStream(files.subtitles), filename: 'episode-id.srt' }, { caption: 'Subtitle dari transkripsi audio hasil render; periksa kembali nama dan ejaan.' });
+}, { inspect: async (project, shot, file, note) => {
+  const caption = `Pratinjau shot ${shot} yang perlu keputusan admin.\n${note}`.slice(0, 1000);
+  try {
+    if ((await fsp.stat(file)).size > 48 * 1024 * 1024) throw new Error('REVIEW_SIZE');
+    await bot.telegram.sendVideo(project.chat, { source: createReadStream(file), filename: `shot-${shot}.mp4` }, { caption, supports_streaming: true });
+  } catch {
+    const url = await publishEpisodeFile(file);
+    await bot.telegram.sendMessage(project.chat, `${caption}\n\nPratinjau sementara (segera simpan):\n${url}`);
+  }
+} });
+registerLegacyMicrodrama();
 
 // Recognizes only genuine transient transport failures (DNS/socket/timeout).
 // Kept deliberately narrow — matching by explicit error code, not free-text —
@@ -2417,6 +2459,15 @@ async function publishMedia(buf: Buffer, isVideo: boolean, sourceUrl?: string, i
     expiresAt: Date.now() + MEDIA_TTL_MS,
   });
   return `${publicBaseUrl()}/dl/${token}${includeExtension ? `.${ext}` : ''}`;
+}
+
+// Long episodes must not be loaded into a single in-memory Buffer.
+async function publishEpisodeFile(source: string): Promise<string> {
+  await fsp.mkdir(MEDIA_DIR, { recursive: true });
+  const token = crypto.randomBytes(16).toString('hex'), filePath = path.join(MEDIA_DIR, `${token}.mp4`);
+  await fsp.copyFile(source, filePath);
+  mediaStore.set(token, { filePath, filename: 'episode.mp4', contentType: 'video/mp4', expiresAt: Date.now() + MEDIA_TTL_MS });
+  return `${publicBaseUrl()}/dl/${token}`;
 }
 
 // Sweep expired media off disk hourly so we don't leak storage.

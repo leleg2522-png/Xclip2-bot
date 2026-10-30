@@ -33,12 +33,13 @@ export function registerMicrodrama(
   bot: Telegraf<any>, store: PgDramaStore, requireAdmin: (ctx: any) => Promise<boolean>,
   authorized: (owner: number) => Promise<boolean>,
   deliver: (p: DramaProject, video: Buffer) => Promise<string | undefined>,
-  clients: { writer?: BuatSimpelWriter; renderer: DramaRenderer; media?: FfmpegDramaMedia },
+  clients: { writer?: BuatSimpelWriter; renderer: DramaRenderer; media?: FfmpegDramaMedia; commands?: string[] },
 ) {
   const inputOwners = new Set<number>();
   const writer = clients?.writer || new BuatSimpelWriter(process.env.BUATSIMPEL_API_KEY || '');
   const configured = () => Boolean(process.env.BUATSIMPEL_API_KEY);
   async function present(p: DramaProject) {
+    if (p.episode) { await sendText(bot, p.chat, 'Proyek ini memakai sutradara episode. Buka /microdrama.'); return; }
     let text = `Microdrama admin • ${p.id.slice(0, 8)}\nStatus: ${p.status}\nModel naskah: ${p.model}\n`;
     if (p.plan) {
       text += `\n${p.plan.title}\n${p.plan.synopsis}\n\nKarakter:\n` +
@@ -96,7 +97,7 @@ export function registerMicrodrama(
       || (typeof data === 'string' && !data.startsWith('md:')))) inputOwners.delete(ctx.from.id);
     return next();
   });
-  bot.command(['microdrama', 'microdramastatus'], async (ctx: any) => {
+  bot.command(clients.commands || ['microdrama', 'microdramastatus'], async (ctx: any) => {
     if (!await allowed(ctx)) return;
     const p = await store.latest(ctx.from.id);
     if (p) return present(p);
@@ -136,7 +137,7 @@ export function registerMicrodrama(
     const text = ctx.message.text.trim();
     if (!text || text.length > 1500) return ctx.reply('Kirim ide atau arahan revisi sepanjang 1–1.500 karakter.');
     const p = await store.latest(ctx.from.id);
-    if (!p || !['idea', 'revision'].includes(p.status)) { inputOwners.delete(ctx.from.id); return next(); }
+    if (!p || p.episode || !['idea', 'revision'].includes(p.status)) { inputOwners.delete(ctx.from.id); return next(); }
     inputOwners.delete(ctx.from.id);
     background(ctx, engine.act(p.id, ctx.from.id, 'write', text));
   });

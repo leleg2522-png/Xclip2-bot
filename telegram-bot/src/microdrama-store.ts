@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import type { DramaPlan } from './microdrama-plan';
+import type { Episode } from './episode-types';
 
 export type DramaStatus = 'idea' | 'writing' | 'draft' | 'revision' | 'quoting' | 'quoted'
   | 'rendering' | 'paused' | 'uncertain' | 'failed' | 'ready' | 'delivered' | 'cancelled';
@@ -11,6 +12,7 @@ export interface DramaProject {
   id: string; owner: number; chat: number; status: DramaStatus; model: string;
   idea?: string; plan?: DramaPlan; quotes?: number[]; quotedAt?: number; approvedAt?: number;
   jobs: DramaJob[]; error?: string; fileId?: string;
+  episode?: Episode;
 }
 export interface DramaStore {
   create(owner: number, chat: number, model: string): Promise<DramaProject>;
@@ -31,6 +33,10 @@ export class PgDramaStore implements DramaStore {
       ON microdrama_projects(owner) WHERE status NOT IN ('delivered','failed','cancelled')`);
     await this.pool.query(`CREATE TABLE IF NOT EXISTS microdrama_models (
       owner BIGINT PRIMARY KEY, model TEXT NOT NULL)`);
+    await this.pool.query(`CREATE TABLE IF NOT EXISTS microdrama_assets (
+      project_id UUID NOT NULL REFERENCES microdrama_projects(id), name TEXT NOT NULL,
+      bytes BYTEA NOT NULL, PRIMARY KEY(project_id,name))`);
+    await this.pool.query('ALTER TABLE microdrama_projects ADD COLUMN IF NOT EXISTS pause_requested BOOLEAN NOT NULL DEFAULT FALSE');
     this.ready = true;
   }
 
@@ -44,8 +50,26 @@ export class PgDramaStore implements DramaStore {
       ON CONFLICT(owner) DO UPDATE SET model=EXCLUDED.model`, [owner, model]);
   }
 
-  async create(owner: number, chat: number, model: string): Promise<DramaProject> {
-    const p: DramaProject = { id: randomUUID(), owner, chat, model, status: 'idea', jobs: [{}, {}] };
+  async putAsset(project: string, name: string, bytes: Buffer) {
+    if (bytes.length > 10 * 1024 * 1024) throw new Error('EPISODE_ASSET_SIZE');
+    await this.pool.query(`INSERT INTO microdrama_assets(project_id,name,bytes) VALUES($1,$2,$3)
+      ON CONFLICT(project_id,name) DO NOTHING`, [project, name, bytes]);
+  }
+  async asset(project: string, name: string): Promise<Buffer> {
+    const r = await this.pool.query('SELECT bytes FROM microdrama_assets WHERE project_id=$1 AND name=$2', [project, name]);
+    if (!r.rows[0]) throw new Error('EPISODE_ASSET_MISSING');
+    return r.rows[0].bytes;
+  }
+  async requestPause(project: string, owner: number, pause = true) {
+    await this.pool.query('UPDATE microdrama_projects SET pause_requested=$3 WHERE id=$1 AND owner=$2', [project, owner, pause]);
+  }
+  async paused(project: string, owner: number): Promise<boolean> {
+    const r = await this.pool.query('SELECT pause_requested FROM microdrama_projects WHERE id=$1 AND owner=$2', [project, owner]);
+    return r.rows[0]?.pause_requested === true;
+  }
+
+  async create(owner: number, chat: number, model: string, episode?: Episode): Promise<DramaProject> {
+    const p: DramaProject = { id: randomUUID(), owner, chat, model, status: 'idea', jobs: [{}, {}], ...(episode ? { episode } : {}) };
     await this.pool.query('INSERT INTO microdrama_projects(id,owner,status,data) VALUES($1,$2,$3,$4)',
       [p.id, owner, p.status, p]);
     return p;

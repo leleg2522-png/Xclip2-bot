@@ -39,6 +39,7 @@ export class MicrodramaEngine {
     input?: string): Promise<boolean> {
     return this.d.store.withLock(id, owner, async (p, save) => {
       if (!await this.d.authorized(owner)) throw new Error('DRAMA_ADMIN_REVOKED');
+      if (p.episode) { await this.d.notify(p, 'Proyek ini memakai sutradara episode. Gunakan /microdrama.'); return; }
       try {
         if (action === 'cancel') {
           if (['delivered', 'failed', 'cancelled'].includes(p.status)) return;

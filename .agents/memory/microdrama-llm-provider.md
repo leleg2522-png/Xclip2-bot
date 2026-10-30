@@ -21,11 +21,11 @@ Release the initial microdrama feature to admins only.
 
 **How to apply:** Enforce the bot's existing admin authorization on commands and callbacks. Do not expose the feature publicly or add customer saldo charges without a separate decision.
 
-The intended output is an AI drama episode around 5–30 minutes, not a twenty-second finished product.
+The intended output is an AI drama episode from 1 minute minimum to 20 minutes maximum, not a twenty-second finished product.
 
-**Why:** The user clarified: “masa cuman 20 detik doang ... drama ai itu sekitar 5-30 menit satu episode”.
+**Why:** After discussing longer episodes, the user revised the duration explicitly: “1 menit minimal sampai 20 menit”.
 
-**How to apply:** Treat short clips as technical tests or constituent shots. Scope episode-level storytelling, continuity, budgets and assembly around the user's longer-duration goal; do not present the two-clip prototype as the final episode workflow.
+**How to apply:** Accept episode durations of 1–20 minutes. Treat shorter clips as technical tests or constituent shots; do not present the two-clip prototype as the finished episode workflow.
 
 The user wants the LLM to act as a professional director, handling prompts and image consistency, not merely writing dialogue.
 
