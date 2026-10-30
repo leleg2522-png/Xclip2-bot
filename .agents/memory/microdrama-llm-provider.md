@@ -32,3 +32,9 @@ The user wants the LLM to act as a professional director, handling prompts and i
 **Why:** The user clarified: “gw ingin si LLM nya jadi sutradara profesional masalah prompt dll konsistensi gambar dan lain nya”.
 
 **How to apply:** Center future design on episode-level creative direction, shot prompts and visual continuity. Distinguish the requested outcome from unverified guarantees: prompt text alone cannot enforce face/voice identity, and automated visual review needs tested vision capability.
+
+The user wants the AI director to be a personal agent for each user, not a shared creative context.
+
+**Why:** The user said “si agent ai nya tuh jadi agent ai pribadi setiap user agar ga ada keliru atau aneh”.
+
+**How to apply:** Scope personalization and conversation continuity per user, keep projects and approved references separate, and enforce ownership in code rather than relying on LLM instructions. This requirement alone does not authorize opening the admin-only feature to the public.
