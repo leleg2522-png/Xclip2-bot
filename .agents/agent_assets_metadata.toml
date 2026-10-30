@@ -621,3 +621,17 @@ mtime_ms = 1793299285542
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/bd10c481-a8db-49a1-bf86-95bd7898f285/8b3be82c-5cf5-42cd-a96e-2ab2bb645298"
 storage_version_token = "1793299310945279"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "-fIBIIMv4faLZAF12vWp4"
+uri = "file://generated-artifacts/deapi-ltx25-max-test/ltx25-max-10s.mp4"
+type = "video"
+title = "Tes LTX 2.5 — 10 detik"
+description = "Hasil DeAPI: 1344×768, 24 fps, durasi 10,04 detik, dilengkapi track audio. Biaya US$0,07570743."
+logical_id = "d515a244-2963-471f-9c25-49c1bf71d260"
+content_hash = "sha256:3e8c1da5b7691f6b0cf9350e55b5652019836f615fe2dd6565c262bec849fdb9"
+size = 6659336
+mtime_ms = 1793390304703
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/d515a244-2963-471f-9c25-49c1bf71d260/aceaec44-ecfc-4570-9c3f-63fbbb0cd44f"
+storage_version_token = "1793390325598544"
+content_type = "video/mp4"
