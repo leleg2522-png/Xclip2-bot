@@ -26,3 +26,9 @@ The intended output is an AI drama episode around 5–30 minutes, not a twenty-s
 **Why:** The user clarified: “masa cuman 20 detik doang ... drama ai itu sekitar 5-30 menit satu episode”.
 
 **How to apply:** Treat short clips as technical tests or constituent shots. Scope episode-level storytelling, continuity, budgets and assembly around the user's longer-duration goal; do not present the two-clip prototype as the final episode workflow.
+
+The user wants the LLM to act as a professional director, handling prompts and image consistency, not merely writing dialogue.
+
+**Why:** The user clarified: “gw ingin si LLM nya jadi sutradara profesional masalah prompt dll konsistensi gambar dan lain nya”.
+
+**How to apply:** Center future design on episode-level creative direction, shot prompts and visual continuity. Distinguish the requested outcome from unverified guarantees: prompt text alone cannot enforce face/voice identity, and automated visual review needs tested vision capability.
