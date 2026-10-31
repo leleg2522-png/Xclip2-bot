@@ -5,6 +5,34 @@ description: Reverse-engineered submit/poll shape for the Picsart AI Playground 
 
 # Picsart Seedance 2.5 (ByteDance) video API
 
+## Official documentation versus historical capture
+
+The public compatibility documentation now specifies up to **30 images,
+10 videos, and 10 audios** for Seedance 2.5, including audio-only input.
+Ten images is the bot's chosen limit, not the documented model maximum.
+The unified API uses `imageUrls`, `videoUrls`, and `audioUrls`; the compatibility
+API uses `content` items with `image_url` / `video_url` / `audio_url` and roles
+`reference_image` / `reference_video` / `reference_audio`.
+`generate_audio` controls output audio, not uploading reference audio.
+Unified docs label reference video and audio with a 30-second maximum but
+do not clarify whether this is per file or cumulative. Compatibility docs
+state input video duration is billed in addition to output duration.
+
+**Why:** Official parameter documentation is broader than the historical HAR
+and the public bot's deliberately restricted inputs. Do not mistake tested
+inputs or bot limits for the provider's full capabilities.
+
+**How to apply:** Consult
+https://picsart.com/api-platform/models/seedance-2.5/advanced and
+https://picsart.com/api-platform/models/seedance-2.5/api .
+These public API-key docs do not prove that every feature works unchanged
+on the bot's authenticated Playground gateway. Verify that gateway's behavior
+before enabling new input modalities, and account for input-video costs.
+Keep the user's selected 480p → external 1080p finishing route unless asked
+to change it; documented draft-to-final rendering is a different paid flow.
+
+## Historical Playground contract
+
 Reverse-engineered from an AI Playground HAR. Follows the same access-token / `commonHeaders()` pattern as the other Picsart workflow models.
 
 - **Submit:** `POST api.picsart.com/gw-v2/workflows/seedance/submit` → `{response:{id}}`
