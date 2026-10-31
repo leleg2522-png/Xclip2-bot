@@ -32,7 +32,7 @@ function harness(options: Options = {}) {
   };
   const context = vm.createContext({
     Buffer, validateSeedance25Request, MAX_PARALLEL_GENERATIONS_PER_USER: 3,
-    MODEL_PRICES: { picsart_seedance_25: 5000 },
+    MODEL_PRICES: { picsart_seedance_25: 6000 },
     beginCharge: async (_: number, price: number) => {
       events.charges.push(price); return { ok: !options.chargeFails, reason: 'saldo' };
     },
@@ -150,7 +150,7 @@ async function main() {
   for (const draft of [settings, { ...settings, mode: 't2v' as const, audio: false, ratio: '16:9' as const }]) {
     const h = harness(); await h.run(draft, draft.mode === 't2v' ? 0 : 10);
     assert.deepEqual(h.events.order, ['generate', 'finish', 'deliver']);
-    assert.deepEqual(h.events.charges, [5000]); assert.deepEqual(h.events.refunds, []);
+    assert.deepEqual(h.events.charges, [6000]); assert.deepEqual(h.events.refunds, []);
     assert.deepEqual(h.events.releases, [1]); assert.deepEqual(h.events.successes, [1]);
     const request = h.events.inputs[0];
     assert.equal(request.resolution, '480p'); assert.equal(request.duration, 30);
@@ -164,7 +164,7 @@ async function main() {
     { finishingThrows: true }, { deliveryFails: true }, { deliveryThrows: true },
   ]) {
     const h = harness(options); await h.run();
-    assert.deepEqual(h.events.refunds, [5000]); assert.deepEqual(h.events.releases, [1]);
+    assert.deepEqual(h.events.refunds, [6000]); assert.deepEqual(h.events.releases, [1]);
     assert.deepEqual(h.events.successes, []);
     assert.ok(h.events.inputs.length <= 1);
     assert.ok(h.events.deliveries.every(d => d.url.endsWith('-1080.mp4')), 'Never deliver native fallback');
@@ -189,6 +189,7 @@ async function main() {
   assert.doesNotMatch(source, /generateAlrizSeedance25/);
   await checkSubmitContract();
   await checkAcceptedJobBinding();
-  console.log('PASS Seedance 2.5 Picsart: public inputs, native 480p → mandatory 1080p, Rp5000 billing/refunds, isolation, no accepted-job replay.');
+  assert.match(source, /picsart_seedance_25:\s*6000,/);
+  console.log('PASS Seedance 2.5 Picsart: public inputs, native 480p → mandatory 1080p, Rp6000 billing/refunds, isolation, no accepted-job replay.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

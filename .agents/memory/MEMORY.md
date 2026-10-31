@@ -33,7 +33,7 @@
 - [ChinaAPI video and billing](chinaapi-video-billing.md) — live catalog beats SEO; unlimited key quota is not wallet balance; Wan 3.0 pricing and request fields depend on resolution.
 - [Vinc browser API](vinc-browser-api.md) — completed Seedance 2.5 T2V evidence; sanitized HAR lacks login, and catalog I2V entries do not prove a working upload/generate flow.
 - [NovAI Seedance API](novai-seedance-api.md) — main-domain API works; Seedance 2.5 is listed, but trial video submit returned 403 despite advertised trial support.
-- [Seedance 2.5 provider choice](alriz-seedance-route.md) — Picsart native 480p → mandatory 1080p upscale, Rp5,000/30s; any failed delivery refunds, no native fallback.
+- [Seedance 2.5 provider choice](alriz-seedance-route.md) — Picsart native 480p → mandatory 1080p upscale, Rp6,000/30s; any failed delivery refunds, no native fallback.
 - [Aiveed API](aiveed-api.md) — image test succeeded; Banana 2.1 requested 1K delivered 768px; honor polling rate limits without resubmitting.
 - [DeAPI model access and keys](deapi-account-catalog.md) — catalogue is account-scoped; Seedance is plan-blocked; user wants bot credentials pooled in the Railway DB.
 - [Microdrama LLM provider](microdrama-llm-provider.md) — user selected BUAT SIMPEL as the microdrama brain; specific model remains undecided.
