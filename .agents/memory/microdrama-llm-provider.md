@@ -38,3 +38,9 @@ The user wants the AI director to be a personal agent for each user, not a share
 **Why:** The user said “si agent ai nya tuh jadi agent ai pribadi setiap user agar ga ada keliru atau aneh”.
 
 **How to apply:** Scope personalization and conversation continuity per user, keep projects and approved references separate, and enforce ownership in code rather than relying on LLM instructions. Public access is explicitly requested, but billing and usage safeguards still need a separate decision.
+
+Public personal-agent usage must be funded through the existing bot saldo, not unlimited owner-funded usage.
+
+**Why:** Asked how users should pay, the user explicitly selected “Pakai saldo bot”.
+
+**How to apply:** Integrate with existing saldo and full-refund-on-failed-delivery rules. Obtain the episode tariff and the chat/revision pricing or allowance before enabling paid public actions; the payment-method choice does not set a price or authorize unlimited free LLM use.
