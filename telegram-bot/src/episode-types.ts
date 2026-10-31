@@ -29,7 +29,7 @@ export interface Episode {
   refQuote?: number; refBudget?: number; refSpent: number;
   quote?: { image: number; video: number; transcript: number; total: number };
   quotedAt?: number; budget?: number; spent: number; retakes: number;
-  llmCalls: number; revisionCount: number; busy?: string; reviewNote?: string;
+  llmCalls: number; busy?: string; reviewNote?: string;
   refHistory?: MediaJob[];
 }
 export type EpisodeProject = DramaProject & { episode: Episode };
@@ -39,8 +39,8 @@ export function episodeProject(p: DramaProject): EpisodeProject {
 }
 export function newEpisode(minutes: number): Episode {
   if (!Number.isInteger(minutes) || minutes < 1 || minutes > 20) throw new Error('EPISODE_DURATION');
-  return { version: 1, minutes, priceRupiah: minutes * 1500, phase: 'idea', refs: {}, shots: [],
-    refSpent: 0, spent: 0, retakes: 0, llmCalls: 0, revisionCount: 0 };
+  return { version: 1, minutes, priceRupiah: minutes * 2000, phase: 'idea', refs: {}, shots: [],
+    refSpent: 0, spent: 0, retakes: 0, llmCalls: 0 };
 }
 export function referenceNames(bible: Bible) {
   return [...bible.cast.map(c => `char_${c.id}`), ...bible.locations.map(l => `loc_${l.id}`)];
