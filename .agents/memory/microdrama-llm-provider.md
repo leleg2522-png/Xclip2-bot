@@ -15,11 +15,11 @@ The microdrama workflow belongs in the existing XclipAI Telegram bot, not a stan
 
 **How to apply:** Scope the user-facing workflow inside the existing bot.
 
-Release the initial microdrama feature to admins only.
+The personal AI director is intended for all users, superseding the initial admin-only rollout.
 
-**Why:** The user selected “Khusus admin dulu (recommended)” when asked who should have initial access.
+**Why:** When asked whether the personal agent should be admin-only or available to everyone, the user explicitly selected “Semua pengguna”.
 
-**How to apply:** Enforce the bot's existing admin authorization on commands and callbacks. Do not expose the feature publicly or add customer saldo charges without a separate decision.
+**How to apply:** Design public access with strict per-user ownership and isolation. Settle user pricing and usage limits before enabling unrestricted paid-provider calls; choosing a public audience does not authorize free unlimited generation or an invented customer tariff. Keep provider/key management admin-only.
 
 The intended output is an AI drama episode from 1 minute minimum to 20 minutes maximum, not a twenty-second finished product.
 
@@ -37,4 +37,4 @@ The user wants the AI director to be a personal agent for each user, not a share
 
 **Why:** The user said “si agent ai nya tuh jadi agent ai pribadi setiap user agar ga ada keliru atau aneh”.
 
-**How to apply:** Scope personalization and conversation continuity per user, keep projects and approved references separate, and enforce ownership in code rather than relying on LLM instructions. This requirement alone does not authorize opening the admin-only feature to the public.
+**How to apply:** Scope personalization and conversation continuity per user, keep projects and approved references separate, and enforce ownership in code rather than relying on LLM instructions. Public access is explicitly requested, but billing and usage safeguards still need a separate decision.
