@@ -1,21 +1,20 @@
 ---
 name: Alriz Seedance 2.5 route
-description: Customer-facing Seedance 2.5 provider decision and supported input boundaries.
+description: Public Seedance 2.5 returns to Picsart; preserve tariff and removal of Video Edit.
 ---
 
-The user chose Alriz for the public Seedance 2.5 offering and asked for all
-supported parameters, then explicitly set the customer price to Rp5,000/video
-and requested 1080p. Keep both text-to-video and image-to-video accessible,
-with audio, ratio, and image mode options; only offer 1080p. Alriz does not
-support video reference input for this model, and duration is provider-locked
-at 30 seconds.
+The user now wants public Seedance 2.5 back on Picsart, superseding the earlier
+Alriz provider choice. The existing customer tariff is Rp5,000/video and the
+existing duration is 30 seconds; a provider change alone does not authorize
+changing either. The previous 1080p request belonged to the Alriz offering;
+Picsart's verified contract is native 480p/720p, not native 1080p.
 
-**Why:** User said “ganti seedance 2,5 kita dengan yg alriz dan masukan semua
-parameter”, then “harga nya jadi 5k per video dan juga itu 1080 p ya”. The
-earlier Picsart reference-video form is not compatible with Alriz's Seedance
-input contract.
+**Why:** After previously selecting Alriz and Rp5,000/1080p, the user explicitly
+said “itu seedance 2,5 balikan pake picsart lagi”.
 
 **How to apply:** Keep provider-specific names internal in customer copy.
+Use Picsart's verified input contract, not Alriz-specific parameter assumptions.
+Resolve native resolution versus additional finishing before advertising 1080p.
 Never retry an accepted or ambiguous paid submit on another key; refund
 delivery failures instead.
 

@@ -17,8 +17,8 @@ Reverse-engineered from an AI Playground HAR. Follows the same access-token / `c
 - **Reference upload:** images and video use `POST upload.picsart.com/v2/files` (multipart, `type=editing-temp`).
 - **Options probe:** `POST /gw-v2/workflows/seedance/options`; the HAR verifies both 480p and 720p with 30s audio.
 
-**How to apply:** This HAR documents a historical Picsart contract only. The user
-subsequently asked to switch the public Seedance 2.5 offering to Alriz and
-expose every supported parameter. Do not route new public orders to Picsart,
-Wan or the legacy bridge; keep legacy completion paths for jobs already in
-flight. The supplied HAR verifies image references but not a submitted video.
+**How to apply:** The user explicitly requested returning public Seedance 2.5
+from Alriz to Picsart. Use this verified Picsart contract without importing
+Alriz-specific 1080p or start/end-frame assumptions. Keep already accepted jobs
+on their original provider. The supplied HAR verifies image references but
+not a submitted reference video; do not present unverified input roles as tested.

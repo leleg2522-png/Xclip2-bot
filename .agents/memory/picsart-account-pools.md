@@ -24,8 +24,8 @@ earlier low-pool-only instruction and Seedance/Kling duration exemptions.
 
 **How to apply:** Keep credit-at-add classification for administration, but
 allow either tier for generation. Preserve per-job credit checks and paid-job
-retry safeguards. Public Seedance 2.5 remains on Alriz; do not migrate
-non-Picsart providers.
+retry safeguards. The user explicitly requested returning public Seedance 2.5
+to Picsart; do not use that request to migrate other non-Picsart providers.
 
 ## Sticky assignment is per (user_id, pool)
 `picsart_user_accounts` PK migrated from `user_id` to composite `(user_id, pool)`. A user can hold one sticky account per pool key (`'p100'`, `'p500'`, or `'any'`; Kling Motion Control Picsart uses `'any'`). Legacy rows default to pool `'any'`.
