@@ -25,7 +25,12 @@ import { FreebeatBridgeQueue, type BridgeAgent, type BridgeJob } from './freebea
 import { KLING_P4, klingP4VideoError, isFloraWorkspaceSetupError } from './kling-p4-flora';
 import { KLING_V3_STANDARD, klingV3StandardVideoError } from './kling-v3-standard-flora';
 import { ALRIZ_KLING_P5, generateKlingAlrizFromPool } from './alriz-motion';
-import { SEEDANCE25_RATIOS, SEEDANCE25_MAX_IMAGES, validateSeedance25Request, type Seedance25Settings } from './seedance25-picsart';
+import {
+  SEEDANCE25_RATIOS, SEEDANCE25_MAX_IMAGES, SEEDANCE25_MAX_VIDEOS, SEEDANCE25_MAX_AUDIOS,
+  SEEDANCE25_MAX_MEDIA_BYTES, SEEDANCE25_MAX_TOTAL_BYTES, SEEDANCE25_MAX_REFERENCE_SECONDS, validateSeedance25Request, seedance25ReferenceName,
+  type Seedance25Settings, type Seedance25Media, type Seedance25ResolvedMedia,
+} from './seedance25-picsart';
+import { inspectSeedance25Media } from './seedance25-media';
 import { AlrizKeyPool } from './alriz-key-pool';
 import { registerAlrizAdmin } from './alriz-admin';
 import { XCLIP_MOTION, xclipMotionVideoError, prepareXclipMotionReference } from './xclip-motion-media';
@@ -1978,6 +1983,9 @@ interface Session {
   // Seedance 2.5 media wizard stores Telegram file IDs, not bot-token download URLs.
   oneoverImageUrl?: string;
   seedance25ImageFileIds?: string[];
+  seedance25Videos?: Seedance25Media[];
+  seedance25Audios?: Seedance25Media[];
+  seedance25PendingUploads?: number;
   seedance25VideoFileId?: string;
   seedance25VideoMime?: string;
   seedance25Ratio?: picsart.SeedanceAspectRatio;
@@ -2655,7 +2663,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🌊 Seedance 2.0 Mini 1080p', 'mode_pi2v_seedance_2_mini')],
     [Markup.button.callback('🌊 Seedance 2.0 Fast 1080p', 'mode_pi2v_seedance_2_fast')],
     [Markup.button.callback('🌊 Seedance 2.0 1080p', 'mode_pi2v_seedance_2')],
-    [Markup.button.callback('🌊 Seedance 2.5 • Teks / Gambar • 1080p', 'mode_oneover_seedance25')],
+    [Markup.button.callback('🌊 Seedance 2.5 • Teks / Gambar / Video / Audio', 'mode_oneover_seedance25')],
     [Markup.button.callback('🌌 Grok Imagine Video', 'mode_pi2v_grok_imagine')],
     [Markup.button.callback('🎬 Creatify Boreal • 20 detik • 1080p', 'mode_pi2v_creatify_boreal')],
     [Markup.button.callback('🎬 LTX 2.5 PRO • 10 detik • 1080p', 'mode_pi2v_ltx_pro')],
@@ -3238,7 +3246,7 @@ function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false 
     `• Seedance 2.0 Mini 1080p — ${formatRupiah(promoPrice('seedance_2_mini', getPicsartI2vPrice('seedance_2_mini')))}\n` +
     `• Seedance 2.0 Fast 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_fast'))}\n` +
     `• Seedance 2.0 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
-    `• Seedance 2.5 Teks / Gambar (30s, 1080p) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25)}\n` +
+    `• Seedance 2.5 Teks / Gambar / Video / Audio (30s, 1080p) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25)}\n` +
     `• Grok Imagine Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Creatify Boreal (20 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_creatify_boreal)}\n` +
     `• LTX 2.5 PRO (10 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_ltx_pro)}\n` +
@@ -4970,6 +4978,9 @@ bot.on('callback_query', async (ctx) => {
       mode: 'idle',
       oneoverImageUrl: undefined,
       seedance25ImageFileIds: [],
+      seedance25Videos: [],
+      seedance25Audios: [],
+      seedance25PendingUploads: 0,
       seedance25VideoFileId: undefined,
       seedance25VideoMime: undefined,
       seedance25Ratio: undefined,
@@ -4977,13 +4988,13 @@ bot.on('callback_query', async (ctx) => {
       seedance25Step: 'mode',
     });
     return ctx.editMessageText(
-      `🌊 *Seedance 2.5 · Teks / Gambar*\n\n` +
+      `🌊 *Seedance 2.5 · Teks / Gambar / Video / Audio*\n\n` +
       `Durasi tetap: *30 detik* • Hasil *1080p melalui upscale* • Audio bisa dipilih\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_25)}* per video\n\n` +
-      'Pilih mode. Video referensi tidak didukung:',
+      'Pilih mode. Referensi dapat dicampur: maksimal 30 gambar, 10 video, dan 10 audio. Total durasi video maksimal 30 detik; total audio maksimal 30 detik. Maksimal 19MB per file dan 100MB gabungan:',
       { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
         [Markup.button.callback('Teks → Video', 'seedance25_mode_t2v')],
-        [Markup.button.callback('1–10 gambar referensi', 'seedance25_mode_reference')],
+        [Markup.button.callback('Gambar / Video / Audio referensi', 'seedance25_mode_reference')],
       ]) }
     );
   }
@@ -5020,13 +5031,16 @@ bot.on('callback_query', async (ctx) => {
       seedance25Step: textOnly ? 'prompt' : 'media',
       oneoverImageUrl: undefined,
       seedance25ImageFileIds: [],
+      seedance25Videos: [],
+      seedance25Audios: [],
+      seedance25PendingUploads: 0,
       seedance25VideoFileId: undefined,
       seedance25VideoMime: undefined,
     });
-    const instructions = 'Kirim 1–10 gambar referensi. Gambar menjadi acuan, bukan pengunci frame awal/akhir.';
+    const instructions = 'Kirim hingga 30 gambar, 10 video, dan 10 audio (boleh dicampur atau audio saja). Total video maksimal 30 detik, total audio maksimal 30 detik; 19MB per file dan 100MB gabungan. Gambar menjadi referensi, bukan pengunci frame awal/akhir.';
     return ctx.editMessageText(
       `🌊 Seedance 2.5 · ${ratio} · 30 detik · ${settings.resolution}p melalui upscale · audio ${settings.audio ? 'aktif' : 'nonaktif'}\n\n` +
-      (textOnly ? 'Kirim prompt teks (maksimal 20.000 karakter).' : `${instructions}\nSetelah selesai, tekan lanjut. Video referensi tidak didukung.`),
+      (textOnly ? 'Kirim prompt teks (maksimal 20.000 karakter).' : `${instructions}\nSetelah semua referensi diterima, tekan lanjut.`),
       textOnly ? {} : seedance25InputKeyboard()
     );
   }
@@ -5034,14 +5048,18 @@ bot.on('callback_query', async (ctx) => {
   if (data === 'seedance25_inputs_done') {
     const session = getSession(userId);
     const imageCount = session.seedance25ImageFileIds?.length ?? 0;
+    const videoCount = session.seedance25Videos?.length ?? 0;
+    const audioCount = session.seedance25Audios?.length ?? 0;
+    if (session.seedance25PendingUploads) return ctx.reply('Referensi masih diperiksa. Tunggu pesan diterima sebelum lanjut.');
     const mode = session.seedance25Settings?.mode;
     if (session.mode !== 'oneover_wait_image' || session.seedance25Settings?.provider !== 'picsart'
-      || mode !== 'reference' || imageCount < 1 || imageCount > SEEDANCE25_MAX_IMAGES) {
-      return ctx.reply('⚠️ Kirim 1–10 gambar referensi. /menu untuk mulai ulang.');
+      || mode !== 'reference' || imageCount + videoCount + audioCount < 1
+      || imageCount > SEEDANCE25_MAX_IMAGES || videoCount > SEEDANCE25_MAX_VIDEOS || audioCount > SEEDANCE25_MAX_AUDIOS) {
+      return ctx.reply('⚠️ Kirim setidaknya satu gambar, video, atau audio referensi. /menu untuk mulai ulang.');
     }
     setSession(userId, { mode: 'oneover_wait_prompt', seedance25Step: 'prompt' });
     return ctx.editMessageText(
-      `✅ Referensi diterima: *${imageCount} gambar*.\n\n` +
+      `✅ Referensi diterima: *${imageCount} gambar, ${videoCount} video, ${audioCount} audio*.\n\n` +
       '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu.',
       { parse_mode: 'Markdown' }
     );
@@ -6264,6 +6282,57 @@ function seedance25RatioKeyboard() {
   ]));
 }
 
+async function handleSeedance25Reference(
+  ctx: any, kind: 'video' | 'audio',
+  file: { file_id: string; file_size?: number; mime_type?: string; duration?: number },
+) {
+  const userId = ctx.from.id;
+  const draft = getSession(userId);
+  if (draft.mode !== 'oneover_wait_image' || draft.seedance25Step !== 'media'
+    || draft.seedance25Settings?.provider !== 'picsart' || draft.seedance25Settings.mode !== 'reference') {
+    return ctx.reply('Mulai ulang Seedance 2.5 dari /menu untuk menambahkan referensi.');
+  }
+  const key = kind === 'video' ? 'seedance25Videos' : 'seedance25Audios';
+  const max = kind === 'video' ? SEEDANCE25_MAX_VIDEOS : SEEDANCE25_MAX_AUDIOS;
+  const existing = draft[key] ?? [];
+  if (existing.some(item => item.fileId === file.file_id)) return ctx.reply('Referensi ini sudah diterima.');
+  if (existing.length >= max) return ctx.reply(`Maksimal ${max} referensi ${kind}.`, seedance25InputKeyboard());
+  if (file.file_size && file.file_size > SEEDANCE25_MAX_MEDIA_BYTES) return ctx.reply('Maksimal 19MB per file referensi.');
+  if (file.duration && file.duration > SEEDANCE25_MAX_REFERENCE_SECONDS) return ctx.reply('Durasi referensi maksimal 30 detik.');
+  // Preserve the immutable wizard settings identity across async file reads.
+  // Pending reads block "done"; /menu or a new draft invalidates their results.
+  const identity = draft.seedance25Settings;
+  setSession(userId, { seedance25PendingUploads: (draft.seedance25PendingUploads ?? 0) + 1 });
+  try {
+    const link = await ctx.telegram.getFileLink(file.file_id);
+    const response = await telegramHttp.get(link.href, {
+      responseType: 'arraybuffer', timeout: 60000, maxContentLength: SEEDANCE25_MAX_MEDIA_BYTES,
+    });
+    const duration = await inspectSeedance25Media(Buffer.from(response.data), kind);
+    const current = getSession(userId);
+    if (current.mode !== 'oneover_wait_image' || current.seedance25Settings !== identity) return;
+    const items = current[key] ?? [];
+    if (items.some(item => item.fileId === file.file_id)) return ctx.reply('Referensi ini sudah diterima.');
+    if (items.length >= max) return ctx.reply(`Maksimal ${max} referensi ${kind}.`);
+    if (items.reduce((sum, item) => sum + item.duration, 0) + duration > SEEDANCE25_MAX_REFERENCE_SECONDS) {
+      return ctx.reply(`Total durasi referensi ${kind} maksimal 30 detik. File terakhir tidak ditambahkan.`);
+    }
+    const media = { fileId: file.file_id, mime: file.mime_type ?? (kind === 'video' ? 'video/mp4' : 'audio/mpeg'), duration };
+    setSession(userId, { [key]: [...items, media] });
+    return ctx.reply(`✅ ${kind === 'video' ? 'Video' : 'Audio'} referensi ke-${items.length + 1} diterima.\nKirim referensi berikutnya atau tekan lanjut.`, seedance25InputKeyboard());
+  } catch {
+    const current = getSession(userId);
+    if (current.seedance25Settings === identity && current.mode === 'oneover_wait_image') {
+      return ctx.reply('❌ Referensi tidak bisa dibaca. Maksimal 19MB dan 30 detik. Gunakan MP4 untuk video atau MP3/M4A/WAV/OGG untuk audio.', seedance25InputKeyboard());
+    }
+  } finally {
+    const current = getSession(userId);
+    if (current.seedance25Settings === identity) {
+      setSession(userId, { seedance25PendingUploads: Math.max(0, (current.seedance25PendingUploads ?? 1) - 1) });
+    }
+  }
+}
+
 // Label model gambar berdasarkan session aktif (dipakai di beberapa langkah wizard).
 function imgLabelFor(userId: number): string {
   const model = getSession(userId).imgModel;
@@ -6557,6 +6626,7 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
       return ctx.reply('Sesi lama sudah tidak berlaku. Mulai lagi dari /menu.');
     }
     const max = SEEDANCE25_MAX_IMAGES;
+    if (session.seedance25ImageFileIds?.includes(fileId)) return ctx.reply('Gambar ini sudah diterima.', seedance25InputKeyboard());
     if ((session.seedance25ImageFileIds?.length ?? 0) >= max) {
       return ctx.reply(`Maksimal ${max} foto untuk mode ini. Tekan lanjut atau /menu untuk mengganti.`, seedance25InputKeyboard());
     }
@@ -6576,7 +6646,7 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     }
     return ctx.reply(
       `✅ Gambar acuan ke-${imageFileIds.length} diterima.\n\n` +
-      `Kirim gambar berikutnya (maksimal ${max}) atau tekan tombol lanjut.`,
+      `Kirim gambar berikutnya (maksimal ${max}), video/audio referensi, atau tekan tombol lanjut.`,
       { parse_mode: 'Markdown', ...seedance25InputKeyboard() }
     );
   }
@@ -6790,6 +6860,10 @@ bot.on('photo', async (ctx) => {
   if (!await requireLogin(ctx)) return;
   const draft = getSession(ctx.from.id);
   const photo = ctx.message.photo[ctx.message.photo.length - 1];
+  if (draft.mode === 'oneover_wait_image') {
+    if (photo.file_size && photo.file_size > SEEDANCE25_MAX_MEDIA_BYTES) return ctx.reply('Maksimal 19MB per file referensi.');
+    return handleImageInput(ctx, '', photo.file_id);
+  }
   const fileLink = await ctx.telegram.getFileLink(photo.file_id);
   if (draft.mode === 'china_video_wait_image' && getSession(ctx.from.id) !== draft) {
     return ctx.reply('Proses foto sebelumnya sudah dibatalkan. Kirim foto untuk pilihan yang sedang aktif.');
@@ -6821,7 +6895,7 @@ bot.on('video', async (ctx) => {
   }
 
   if (session.mode === 'oneover_wait_image') {
-    return ctx.reply('Seedance 2.5 mendukung gambar, bukan video referensi. Kirim foto sesuai mode yang dipilih.', seedance25InputKeyboard());
+    return handleSeedance25Reference(ctx, 'video', vid);
   }
 
   if (session.mode === 'seedance_mini_edit_wait_video') {
@@ -7143,6 +7217,7 @@ async function handleAudioTranscriptionFile(ctx: any, fileId: string, mimeType?:
 bot.on('audio', async (ctx) => {
   if (!await requireLogin(ctx)) return;
   const session = getSession(ctx.from.id);
+  if (session.mode === 'oneover_wait_image') return handleSeedance25Reference(ctx, 'audio', ctx.message.audio);
   if (session.mode === 'lipsync_wait_audio') {
     return handleLipsyncAudio(ctx, ctx.message.audio.file_id, ctx.message.audio.mime_type);
   }
@@ -7152,6 +7227,9 @@ bot.on('audio', async (ctx) => {
 bot.on('voice', async (ctx) => {
   if (!await requireLogin(ctx)) return;
   const session = getSession(ctx.from.id);
+  if (session.mode === 'oneover_wait_image') return handleSeedance25Reference(ctx, 'audio', {
+    ...ctx.message.voice, mime_type: ctx.message.voice.mime_type ?? 'audio/ogg',
+  });
   if (session.mode === 'lipsync_wait_audio') {
     return handleLipsyncAudio(ctx, ctx.message.voice.file_id, ctx.message.voice.mime_type ?? 'audio/ogg');
   }
@@ -7592,8 +7670,10 @@ bot.on('text', async (ctx) => {
         ? [activeDraft.oneoverImageUrl]
         : [];
     const settings = activeDraft.seedance25Settings;
+    const videoFiles = activeDraft.seedance25Videos ?? [];
+    const audioFiles = activeDraft.seedance25Audios ?? [];
     try {
-      validateSeedance25Request(settings!, prompt, imageFileIds.length);
+      validateSeedance25Request(settings!, prompt, imageFileIds.length, videoFiles.length, audioFiles.length);
     } catch {
       setSession(userId, { mode: 'idle' });
       return ctx.reply('⚠️ Sesi atau referensi tidak valid. Mulai lagi dari /menu.');
@@ -7608,38 +7688,34 @@ bot.on('text', async (ctx) => {
     // Telegram update now sees idle and cannot create a second paid provider job.
     const dbUserId = activeDraft.dbUserId;
     // Claim before the first Telegram file-link await to prevent duplicate jobs.
-    setSession(userId, { mode: 'idle', seedance25Step: undefined });
+    setSession(userId, {
+      mode: 'idle', seedance25Step: undefined, oneoverImageUrl: undefined,
+      seedance25ImageFileIds: undefined, seedance25Videos: undefined, seedance25Audios: undefined,
+      seedance25PendingUploads: 0, seedance25VideoFileId: undefined,
+      seedance25VideoMime: undefined, seedance25Ratio: undefined, seedance25Settings: undefined,
+    });
     let imageUrls: string[];
+    let videos: Seedance25ResolvedMedia[];
+    let audios: Seedance25ResolvedMedia[];
     try {
       imageUrls = await Promise.all(
         imageFileIds.map(async (fileId) => (await bot.telegram.getFileLink(fileId)).href)
       );
-    } catch (error: any) {
-      setSession(userId, {
-        mode: 'idle',
-        oneoverImageUrl: undefined,
-        seedance25ImageFileIds: undefined,
-        seedance25VideoFileId: undefined,
-        seedance25VideoMime: undefined,
+      const resolve = async (file: Seedance25Media): Promise<Seedance25ResolvedMedia> => ({
+        url: (await bot.telegram.getFileLink(file.fileId)).href, mime: file.mime, duration: file.duration,
       });
+      videos = await Promise.all(videoFiles.map(resolve));
+      audios = await Promise.all(audioFiles.map(resolve));
+    } catch (error: any) {
       console.error(`[${userId}] Seedance 2.5 media-link error:`, error?.message ?? error);
-      return ctx.reply('❌ Gambar referensi tidak bisa dibaca. Mulai ulang dari /menu.');
+      return ctx.reply('❌ Referensi tidak bisa dibaca. Mulai ulang dari /menu.');
     }
     const ratio = settings.ratio;
-    setSession(userId, {
-      mode: 'idle',
-      oneoverImageUrl: undefined,
-      seedance25ImageFileIds: undefined,
-      seedance25VideoFileId: undefined,
-      seedance25VideoMime: undefined,
-      seedance25Ratio: undefined,
-      seedance25Settings: undefined,
-    });
     const statusMsg = await ctx.reply(
       `⏳ Memproses Seedance 2.5 (${ratio}, ${settings.resolution}p melalui upscale)...\nHasil dikirim otomatis setelah selesai.`,
       { parse_mode: 'Markdown' }
     );
-    runPicsartSeedance25(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, imageUrls, settings)
+    runPicsartSeedance25(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, imageUrls, settings, videos, audios)
       .catch(e => console.error(`[${userId}] Seedance 2.5 error:`, e.message));
     return;
   }
@@ -8395,6 +8471,13 @@ bot.on('document', async (ctx) => {
   const session = getSession(userId);
   const doc = ctx.message.document;
 
+  if (session.mode === 'oneover_wait_image') {
+    if (doc.mime_type?.startsWith('video/')) return handleSeedance25Reference(ctx, 'video', doc);
+    if (doc.mime_type?.startsWith('audio/')) return handleSeedance25Reference(ctx, 'audio', doc);
+    if (!doc.mime_type?.startsWith('image/')) return ctx.reply('Kirim gambar JPG/PNG, video MP4, atau audio MP3/M4A/WAV/OGG.');
+    if (doc.file_size && doc.file_size > SEEDANCE25_MAX_MEDIA_BYTES) return ctx.reply('Maksimal 19MB per file referensi.');
+    return handleImageInput(ctx, '', doc.file_id);
+  }
   if (doc.mime_type?.startsWith('image/')) {
     const fileLink = await ctx.telegram.getFileLink(doc.file_id);
     if (session.mode === 'china_video_wait_image' && getSession(userId) !== session) {
@@ -9505,9 +9588,11 @@ async function runPicsartSeedance25(
   prompt: string,
   imageUrls: string[],
   settings: Seedance25Settings,
+  videoRefs: Seedance25ResolvedMedia[] = [],
+  audioRefs: Seedance25ResolvedMedia[] = [],
 ) {
   const label = 'Seedance 2.5';
-  validateSeedance25Request(settings, prompt, imageUrls.length);
+  validateSeedance25Request(settings, prompt, imageUrls.length, videoRefs.length, audioRefs.length);
   const PRICE = MODEL_PRICES.picsart_seedance_25;
   let stage = 'charge';
   const charge = await beginCharge(dbUserId, PRICE, MAX_PARALLEL_GENERATIONS_PER_USER);
@@ -9519,17 +9604,50 @@ async function runPicsartSeedance25(
 
   try {
     stage = 'download';
-    const images = await Promise.all(
-      imageUrls.map(async (imageUrl) => {
-        const image = await downloadBuffer(imageUrl);
-        return { buffer: image.buf, name: `reference.${image.ext}`, mime: image.mime };
-      })
-    );
+    let totalBytes = 0;
+    const checkBytes = (buf: Buffer) => {
+      totalBytes += buf.length;
+      if (!buf.length || buf.length > SEEDANCE25_MAX_MEDIA_BYTES || totalBytes > SEEDANCE25_MAX_TOTAL_BYTES) {
+        throw Error('SEEDANCE25_MEDIA_SIZE_LIMIT');
+      }
+    };
+    // Bound both concurrent downloads and total retained reference bytes.
+    const images = [];
+    for (const imageUrl of imageUrls) {
+        const response = await telegramHttp.get(imageUrl, {
+          responseType: 'arraybuffer', timeout: 60000, maxContentLength: SEEDANCE25_MAX_MEDIA_BYTES,
+        });
+        const buf = Buffer.from(response.data);
+        checkBytes(buf);
+        const image = { buf, ...detectMime(buf) };
+        if (!image.mime.startsWith('image/')) throw Error('INVALID_IMAGE');
+        images.push({ buffer: image.buf, name: `reference.${image.ext}`, mime: image.mime });
+    }
+    const downloadRefs = async (refs: Seedance25ResolvedMedia[], kind: 'video' | 'audio') => {
+      const items = [];
+      let total = 0;
+      for (const ref of refs) {
+        const response = await telegramHttp.get(ref.url, {
+          responseType: 'arraybuffer', timeout: 60000, maxContentLength: SEEDANCE25_MAX_MEDIA_BYTES,
+        });
+        const buffer = Buffer.from(response.data);
+        checkBytes(buffer);
+        const duration = await inspectSeedance25Media(buffer, kind);
+        total += duration;
+        if (total > SEEDANCE25_MAX_REFERENCE_SECONDS) throw Error('INVALID_MEDIA_DURATION');
+        items.push({ buffer, name: seedance25ReferenceName(kind, ref.mime), mime: ref.mime, duration });
+      }
+      return items;
+    };
+    const videos = await downloadRefs(videoRefs, 'video');
+    const audios = await downloadRefs(audioRefs, 'audio');
     stage = 'submit';
     const result = await picsart.generateSeedance({
       userId: dbUserId,
       prompt,
       images,
+      videos,
+      audios,
       duration: 30,
       resolution: '480p',
       ratio: settings.ratio,
@@ -9562,7 +9680,9 @@ async function runPicsartSeedance25(
       `[seedance-2.5] user=${userId} dbUser=${dbUserId} stage=${stage} error=${msg}`,
       err?.stack ? `\n${err.stack}` : ''
     );
-    const friendly = msg.includes('PICSART_NO_ACCOUNT') || msg.includes('PICSART_INSUFFICIENT_CREDITS')
+    const friendly = msg.includes('SEEDANCE25_MEDIA_SIZE_LIMIT')
+      ? '❌ Referensi melebihi batas 19MB per file atau 100MB gabungan. Saldo kamu akan dikembalikan.'
+      : msg.includes('PICSART_NO_ACCOUNT') || msg.includes('PICSART_INSUFFICIENT_CREDITS')
       ? '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.'
       : msg.includes('TIMEOUT')
         ? '❌ Proses terlalu lama. Saldo kamu akan dikembalikan.'

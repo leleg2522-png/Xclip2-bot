@@ -1834,7 +1834,9 @@ export async function generateMinimaxH3ReferenceToVideo(input: {
 // params: {model:"seedance_2_5", content:[{type:"image_url",image_url:{url},role:"reference_image"}..., {type:"text",text}],
 //          ratio:"9:16"|"16:9"|..., duration:15|30, resolution:"480p"|"720p", generate_audio, output_format:"mp4"}
 export const SEEDANCE_MODEL = 'seedance_2_5';
-export const SEEDANCE_MAX_REF_IMAGES = 10;
+export const SEEDANCE_MAX_REF_IMAGES = 30;
+export const SEEDANCE_MAX_REF_VIDEOS = 10;
+export const SEEDANCE_MAX_REF_AUDIOS = 10;
 export type SeedanceResolution = '480p' | '720p';
 export type SeedanceAspectRatio = '9:16' | '16:9';
 // HAR options endpoint reports 120 credits for 480p/30s/audio and 210 credits
@@ -1851,6 +1853,8 @@ export async function submitSeedance(credId: number, input: {
   prompt: string;
   imageUrls: string[];
   videoUrl?: string;
+  videoUrls?: string[];
+  audioUrls?: string[];
   duration: number; // 15 | 30
   ratio: SeedanceAspectRatio;
   resolution?: SeedanceResolution; // default "480p"
@@ -1860,12 +1864,21 @@ export async function submitSeedance(credId: number, input: {
   const access = await getAccessToken(credId);
   const resolution = input.resolution || '480p';
   const generateAudio = input.generateAudio ?? true;
+  const videoUrls = input.videoUrls ?? (input.videoUrl ? [input.videoUrl] : []);
+  const audioUrls = input.audioUrls ?? [];
+  if (input.imageUrls.length > SEEDANCE_MAX_REF_IMAGES || videoUrls.length > SEEDANCE_MAX_REF_VIDEOS
+    || audioUrls.length > SEEDANCE_MAX_REF_AUDIOS) throw Error('SEEDANCE25_INVALID_REFERENCES');
   const content: Array<Record<string, unknown>> = [
-    ...(input.videoUrl ? [{
+    ...videoUrls.map(url => ({
       type: 'video_url',
-      video_url: { url: input.videoUrl },
+      video_url: { url },
       role: 'reference_video',
-    }] : []),
+    })),
+    ...audioUrls.map(url => ({
+      type: 'audio_url',
+      audio_url: { url },
+      role: 'reference_audio',
+    })),
     ...input.imageUrls.map((url) => ({
       type: 'image_url',
       image_url: { url },
@@ -1880,6 +1893,8 @@ export async function submitSeedance(credId: number, input: {
     duration: input.duration,
     resolution,
     generate_audio: generateAudio,
+    ...(videoUrls.length || audioUrls.length || input.imageUrls.length
+      ? { omni_reference_task_type: 'reference' } : {}),
     output_format: 'mp4',
     options: {
       drive: {
@@ -1895,7 +1910,8 @@ export async function submitSeedance(credId: number, input: {
             returnLastFrame: false,
             outputFormat: 'mp4',
             imageUrls: input.imageUrls,
-            ...(input.videoUrl ? { videoUrl: input.videoUrl } : {}),
+            ...(videoUrls.length ? { videoUrls } : {}),
+            ...(audioUrls.length ? { audioUrls } : {}),
           }),
           appId: 'com.picsart.ai-playground',
           appType: 'miniapp',
@@ -1971,12 +1987,14 @@ export async function pollSeedanceResult(
   throw diag.timeoutError();
 }
 
-// High-level orchestrator: upload up to 10 images and one optional reference video.
+// High-level orchestrator: multi-reference generation, not video editing/extension.
 export async function generateSeedance(input: {
   userId: number;
   prompt: string;
   images: Array<{ buffer: Buffer; name?: string; mime?: string }>;
   video?: { buffer: Buffer; name?: string; mime?: string };
+  videos?: Array<{ buffer: Buffer; name?: string; mime?: string; duration: number }>;
+  audios?: Array<{ buffer: Buffer; name?: string; mime?: string; duration: number }>;
   duration: number; // 15 | 30
   ratio: SeedanceAspectRatio;
   resolution?: SeedanceResolution; // default "480p"
@@ -1984,6 +2002,14 @@ export async function generateSeedance(input: {
   onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
+  const videos = input.videos ?? (input.video ? [{ ...input.video, duration: 30 }] : []);
+  const audios = input.audios ?? [];
+  if (input.images.length > SEEDANCE_MAX_REF_IMAGES || videos.length > SEEDANCE_MAX_REF_VIDEOS
+    || audios.length > SEEDANCE_MAX_REF_AUDIOS) throw Error('SEEDANCE25_INVALID_REFERENCES');
+  for (const items of [videos, audios]) {
+    if (items.some(item => !Number.isFinite(item.duration) || item.duration <= 0)
+      || items.reduce((sum, item) => sum + item.duration, 0) > 30) throw Error('SEEDANCE25_INVALID_REFERENCE_DURATION');
+  }
   // Any credit tier is eligible; the per-job preflight still checks affordability.
   return runWithAccount(input.userId, null, async (credId) => {
     // Pre-submit credit check: verify the account has enough credits BEFORE
@@ -1991,7 +2017,12 @@ export async function generateSeedance(input: {
     // error message from a failed submit (which may vary by Picsart version).
     const resolution = input.resolution ?? '480p';
     const creditThresholds = SEEDANCE_MIN_CREDITS[resolution];
-    const minRequired = creditThresholds[input.duration] ?? creditThresholds[30];
+    const baseRequired = creditThresholds[input.duration] ?? creditThresholds[30];
+    // Input video seconds are billed in addition to output seconds. Scale the
+    // conservative preflight budget; authoritative insufficient-credit errors
+    // still skip the account before acceptance.
+    const inputSeconds = videos.reduce((sum, video) => sum + video.duration, 0);
+    const minRequired = baseRequired + Math.ceil(creditThresholds[30] * inputSeconds / 30);
     try {
       const { credits } = await getCredits(credId);
       if (credits < minRequired) {
@@ -2007,18 +2038,24 @@ export async function generateSeedance(input: {
       throw new Error(ERR_INSUFFICIENT_CREDITS);
     }
 
-    let videoUrl: string | undefined;
-    if (input.video) {
+    const videoUrls: string[] = [];
+    for (const video of videos) {
       input.onStatus?.('upload');
-      videoUrl = await uploadFile(
+      videoUrls.push(await uploadFile(
         credId,
-        input.video.buffer,
-        input.video.name || 'reference.mp4',
-        input.video.mime || 'video/mp4',
+        video.buffer,
+        video.name || 'reference.mp4',
+        video.mime || 'video/mp4',
         { gateway: true },
-      );
+      ));
     }
-    const imgs = (input.images || []).slice(0, SEEDANCE_MAX_REF_IMAGES);
+    const audioUrls: string[] = [];
+    for (const audio of audios) {
+      input.onStatus?.('upload');
+      audioUrls.push(await uploadFile(credId, audio.buffer, audio.name || 'reference.mp3',
+        audio.mime || 'audio/mpeg', { gateway: true }));
+    }
+    const imgs = input.images || [];
     const imageUrls: string[] = [];
     for (const img of imgs) {
       input.onStatus?.('upload');
@@ -2035,7 +2072,8 @@ export async function generateSeedance(input: {
     const id = await submitSeedance(credId, {
       prompt: input.prompt,
       imageUrls,
-      videoUrl,
+      videoUrls,
+      audioUrls,
       duration: input.duration,
       ratio: input.ratio,
       resolution: input.resolution,

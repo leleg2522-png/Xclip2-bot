@@ -9,7 +9,7 @@ description: Reverse-engineered submit/poll shape for the Picsart AI Playground 
 
 The public compatibility documentation now specifies up to **30 images,
 10 videos, and 10 audios** for Seedance 2.5, including audio-only input.
-Ten images is the bot's chosen limit, not the documented model maximum.
+The earlier ten-image limit was a bot restriction, not the model maximum.
 The unified API uses `imageUrls`, `videoUrls`, and `audioUrls`; the compatibility
 API uses `content` items with `image_url` / `video_url` / `audio_url` and roles
 `reference_image` / `reference_video` / `reference_audio`.
@@ -30,6 +30,25 @@ on the bot's authenticated Playground gateway. Verify that gateway's behavior
 before enabling new input modalities, and account for input-video costs.
 Keep the user's selected 480p → external 1080p finishing route unless asked
 to change it; documented draft-to-final rendering is a different paid flow.
+
+## Multimodal reference scope
+
+The user asked to adopt the documented image/video/audio references for public
+Seedance 2.5. Treat videos as references for generating a new video, not as
+authorization to restore the removed Video Edit or Extend products.
+Keep the selected ratio for reference generation rather than letting automatic
+task inference turn a reference video into an edit or extension.
+
+**Why:** The user's request is multimodal reference generation; their earlier
+removal of Seedance Video Edit still applies. Docs warn that automatic task
+inference can select a different task and fail after a paid submit.
+
+**How to apply:** Use explicit `omni_reference_task_type: reference` for
+reference inputs. Until actual gateway limits are verified, apply conservative
+aggregate 30-second video and 30-second audio budgets separately, and a 100MB
+combined upload budget (19MB/file). Keep these conservative application limits
+distinct from claims about the upstream model. Do not change the Rp6,000 tariff
+automatically when accounting for upstream input-video costs.
 
 ## Historical Playground contract
 

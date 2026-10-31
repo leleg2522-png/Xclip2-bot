@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import { SEEDANCE25_RATIOS, validateSeedance25Request, type Seedance25Settings } from '../src/seedance25-picsart';
+import {
+  SEEDANCE25_RATIOS, SEEDANCE25_MAX_IMAGES, SEEDANCE25_MAX_VIDEOS, SEEDANCE25_MAX_AUDIOS,
+  SEEDANCE25_MAX_MEDIA_BYTES, SEEDANCE25_MAX_TOTAL_BYTES, SEEDANCE25_MAX_REFERENCE_SECONDS,
+  validateSeedance25Request, seedance25ReferenceName, type Seedance25Settings,
+} from '../src/seedance25-picsart';
 
 const source = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 const provider = readFileSync(new URL('../src/picsart.ts', import.meta.url), 'utf8');
@@ -23,6 +27,7 @@ const settings: Seedance25Settings = {
 type Options = {
   chargeFails?: boolean; downloadFails?: boolean; generationFails?: boolean;
   finishingFails?: boolean; finishingThrows?: boolean; deliveryFails?: boolean; deliveryThrows?: boolean;
+  mediaSeconds?: number; mediaInvalid?: boolean;
 };
 function harness(options: Options = {}) {
   const events = {
@@ -32,6 +37,8 @@ function harness(options: Options = {}) {
   };
   const context = vm.createContext({
     Buffer, validateSeedance25Request, MAX_PARALLEL_GENERATIONS_PER_USER: 3,
+    SEEDANCE25_MAX_MEDIA_BYTES, SEEDANCE25_MAX_TOTAL_BYTES, SEEDANCE25_MAX_REFERENCE_SECONDS,
+    seedance25ReferenceName,
     MODEL_PRICES: { picsart_seedance_25: 6000 },
     beginCharge: async (_: number, price: number) => {
       events.charges.push(price); return { ok: !options.chargeFails, reason: 'saldo' };
@@ -40,6 +47,15 @@ function harness(options: Options = {}) {
     downloadBuffer: async () => {
       if (options.downloadFails) throw Error('DOWNLOAD_FAILED');
       return { buf: Buffer.from('reference'), mime: 'image/jpeg', ext: 'jpg' };
+    },
+    telegramHttp: { get: async () => {
+      if (options.downloadFails) throw Error('DOWNLOAD_FAILED');
+      return { data: Buffer.from('reference') };
+    } },
+    detectMime: () => ({ mime: 'image/jpeg', ext: 'jpg' }),
+    inspectSeedance25Media: async () => {
+      if (options.mediaInvalid) throw Error('INVALID_MEDIA');
+      return options.mediaSeconds ?? 3;
     },
     picsart: { generateSeedance: async (input: any) => {
       events.order.push('generate'); events.inputs.push(input); input.onStatus('poll');
@@ -70,8 +86,10 @@ function harness(options: Options = {}) {
   vm.runInContext(runner, context);
   return {
     events,
-    run: (draft = settings, count = draft.mode === 't2v' ? 0 : 1, id = 1) =>
-      context.runPicsartSeedance25(id, id, id, 10, 'Epic action', Array(count).fill('https://example.test/ref.jpg'), draft),
+    run: (draft = settings, count = draft.mode === 't2v' ? 0 : 1, id = 1, videos = 0, audios = 0) =>
+      context.runPicsartSeedance25(id, id, id, 10, 'Epic action', Array(count).fill('https://example.test/ref.jpg'), draft,
+        Array.from({ length: videos }, () => ({ url: 'https://example.test/v.mp4', mime: 'video/mp4', duration: 3 })),
+        Array.from({ length: audios }, () => ({ url: 'https://example.test/a.mp3', mime: 'audio/mpeg', duration: 3 }))),
   };
 }
 
@@ -84,7 +102,8 @@ async function checkAcceptedJobBinding() {
     const context = vm.createContext({
       console: { log() {}, warn() {}, error() {} },
       MAX_ACCOUNT_ATTEMPTS: 2, ERR_INSUFFICIENT_CREDITS: 'PICSART_INSUFFICIENT_CREDITS',
-      SEEDANCE_MIN_CREDITS: { '480p': { 30: 130 } }, SEEDANCE_MAX_REF_IMAGES: 10,
+      SEEDANCE_MIN_CREDITS: { '480p': { 30: 130 } },
+      SEEDANCE_MAX_REF_IMAGES: 30, SEEDANCE_MAX_REF_VIDEOS: 10, SEEDANCE_MAX_REF_AUDIOS: 10,
       q: async () => ({ rows: [{ n: 2 }] }),
       acquireAccount: async (_: number, pool: unknown, tried: number[]) => {
         assert.equal(pool, null); return [1, 2].find(id => !tried.includes(id)) ?? null;
@@ -113,6 +132,7 @@ async function checkSubmitContract() {
     const context = vm.createContext({
       API_BASE: 'https://example.test', SEEDANCE_MODEL: 'seedance_2_5',
       X_APP_AUTHORIZATION: 'test', getAccessToken: async () => 'test',
+      SEEDANCE_MAX_REF_IMAGES: 30, SEEDANCE_MAX_REF_VIDEOS: 10, SEEDANCE_MAX_REF_AUDIOS: 10,
       commonHeaders: (headers: unknown) => headers, ok2xx: (n: number) => n >= 200 && n < 300,
       http: { post: async (_: string, payload: any) => {
         captured = payload.params;
@@ -123,6 +143,7 @@ async function checkSubmitContract() {
     const promise = context.submitSeedance(1, {
       prompt: 'test', imageUrls: ['https://example.test/ref.jpg'], duration: 30,
       resolution: '480p', ratio: '16:9', generateAudio: false,
+      videoUrls: ['https://example.test/video.mp4'], audioUrls: ['https://example.test/audio.mp3'],
     });
     if (status === 200) assert.equal(await promise, 'accepted');
     else await assert.rejects(() => promise, status === 401
@@ -131,33 +152,104 @@ async function checkSubmitContract() {
     assert.equal(captured.model, 'seedance_2_5');
     assert.equal(captured.duration, 30); assert.equal(captured.resolution, '480p');
     assert.equal(captured.ratio, '16:9'); assert.equal(captured.generate_audio, false);
-    assert.equal(captured.content[0].role, 'reference_image');
+    assert.equal(captured.omni_reference_task_type, 'reference');
+    assert.equal(captured.content[0].role, 'reference_video');
+    assert.equal(captured.content[1].role, 'reference_audio');
+    assert.equal(captured.content[2].role, 'reference_image');
+    assert.equal(captured.content[0].video_url.url, 'https://example.test/video.mp4');
+    assert.equal(captured.content[1].audio_url.url, 'https://example.test/audio.mp3');
   }
+}
+
+async function checkMultiReferenceUploads() {
+  const generate = compile(fragment(provider, 'export async function generateSeedance(', '// ─── Picsart Image-to-Video models')
+    .replace('export async function', 'async function'));
+  const uploads: Array<{ name: string; mime: string }> = [];
+  let submitted: any, creditBalance = 500, accepted = 0;
+  const context = vm.createContext({
+    console: { log() {}, warn() {}, error() {} },
+    SEEDANCE_MIN_CREDITS: { '480p': { 30: 130 } },
+    SEEDANCE_MAX_REF_IMAGES: 30, SEEDANCE_MAX_REF_VIDEOS: 10, SEEDANCE_MAX_REF_AUDIOS: 10,
+    ERR_INSUFFICIENT_CREDITS: 'PICSART_INSUFFICIENT_CREDITS',
+    runWithAccount: async (_: number, pool: unknown, callback: any) => { assert.equal(pool, null); return callback(7); },
+    getCredits: async () => ({ credits: creditBalance }),
+    uploadFile: async (id: number, _: Buffer, name: string, mime: string, options: any) => {
+      assert.equal(id, 7); assert.equal(options.gateway, true);
+      uploads.push({ name, mime }); return `https://example.test/upload-${uploads.length}`;
+    },
+    submitSeedance: async (id: number, input: any) => { assert.equal(id, 7); submitted = input; accepted++; return 'job'; },
+    pollSeedanceResult: async (id: number, job: string) => {
+      assert.equal(id, 7); assert.equal(job, 'job'); return { url: 'https://example.test/result.mp4' };
+    },
+  });
+  vm.runInContext(generate, context);
+  const image = { buffer: Buffer.from('image'), name: 'ref.jpg', mime: 'image/jpeg' };
+  const video = { buffer: Buffer.from('video'), name: 'ref.mp4', mime: 'video/mp4', duration: 3 };
+  const audio = { buffer: Buffer.from('audio'), name: 'ref.ogg', mime: 'audio/ogg', duration: 3 };
+  const input = { userId: 1, images: Array(30).fill(image), videos: Array(10).fill(video), audios: Array(10).fill(audio),
+    prompt: 'Use all references', duration: 30, resolution: '480p', ratio: '9:16', generateAudio: false };
+  await context.generateSeedance(input);
+  assert.equal(uploads.length, 50); assert.equal(accepted, 1);
+  assert.equal(submitted.imageUrls.length, 30); assert.equal(submitted.videoUrls.length, 10); assert.equal(submitted.audioUrls.length, 10);
+  assert.equal(submitted.generateAudio, false); assert.equal(submitted.resolution, '480p');
+  assert.equal(uploads.filter(u => u.mime === 'audio/ogg').length, 10);
+  creditBalance = 130;
+  await assert.rejects(() => context.generateSeedance(input), /INSUFFICIENT_CREDITS/);
+  assert.equal(uploads.length, 50); assert.equal(accepted, 1, 'Input video costs must be included before submit');
+  creditBalance = 500;
+  for (const change of [
+    { images: Array(31).fill(image) }, { videos: Array(11).fill(video) }, { audios: Array(11).fill(audio) },
+    { videos: [{ ...video, duration: 31 }] }, { audios: [{ ...audio, duration: NaN }] },
+  ]) {
+    await assert.rejects(() => context.generateSeedance({ ...input, ...change }), /SEEDANCE25_INVALID/);
+  }
+  assert.equal(accepted, 1);
+  await context.generateSeedance({ ...input, images: [], videos: [], audios: [audio] });
+  assert.equal(submitted.imageUrls.length, 0); assert.equal(submitted.videoUrls.length, 0); assert.equal(submitted.audioUrls.length, 1);
 }
 
 async function main() {
   assert.deepEqual(SEEDANCE25_RATIOS, ['16:9', '9:16']);
-  for (const count of [1, 10]) validateSeedance25Request(settings, 'test', count);
+  assert.equal(SEEDANCE25_MAX_IMAGES, 30); assert.equal(SEEDANCE25_MAX_VIDEOS, 10); assert.equal(SEEDANCE25_MAX_AUDIOS, 10);
+  for (const count of [1, 30]) validateSeedance25Request(settings, 'test', count);
+  validateSeedance25Request(settings, 'test', 30, 10, 10);
+  validateSeedance25Request(settings, 'test', 0, 0, 1);
+  validateSeedance25Request(settings, 'test', 0, 1, 0);
+  assert.throws(() => validateSeedance25Request(settings, 'test', 0, 11, 0));
+  assert.throws(() => validateSeedance25Request(settings, 'test', 0, 0, 11));
+  assert.throws(() => validateSeedance25Request({ ...settings, mode: 't2v' }, 'test', 0, 0, 1));
   validateSeedance25Request({ ...settings, mode: 't2v' }, 'test', 0);
   for (const [draft, count] of [
     [{ ...settings, provider: undefined }, 1], [{ ...settings, mode: 'start_end' }, 2],
     [{ ...settings, ratio: 'auto' }, 1], [{ ...settings, ratio: '1:1' }, 1],
     [{ ...settings, resolution: 720 }, 1], [{ ...settings, mode: 't2v' }, 1],
-    [settings, 0], [settings, 11],
+    [settings, 0], [settings, 31],
   ] as Array<[any, number]>) {
     assert.throws(() => validateSeedance25Request(draft, 'test', count));
   }
   for (const draft of [settings, { ...settings, mode: 't2v' as const, audio: false, ratio: '16:9' as const }]) {
-    const h = harness(); await h.run(draft, draft.mode === 't2v' ? 0 : 10);
+    const h = harness(); await h.run(draft, draft.mode === 't2v' ? 0 : 30);
     assert.deepEqual(h.events.order, ['generate', 'finish', 'deliver']);
     assert.deepEqual(h.events.charges, [6000]); assert.deepEqual(h.events.refunds, []);
     assert.deepEqual(h.events.releases, [1]); assert.deepEqual(h.events.successes, [1]);
     const request = h.events.inputs[0];
     assert.equal(request.resolution, '480p'); assert.equal(request.duration, 30);
     assert.equal(request.ratio, draft.ratio); assert.equal(request.generateAudio, draft.audio);
-    assert.equal(request.images.length, draft.mode === 't2v' ? 0 : 10);
+    assert.equal(request.images.length, draft.mode === 't2v' ? 0 : 30);
     assert.equal(h.events.deliveries[0].url, 'https://example.test/1-1080.mp4');
     assert.match(h.events.deliveries[0].caption, /1080p/);
+  }
+  for (const [images, videos, audios] of [[0, 0, 1], [0, 1, 0], [30, 10, 10]]) {
+    const h = harness(); await h.run(settings, images, 1, videos, audios);
+    assert.deepEqual(h.events.charges, [6000]); assert.deepEqual(h.events.refunds, []);
+    assert.equal(h.events.inputs[0].images.length, images);
+    assert.equal(h.events.inputs[0].videos.length, videos);
+    assert.equal(h.events.inputs[0].audios.length, audios);
+    assert.deepEqual(h.events.order, ['generate', 'finish', 'deliver']);
+  }
+  for (const options of [{ mediaInvalid: true }, { mediaSeconds: 16 }]) {
+    const h = harness(options); await h.run(settings, 0, 1, 2, 0);
+    assert.deepEqual(h.events.refunds, [6000]); assert.equal(h.events.inputs.length, 0);
   }
   for (const options of [
     { downloadFails: true }, { generationFails: true }, { finishingFails: true },
@@ -188,6 +280,7 @@ async function main() {
   assert.doesNotMatch(wizard, /seedance25_mode_start|1–3 gambar|generateAlriz/);
   assert.doesNotMatch(source, /generateAlrizSeedance25/);
   await checkSubmitContract();
+  await checkMultiReferenceUploads();
   await checkAcceptedJobBinding();
   assert.match(source, /picsart_seedance_25:\s*6000,/);
   console.log('PASS Seedance 2.5 Picsart: public inputs, native 480p → mandatory 1080p, Rp6000 billing/refunds, isolation, no accepted-job replay.');

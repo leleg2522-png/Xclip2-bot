@@ -35,7 +35,7 @@
     "test:seedance1080": "tsx tests/seedance-1080-delivery.test.ts",
     "test:parallel": "tsx tests/parallel-generation-safety.test.ts",
     "test:oneover": "tsx tests/oneover-i2v.test.ts",
-    "test:seedance25-picsart": "tsx tests/seedance25-picsart.test.ts",
+    "test:seedance25-picsart": "tsx tests/seedance25-picsart.test.ts && tsx tests/seedance25-media.test.ts",
     "test:microdrama": "tsx tests/microdrama.test.ts",
     "test:episode": "tsx tests/episode.test.ts",
     "test:microdrama-pg": "tsx tests/microdrama-pg.test.ts",

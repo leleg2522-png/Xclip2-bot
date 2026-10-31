@@ -42,11 +42,11 @@ assert.equal(resolveOneOverAccountId({ apiKey: 'test', authorization: 'opaque-to
 
 assert.match(bot, /oneover_seedance_25: 6000/);
 assert.match(bot, /alriz_seedance_25: 5000/);
-assert.match(bot, /picsart_seedance_25: 5000/);
+assert.match(bot, /picsart_seedance_25: 6000/);
 assert.doesNotMatch(bot, /picsart_seedance_25_720/);
 assert.match(bot, /picsart_wan_v3: 3000/);
 assert.match(bot, /Seedance 2\.5 Teks \/ Gambar/);
-assert.match(bot, /Seedance 2\.5 Teks \/ Gambar \(30s, 1080p\)/);
+assert.match(bot, /Seedance 2\.5 Teks \/ Gambar \/ Video \/ Audio \(30s, 1080p\)/);
 assert.doesNotMatch(bot, /Markup\.button\.callback\('720p', 'seedance25_res_720'\)/);
 assert.doesNotMatch(bot, /Provider: \*Freebeat Bridge\*/);
 assert.doesNotMatch(bot, /Seedance 2\.5 I2V • Bridge/);
@@ -77,7 +77,7 @@ assert.match(bot, /seedance25_inputs_done/);
 assert.match(picsart, /gw-v2\/workflows\/seedance\/submit/);
 assert.match(bot, /settings\.resolution/);
 assert.match(bot, /settings\.audio/);
-assert.match(bot, /runPicsartSeedance25\([\s\S]*imageUrls, settings\)/);
+assert.match(bot, /runPicsartSeedance25\([\s\S]*imageUrls, settings, videos, audios\)/);
 assert.match(bot, /videoUrl/);
 assert.match(bot, /PICSART_I2V_MAX_IMAGES/);
 assert.match(bot, /picsart_i2v_photos_done/);
