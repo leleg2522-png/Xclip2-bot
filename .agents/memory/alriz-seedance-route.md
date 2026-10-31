@@ -6,15 +6,20 @@ description: Public Seedance 2.5 returns to Picsart; preserve tariff and removal
 The user now wants public Seedance 2.5 back on Picsart, superseding the earlier
 Alriz provider choice. The existing customer tariff is Rp5,000/video and the
 existing duration is 30 seconds; a provider change alone does not authorize
-changing either. The previous 1080p request belonged to the Alriz offering;
-Picsart's verified contract is native 480p/720p, not native 1080p.
+changing either. For the Picsart return the user explicitly chose 1080p
+through upscaling, not direct native 720p delivery.
 
 **Why:** After previously selecting Alriz and Rp5,000/1080p, the user explicitly
-said “itu seedance 2,5 balikan pake picsart lagi”.
+said “itu seedance 2,5 balikan pake picsart lagi”, then selected
+“1080p melalui upscale”.
 
 **How to apply:** Keep provider-specific names internal in customer copy.
 Use Picsart's verified input contract, not Alriz-specific parameter assumptions.
-Resolve native resolution versus additional finishing before advertising 1080p.
+Generate native 720p through Picsart and require successful 1080p finishing
+through the existing Renderful pool. Never silently deliver native output if
+finishing fails; refund the full saldo charge on generation, finishing, or
+delivery failure. Only offer verified text/image-reference inputs and ratios,
+not Alriz-specific start/end-frame controls.
 Never retry an accepted or ambiguous paid submit on another key; refund
 delivery failures instead.
 

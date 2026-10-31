@@ -42,6 +42,7 @@ assert.equal(resolveOneOverAccountId({ apiKey: 'test', authorization: 'opaque-to
 
 assert.match(bot, /oneover_seedance_25: 6000/);
 assert.match(bot, /alriz_seedance_25: 5000/);
+assert.match(bot, /picsart_seedance_25: 5000/);
 assert.doesNotMatch(bot, /picsart_seedance_25_720/);
 assert.match(bot, /picsart_wan_v3: 3000/);
 assert.match(bot, /Seedance 2\.5 Teks \/ Gambar/);
@@ -59,14 +60,16 @@ assert.ok(publicSeedance25Start >= 0 && publicSeedance25End > publicSeedance25St
 const publicSeedance25Block = bot.slice(publicSeedance25Start, publicSeedance25End);
 assert.match(publicSeedance25Block, /seedance25RatioKeyboard/);
 assert.match(publicSeedance25Block, /seedance25_mode_t2v/);
-assert.match(publicSeedance25Block, /seedance25_mode_start_end/);
+assert.match(publicSeedance25Block, /seedance25_mode_reference/);
+assert.doesNotMatch(publicSeedance25Block, /seedance25_mode_start_end/);
 assert.match(publicSeedance25Block, /seedance25_audio_off/);
 assert.match(publicSeedance25Block, /resolution: 1080/);
 assert.match(publicSeedance25Block, /mode: textOnly \? 'oneover_wait_prompt' : 'oneover_wait_image'/);
-assert.match(publicSeedance25Block, /MODEL_PRICES\.alriz_seedance_25/);
+assert.match(publicSeedance25Block, /MODEL_PRICES\.picsart_seedance_25/);
 assert.doesNotMatch(publicSeedance25Block, /queueFreebeatBridgeSeedance25/);
 assert.match(bot, /runPicsartSeedance25/);
-assert.match(bot, /generateAlrizSeedance25/);
+assert.doesNotMatch(bot, /generateAlrizSeedance25/);
+assert.match(bot, /picsart\.generateSeedance/);
 assert.match(bot, /seedance25Settings/);
 assert.match(bot, /seedance25ImageFileIds/);
 assert.match(bot, /seedance25VideoFileId/);

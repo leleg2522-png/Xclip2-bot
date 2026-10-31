@@ -13,7 +13,7 @@
 - [Flora AI API](flora-ai-api.md) — generate pakai params.image_url/video_url (bukan inputs[]); upload form_fields snake_case; "1 key 1 task" salah (paralel jalan); tak ada endpoint saldo credits
 - [XclipAI referral scheme](xclip-referral-scheme.md) — 5% dari SETIAP top-up undangan masuk saldo utama pengundang; bonus cair hanya saat order PAID, idempotent via UNIQUE(order_id)
 - [Picsart account pools](picsart-account-pools.md) — all Picsart models can use both ~50-credit and higher-credit accounts, with no model exemptions; non-Picsart providers stay unchanged.
-- [Picsart Seedance 2.5 API](seedance-api.md) — historical reference-only Picsart contract; new public Seedance 2.5 orders use Alriz instead.
+- [Picsart Seedance 2.5 API](seedance-api.md) — verified reference-image contract; public orders return to Picsart with mandatory 1080p finishing.
 - [Kling Motion package routing](edanbot-kling-motion.md) — P2/P3 Edan Bot native; P4/P5 share Alriz DB key pool and deliver directly without Renderful.
 - [Picsart Kling 4 and Omni](picsart-kling4.md) — all Kling 4 modes require Renderful 1080p before delivery; no native fallback. Omni Rp8.500; credit cost uses quotes.
 - [Paid provider post-submit failover](paid-provider-post-submit-failover.md) — failover may retry only before an upstream paid job is accepted; post-submit auth loss must refund, not resubmit.
@@ -33,7 +33,7 @@
 - [ChinaAPI video and billing](chinaapi-video-billing.md) — live catalog beats SEO; unlimited key quota is not wallet balance; Wan 3.0 pricing and request fields depend on resolution.
 - [Vinc browser API](vinc-browser-api.md) — completed Seedance 2.5 T2V evidence; sanitized HAR lacks login, and catalog I2V entries do not prove a working upload/generate flow.
 - [NovAI Seedance API](novai-seedance-api.md) — main-domain API works; Seedance 2.5 is listed, but trial video submit returned 403 despite advertised trial support.
-- [Seedance 2.5 provider choice](alriz-seedance-route.md) — user requested return from Alriz to Picsart; preserve Rp5,000/30s and verify output/input compatibility.
+- [Seedance 2.5 provider choice](alriz-seedance-route.md) — Picsart native 720p → mandatory 1080p upscale, Rp5,000/30s; any failed delivery refunds, no native fallback.
 - [Aiveed API](aiveed-api.md) — image test succeeded; Banana 2.1 requested 1K delivered 768px; honor polling rate limits without resubmitting.
 - [DeAPI model access and keys](deapi-account-catalog.md) — catalogue is account-scoped; Seedance is plan-blocked; user wants bot credentials pooled in the Railway DB.
 - [Microdrama LLM provider](microdrama-llm-provider.md) — user selected BUAT SIMPEL as the microdrama brain; specific model remains undecided.

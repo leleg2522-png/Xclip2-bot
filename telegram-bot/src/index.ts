@@ -25,7 +25,7 @@ import { FreebeatBridgeQueue, type BridgeAgent, type BridgeJob } from './freebea
 import { KLING_P4, klingP4VideoError, isFloraWorkspaceSetupError } from './kling-p4-flora';
 import { KLING_V3_STANDARD, klingV3StandardVideoError } from './kling-v3-standard-flora';
 import { ALRIZ_KLING_P5, generateKlingAlrizFromPool } from './alriz-motion';
-import { generateAlrizSeedance25, SEEDANCE25_RATIOS, type Seedance25Settings } from './alriz-seedance';
+import { SEEDANCE25_RATIOS, SEEDANCE25_MAX_IMAGES, validateSeedance25Request, type Seedance25Settings } from './seedance25-picsart';
 import { AlrizKeyPool } from './alriz-key-pool';
 import { registerAlrizAdmin } from './alriz-admin';
 import { XCLIP_MOTION, xclipMotionVideoError, prepareXclipMotionReference } from './xclip-motion-media';
@@ -244,7 +244,8 @@ const MODEL_PRICES = {
   picsart_seedance_2_video_edit: 4500, // Seedance 2 Video Edit, native 480p
   picsart_seedance_2: 4000, // Seedance 2.0 Mini/Fast/Standard, native 480p
   picsart_wan_v3: 3000, // Wan 3.0 30s, native 720p
-  alriz_seedance_25: 5000, // Public Seedance 2.5, Alriz 1080p
+  alriz_seedance_25: 5000, // Historical Alriz tariff; not used for new orders
+  picsart_seedance_25: 5000, // Seedance 2.5: native 720p → mandatory 1080p finishing
   oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
   kling_21_p2: 3000,   // Public Kling 2.1 P2; Flora Kling 2.5 first-frame backend
@@ -3237,7 +3238,7 @@ function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false 
     `• Seedance 2.0 Mini 1080p — ${formatRupiah(promoPrice('seedance_2_mini', getPicsartI2vPrice('seedance_2_mini')))}\n` +
     `• Seedance 2.0 Fast 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_fast'))}\n` +
     `• Seedance 2.0 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
-    `• Seedance 2.5 Teks / Gambar (30s, 1080p) — ${formatRupiah(MODEL_PRICES.alriz_seedance_25)}\n` +
+    `• Seedance 2.5 Teks / Gambar (30s, 1080p) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25)}\n` +
     `• Grok Imagine Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Creatify Boreal (20 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_creatify_boreal)}\n` +
     `• LTX 2.5 PRO (10 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_ltx_pro)}\n` +
@@ -4972,19 +4973,17 @@ bot.on('callback_query', async (ctx) => {
       seedance25VideoFileId: undefined,
       seedance25VideoMime: undefined,
       seedance25Ratio: undefined,
-      seedance25Settings: { mode: 'start', resolution: 1080, audio: true, ratio: '9:16' },
+      seedance25Settings: { provider: 'picsart', mode: 'reference', resolution: 1080, audio: true, ratio: '9:16' },
       seedance25Step: 'mode',
     });
     return ctx.editMessageText(
       `🌊 *Seedance 2.5 · Teks / Gambar*\n\n` +
-      `Durasi tetap: *30 detik* • Resolusi *1080p* • Audio bisa dipilih\n` +
-      `Harga: *${formatRupiah(MODEL_PRICES.alriz_seedance_25)}* per video\n\n` +
+      `Durasi tetap: *30 detik* • Hasil *1080p melalui upscale* • Audio bisa dipilih\n` +
+      `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_25)}* per video\n\n` +
       'Pilih mode. Video referensi tidak didukung:',
       { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
         [Markup.button.callback('Teks → Video', 'seedance25_mode_t2v')],
-        [Markup.button.callback('Frame awal', 'seedance25_mode_start')],
-        [Markup.button.callback('Frame awal + akhir', 'seedance25_mode_start_end')],
-        [Markup.button.callback('1–3 gambar referensi', 'seedance25_mode_reference')],
+        [Markup.button.callback('1–10 gambar referensi', 'seedance25_mode_reference')],
       ]) }
     );
   }
@@ -4992,28 +4991,27 @@ bot.on('callback_query', async (ctx) => {
   if (data.startsWith('seedance25_mode_')) {
     const s = getSession(userId);
     const mode = data.slice('seedance25_mode_'.length) as Seedance25Settings['mode'];
-    if (s.seedance25Step !== 'mode' || !s.seedance25Settings
-      || !['t2v', 'start', 'start_end', 'reference'].includes(mode)) return ctx.reply('Pilihan sudah tidak aktif. Mulai lagi dari /menu.');
+    if (s.seedance25Step !== 'mode' || s.seedance25Settings?.provider !== 'picsart'
+      || !['t2v', 'reference'].includes(mode)) return ctx.reply('Pilihan sudah tidak aktif. Mulai lagi dari /menu.');
     setSession(userId, { seedance25Settings: { ...s.seedance25Settings, mode, resolution: 1080 }, seedance25Step: 'audio' });
-    return ctx.editMessageText('Seedance 2.5 · 30 detik · 1080p\nAktifkan audio untuk video?', Markup.inlineKeyboard([[
+    return ctx.editMessageText('Seedance 2.5 · 30 detik · 1080p melalui upscale\nAktifkan audio untuk video?', Markup.inlineKeyboard([[
       Markup.button.callback('Audio aktif', 'seedance25_audio_on'), Markup.button.callback('Tanpa audio', 'seedance25_audio_off'),
     ]]));
   }
   if (data.startsWith('seedance25_res_')) {
-    return ctx.reply('Pilihan resolusi lama tidak berlaku. Seedance 2.5 sekarang 1080p. Mulai lagi dari /menu.');
+    return ctx.reply('Pilihan resolusi lama tidak berlaku. Seedance 2.5 dikirim 1080p melalui upscale. Mulai lagi dari /menu.');
   }
   if (data === 'seedance25_audio_on' || data === 'seedance25_audio_off') {
     const s = getSession(userId);
-    if (s.seedance25Step !== 'audio' || !s.seedance25Settings) return ctx.reply('Pilihan sudah tidak aktif. Mulai lagi dari /menu.');
+    if (s.seedance25Step !== 'audio' || s.seedance25Settings?.provider !== 'picsart') return ctx.reply('Pilihan sudah tidak aktif. Mulai lagi dari /menu.');
     setSession(userId, { seedance25Settings: { ...s.seedance25Settings, audio: data.endsWith('_on') }, seedance25Step: 'ratio' });
-    return ctx.editMessageText('Pilih rasio video:', seedance25RatioKeyboard(s.seedance25Settings.mode !== 't2v'));
+    return ctx.editMessageText('Pilih rasio video:', seedance25RatioKeyboard());
   }
   if (data.startsWith('seedance25_ratio_')) {
     const s = getSession(userId);
     const key = data.slice('seedance25_ratio_'.length);
-    const ratio = key === 'auto' ? 'auto' : SEEDANCE25_RATIOS.find(r => r.replace(':', '') === key);
-    if (s.seedance25Step !== 'ratio' || !s.seedance25Settings || !ratio
-      || (ratio === 'auto' && s.seedance25Settings.mode === 't2v')) return ctx.reply('Pilihan rasio tidak valid. Mulai lagi dari /menu.');
+    const ratio = SEEDANCE25_RATIOS.find(r => r.replace(':', '') === key);
+    if (s.seedance25Step !== 'ratio' || s.seedance25Settings?.provider !== 'picsart' || !ratio) return ctx.reply('Pilihan rasio tidak valid. Mulai lagi dari /menu.');
     const settings = { ...s.seedance25Settings, resolution: 1080 as const, ratio };
     const textOnly = settings.mode === 't2v';
     setSession(userId, {
@@ -5025,11 +5023,9 @@ bot.on('callback_query', async (ctx) => {
       seedance25VideoFileId: undefined,
       seedance25VideoMime: undefined,
     });
-    const instructions = settings.mode === 'start' ? 'Kirim 1 foto sebagai frame awal.'
-      : settings.mode === 'start_end' ? 'Kirim tepat 2 foto: frame awal terlebih dahulu, lalu frame akhir.'
-      : 'Kirim 1–3 gambar referensi.';
+    const instructions = 'Kirim 1–10 gambar referensi. Gambar menjadi acuan, bukan pengunci frame awal/akhir.';
     return ctx.editMessageText(
-      `🌊 Seedance 2.5 · ${ratio} · 30 detik · ${settings.resolution}p · audio ${settings.audio ? 'aktif' : 'nonaktif'}\n\n` +
+      `🌊 Seedance 2.5 · ${ratio} · 30 detik · ${settings.resolution}p melalui upscale · audio ${settings.audio ? 'aktif' : 'nonaktif'}\n\n` +
       (textOnly ? 'Kirim prompt teks (maksimal 20.000 karakter).' : `${instructions}\nSetelah selesai, tekan lanjut. Video referensi tidak didukung.`),
       textOnly ? {} : seedance25InputKeyboard()
     );
@@ -5039,10 +5035,9 @@ bot.on('callback_query', async (ctx) => {
     const session = getSession(userId);
     const imageCount = session.seedance25ImageFileIds?.length ?? 0;
     const mode = session.seedance25Settings?.mode;
-    if (session.mode !== 'oneover_wait_image' || !mode
-      || (mode === 'start' && imageCount !== 1) || (mode === 'start_end' && imageCount !== 2)
-      || (mode === 'reference' && (imageCount < 1 || imageCount > 3))) {
-      return ctx.reply('⚠️ Jumlah foto belum sesuai: frame awal 1, awal+akhir 2, referensi 1–3. /menu untuk mulai ulang.');
+    if (session.mode !== 'oneover_wait_image' || session.seedance25Settings?.provider !== 'picsart'
+      || mode !== 'reference' || imageCount < 1 || imageCount > SEEDANCE25_MAX_IMAGES) {
+      return ctx.reply('⚠️ Kirim 1–10 gambar referensi. /menu untuk mulai ulang.');
     }
     setSession(userId, { mode: 'oneover_wait_prompt', seedance25Step: 'prompt' });
     return ctx.editMessageText(
@@ -6262,8 +6257,8 @@ function seedance25InputKeyboard() {
   ]);
 }
 
-function seedance25RatioKeyboard(includeAuto = false) {
-  const ratios: string[] = [...SEEDANCE25_RATIOS, ...(includeAuto ? ['auto'] : [])];
+function seedance25RatioKeyboard() {
+  const ratios = SEEDANCE25_RATIOS;
   return Markup.inlineKeyboard(ratios.map(r => [
     Markup.button.callback(r, `seedance25_ratio_${r.replace(':', '')}`),
   ]));
@@ -6557,8 +6552,11 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
 
   if (session.mode === 'oneover_wait_image') {
     if (!fileId) return ctx.reply('⚠️ Foto tidak bisa dibaca. Kirim ulang foto JPG atau PNG.');
-    const max = session.seedance25Settings?.mode === 'start' ? 1
-      : session.seedance25Settings?.mode === 'start_end' ? 2 : 3;
+    if (session.seedance25Settings?.provider !== 'picsart' || session.seedance25Settings.mode !== 'reference') {
+      setSession(userId, { mode: 'idle' });
+      return ctx.reply('Sesi lama sudah tidak berlaku. Mulai lagi dari /menu.');
+    }
+    const max = SEEDANCE25_MAX_IMAGES;
     if ((session.seedance25ImageFileIds?.length ?? 0) >= max) {
       return ctx.reply(`Maksimal ${max} foto untuk mode ini. Tekan lanjut atau /menu untuk mengganti.`, seedance25InputKeyboard());
     }
@@ -7577,7 +7575,7 @@ bot.on('text', async (ctx) => {
     return;
   }
 
-  // ── OneOver Seedance 2.5 image-to-video prompt ──
+  // ── Picsart Seedance 2.5 prompt (legacy callback/session IDs retained) ──
   if (session.mode === 'oneover_wait_prompt') {
     const prompt = ctx.message.text.trim();
     if (!prompt) return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
@@ -7594,11 +7592,13 @@ bot.on('text', async (ctx) => {
         ? [activeDraft.oneoverImageUrl]
         : [];
     const settings = activeDraft.seedance25Settings;
-    if (!activeDraft.dbUserId || !settings
-      || (settings.mode !== 't2v' && imageFileIds.length === 0)) {
+    try {
+      validateSeedance25Request(settings!, prompt, imageFileIds.length);
+    } catch {
       setSession(userId, { mode: 'idle' });
-      return ctx.reply('⚠️ Gambar atau video referensi tidak ditemukan. Mulai lagi dari /menu.');
+      return ctx.reply('⚠️ Sesi atau referensi tidak valid. Mulai lagi dari /menu.');
     }
+    if (!activeDraft.dbUserId || !settings) return ctx.reply('Mulai lagi dari /menu.');
     const cooldownMs = getCooldownRemainingMs(userId);
     if (cooldownMs > 0) {
       setSession(userId, { mode: 'idle' });
@@ -7636,7 +7636,7 @@ bot.on('text', async (ctx) => {
       seedance25Settings: undefined,
     });
     const statusMsg = await ctx.reply(
-      `⏳ Memproses Seedance 2.5 (${ratio}, ${settings.resolution}p)...\nHasil dikirim otomatis setelah selesai.`,
+      `⏳ Memproses Seedance 2.5 (${ratio}, ${settings.resolution}p melalui upscale)...\nHasil dikirim otomatis setelah selesai.`,
       { parse_mode: 'Markdown' }
     );
     runPicsartSeedance25(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, imageUrls, settings)
@@ -9495,7 +9495,7 @@ async function runPicsartI2v(
   }
 }
 
-// ─── Background: Alriz Seedance 2.5 ──────────────────────────────────────────
+// ─── Background: Picsart Seedance 2.5 → mandatory 1080p finishing ────────────
 
 async function runPicsartSeedance25(
   chatId: number,
@@ -9507,7 +9507,8 @@ async function runPicsartSeedance25(
   settings: Seedance25Settings,
 ) {
   const label = 'Seedance 2.5';
-  const PRICE = MODEL_PRICES.alriz_seedance_25;
+  validateSeedance25Request(settings, prompt, imageUrls.length);
+  const PRICE = MODEL_PRICES.picsart_seedance_25;
   let stage = 'charge';
   const charge = await beginCharge(dbUserId, PRICE, MAX_PARALLEL_GENERATIONS_PER_USER);
   if (!charge.ok) {
@@ -9521,21 +9522,32 @@ async function runPicsartSeedance25(
     const images = await Promise.all(
       imageUrls.map(async (imageUrl) => {
         const image = await downloadBuffer(imageUrl);
-        return image.buf;
+        return { buffer: image.buf, name: `reference.${image.ext}`, mime: image.mime };
       })
     );
     stage = 'submit';
-    const resultUrl = await generateAlrizSeedance25({ settings, prompt, images }, {
-      pool: alrizKeyPool,
-      publish: (bytes) => publishMedia(bytes, false, undefined, true),
-      status: async text => {
-        await bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
+    const result = await picsart.generateSeedance({
+      userId: dbUserId,
+      prompt,
+      images,
+      duration: 30,
+      resolution: '720p',
+      ratio: settings.ratio,
+      generateAudio: settings.audio,
+      onStatus: providerStage => {
+        stage = providerStage;
+        const text = providerStage === 'upload' ? '⏳ Mengunggah gambar referensi...'
+          : providerStage === 'submit' ? '⏳ Mengirim permintaan video...'
+            : '⏳ Seedance 2.5 sedang membuat video. Hasil dikirim setelah proses 1080p selesai.';
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
       },
-      onAccepted: jobId => { stage = `accepted job=${jobId}`; },
     });
+    stage = 'finishing';
+    const finalVideo = await upscaleGeneratedVideo(result.url, userId, chatId, statusMsgId);
+    if (!finalVideo.upscaled) throw Error('SEEDANCE25_1080_FINISH_FAILED');
 
     stage = 'delivery';
-    const delivered = await sendResult(chatId, resultUrl,
+    const delivered = await sendResult(chatId, finalVideo.url,
       `🌊 ${label} (${settings.ratio} · 30 detik · ${settings.resolution}p · audio ${settings.audio ? 'aktif' : 'nonaktif'})\n\n/menu untuk buat lagi`, true);
     if (delivered) {
       refund = false;
@@ -9550,9 +9562,9 @@ async function runPicsartSeedance25(
       `[seedance-2.5] user=${userId} dbUser=${dbUserId} stage=${stage} error=${msg}`,
       err?.stack ? `\n${err.stack}` : ''
     );
-    const friendly = msg.includes('ALRIZ_POOL_NO_AVAILABLE_KEY')
+    const friendly = msg.includes('PICSART_NO_ACCOUNT') || msg.includes('PICSART_INSUFFICIENT_CREDITS')
       ? '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.'
-      : msg.includes('ALRIZ_JOB_TIMEOUT')
+      : msg.includes('TIMEOUT')
         ? '❌ Proses terlalu lama. Saldo kamu akan dikembalikan.'
         : msg.includes('INVALID_IMAGE')
           ? '❌ Foto tidak bisa diproses. Coba foto lain.'

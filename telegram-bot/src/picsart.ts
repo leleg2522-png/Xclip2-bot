@@ -469,6 +469,7 @@ async function runWithAccount<T>(
         `[picsart:account] user=${userId} pool=${poolFilter ?? 'any'} ` +
         `cred=${credId} attempt=${attempt + 1}/${ceiling} failed: ${msg || e?.name || 'unknown error'}`
       );
+      if (msg.startsWith('PICSART_SEEDANCE25_POST_SUBMIT_FAILED')) throw e;
       if (isPicsartSubmitTokenRejection(e)) {
         // HTTP 401 rejected the submit: no accepted job is being replayed.
         // Quarantine this credential so subsequent users do not hit it again.
@@ -1913,6 +1914,11 @@ export async function submitSeedance(credId: number, input: {
     validateStatus: () => true,
   });
   const id = r.data?.response?.id;
+  // A gateway failure or successful response without a usable job ID may
+  // still have consumed credits. Never let account failover replay it.
+  if (r.status >= 500 || (ok2xx(r.status) && (typeof id !== 'string' || !id.trim()))) {
+    throw new Error(`PICSART_SEEDANCE25_POST_SUBMIT_FAILED ambiguous response status ${r.status}`);
+  }
   if (!ok2xx(r.status) || !id) {
     throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
   }
@@ -1978,8 +1984,8 @@ export async function generateSeedance(input: {
   onStatus?: (stage: 'upload' | 'submit' | 'poll') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
-  // Seedance: pool 500 kredit.
-  return runWithAccount(input.userId, 'p500', async (credId) => {
+  // Any credit tier is eligible; the per-job preflight still checks affordability.
+  return runWithAccount(input.userId, null, async (credId) => {
     // Pre-submit credit check: verify the account has enough credits BEFORE
     // uploading images or submitting. This is more reliable than parsing the
     // error message from a failed submit (which may vary by Picsart version).
@@ -2052,7 +2058,7 @@ export async function generateSeedance(input: {
         );
         throw new Error(`PICSART_POST_SUBMIT_AUTH_LOST job=${id}`);
       }
-      throw e;
+      throw new Error(`PICSART_SEEDANCE25_POST_SUBMIT_FAILED job=${id}: ${e?.message ?? e}`);
     }
   });
 }

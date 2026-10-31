@@ -221,6 +221,7 @@ async function wizardTest(model: typeof models[number], ratio: '9:16' | '16:9', 
   });
   vm.runInContext(compile(fragment(app, 'function getPicsartI2vPrice(', '\n//')), ctx);
   vm.runInContext(compile(fragment(app, 'function picsartI2vPublicSettings(', 'function supportsMultiplePicsartI2vImages(')), ctx);
+  vm.runInContext(compile(fragment(app, 'function maxPicsartI2vImages(', 'function picsartI2vRatioKeyboard(')), ctx);
   const run = async (code: string) => vm.runInContext(compile(`(async () => { ${code} })()`), ctx);
   ctx.data = `mode_pi2v_${model}`;
   await run(fragment(app, "if (data.startsWith('mode_pi2v_')) {", "if (data === 'mode_kling')"));
@@ -255,7 +256,7 @@ async function wizardTest(model: typeof models[number], ratio: '9:16' | '16:9', 
     }
     assert.equal(state.mode, 'picsart_i2v_wait_prompt');
   } else assert.match(messages.at(-1)!, /Tidak perlu foto/);
-  const promptBranch = fragment(app, "if (session.mode === 'picsart_i2v_wait_prompt')", '// ── OneOver Seedance 2.5 image-to-video prompt');
+  const promptBranch = fragment(app, "if (session.mode === 'picsart_i2v_wait_prompt')", '// ── Picsart Seedance 2.5 prompt');
   await run(promptBranch);
   assert.equal(calls.length, 1);
   assert.equal(calls[0][5].model, model);
@@ -315,7 +316,7 @@ async function billingTest(model: typeof models[number], outcome: string, ratio:
     console: { log() {}, error() {}, warn() {} },
   });
   vm.runInContext(compile(fragment(app, 'function getPicsartI2vPrice(', '\n//')), ctx);
-  vm.runInContext(compile(fragment(app, 'async function runPicsartI2v(', '// ─── Background: Alriz Seedance 2.5')), ctx);
+  vm.runInContext(compile(fragment(app, 'async function runPicsartI2v(', '// ─── Background: Picsart Seedance 2.5')), ctx);
   await ctx.runPicsartI2v(1, 2, 3, 4, 'A landscape', { model, imageUrls: model === 'kling_v4_t2v' ? [] : [image], ratio, duration });
   assert.deepEqual(events.charges, [price]);
   assert.deepEqual(events.refunds, ['success', 'insufficient'].includes(outcome) ? [] : [price]);
