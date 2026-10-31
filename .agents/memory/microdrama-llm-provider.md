@@ -39,8 +39,14 @@ The user wants the AI director to be a personal agent for each user, not a share
 
 **How to apply:** Scope personalization and conversation continuity per user, keep projects and approved references separate, and enforce ownership in code rather than relying on LLM instructions. Public access is explicitly requested, but billing and usage safeguards still need a separate decision.
 
+The user set the public episode price at Rp1,500 per minute and chose one free, user-triggered regeneration for every 10-second clip.
+
+**Why:** The user answered the episode tariff question with Rp1,500 and explicitly chose one regeneration per clip with no additional charge.
+
+**How to apply:** Show each clip for approval before proceeding; cap user-triggered regeneration at one per clip, with no additional saldo deduction. Budget worst-case provider spend before enabling public access. The historical MiniMax quote for one 10-second video alone exceeds Rp1,500 per minute at six shots per minute, before images, transcription, LLM, or regeneration. Confirm any intentional subsidy or revise the tariff.
+
 Public personal-agent usage must be funded through the existing bot saldo, not unlimited owner-funded usage.
 
 **Why:** Asked how users should pay, the user explicitly selected “Pakai saldo bot”.
 
-**How to apply:** Integrate with existing saldo and full-refund-on-failed-delivery rules. Obtain the episode tariff and the chat/revision pricing or allowance before enabling paid public actions; the payment-method choice does not set a price or authorize unlimited free LLM use.
+**How to apply:** Integrate with existing saldo and full-refund-on-failed-delivery rules. The agent chat/revision pricing or allowance remains unresolved; do not enable unrestricted public LLM use or infer unlimited free chat from the saldo payment choice.
