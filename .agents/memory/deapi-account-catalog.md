@@ -39,3 +39,9 @@ A successful price quote does not establish that a video submit has available qu
 **Why:** An authorized animation revision was rejected twice with 429 despite a two-minute delay while its price quote succeeded. Official limits documentation lists separate price/status buckets and both minute and rolling-day generation windows; Basic MiniMax H3 is documented at three video requests per day.
 
 **How to apply:** Consult https://docs.deapi.ai/limits-and-quotas and the effective response headers rather than hard-coding a short cooldown or assuming a midnight reset. Retain Retry-After and daily-reset diagnostics on rejected submits. Do not infer the account tier or exhausted balance from HTTP 429 alone, or rotate an already accepted job to another account.
+
+The user confirmed that the DeAPI account used for the artwork-animation demonstration is Basic and has never been topped up.
+
+**Why:** The user explicitly selected “Basic, belum pernah top-up” when generation was blocked by repeated HTTP 429.
+
+**How to apply:** Use Basic limits when explaining this account's capacity, but recheck if the user later tops up or changes accounts. Basic status supports a daily-quota explanation; it does not establish the exact exhausted bucket or reset time without response diagnostics.
