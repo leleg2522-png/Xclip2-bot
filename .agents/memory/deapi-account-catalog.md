@@ -31,3 +31,11 @@ Manage DeAPI credentials as a pool in the bot's Railway database.
 **Why:** The user explicitly requested “buatkan pool api untuk de api di DB”. A database-managed pool avoids requiring hosting-variable changes for each additional key.
 
 **How to apply:** Preserve database-managed credential selection when changing the microdrama renderer. Keep accepted jobs tied to their original account; adding or disabling a pool key must not move an existing paid job to another account.
+
+## Generation rate limits versus credit balance
+
+A successful price quote does not establish that a video submit has available quota. A repeated HTTP 429 after a minute-scale cooldown may be a daily limit, not exhausted credits.
+
+**Why:** An authorized animation revision was rejected twice with 429 despite a two-minute delay while its price quote succeeded. Official limits documentation lists separate price/status buckets and both minute and rolling-day generation windows; Basic MiniMax H3 is documented at three video requests per day.
+
+**How to apply:** Consult https://docs.deapi.ai/limits-and-quotas and the effective response headers rather than hard-coding a short cooldown or assuming a midnight reset. Retain Retry-After and daily-reset diagnostics on rejected submits. Do not infer the account tier or exhausted balance from HTTP 429 alone, or rotate an already accepted job to another account.

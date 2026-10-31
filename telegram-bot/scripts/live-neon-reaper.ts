@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { setTimeout as wait } from 'node:timers/promises';
 import { Pool } from 'pg';
 import sharp from 'sharp';
 import { DeapiKeyPool } from '../src/deapi-key-pool';
@@ -26,11 +27,11 @@ const shots = [
   { name: 'After the storm', scene: 'Heroine standing safely in the same neon alley after combat, disabled weapons on the wet street and defeated armored guards alive in the background.',
     motion: 'Ten-second closing shot. She exhales, lowers and safely sheathes her blue blade. Camera slowly moves from medium shot to a detailed portrait of the same face. Rain beads on her hair and armor, blue energy fades, magenta neon glows behind her. She turns her eyes toward the distant city, composed and alert. Hold the final portrait for the last two seconds. No new fight, no text or logos.' },
 ];
-type Job = { attempted?: boolean; id?: string; keyId?: number; price?: number; file?: string };
+type Job = { attempted?: boolean; id?: string; keyId?: number; price?: number; file?: string; rateLimitedUntil?: number };
 type State = { version: 1; shots: Array<{ frame: Job; video: Job }> };
-async function save(state: State) {
-  await fs.writeFile(path.join(root, 'state.json.partial'), JSON.stringify(state, null, 2));
-  await fs.rename(path.join(root, 'state.json.partial'), path.join(root, 'state.json'));
+async function save(state: State, filename = 'state.json') {
+  await fs.writeFile(path.join(root, filename + '.partial'), JSON.stringify(state, null, 2));
+  await fs.rename(path.join(root, filename + '.partial'), path.join(root, filename));
 }
 async function exists(file: string) { try { await fs.access(file); return true; } catch { return false; } }
 async function prepare() {
@@ -138,7 +139,10 @@ async function main() {
   const lock = await fs.open(path.join(root, 'operation.lock'), 'wx');
   let db: Pool | undefined;
   try {
-    const mode = process.argv[2], n = Number(process.argv[3]);
+    const originalStyle = process.argv[2] === 'video-original';
+    const mode = originalStyle ? 'video' : process.argv[2], n = Number(process.argv[3]);
+    if (originalStyle && n !== 1) throw Error('Only the first corrected clip has user approval.');
+    const stateFile = originalStyle ? 'state-original-style.json' : 'state.json';
     if (mode === 'prepare') { await prepare(); return; }
     if (['direct', 'direct-text', 'direct-plain', 'direct-compact', 'direct-stream'].includes(mode)) {
       await direct(mode !== 'direct', mode === 'direct-plain', ['direct-compact', 'direct-stream'].includes(mode), mode === 'direct-stream'); return;
@@ -147,8 +151,8 @@ async function main() {
     const directed = JSON.parse(await fs.readFile(path.join(root, 'storyboard.json'), 'utf8'));
     if (directed.llmDirected !== true) throw Error('A confirmed LLM-directed storyboard is required.');
     const directedShots = directed.shots as typeof shots;
-    const state: State = await exists(path.join(root, 'state.json'))
-      ? JSON.parse(await fs.readFile(path.join(root, 'state.json'), 'utf8'))
+    const state: State = await exists(path.join(root, stateFile))
+      ? JSON.parse(await fs.readFile(path.join(root, stateFile), 'utf8'))
       : { version: 1, shots: directedShots.map(() => ({ frame: {}, video: {} })) };
     if (mode === 'assemble') {
       if (state.shots.some(s => !s.video.file)) throw Error('All six video clips are required before assembly.');
@@ -164,20 +168,37 @@ async function main() {
     db = new Pool({ connectionString: process.env.RAILWAY_DATABASE_URL, ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 15000 });
     const api = new DeapiEpisodeApi(new DeapiKeyPool(db));
     const shot = directedShots[n - 1], job = state.shots[n - 1][mode as 'frame' | 'video'];
-    const output = path.join(root, `${mode === 'frame' ? 'frame' : 'clip'}-${n}.${mode === 'frame' ? 'jpg' : 'mp4'}`);
+    const suffix = originalStyle ? '-original-style' : '';
+    const output = path.join(root, `${mode === 'frame' ? 'frame' : 'clip'}-${n}${suffix}.${mode === 'frame' ? 'jpg' : 'mp4'}`);
     if (job.file && await exists(output)) { console.log(`EXISTING ${mode} ${n}; no paid request.`); return; }
     if (job.attempted && !job.id) throw Error('UNCERTAIN SUBMIT: do not resubmit; inspect the original provider account.');
+    if (!job.id && job.rateLimitedUntil && job.rateLimitedUntil > Date.now()) {
+      console.log('RATE LIMITED: waiting before the explicitly rejected submit can be attempted again.');
+      await wait(job.rateLimitedUntil - Date.now());
+    }
     const req: EpisodeRequest = mode === 'frame'
       ? { kind: 'image', seed: 28010 + n, images: await Promise.all([n, 1, 6].map(i => fs.readFile(path.join(root, `reference-${i}.jpg`)))),
         prompt: `${style} Reference 1 is scene composition; references 2 and 3 are the same woman's identity and costume. ${shot.scene} Create ONE clean vertical 9:16 opening frame suitable for animation. Extend the scene vertically naturally, do not crop off the heroine's head. Match her recognizable face and outfit. NOT a collage or storyboard: remove panel borders, captions, timing labels, signatures and all text. Do not switch to photorealistic or 3D style.` }
-      : { kind: 'video', seed: 58010 + n, images: [await fs.readFile(path.join(root, `frame-${n}.jpg`))],
-        prompt: `${style} Animate this supplied first frame, retaining its exact heroine identity and illustrated art style. ${shot.motion} Fluid illustrated cinematic animation, clear motion rather than a still-image zoom. Stable environment and costume. No extra limbs, no face replacement, no split screens, no panels, no captions. Native action sound: rain, footsteps, blade hum and metal impacts. No spoken dialogue, no singing.` };
+      : { kind: 'video', seed: 58010 + n, images: [await fs.readFile(path.join(root, `frame-${n}${suffix}.jpg`))],
+        prompt: `${originalStyle
+          ? 'The supplied frame is approved original artwork, not a design suggestion. Animate this exact adult woman, age 25, without redesigning her face. Preserve her mature semi-realistic facial anatomy, natural narrow eyes, defined eyelids, nose and lips, dark tousled hair, original costume and body proportions. Preserve the original textured graphite pencil and fine ink cross-hatching, realistic illustrated anatomy, muted grayscale, restrained blue energy and magenta neon. Keep the drawing texture visible throughout movement. No enlarged anime eyes, simplified cartoon face, cel shading, youthful doll face, 3D or live-action conversion. Start from the exact close three-quarter composition and widen naturally as the approaching armored guard enters the action. Do not make the costume more revealing. Non-graphic combat, no blood, gore or dismemberment; no sexualized posing.'
+          : style} Animate this supplied first frame, retaining its exact heroine identity and illustrated art style. ${shot.motion} Fluid illustrated cinematic animation, clear motion rather than a still-image zoom. Stable environment and costume. No extra limbs, no face replacement, no split screens, no panels, no captions. Native action sound: rain, footsteps, blade hum and metal impacts. No spoken dialogue, no singing.` };
     if (!job.id) {
       const quote = await api.quote(req);
       job.price = quote.price; job.keyId = quote.keyId; job.attempted = true;
-      await save(state); // Never lose the account binding or ambiguous-submit marker.
+      await save(state, stateFile); // Never lose the account binding or ambiguous-submit marker.
       console.log(`SUBMIT ${mode} ${n}; quoted USD ${quote.price.toFixed(6)}; pool account ${quote.keyId}`);
-      job.id = await api.submit(req, quote.keyId); await save(state);
+      try { job.id = await api.submit(req, quote.keyId); }
+      catch (error) {
+        // An explicit 429 rejects the request; unlike a timeout, it is not an ambiguous paid submit.
+        // Do not loop here: a later invocation may retry after the cooldown.
+        if (error instanceof Error && error.message === 'EPISODE_SUBMIT_429') {
+          job.attempted = false; job.rateLimitedUntil = Date.now() + 120_000;
+          await save(state, stateFile);
+        }
+        throw error;
+      }
+      await save(state, stateFile);
       console.log(`ACCEPTED ${mode} ${n}; waiting for the same job.`);
     } else console.log(`RESUME ${mode} ${n}; polling its original account, no new submit.`);
     const data = await api.result(job.id, job.keyId!);
@@ -187,10 +208,10 @@ async function main() {
       const { stdout } = await exec('ffprobe', ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', output]);
       const probe = JSON.parse(stdout), video = probe.streams.find((s: any) => s.codec_type === 'video');
       if (video?.width !== 768 || video?.height !== 1344 || Number(probe.format.duration) < 9.9) throw Error('Unexpected video dimensions or duration.');
-      await exec('ffmpeg', ['-y', '-v', 'error', '-ss', '5', '-i', output, '-frames:v', '1', path.join(root, `sample-${n}.jpg`)]);
+      await exec('ffmpeg', ['-y', '-v', 'error', '-ss', '5', '-i', output, '-frames:v', '1', path.join(root, `sample-${n}${suffix}.jpg`)]);
       console.log(`VERIFIED ${n}: ${probe.format.duration}s, ${video.width}x${video.height}, audio=${probe.streams.some((s: any) => s.codec_type === 'audio')}`);
     }
-    job.file = path.relative(root, output); await save(state);
+    job.file = path.relative(root, output); await save(state, stateFile);
     console.log(`SAVED ${path.relative(path.resolve(__dirname, '../..'), output)}`);
   } finally {
     if (db) await db.end();

@@ -35,7 +35,7 @@ The user wants the LLM to act as a professional director, handling prompts and i
 
 When supplied artwork suffers identity or style drift, obtain approval of the corrected opening frame before animating it again.
 
-**Why:** A redraw changed a semi-realistic graphite character into a large-eyed anime character despite identity-preservation wording. The user explicitly requested following the original image.
+**Why:** A redraw changed a semi-realistic graphite character into a large-eyed anime character despite identity-preservation wording. The user explicitly requested following the original image, then approved a direct source-artwork crop as the replacement animation frame.
 
 **How to apply:** Inspect whether reference crops retain the complete face. Prefer a direct source-artwork crop when the composition allows it; it preserves the actual face rather than asking a renderer to reconstruct it. Disclose tighter framing and source-resolution limits. A frame correction is not permission to submit another paid video automatically.
 
