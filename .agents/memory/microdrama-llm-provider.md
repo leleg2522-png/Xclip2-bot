@@ -50,3 +50,9 @@ Public personal-agent usage must be funded through the existing bot saldo, not u
 **Why:** Asked how users should pay, the user explicitly selected “Pakai saldo bot”.
 
 **How to apply:** Integrate with existing saldo and full-refund-on-failed-delivery rules. The agent chat/story-revision allowance remains unresolved: the earlier answer “3” was not clarified or confirmed as three story revisions. Do not impose that limit or enable unrestricted public LLM use from this ambiguous answer.
+
+Treat a successful HTTP status or short LLM probe as insufficient proof that the director workload works.
+
+**Why:** BUAT SIMPEL returned HTTP 200 with non-JSON response bodies for full action-storyboard requests while a minimal text completion on the same listed alias succeeded. The cause was not established.
+
+**How to apply:** Validate the actual director response and its full schema before any paid media submit. Preserve sanitized failure diagnostics rather than repeating expensive requests to recover lost error details. Do not silently substitute a handwritten plan while claiming the selected LLM produced it.
