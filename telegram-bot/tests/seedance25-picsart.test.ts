@@ -44,12 +44,12 @@ function harness(options: Options = {}) {
     picsart: { generateSeedance: async (input: any) => {
       events.order.push('generate'); events.inputs.push(input); input.onStatus('poll');
       if (options.generationFails) throw Error('PICSART_TIMEOUT');
-      return { url: `https://example.test/${input.userId}-720.mp4` };
+      return { url: `https://example.test/${input.userId}-480.mp4` };
     } },
     upscaleGeneratedVideo: async (url: string) => {
       events.order.push('finish');
       if (options.finishingThrows) throw Error('UPSCALER_FAILED');
-      return { url: options.finishingFails ? url : url.replace('-720', '-1080'), upscaled: !options.finishingFails };
+      return { url: options.finishingFails ? url : url.replace('-480', '-1080'), upscaled: !options.finishingFails };
     },
     sendResult: async (chatId: number, url: string, caption: string) => {
       events.order.push('deliver'); events.deliveries.push({ chatId, url, caption });
@@ -84,7 +84,7 @@ async function checkAcceptedJobBinding() {
     const context = vm.createContext({
       console: { log() {}, warn() {}, error() {} },
       MAX_ACCOUNT_ATTEMPTS: 2, ERR_INSUFFICIENT_CREDITS: 'PICSART_INSUFFICIENT_CREDITS',
-      SEEDANCE_MIN_CREDITS: { '720p': { 30: 220 } }, SEEDANCE_MAX_REF_IMAGES: 10,
+      SEEDANCE_MIN_CREDITS: { '480p': { 30: 130 } }, SEEDANCE_MAX_REF_IMAGES: 10,
       q: async () => ({ rows: [{ n: 2 }] }),
       acquireAccount: async (_: number, pool: unknown, tried: number[]) => {
         assert.equal(pool, null); return [1, 2].find(id => !tried.includes(id)) ?? null;
@@ -99,7 +99,7 @@ async function checkAcceptedJobBinding() {
     });
     vm.runInContext(compile(accountRunner + generate), context);
     await assert.rejects(() => context.generateSeedance({
-      userId: 1, images: [], prompt: 'test', duration: 30, resolution: '720p', ratio: '9:16',
+      userId: 1, images: [], prompt: 'test', duration: 30, resolution: '480p', ratio: '9:16',
     }), /PICSART_(?:SEEDANCE25_POST_SUBMIT_FAILED|POST_SUBMIT_AUTH_LOST)/);
     assert.equal(submits, 1, `Accepted job must not replay after ${error}`);
   }
@@ -122,14 +122,14 @@ async function checkSubmitContract() {
     vm.runInContext(compile(submit), context);
     const promise = context.submitSeedance(1, {
       prompt: 'test', imageUrls: ['https://example.test/ref.jpg'], duration: 30,
-      resolution: '720p', ratio: '16:9', generateAudio: false,
+      resolution: '480p', ratio: '16:9', generateAudio: false,
     });
     if (status === 200) assert.equal(await promise, 'accepted');
     else await assert.rejects(() => promise, status === 401
       ? /PICSART_SUBMIT_FAILED status 401/
       : /PICSART_SEEDANCE25_POST_SUBMIT_FAILED/);
     assert.equal(captured.model, 'seedance_2_5');
-    assert.equal(captured.duration, 30); assert.equal(captured.resolution, '720p');
+    assert.equal(captured.duration, 30); assert.equal(captured.resolution, '480p');
     assert.equal(captured.ratio, '16:9'); assert.equal(captured.generate_audio, false);
     assert.equal(captured.content[0].role, 'reference_image');
   }
@@ -153,7 +153,7 @@ async function main() {
     assert.deepEqual(h.events.charges, [5000]); assert.deepEqual(h.events.refunds, []);
     assert.deepEqual(h.events.releases, [1]); assert.deepEqual(h.events.successes, [1]);
     const request = h.events.inputs[0];
-    assert.equal(request.resolution, '720p'); assert.equal(request.duration, 30);
+    assert.equal(request.resolution, '480p'); assert.equal(request.duration, 30);
     assert.equal(request.ratio, draft.ratio); assert.equal(request.generateAudio, draft.audio);
     assert.equal(request.images.length, draft.mode === 't2v' ? 0 : 10);
     assert.equal(h.events.deliveries[0].url, 'https://example.test/1-1080.mp4');
@@ -189,6 +189,6 @@ async function main() {
   assert.doesNotMatch(source, /generateAlrizSeedance25/);
   await checkSubmitContract();
   await checkAcceptedJobBinding();
-  console.log('PASS Seedance 2.5 Picsart: public inputs, native 720p → mandatory 1080p, Rp5000 billing/refunds, isolation, no accepted-job replay.');
+  console.log('PASS Seedance 2.5 Picsart: public inputs, native 480p → mandatory 1080p, Rp5000 billing/refunds, isolation, no accepted-job replay.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

@@ -245,7 +245,7 @@ const MODEL_PRICES = {
   picsart_seedance_2: 4000, // Seedance 2.0 Mini/Fast/Standard, native 480p
   picsart_wan_v3: 3000, // Wan 3.0 30s, native 720p
   alriz_seedance_25: 5000, // Historical Alriz tariff; not used for new orders
-  picsart_seedance_25: 5000, // Seedance 2.5: native 720p → mandatory 1080p finishing
+  picsart_seedance_25: 5000, // Seedance 2.5: native 480p → mandatory 1080p finishing
   oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
   kling_21_p2: 3000,   // Public Kling 2.1 P2; Flora Kling 2.5 first-frame backend
@@ -9531,7 +9531,7 @@ async function runPicsartSeedance25(
       prompt,
       images,
       duration: 30,
-      resolution: '720p',
+      resolution: '480p',
       ratio: settings.ratio,
       generateAudio: settings.audio,
       onStatus: providerStage => {

@@ -1,4 +1,4 @@
-// Public output settings. Picsart generates native 720p; delivery requires
+// Public output settings. Picsart generates native 480p; delivery requires
 // a separate successful 1080p finishing pass.
 export const SEEDANCE25_RATIOS = ['16:9', '9:16'] as const;
 export const SEEDANCE25_MAX_IMAGES = 10;
