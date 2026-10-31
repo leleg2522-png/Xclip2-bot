@@ -50,16 +50,16 @@ async function prepare() {
     model: 'MiniMaxH3_33B_Turbo_INT8', style, shots }, null, 2));
   console.log('PREPARED six cropped references and six ten-second shots.');
 }
-async function direct(textOnly = false, plainText = false) {
+async function direct(textOnly = false, plainText = false, compact = false, streaming = false) {
   if (!process.env.BUATSIMPEL_API_KEY) throw Error('The configured director credential is unavailable.');
   const target = path.join(root, 'storyboard.json');
   if (await exists(target)) {
     const existing = JSON.parse(await fs.readFile(target, 'utf8'));
     if (existing.llmDirected) { console.log('EXISTING LLM storyboard; no additional LLM call.'); return; }
   }
-  const marker = path.join(root, plainText ? 'director-plain-attempt.json' : textOnly ? 'director-text-attempt.json' : 'director-attempt.json');
+  const marker = path.join(root, streaming ? 'director-stream-attempt.json' : compact ? 'director-compact-attempt.json' : plainText ? 'director-plain-attempt.json' : textOnly ? 'director-text-attempt.json' : 'director-attempt.json');
   if (await exists(marker)) throw Error('An earlier director request is unconfirmed; do not retry it automatically.');
-  const model = process.env.MICRODRAMA_LLM_MODEL || 'gpt-6-luna';
+  const model = (streaming ? process.argv[4] : undefined) || process.env.MICRODRAMA_LLM_MODEL || 'gpt-6-luna';
   const headers = { Authorization: `Bearer ${process.env.BUATSIMPEL_API_KEY}`, 'Content-Type': 'application/json' };
   const catalogue = await fetch('https://buatsimpel.id/v1/models', { headers, signal: AbortSignal.timeout(60000) });
   if (!catalogue.ok) throw Error(`Director catalogue HTTP ${catalogue.status}`);
@@ -70,8 +70,9 @@ async function direct(textOnly = false, plainText = false) {
   console.log(`DIRECTOR ${model}: requesting a six-shot epic action-film plan from the supplied image.`);
   const response = await fetch('https://buatsimpel.id/v1/chat/completions', {
     method: 'POST', headers, signal: AbortSignal.timeout(240000),
-    body: JSON.stringify({ model, stream: false, max_tokens: plainText ? 3500 : 7000, temperature: 0.6,
-      messages: [
+    body: JSON.stringify({ model, stream: streaming, max_tokens: compact ? 2200 : plainText ? 3500 : 7000,
+      ...(!compact ? { temperature: 0.6 } : {}),
+      messages: compact ? [{ role: 'user', content: `Act as a professional action-film director. Write an epic 60-second graphite-manga cyberpunk fight in six 10-second shots. Adult heroine age 25, short black hair, black tactical outfit, blue energy blade; armored enemies, rainy alley, blue and magenta neon. Preserve this one heroine throughout. Progress from tense opening and parry to first strike, close quarters, an energy-assisted kick, disarming the commander, and a cinematic aftermath. Use non-graphic combat and readable physical actions. Return JSON only: {"title":"...","logline":"...","shots":[{"name":"...","scene":"opening frame description","motion":"camera movement and two or three actions over 10 seconds"}]}. Exactly six shots. Write English prompts, scene about 35 words, motion about 65 words. No dialogue, captions or logos. Keep screen direction and wardrobe consistent. Make it epic through staging and camera, not by changing the illustrated style.` }] : [
         { role: 'system', content: `You are an expert action-film director, stunt choreographer, storyboard artist and visual continuity supervisor. Return valid JSON only with title, logline, and shots: exactly six objects, each containing name, scene, motion. No markdown, tools, URLs or code. You only write creative direction. Each scene is a single vertical opening frame. Each motion is an executable-in-visual-terms English video prompt for exactly TEN SECONDS, with precise staging, a clear camera move, readable character actions, a final physical state, and native fight sound direction. Compose an epic SIXTY-SECOND action sequence with escalating tension, distinct shots, a memorable but non-graphic finishing move and a satisfying ending. Limit each clip to two or three readable actions, not an impossible montage. Maintain screen direction, enemy positions, weapon hand, wardrobe and identity. No blood, dismemberment or blade penetration of bodies. The heroine is explicitly an adult age 25. Preserve the uploaded graphite manga style, selective blue energy and magenta neon: cinematic action staging does NOT mean changing it to live-action. No sexualized framing. No narration, spoken dialogue, lyrics, text or titles in frames.` },
         { role: 'user', content: plainText
           ? `Create an epic action-film fight for this adult heroine: ${style} Exactly 60 seconds in six ten-second clips. Opening standoff and parry, first strike, close quarters, energy-assisted spinning kick, disarming the armored commander, and a cinematic aftermath. No blood. The uploaded artwork will be used as exact identity references by the image renderer, so focus your plan on precise camera movement, geography and physically readable combat. Return JSON with title, logline, shots:[{name,scene,motion}] only. All prompts must be English. Each motion should include time beats within ten seconds and a clear final state, at most 150 words each. Each scene describes the first frame in at most 90 words.`
@@ -82,7 +83,33 @@ async function direct(textOnly = false, plainText = false) {
       ] }),
   });
   if (!response.ok) throw Error(`Director request HTTP ${response.status}; no automatic retry.`);
-  const envelope = await response.text();
+  let envelope: string;
+  if (streaming && response.headers.get('content-type')?.includes('text/event-stream')) {
+    if (!response.body) throw Error('Director stream is empty.');
+    const decoder = new TextDecoder();
+    let pending = '', content = '', events = 0;
+    const consume = (line: string) => {
+      if (!line.startsWith('data:')) return;
+      const payload = line.slice(5).trim();
+      if (!payload || payload === '[DONE]') return;
+      const event = JSON.parse(payload);
+      if (event.error) throw Error('Director stream reported an upstream error.');
+      const delta = event.choices?.[0]?.delta?.content;
+      if (typeof delta === 'string') content += delta;
+      if (++events % 100 === 0) console.log(`DIRECTOR streaming: ${content.length} characters received.`);
+      if (content.length > 65000) throw Error('Director stream exceeded output bounds.');
+    };
+    for await (const chunk of response.body as any) {
+      pending += decoder.decode(chunk, { stream: true });
+      let end: number;
+      while ((end = pending.indexOf('\n')) >= 0) {
+        consume(pending.slice(0, end).replace(/\r$/, '')); pending = pending.slice(end + 1);
+      }
+    }
+    pending += decoder.decode();
+    if (pending.trim()) consume(pending);
+    envelope = JSON.stringify({ choices: [{ message: { content } }] });
+  } else envelope = await response.text();
   let body: any;
   try { body = JSON.parse(envelope); }
   catch {
@@ -113,7 +140,9 @@ async function main() {
   try {
     const mode = process.argv[2], n = Number(process.argv[3]);
     if (mode === 'prepare') { await prepare(); return; }
-    if (['direct', 'direct-text', 'direct-plain'].includes(mode)) { await direct(mode !== 'direct', mode === 'direct-plain'); return; }
+    if (['direct', 'direct-text', 'direct-plain', 'direct-compact', 'direct-stream'].includes(mode)) {
+      await direct(mode !== 'direct', mode === 'direct-plain', ['direct-compact', 'direct-stream'].includes(mode), mode === 'direct-stream'); return;
+    }
     if (!await exists(path.join(root, 'storyboard.json'))) throw Error('Run the LLM director before generating media.');
     const directed = JSON.parse(await fs.readFile(path.join(root, 'storyboard.json'), 'utf8'));
     if (directed.llmDirected !== true) throw Error('A confirmed LLM-directed storyboard is required.');

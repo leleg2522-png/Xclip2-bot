@@ -677,3 +677,45 @@ mtime_ms = 1793394855811
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/dba9dbf8-6be4-4c89-b46e-7bef11f545fd/80b25544-c992-4b3d-af35-8579070f2e86"
 storage_version_token = "1793394916782631"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "IwsD94gs9GF_eMlfWfnKu"
+uri = "file://generated-artifacts/neon-reaper/frame-1.jpg"
+type = "image"
+title = "Frame pembuka — Blue Rain Protocol"
+description = "Frame referensi pertama hasil DeAPI, memakai karakter dari gambar Anda. Ini gambar awal untuk animasi, bukan video final."
+logical_id = "a7976fdb-6442-4888-b52d-25d986b32a61"
+content_hash = "sha256:78b1ca6cdcc93d7e5391e4ec784adf0ad29614467c081efa84d0e49d14736ccb"
+size = 586599
+mtime_ms = 1793450952104
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/a7976fdb-6442-4888-b52d-25d986b32a61/5a1e9ad0-507f-4cca-9300-26e8b987c9eb"
+storage_version_token = "1793451010548984"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "TdnEe38Xv53WraE7VcqsF"
+uri = "file://generated-artifacts/neon-reaper/clip-1.mp4"
+type = "video"
+title = "Klip pertama — versi sebelum perbaikan karakter"
+description = "Preview 10 detik, 768×1344 dengan audio. Masih memakai frame bergaya anime yang Anda soroti; bukan versi karakter yang sudah diperbaiki dan bukan video lengkap satu menit."
+logical_id = "bb204efa-f664-41ee-9141-82ecdec0d663"
+content_hash = "sha256:e45346026e38153bd92ff4d697296df14563a81c1779af37be3660217424ecfb"
+size = 7621561
+mtime_ms = 1793451469424
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/bb204efa-f664-41ee-9141-82ecdec0d663/e9bc3117-5130-4f9e-b025-911d51d8181f"
+storage_version_token = "1793451502235885"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "FoFG_PLIt45JNbXq1s92P"
+uri = "file://generated-artifacts/neon-reaper/frame-1-original-style.jpg"
+type = "image"
+title = "Frame perbaikan — karakter asli"
+description = "Potongan langsung panel pembuka gambar asli, disesuaikan ke 768×1344. Tidak menggambar ulang wajah atau mengubah gaya. Framing lebih dekat dan ketajaman mengikuti keterbatasan gambar sumber; belum dianimasikan."
+logical_id = "64d63e39-1ba8-42d2-93ec-043b1e9f88a3"
+content_hash = "sha256:49325cc3ffa4cc0f95ca875cd71943691738b5a2c3ee4b943d0e3e021cf3d595"
+size = 408472
+mtime_ms = 1793451593937
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/64d63e39-1ba8-42d2-93ec-043b1e9f88a3/2bcca9ed-dc3e-4baa-9202-9bf2ee59d813"
+storage_version_token = "1793451611616395"
+content_type = "image/jpeg"

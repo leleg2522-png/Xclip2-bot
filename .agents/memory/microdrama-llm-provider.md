@@ -33,6 +33,12 @@ The user wants the LLM to act as a professional director, handling prompts and i
 
 **How to apply:** Center future design on episode-level creative direction, shot prompts and visual continuity. Distinguish the requested outcome from unverified guarantees: prompt text alone cannot enforce face/voice identity, and automated visual review needs tested vision capability.
 
+When supplied artwork suffers identity or style drift, obtain approval of the corrected opening frame before animating it again.
+
+**Why:** A redraw changed a semi-realistic graphite character into a large-eyed anime character despite identity-preservation wording. The user explicitly requested following the original image.
+
+**How to apply:** Inspect whether reference crops retain the complete face. Prefer a direct source-artwork crop when the composition allows it; it preserves the actual face rather than asking a renderer to reconstruct it. Disclose tighter framing and source-resolution limits. A frame correction is not permission to submit another paid video automatically.
+
 The user wants the AI director to be a personal agent for each user, not a shared creative context.
 
 **Why:** The user said “si agent ai nya tuh jadi agent ai pribadi setiap user agar ga ada keliru atau aneh”.
@@ -53,6 +59,6 @@ Public personal-agent usage must be funded through the existing bot saldo, not u
 
 Treat a successful HTTP status or short LLM probe as insufficient proof that the director workload works.
 
-**Why:** BUAT SIMPEL returned HTTP 200 with non-JSON response bodies for full action-storyboard requests while a minimal text completion on the same listed alias succeeded. The cause was not established.
+**Why:** BUAT SIMPEL returned HTTP 200 with non-JSON response bodies and later HTTP 524 for full non-streaming action-storyboard requests while a minimal completion succeeded. A provider-listed alternative alias completed the six-shot plan through streaming; the exact cause of the original alias failures was not established.
 
-**How to apply:** Validate the actual director response and its full schema before any paid media submit. Preserve sanitized failure diagnostics rather than repeating expensive requests to recover lost error details. Do not silently substitute a handwritten plan while claiming the selected LLM produced it.
+**How to apply:** Validate the actual director response and its full schema before any paid media submit. Prefer streaming for long creative requests when supported, consume content separately from reasoning deltas, and preserve sanitized failure diagnostics. Do not infer an invalid credential from a long-request timeout. A successful demonstration using another alias does not authorize changing the bot's default model. Never silently substitute a handwritten plan while claiming the selected LLM produced it.
