@@ -60,6 +60,8 @@ not `text_url`/TXT attachments, and do not state a maximum prompt length.
 
 **Why:** “Draft” can be confused with a script document. The prompting blog
 mentions scripts, but this does not establish a TXT upload API contract.
+The user approved reading TXT files into the normal prompt flow, not enabling
+Picsart's paid draft-to-final video feature.
 
 **How to apply:** To support TXT documents in Telegram, read the document
 locally and send its decoded contents through the existing text parameter.

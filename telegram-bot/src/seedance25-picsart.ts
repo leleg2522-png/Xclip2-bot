@@ -4,6 +4,7 @@ export const SEEDANCE25_RATIOS = ['16:9', '9:16'] as const;
 export const SEEDANCE25_MAX_IMAGES = 30;
 export const SEEDANCE25_MAX_VIDEOS = 10;
 export const SEEDANCE25_MAX_AUDIOS = 10;
+export const SEEDANCE25_MAX_PROMPT_CHARS = 20000;
 export const SEEDANCE25_MAX_MEDIA_BYTES = 19 * 1024 * 1024;
 export const SEEDANCE25_MAX_TOTAL_BYTES = 100 * 1024 * 1024;
 // Conservative aggregate limits while Picsart's docs leave per-file vs total ambiguous.
@@ -35,7 +36,7 @@ export function validateSeedance25Request(
     || !['t2v', 'reference'].includes(settings.mode)
     || settings.resolution !== 1080 || typeof settings.audio !== 'boolean'
     || !SEEDANCE25_RATIOS.includes(settings.ratio)
-    || !prompt.trim() || prompt.length > 20000
+    || !prompt.trim() || prompt.length > SEEDANCE25_MAX_PROMPT_CHARS
     || !Number.isInteger(imageCount) || imageCount < 0 || imageCount > SEEDANCE25_MAX_IMAGES
     || !Number.isInteger(videoCount) || videoCount < 0 || videoCount > SEEDANCE25_MAX_VIDEOS
     || !Number.isInteger(audioCount) || audioCount < 0 || audioCount > SEEDANCE25_MAX_AUDIOS
