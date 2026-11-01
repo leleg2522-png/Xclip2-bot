@@ -100,20 +100,30 @@ async function testSqlEligibility() {
     const add = async (user: number, amount: number, status = 'PAID',
       created = start, paid: string | null = start) =>
       client.query('INSERT INTO topup_orders VALUES ($1,$2,$3,$4,$5)', [user, status, amount, created, paid]);
-    await add(1, 200000);
+    await add(1, 50000);
     await add(2, 250000);
-    await add(3, 100000); await add(3, 100000); // No accumulation.
-    await add(4, 200000, 'PENDING', start, null);
-    await add(5, 200000, 'EXPIRED', start, null);
-    await add(6, 200000, 'PAID', '2026-10-24T00:00:00+07:00', start);
-    await add(7, 200000, 'PAID', start, '2026-11-01T00:00:00+07:00');
-    await add(8, 199999);
-    await add(9, 200000, 'PAID', start, '2026-10-31T23:59:59+07:00');
-    for (const id of [1, 2]) assert.deepEqual(await octoberPromoStatus(adapter, id, now), active);
+    await add(3, 25000); await add(3, 25000); // No accumulation.
+    await add(4, 50000, 'PENDING', start, null);
+    await add(5, 50000, 'EXPIRED', start, null);
+    await add(6, 50000, 'PAID', '2026-10-24T00:00:00+07:00', start);
+    await add(7, 50000, 'PAID', start, '2026-11-01T00:00:00+07:00');
+    await add(8, 49999);
+    await add(9, 50000, 'PAID', start, '2026-10-31T23:59:59+07:00');
+    await add(12, 200000); // Previously qualifying participants stay eligible.
+    for (const id of [1, 2, 12]) assert.deepEqual(await octoberPromoStatus(adapter, id, now), active);
     for (const id of [3, 4, 5, 6, 7, 8, 10])
       assert.deepEqual(await octoberPromoStatus(adapter, id, now), { active: true, eligible: false });
     assert.equal((await octoberPromoStatus(adapter, 9, new Date('2026-10-31T23:59:59.999+07:00'))).eligible, true);
-    assert.deepEqual(await octoberPromoStatus(adapter, 1, new Date(OCTOBER_PROMO.endsAt)), { active: false, eligible: false });
+    assert.deepEqual(await octoberPromoStatus(adapter, 1, new Date('2026-11-01T00:00:00+07:00')), active,
+      'Existing eligibility survives the original deadline');
+    assert.deepEqual(await octoberPromoStatus(adapter, 7, new Date('2026-11-02T00:00:00+07:00')), active,
+      'Paid top-ups after the original deadline qualify');
+    await add(11, 50000, 'PAID', '2026-11-02T01:00:00+07:00', '2026-11-02T01:01:00+07:00');
+    assert.deepEqual(await octoberPromoStatus(adapter, 11, new Date('2026-11-02T00:00:00+07:00')),
+      { active: true, eligible: false }, 'Future payments do not qualify early');
+    assert.deepEqual(await octoberPromoStatus(adapter, 11, new Date('2026-11-02T02:00:00+07:00')), active);
+    assert.deepEqual(await octoberPromoStatus(adapter, 1, new Date('2100-01-01T00:00:00+07:00')), active,
+      'Promo does not expire automatically');
     await client.query("UPDATE topup_orders SET status='PAID', paid_at=$1 WHERE db_user_id=4", [start]);
     assert.equal((await octoberPromoStatus(adapter, 4, now)).eligible, true, 'Payment immediately unlocks promo');
   } finally {
@@ -121,6 +131,22 @@ async function testSqlEligibility() {
     client.release();
     await db.end();
   }
+}
+
+async function testExplicitStop() {
+  const promoSource = readFileSync(new URL('../src/october-topup-promo.ts', import.meta.url), 'utf8');
+  assert.match(promoSource, /enabled: true/);
+  const context = vm.createContext({ exports: {} });
+  vm.runInContext(ts.transpileModule(promoSource.replace('enabled: true', 'enabled: false'), {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+  }).outputText, context);
+  const disabled = context.exports;
+  const adapter = { query: async () => { throw Error('Disabled promo must not query/activate'); } };
+  await disabled.activateOctoberPromo(adapter);
+  const status = await disabled.octoberPromoStatus(adapter, 1);
+  assert.equal(status.active, false); assert.equal(status.eligible, false);
+  assert.equal(disabled.octoberPromoPrice('heygen', 2500, status), 2500);
+  assert.equal(disabled.octoberPromoText(status), '');
 }
 
 async function main() {
@@ -136,7 +162,12 @@ async function main() {
   for (const model of ['kling_21_p2', 'seedance_2_mini_edit', 'seedance_2_fast', 'wan_v3', 'flora_minimax_h3_480', 'banana21_i2i'])
     assert.equal(octoberPromoPrice(model, 4000, active), 4000, model);
   assert.equal(octoberPromoText({ active: false, eligible: false }), '');
-  assert.match(octoberPromoText(active), /31 Oktober 2026, 23.59 WIB/);
+  assert.equal(OCTOBER_PROMO.enabled, true);
+  assert.equal(OCTOBER_PROMO.minimumTopup, 50000);
+  assert.match(octoberPromoText(active), /Satu transaksi top-up minimal Rp50\.000/);
+  assert.doesNotMatch(octoberPromoText(active), /Rp200\.000/);
+  assert.match(octoberPromoText(active), /tanpa tanggal kedaluwarsa otomatis/);
+  assert.doesNotMatch(octoberPromoText(active), /31 Oktober/);
   assert.match(octoberPromoText(active), /promo aktif di akun/);
   assert.match(octoberPromoText({ active: true, eligible: false }), /harga normal/);
   const priceTableContext = vm.createContext({
@@ -144,6 +175,7 @@ async function main() {
     formatRupiah: (amount: number) => 'Rp' + amount.toLocaleString('id-ID'),
     KLING4_DURATIONS: [10, 15, 30], CHINA_VIDEO_MODELS: {},
     KLING_P4: { label: 'P4' }, ALRIZ_KLING_P5: { label: 'P5' },
+    KLING_V3_PRO: { label: 'Kling v3 Pro' },
   });
   const priceStatement = ast.statements.find(n => ts.isVariableStatement(n) &&
     n.declarationList.declarations.some(d => d.name.getText(ast) === 'MODEL_PRICES'));
@@ -157,6 +189,7 @@ async function main() {
   assert.match(priceTableContext.hargaText({ active: true, eligible: false }), /Kling 2\.1 Pro \(10 detik\) — Rp3\.500/);
   assert.match(priceTableContext.hargaText({ active: false, eligible: false }), /MiniMax H3 \(15 detik · hingga 1K\) — Rp4\.000/);
   await testSqlEligibility();
-  console.log('October promo: SQL eligibility, activation, WIB deadline, all five charge/refund paths and exclusions passed.');
+  await testExplicitStop();
+  console.log('Top-up promo: SQL eligibility, preserved activation, no expiry, explicit stop, all five charge/refund paths and exclusions passed.');
 }
 main().catch(error => { console.error(error.message); process.exitCode = 1; });
