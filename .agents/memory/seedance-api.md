@@ -50,6 +50,22 @@ combined upload budget (19MB/file). Keep these conservative application limits
 distinct from claims about the upstream model. Do not change the Rp6,000 tariff
 automatically when accounting for upstream input-video costs.
 
+## Draft versus text-file prompts
+
+Picsart's documented `draft: true` is a paid 480p video preview, followed
+optionally by a separately billed 1080p render using `draft_task` within
+seven days. It is not a TXT document input or an increased prompt allowance.
+The parameter pages document text strings (`prompt` or `content[].text`),
+not `text_url`/TXT attachments, and do not state a maximum prompt length.
+
+**Why:** “Draft” can be confused with a script document. The prompting blog
+mentions scripts, but this does not establish a TXT upload API contract.
+
+**How to apply:** To support TXT documents in Telegram, read the document
+locally and send its decoded contents through the existing text parameter.
+Do not claim a file bypasses the model's text limit, or that the bot's
+20,000-character validation is an officially verified Picsart limit.
+
 ## Historical Playground contract
 
 Reverse-engineered from an AI Playground HAR. Follows the same access-token / `commonHeaders()` pattern as the other Picsart workflow models.
