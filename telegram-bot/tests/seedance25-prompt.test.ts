@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { Telegraf } from 'telegraf';
+import * as limits from '../src/seedance25-picsart';
 import {
   SEEDANCE25_MAX_TXT_BYTES, validateSeedance25Prompt,
   validateSeedance25TxtDocument, decodeSeedance25Txt,
@@ -10,10 +12,10 @@ import { validateSeedance25Request, type Seedance25Settings } from '../src/seeda
 
 const source = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true);
-function functionCode(name: string) {
-  const node = ast.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === name);
+function functionCode(name: string, file = ast) {
+  const node = file.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === name);
   assert.ok(node, name);
-  return ts.transpileModule(node.getText(ast), {
+  return ts.transpileModule(node.getText(file).replace(/^export /, ''), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
   }).outputText;
 }
@@ -148,8 +150,93 @@ async function checkFlow() {
   assert.match(source, /Kirim prompt sebagai pesan teks atau file \.txt UTF-8/);
 }
 
+async function checkDocumentToProviderPayload() {
+  // Use the actual Telegraf document registration and real orchestration/submit
+  // functions. Only Telegram/Picsart transport, account selection and finishing
+  // are simulated. This deliberately spends no upstream credits.
+  const providerSource = readFileSync(new URL('../src/picsart.ts', import.meta.url), 'utf8');
+  const providerAst = ts.createSourceFile('picsart.ts', providerSource, ts.ScriptTarget.Latest, true);
+  const registration = ast.statements.find(n => n.getText(ast).startsWith("bot.on('document',"));
+  assert.ok(registration);
+  const tail = '\nFINAL_MARKER_20000';
+  const prompt = '界'.repeat(20000 - tail.length) + tail;
+  assert.equal(prompt.length, 20000);
+  const bytes = Buffer.from(prompt);
+  const bot = new Telegraf('not-a-real-token');
+  bot.botInfo = { id: 123, is_bot: true, first_name: 'Test', username: 'test_bot',
+    can_join_groups: true, can_read_all_group_messages: false, supports_inline_queries: false };
+  const session: any = {
+    mode: 'oneover_wait_prompt', dbUserId: 101, seedance25Settings: { ...settings },
+    seedance25ImageFileIds: [], seedance25Videos: [], seedance25Audios: [],
+  };
+  let current = session, posted: any, pipeline: Promise<unknown> | undefined;
+  const charges: number[] = [], refunds: number[] = [], deliveries: string[] = [];
+  let submitCount = 0, finishCount = 0;
+  bot.use(async (ctx: any, next) => {
+    ctx.reply = async () => ({ message_id: 99 });
+    ctx.telegram.getFileLink = async () => new URL('https://example.test/prompt.txt');
+    return next();
+  });
+  const context = vm.createContext({
+    Buffer, ...limits, bot, SEEDANCE25_MAX_TXT_BYTES,
+    validateSeedance25Prompt, validateSeedance25TxtDocument, decodeSeedance25Txt,
+    getSession: () => current,
+    setSession: (_: number, update: any) => { current = { ...current, ...update }; },
+    requireLogin: async () => true, getCooldownRemainingMs: () => 0,
+    telegramHttp: { get: async () => ({ data: bytes }) },
+    MODEL_PRICES: { picsart_seedance_25: 6000 }, MAX_PARALLEL_GENERATIONS_PER_USER: 3,
+    beginCharge: async (_: number, amount: number) => { charges.push(amount); return { ok: true }; },
+    addSaldo: async (_: number, amount: number) => { refunds.push(amount); },
+    releaseGenerating() {}, incrementKlingUsage: async () => 1, markGenSuccess() {},
+    upscaleGeneratedVideo: async () => { finishCount++; return { url: 'https://example.test/1080.mp4', upscaled: true }; },
+    sendResult: async (_: number, url: string) => { deliveries.push(url); return true; },
+    SEEDANCE_MAX_REF_IMAGES: 30, SEEDANCE_MAX_REF_VIDEOS: 10, SEEDANCE_MAX_REF_AUDIOS: 10,
+    SEEDANCE_MODEL: 'seedance_2_5', SEEDANCE_MIN_CREDITS: { '480p': { 30: 130 } },
+    API_BASE: 'https://example.test', X_APP_AUTHORIZATION: 'test',
+    runWithAccount: async (_: number, __: unknown, run: any) => run(1),
+    getCredits: async () => ({ credits: 500 }), getAccessToken: async () => 'test',
+    commonHeaders: (value: unknown) => value, ok2xx: (status: number) => status >= 200 && status < 300,
+    http: { post: async (_: string, body: any) => {
+      submitCount++; posted = JSON.parse(JSON.stringify(body));
+      return { status: 200, data: { response: { id: 'accepted-test-job' } } };
+    } },
+    pollSeedanceResult: async () => ({ url: 'https://example.test/480.mp4' }),
+    describeError: (error: Error) => error.message, formatRupiah: (value: number) => `Rp${value}`,
+    console: { log() {}, warn() {}, error(error: any) { throw Error(String(error)); } },
+  });
+  // The runner invokes these Telegram status methods independently of ctx.
+  bot.telegram.editMessageText = async () => true as any;
+  bot.telegram.deleteMessage = async () => true as any;
+  vm.runInContext(helpers + functionCode('runPicsartSeedance25')
+    + functionCode('generateSeedance', providerAst) + functionCode('submitSeedance', providerAst), context);
+  context.picsart = { generateSeedance: context.generateSeedance };
+  const runner = context.runPicsartSeedance25;
+  context.runPicsartSeedance25 = (...args: any[]) => { pipeline = runner(...args); return pipeline; };
+  vm.runInContext(ts.transpileModule(registration.getText(ast), {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+  }).outputText, context);
+  const update: any = { update_id: 1, message: {
+    message_id: 1, date: 1, chat: { id: 2, type: 'private' },
+    from: { id: 1, is_bot: false, first_name: 'Test' },
+    document: { file_id: 'script', file_unique_id: 'unique', file_name: 'script.TXT',
+      mime_type: 'text/plain', file_size: bytes.length },
+  } };
+  await bot.handleUpdate(update);
+  assert.ok(pipeline, 'Actual document handler must reach the generation runner');
+  await pipeline;
+  const content = posted.params.content.find((item: any) => item.type === 'text');
+  assert.equal(content.text, prompt);
+  assert.equal(content.text.length, 20000);
+  assert.equal(posted.params.resolution, '480p');
+  assert.equal(posted.params.duration, 30);
+  assert.equal(submitCount, 1); assert.equal(finishCount, 1);
+  assert.deepEqual(charges, [6000]); assert.deepEqual(refunds, []);
+  assert.deepEqual(deliveries, ['https://example.test/1080.mp4']);
+  console.log('PASS actual Telegraf document route → full 20,000-character Picsart payload → simulated accepted job → mandatory 1080p delivery; one charge.');
+}
+
 async function main() {
-  checkDecoding(); await checkFlow();
+  checkDecoding(); await checkFlow(); await checkDocumentToProviderPayload();
   console.log('PASS Seedance 2.5 TXT: strict UTF-8, full long prompt, bounds, retry, references, shared text/TXT claim, cancellation and isolation.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
