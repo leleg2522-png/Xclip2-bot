@@ -21,6 +21,7 @@
 import axios from 'axios';
 import { createPicsartConnection } from './picsart-connection';
 import { buildKling4Params, KLING4_CREDITS, KLING4_DURATIONS, type Kling4Duration } from './picsart-kling4';
+import { buildKling4RegularParams } from './picsart-kling4-regular';
 import { buildKling4OmniParams } from './picsart-kling4-omni';
 import { HAR_MODELS, buildHarModelParams, harWorkflow, harResultUrl, type HarModelKey, type HarAspectRatio } from './picsart-har-models';
 import FormData from 'form-data';
@@ -2125,6 +2126,8 @@ export type PicsartI2vModelKey =
   | 'kling_v4'
   | 'kling_v4_t2v'
   | 'kling_v4_omni'
+  | 'kling_v4_regular'
+  | 'kling_v4_frames'
   | 'kling_omni'
   | 'wan_v2'
   | 'wan_v3'
@@ -2300,6 +2303,20 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
     pool: null,
     pollAttempts: 360,
   },
+  kling_v4_regular: {
+    label: 'Kling 4 Reguler 1080p · Image to Video',
+    settingsLabel: '30 detik · 720p native',
+    workflowPath: 'kling-image-to-video',
+    pool: null,
+    pollAttempts: 360,
+  },
+  kling_v4_frames: {
+    label: 'Kling 4 Reguler 1080p · Start–End Frame',
+    settingsLabel: '30 detik · 720p native',
+    workflowPath: 'kling-image-to-video',
+    pool: null,
+    pollAttempts: 360,
+  },
   wan_v2: {
     label: 'Wan v2 Image-to-Video',
     settingsLabel: '15 detik · 720p · prompt extend',
@@ -2337,6 +2354,14 @@ export function buildPicsartI2vParams(
   options?: { ratio?: WanV3AspectRatio; outputName?: string; imageUrls?: string[]; duration?: Kling4Duration }
 ): Record<string, unknown> {
   switch (model) {
+    case 'kling_v4_regular':
+    case 'kling_v4_frames':
+      return buildKling4RegularParams({
+        mode: model === 'kling_v4_regular' ? 'i2v' : 'frames',
+        prompt, imageUrls: options?.imageUrls ?? (imageUrl ? [imageUrl] : []),
+        ratio: options?.ratio ?? '9:16', duration: options?.duration,
+        outputName: options?.outputName,
+      });
     case 'kling_v4_omni':
       return buildKling4OmniParams({
         prompt,
@@ -2771,7 +2796,7 @@ async function submitPicsartI2v(
 ): Promise<string> {
   const cfg = PICSART_I2V_MODELS[model];
   const access = await getAccessToken(credId);
-  const isKling4 = model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_omni';
+  const isKling4 = model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_omni' || model === 'kling_v4_regular' || model === 'kling_v4_frames';
   const usesGateway = model === 'ltx_pro' || model === 'ltx_fast' || model === 'creatify_boreal' || model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni' || isKling4;
   const outputNamePrefix = model === 'ltx_fast'
     ? 'ltx-2-5-fast-ai-playground'
@@ -2828,6 +2853,28 @@ async function submitPicsartI2v(
     throw new Error(`PICSART_SUBMIT_FAILED status ${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`);
   }
   return id;
+}
+
+export async function quoteKling4Regular(
+  credId: number,
+  input: Parameters<typeof buildKling4RegularParams>[0],
+): Promise<number> {
+  const access = await getAccessToken(credId);
+  const { options: _options, ...params } = buildKling4RegularParams(input);
+  const result = await http.post(`${API_BASE}/gw-v2/workflows/kling-image-to-video/options`,
+    { params }, {
+      headers: commonHeaders({
+        'content-type': 'application/json', authorization: `Bearer ${access}`,
+        'x-app-authorization': X_APP_AUTHORIZATION,
+        'x-sub-package-id': 'subscription_pro_monthly',
+      }),
+      validateStatus: () => true,
+    });
+  const required = result.data?.response?.credits;
+  if (!ok2xx(result.status) || typeof required !== 'number' || !Number.isFinite(required) || required <= 0) {
+    throw Error('PICSART_KLING4_REGULAR_QUOTE_UNAVAILABLE');
+  }
+  return required;
 }
 
 async function preflightKling4OmniCredits(
@@ -2955,7 +3002,7 @@ async function pollPicsartI2vResult(
   for (let i = 0; i < cfg.pollAttempts; i++) {
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
     opts?.onTick?.(Date.now() - start);
-    const usesGateway = model === 'ltx_pro' || model === 'ltx_fast' || model === 'creatify_boreal' || model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni' || model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_omni';
+    const usesGateway = model === 'ltx_pro' || model === 'ltx_fast' || model === 'creatify_boreal' || model === 'pixverse_v6' || model === 'wan_v3' || model === 'kling_omni' || model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_omni' || model === 'kling_v4_regular' || model === 'kling_v4_frames';
     const workflowBase = usesGateway
       ? `${API_BASE}/gw-v2/workflows/${cfg.pollWorkflowPath ?? cfg.workflowPath}`
       : `${API_BASE}/workflows/${cfg.pollWorkflowPath ?? cfg.workflowPath}`;
@@ -3217,15 +3264,16 @@ export async function generatePicsartI2v(input: {
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
   const cfg = PICSART_I2V_MODELS[input.model];
-  const publicKling4 = input.model === 'kling_v4' || input.model === 'kling_v4_t2v';
+  const regularKling4 = input.model === 'kling_v4_regular' || input.model === 'kling_v4_frames';
+  const publicKling4 = input.model === 'kling_v4' || input.model === 'kling_v4_t2v' || regularKling4;
   if (publicKling4 && !(KLING4_DURATIONS as readonly number[]).includes(input.duration ?? 30)) {
     throw new Error('PICSART_KLING4_INVALID_DURATION');
   }
   const accountPolicy = picsartI2vAccountPolicy(input.model, input.duration);
   return runWithAccount(input.userId, accountPolicy.pool, async (credId) => {
-    const isKling4 = input.model === 'kling_v4' || input.model === 'kling_v4_t2v' || input.model === 'kling_v4_omni';
+    const isKling4 = input.model === 'kling_v4' || input.model === 'kling_v4_t2v' || input.model === 'kling_v4_omni' || regularKling4;
     const textOnly = input.model === 'kling_v4_t2v';
-    if (publicKling4 && (input.duration ?? 30) === 30) {
+    if (publicKling4 && !regularKling4 && (input.duration ?? 30) === 30) {
       const { credits } = await getCredits(credId);
       if (!Number.isFinite(credits)) throw new Error('PICSART_CREDITS_UNKNOWN');
       if (credits < KLING4_CREDITS) throw new Error(ERR_INSUFFICIENT_CREDITS);
@@ -3235,7 +3283,10 @@ export async function generatePicsartI2v(input: {
       : input.imageBuffer
         ? [{ buffer: input.imageBuffer, name: input.imageName, mime: input.imageMime }]
         : [];
-    const imagesToUpload = (
+    if (regularKling4 && inputImages.length !== (input.model === 'kling_v4_frames' ? 2 : 1)) {
+      throw Error('PICSART_KLING4_INVALID_FRAME_COUNT');
+    }
+    const imagesToUpload = regularKling4 ? inputImages : (
       input.model === 'seedance_2_mini'
       || input.model === 'seedance_2_fast'
       || input.model === 'seedance_2'
@@ -3272,7 +3323,17 @@ export async function generatePicsartI2v(input: {
     if (input.model === 'kling_v4_omni') {
       await preflightKling4OmniCredits(credId, input.prompt, imageUrls[0], input.ratio ?? '9:16');
     }
-    if (publicKling4 && input.duration && input.duration !== 30) {
+    if (regularKling4) {
+      const required = await quoteKling4Regular(credId, {
+        mode: input.model === 'kling_v4_frames' ? 'frames' : 'i2v',
+        prompt: input.prompt, imageUrls, ratio: input.ratio ?? '9:16',
+        duration: input.duration,
+      });
+      const { credits } = await getCredits(credId);
+      if (!Number.isFinite(credits)) throw Error('PICSART_CREDITS_UNKNOWN');
+      if (credits < required) throw Error(ERR_INSUFFICIENT_CREDITS);
+    }
+    if (publicKling4 && !regularKling4 && input.duration && input.duration !== 30) {
       await preflightKling4OmniCredits(credId, input.prompt, imageUrls[0] ?? '', input.ratio ?? '9:16', {
         mode: textOnly ? 't2v' : 'i2v', duration: input.duration, imageUrls,
       });

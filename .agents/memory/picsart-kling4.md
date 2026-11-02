@@ -5,6 +5,29 @@ description: Captured Kling 4 T2V completion, I2V quote acceptance, native setti
 
 # Kling 4 contracts
 
+## Regular Kling 4 is an additional product
+
+Keep the newer regular `kling-v4` product separate from the existing public
+Kling 4 routes, whose backend remains `kling-v4-omni`. The new regular product
+offers only single-start-image I2V and mandatory start–end frames, not T2V,
+middle frames, or video references.
+
+**Why:** The user clarified that the old bot route uses Omni, then explicitly
+asked to make a new regular Kling 4 product rather than replace the old one.
+
+**How to apply:** Use `kling-image-to-video`, model `kling-v4`, `image` for the
+start frame, and `image_tail` for the end frame. The official unified docs name
+these `startFrame` and `endFrame`; the official SDK vendor types confirm the
+compatibility-field mapping. Do not copy the existing Omni `image_list` format.
+Authenticated, non-billable gateway quotes accepted both new modes for
+10/15/30 seconds at 720p, quoting 50/75/150 credits; this is not proof of
+completed generation. Quote each actual order rather than borrowing Omni's
+credit thresholds. Preserve mandatory external 1080p finishing and full
+refunds on failed finishing or delivery.
+
+Sources: https://picsart.com/api-platform/models/kling-v4/api and
+https://picsart.com/api-platform/models/kling-v4/advanced .
+
 ## Public duration selection
 
 Both public Kling 4 modes offer 10, 15, or 30 seconds; do not keep the bot

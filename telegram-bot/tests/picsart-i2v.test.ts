@@ -194,6 +194,8 @@ const expectedModels = [
   'kling_v4',
   'kling_v4_t2v',
   'kling_v4_omni',
+  'kling_v4_regular',
+  'kling_v4_frames',
   'kling_omni',
   'wan_v2',
   'wan_v3',
@@ -861,7 +863,7 @@ assert.match(picsartSource, /decodoPorts\.map\(createDecodoProxyAgent\)/);
 assert.match(picsartSource, /\[picsart:proxy\] Decodo ISP active host=\$\{decodoPrimaryAgent\.proxy\.hostname\}/);
 assert.match(picsartSource, /agent: decodoPrimaryAgent/);
 assert.match(picsartSource, /PICSART_PROXY_MODE \?\? 'auto'/);
-assert.match(picsartSource, /SEEDANCE_MAX_REF_IMAGES = 10/);
+assert.match(picsartSource, /SEEDANCE_MAX_REF_IMAGES = 30/);
 assert.match(picsartSource, /type: 'video_url'[\s\S]*role: 'reference_video'/);
 assert.match(picsartSource, /video\?: \{ buffer: Buffer/);
 assert.doesNotMatch(picsartSource, /submitPicsartI2vExport/);

@@ -5,11 +5,13 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import * as picsart from '../src/picsart';
 import { buildKling4Params, KLING4_CREDITS, KLING4_DURATIONS } from '../src/picsart-kling4';
+import { buildKling4RegularParams } from '../src/picsart-kling4-regular';
 import { buildKling4OmniParams } from '../src/picsart-kling4-omni';
 
 const backend = fs.readFileSync(path.resolve(__dirname, '../src/picsart.ts'), 'utf8');
 const app = fs.readFileSync(path.resolve(__dirname, '../src/index.ts'), 'utf8');
 const models = ['kling_v4', 'kling_v4_t2v', 'kling_v4_omni'] as const;
+type PublicModel = typeof models[number] | 'kling_v4_regular' | 'kling_v4_frames';
 const image = 'https://cdn.example.test/reference.jpg';
 const output = 'https://cdn.example.test/kling4-result.mp4';
 const compile = (code: string) => ts.transpileModule(code, {
@@ -83,14 +85,15 @@ function parameterTests() {
   assert.equal(picsart.buildPicsartI2vParams('kling_omni', 'a', image).model_name, 'kling-v3-omni', 'Existing Omni v3 is unchanged');
 }
 
-async function backendTest(model: typeof models[number], outcome = 'success', imageCount = 1, duration: 10 | 15 | 30 = 30) {
+async function backendTest(model: PublicModel, outcome = 'success', imageCount = 1, duration: 10 | 15 | 30 = 30) {
   const t2v = model === 'kling_v4_t2v';
   const omni = model === 'kling_v4_omni';
-  const workflow = 'kling-omni-video';
+  const regular = model === 'kling_v4_regular' || model === 'kling_v4_frames';
+  const workflow = regular ? 'kling-image-to-video' : 'kling-omni-video';
   const events = { accounts: 0, uploads: 0, quotes: 0, posts: 0, gets: 0, dead: 0 };
   const context = vm.createContext({
     exports: {}, Buffer, PICSART_I2V_MODELS: picsart.PICSART_I2V_MODELS,
-    PICSART_I2V_MAX_IMAGES: 5, KLING4_CREDITS, KLING4_DURATIONS, buildKling4Params,
+    PICSART_I2V_MAX_IMAGES: 5, KLING4_CREDITS, KLING4_DURATIONS, buildKling4Params, buildKling4RegularParams,
     buildPicsartI2vParams: picsart.buildPicsartI2vParams,
     picsartI2vAccountPolicy: picsart.picsartI2vAccountPolicy,
     buildKling4OmniParams,
@@ -129,13 +132,16 @@ async function backendTest(model: typeof models[number], outcome = 'success', im
       post: async (url: string, body: any, config: any) => {
         if (url.endsWith('/options')) {
           events.quotes++;
-           assert.ok(omni || duration !== 30);
-          assert.equal(url, 'https://api.picsart.com/gw-v2/workflows/kling-omni-video/options');
+           assert.ok(regular || omni || duration !== 30);
+          assert.equal(url, `https://api.picsart.com/gw-v2/workflows/${workflow}/options`);
           assert.equal(config.headers.authorization, 'Bearer fixture-access-token');
-          assert.equal(body.params.model_name, 'kling-v4-omni');
+          assert.equal(body.params.model_name, regular ? 'kling-v4' : 'kling-v4-omni');
            assert.equal(body.params.duration, String(duration));
           assert.equal(body.params.resolution, '720p');
-           if (!t2v) assert.equal(body.params.image_list[0].image_url, image);
+           if (regular) {
+             assert.equal(body.params.image, image);
+             assert.equal(body.params.image_tail, model === 'kling_v4_frames' ? image : undefined);
+           } else if (!t2v) assert.equal(body.params.image_list[0].image_url, image);
            else assert.equal(body.params.image_list, undefined);
           assert.equal(body.params.options, undefined);
           if (outcome === 'quote-timeout') throw Error('ETIMEDOUT');
@@ -147,9 +153,12 @@ async function backendTest(model: typeof models[number], outcome = 'success', im
         events.posts++;
         assert.equal(url, `https://api.picsart.com/gw-v2/workflows/${workflow}/submit`);
         assert.equal(config.headers.authorization, 'Bearer fixture-access-token');
-        assert.equal(body.params.model_name, 'kling-v4-omni');
-        assert.equal(body.params.image, undefined);
-        if (!t2v) {
+        assert.equal(body.params.model_name, regular ? 'kling-v4' : 'kling-v4-omni');
+        assert.equal(body.params.image, regular ? image : undefined);
+        if (regular) {
+          assert.equal(body.params.image_tail, model === 'kling_v4_frames' ? image : undefined);
+          assert.equal(body.params.image_list, undefined);
+        } else if (!t2v) {
           assert.equal(body.params.image_list[0].image_url, image);
           assert.equal(body.params.image_list.length, imageCount);
         }
@@ -190,15 +199,15 @@ async function backendTest(model: typeof models[number], outcome = 'success', im
   const preflightFailure = ['no-credits', 'unknown-credits', 'quote-http', 'quote-invalid', 'quote-timeout'].includes(outcome);
   assert.equal(events.posts, preflightFailure ? 0 : 1, 'Never replay a paid/ambiguous submit');
   assert.equal(events.accounts, ['low-first', 'no-credits'].includes(outcome) ? 2 : 1);
-  assert.equal(events.uploads, omni
+  assert.equal(events.uploads, regular ? imageCount * events.accounts : omni
     ? (['low-first', 'no-credits'].includes(outcome) ? 2 : 1)
     : duration !== 30 ? t2v ? 0 : imageCount
     : t2v || ['no-credits', 'unknown-credits'].includes(outcome) ? 0 : imageCount);
-  assert.equal(events.quotes, omni || duration !== 30 ? events.accounts : 0);
+  assert.equal(events.quotes, regular || omni || duration !== 30 ? events.accounts : 0);
   assert.equal(events.dead, outcome === 'poll-auth' ? 1 : 0);
 }
 
-async function wizardTest(model: typeof models[number], ratio: '9:16' | '16:9', duration: 10 | 15 | 30 = 30) {
+async function wizardTest(model: PublicModel, ratio: '9:16' | '16:9', duration: 10 | 15 | 30 = 30) {
   const t2v = model === 'kling_v4_t2v';
   const price = model === 'kling_v4_omni' ? 8500 : duration === 10 ? 3500 : duration === 15 ? 4000 : 8000;
   const state: any = { mode: 'idle', dbUserId: 2, picsartI2vImageUrl: image, picsartI2vImageUrls: [image] };
@@ -249,10 +258,27 @@ async function wizardTest(model: typeof models[number], ratio: '9:16' | '16:9', 
   assert.doesNotMatch(messages.at(-1)!, /720p native|1080p native/);
   if (!t2v) {
     const photoBranch = fragment(app, "if (session.mode === 'picsart_i2v_wait_image')", "if (session.mode === 'oneover_wait_image')");
-    for (let n = 1; n <= 5; n++) {
+    const count = model === 'kling_v4_regular' ? 1 : model === 'kling_v4_frames' ? 2 : 5;
+    if (model === 'kling_v4_frames') {
+      ctx.ctx.message.media_group_id = 'album';
+      await run(photoBranch);
+      assert.equal(state.mode, 'picsart_i2v_wait_image', 'Albums cannot reorder start/end frames');
+      assert.equal(state.picsartI2vImageUrls, undefined);
+      delete ctx.ctx.message.media_group_id;
+    }
+    for (let n = 1; n <= count; n++) {
+      ctx.ctx.message.message_id = n;
       await run(photoBranch);
       assert.equal(state.picsartI2vImageUrls.length, n);
-      assert.equal(state.mode, n === 5 ? 'picsart_i2v_wait_prompt' : 'picsart_i2v_wait_image');
+      assert.equal(state.mode, n === count ? 'picsart_i2v_wait_prompt' : 'picsart_i2v_wait_image');
+      if (model === 'kling_v4_frames' && n === 1) {
+        await run(photoBranch);
+        assert.equal(state.picsartI2vImageUrls.length, 1, 'Duplicate update cannot become the end frame');
+        const doneBranch = fragment(app, "if (data === 'picsart_i2v_photos_done')", "if (data.startsWith('mode_pi2v_'))");
+        ctx.data = 'picsart_i2v_photos_done';
+        await run(doneBranch);
+        assert.equal(state.mode, 'picsart_i2v_wait_image', 'End frame is mandatory, even with forged continue');
+      }
     }
     assert.equal(state.mode, 'picsart_i2v_wait_prompt');
   } else assert.match(messages.at(-1)!, /Tidak perlu foto/);
@@ -262,13 +288,13 @@ async function wizardTest(model: typeof models[number], ratio: '9:16' | '16:9', 
   assert.equal(calls[0][5].model, model);
   assert.equal(calls[0][5].ratio, ratio);
   assert.equal(calls[0][5].duration, duration);
-  assert.deepEqual(Array.from(calls[0][5].imageUrls), t2v ? [] : Array(5).fill(image));
+  assert.deepEqual(Array.from(calls[0][5].imageUrls), t2v ? [] : Array(model === 'kling_v4_regular' ? 1 : model === 'kling_v4_frames' ? 2 : 5).fill(image));
   assert.equal(state.mode, 'idle');
   await run(promptBranch); await run(ratioBranch);
   assert.equal(calls.length, 1, 'Stale prompt/ratio events cannot submit another job');
 }
 
-async function billingTest(model: typeof models[number], outcome: string, ratio: '9:16' | '16:9', duration: 10 | 15 | 30 = 30) {
+async function billingTest(model: PublicModel, outcome: string, ratio: '9:16' | '16:9', duration: 10 | 15 | 30 = 30) {
   const price = model === 'kling_v4_omni' ? 8500 : duration === 10 ? 3500 : duration === 15 ? 4000 : 8000;
   const events = { charges: [] as number[], refunds: [] as number[], deliveries: 0, released: 0, success: 0, stages: [] as string[] };
   const finishedOutput = 'https://bot.example.test/kling4-1080p.mp4';
@@ -277,7 +303,7 @@ async function billingTest(model: typeof models[number], outcome: string, ratio:
       assert.equal(input.model, model);
       assert.equal(input.ratio, ratio);
        assert.equal(input.duration, duration);
-      assert.equal(input.images.length, model === 'kling_v4_t2v' ? 0 : 1);
+      assert.equal(input.images.length, model === 'kling_v4_t2v' ? 0 : model === 'kling_v4_frames' ? 2 : 1);
       events.stages.push('generate');
       if (outcome === 'provider') throw Error('PICSART_KLING4_POST_SUBMIT_FAILED');
       return { url: output, credits: 90 };
@@ -317,7 +343,7 @@ async function billingTest(model: typeof models[number], outcome: string, ratio:
   });
   vm.runInContext(compile(fragment(app, 'function getPicsartI2vPrice(', '\n//')), ctx);
   vm.runInContext(compile(fragment(app, 'async function runPicsartI2v(', '// ─── Background: Picsart Seedance 2.5')), ctx);
-  await ctx.runPicsartI2v(1, 2, 3, 4, 'A landscape', { model, imageUrls: model === 'kling_v4_t2v' ? [] : [image], ratio, duration });
+  await ctx.runPicsartI2v(1, 2, 3, 4, 'A landscape', { model, imageUrls: model === 'kling_v4_t2v' ? [] : model === 'kling_v4_frames' ? [image, image] : [image], ratio, duration });
   assert.deepEqual(events.charges, [price]);
   assert.deepEqual(events.refunds, ['success', 'insufficient'].includes(outcome) ? [] : [price]);
   assert.equal(events.released, outcome === 'insufficient' ? 0 : 1);
@@ -329,8 +355,69 @@ async function billingTest(model: typeof models[number], outcome: string, ratio:
     : ['generate', 'upscale', 'delivery']);
 }
 
+async function staleRegularPhotoTests() {
+  const ast = ts.createSourceFile('index.ts', app, ts.ScriptTarget.Latest, true);
+  const node = ast.statements.find(n => n.getText(ast).startsWith("bot.on('photo',"));
+  assert.ok(node);
+  for (const model of ['kling_v4_regular', 'kling_v4_frames']) {
+    let draft: any = { mode: 'picsart_i2v_wait_image', picsartI2vModel: model };
+    let handler: any, release!: () => void, started!: () => void, accepted = 0;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const downloading = new Promise<void>(resolve => { started = resolve; });
+    const context = vm.createContext({
+      bot: { on: (_: string, fn: any) => { handler = fn; } },
+      requireLogin: async () => true, getSession: () => draft,
+      handleImageInput: async () => { accepted++; },
+    });
+    vm.runInContext(compile(node.getText(ast)), context);
+    const pending = handler({
+      from: { id: 1 }, message: { photo: [{ file_id: 'photo' }] },
+      telegram: { getFileLink: async () => { started(); await gate; return { href: image }; } },
+      reply: async () => {},
+    });
+    await downloading;
+    draft = { ...draft, mode: 'idle' };
+    release();
+    await pending;
+    assert.equal(accepted, 0, 'A frame downloaded for a cancelled draft cannot enter a new order');
+  }
+}
+
 async function main() {
+  await staleRegularPhotoTests();
   parameterTests();
+  const frames = [image, 'https://cdn.example.test/end.jpg'];
+  const regularParams = buildKling4RegularParams({ mode: 'frames', imageUrls: frames, prompt: 'p'.repeat(26000), ratio: '9:16' });
+  assert.equal(regularParams.image, frames[0]);
+  assert.equal(regularParams.image_tail, frames[1]);
+  assert.equal(regularParams.prompt.length, 26000);
+  assert.ok(!('prompt' in JSON.parse(regularParams.options.drive.attributes.aiSDKPayload)));
+  for (const mode of ['i2v', 'frames'] as const) {
+    for (const count of [0, 1, 2, 3]) {
+      if (count === (mode === 'frames' ? 2 : 1)) continue;
+      assert.throws(() => buildKling4RegularParams({
+        mode, imageUrls: Array(count).fill(image), prompt: 'a', ratio: '9:16',
+      }), /INVALID_FRAME_COUNT/);
+    }
+  }
+  assert.throws(() => buildKling4RegularParams({ mode: 'i2v', imageUrls: [image], prompt: '界'.repeat(11001), ratio: '9:16' }), /PROMPT_TOO_LONG/);
+  assert.throws(() => buildKling4RegularParams({ mode: 'frames', imageUrls: [image, 'http://example.test/a.jpg'], prompt: 'a', ratio: '9:16' }), /INVALID_FRAME_URL/);
+  for (const model of ['kling_v4_regular', 'kling_v4_frames'] as const) {
+    assert.equal(picsart.PICSART_I2V_MODELS[model].workflowPath, 'kling-image-to-video');
+    assert.ok(app.includes(`'mode_pi2v_${model}'`));
+    assert.equal(picsart.shouldExportPicsartI2v(model), false);
+    for (const duration of KLING4_DURATIONS) {
+      for (const outcome of ['success', 'low-first', 'transient', 'submit-timeout', 'submit-error', 'no-id', 'poll-auth', 'poll-credits', 'result-failed', 'result-http', 'quote-http', 'quote-invalid', 'quote-timeout']) {
+        await backendTest(model, outcome, model === 'kling_v4_frames' ? 2 : 1, duration);
+      }
+      for (const ratio of ['9:16', '16:9'] as const) {
+        await wizardTest(model, ratio, duration);
+        for (const outcome of ['success', 'provider', 'delivery', 'delivery-error', 'insufficient', 'upscale-error', 'upscale-fallback']) {
+          await billingTest(model, outcome, ratio, duration);
+        }
+      }
+    }
+  }
   await backendTest('kling_v4', 'success', 5);
   const publicHelpers = vm.createContext({ picsart });
   vm.runInContext(compile(fragment(app, 'function isPicsartI2vModelKey(', 'function picsartI2vRatioKeyboard(')), publicHelpers);
@@ -366,6 +453,6 @@ async function main() {
   for (const mode of ['Image to Video', 'Text to Video']) {
     assert.ok(app.includes(`• Kling 4 1080p · ${mode} (10/15/30 detik)`));
   }
-  console.log('Kling 4 I2V/T2V: 10/15/30-second wizard, payload, quotes, captions, five images, mandatory 1080p, refunds and no paid replay passed.');
+  console.log('Kling 4 legacy I2V/T2V and new regular I2V/start-end: durations, ordered frames, stale drafts, quotes, billing, mandatory 1080p, refunds and no paid replay passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

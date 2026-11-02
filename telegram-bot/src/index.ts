@@ -270,7 +270,7 @@ async function userModelPrice(dbUserId: number, model: string, normal: number): 
 
 function getPicsartI2vPrice(model: picsart.PicsartI2vModelKey, duration: Kling4Duration = 30): number {
   if (model === 'kling_v4_omni') throw new Error('MODEL_REMOVED');
-  if (model === 'kling_v4' || model === 'kling_v4_t2v') {
+  if (model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_regular' || model === 'kling_v4_frames') {
     if (duration === 10) return MODEL_PRICES.picsart_kling4_10;
     if (duration === 15) return MODEL_PRICES.picsart_kling4_15;
     if (duration === 30) return MODEL_PRICES.picsart_kling4;
@@ -1965,6 +1965,7 @@ interface Session {
   picsartI2vDisplayLabel?: string;
   picsartI2vImageUrl?: string;
   picsartI2vImageUrls?: string[];
+  picsartI2vFrameMessageIds?: number[];
   picsartI2vPriceKey?: 'picsart_wan_v3';
   // Separate Seedance 2 Mini Video Edit wizard state.
   seedanceMiniEditRatio?: picsart.WanV3AspectRatio;
@@ -2678,6 +2679,8 @@ function mainMenuKeyboard() {
     [Markup.button.callback(`🎞️ ${KLING_V3_PRO.label}`, 'mode_pi2v_kling_v3')],
     [Markup.button.callback(`🎬 Kling 4 1080p · Image to Video · 10/15/30 detik · mulai ${formatRupiah(getPicsartI2vPrice('kling_v4', 10))}`, 'mode_pi2v_kling_v4')],
     [Markup.button.callback(`✍️ Kling 4 1080p · Text to Video · 10/15/30 detik · mulai ${formatRupiah(getPicsartI2vPrice('kling_v4_t2v', 10))}`, 'mode_pi2v_kling_v4_t2v')],
+    [Markup.button.callback(`🎬 Kling 4 Reguler 1080p · Image to Video · mulai ${formatRupiah(getPicsartI2vPrice('kling_v4_regular', 10))}`, 'mode_pi2v_kling_v4_regular')],
+    [Markup.button.callback(`🎞️ Kling 4 Reguler 1080p · Start–End Frame · mulai ${formatRupiah(getPicsartI2vPrice('kling_v4_frames', 10))}`, 'mode_pi2v_kling_v4_frames')],
     [Markup.button.callback('🌐 Kling Omni • 12 detik • 720p', 'mode_pi2v_kling_omni')],
     ...Object.entries(CHINA_VIDEO_MODELS).map(([key, config]) => [
       Markup.button.callback(`${config.label} • ${config.duration} detik • ${config.resolution} • ${formatRupiah(config.price)}`, `mode_china_${key}`),
@@ -2733,7 +2736,7 @@ function isSeedance2I2vModel(model: picsart.PicsartI2vModelKey): boolean {
 }
 
 function picsartI2vPublicSettings(model: picsart.PicsartI2vModelKey, settings: string, duration?: Kling4Duration): string {
-  if (model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_omni') {
+  if (model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_omni' || model === 'kling_v4_regular' || model === 'kling_v4_frames') {
     return settings.replace('720p native', '1080p').replace('30 detik', duration ? `${duration} detik` : '10/15/30 detik');
   }
   if (isSeedance2I2vModel(model)) return settings.replace('480p native', '1080p');
@@ -3260,6 +3263,7 @@ function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false 
     `• ${KLING_V3_PRO.label} (15 detik) — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling 4 1080p · Image to Video (10/15/30 detik) — ${KLING4_DURATIONS.map(duration => `${duration} detik ${formatRupiah(getPicsartI2vPrice('kling_v4', duration))}`).join(' / ')}\n` +
     `• Kling 4 1080p · Text to Video (10/15/30 detik) — ${KLING4_DURATIONS.map(duration => `${duration} detik ${formatRupiah(getPicsartI2vPrice('kling_v4_t2v', duration))}`).join(' / ')}\n` +
+    `• Kling 4 Reguler 1080p · Image to Video / Start–End Frame — ${KLING4_DURATIONS.map(duration => `${duration} detik ${formatRupiah(getPicsartI2vPrice('kling_v4_regular', duration))}`).join(' / ')}\n` +
     `• Kling Omni (12 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_kling_omni)}\n` +
     `• Wan v2 Image-to-Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Wan 3.0 (30 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_wan_v3)}\n` +
@@ -5073,13 +5077,13 @@ bot.on('callback_query', async (ctx) => {
     const session = getSession(userId);
     const duration = Number(data.slice('picsart_duration_'.length)) as Kling4Duration;
     if (session.mode !== 'picsart_i2v_wait_duration'
-      || !['kling_v4', 'kling_v4_t2v'].includes(session.picsartI2vModel ?? '')
+      || !['kling_v4', 'kling_v4_t2v', 'kling_v4_regular', 'kling_v4_frames'].includes(session.picsartI2vModel ?? '')
       || !KLING4_DURATIONS.includes(duration)) {
       return ctx.reply('⚠️ Pilihan durasi sudah tidak aktif atau tidak valid. Mulai lagi dari /menu.');
     }
     setSession(userId, { mode: 'picsart_i2v_wait_ratio', picsartI2vDuration: duration });
     return ctx.editMessageText(
-      `Kling 4 1080p · ${duration} detik\nHarga: ${formatRupiah(getPicsartI2vPrice(session.picsartI2vModel!, duration))} per video\n\nPilih rasio video:`,
+      `${picsart.PICSART_I2V_MODELS[session.picsartI2vModel!].label} · ${duration} detik\nHarga: ${formatRupiah(getPicsartI2vPrice(session.picsartI2vModel!, duration))} per video\n\nPilih rasio video:`,
       picsartI2vRatioKeyboard()
     );
   }
@@ -5101,6 +5105,8 @@ bot.on('callback_query', async (ctx) => {
       'kling_omni',
       'kling_v4',
       'kling_v4_t2v',
+      'kling_v4_regular',
+      'kling_v4_frames',
       'kling_v4_omni',
       'wan_v3',
       'pixverse_v6',
@@ -5115,6 +5121,7 @@ bot.on('callback_query', async (ctx) => {
       mode: model === 'kling_v4_t2v' ? 'picsart_i2v_wait_prompt' : 'picsart_i2v_wait_image',
       picsartI2vRatio: ratio,
       picsartI2vImageUrl: undefined,
+      picsartI2vFrameMessageIds: undefined,
       picsartI2vImageUrls: supportsMultiplePicsartI2vImages(model) ? [] : undefined,
       picsartI2vPriceKey: model === 'wan_v3' ? 'picsart_wan_v3' : undefined,
     });
@@ -5122,7 +5129,11 @@ bot.on('callback_query', async (ctx) => {
       `🌀 *${displayLabel}*\n\n` +
       `Parameter: *${ratio} · ${picsartI2vPublicSettings(model, cfg.settingsLabel, session.picsartI2vDuration)}*\n` +
       `Harga: *${formatRupiah(await userModelPrice(session.dbUserId!, model, getPicsartI2vPrice(model, session.picsartI2vDuration)))}* per video\n\n` +
-      (model === 'kling_v4_t2v'
+      (model === 'kling_v4_frames'
+        ? '*Langkah 1:* Kirim *gambar awal (start frame)*, lalu *gambar akhir (end frame)*. Keduanya wajib. Kirim satu per satu, bukan album.'
+        : model === 'kling_v4_regular'
+        ? '*Langkah 1:* Kirim *satu gambar awal (start frame)* untuk dianimasikan.'
+        : model === 'kling_v4_t2v'
         ? '*Langkah terakhir:* Kirim *prompt teks* (deskripsi adegan). Tidak perlu foto.'
         : supportsMultiplePicsartI2vImages(model)
         ? `*Langkah 1:* Kirim *1–${picsart.PICSART_I2V_MAX_IMAGES} foto acuan* untuk video kamu.`
@@ -5191,12 +5202,14 @@ bot.on('callback_query', async (ctx) => {
       || model === 'kling_omni'
       || model === 'kling_v4'
       || model === 'kling_v4_t2v'
+      || model === 'kling_v4_regular'
+      || model === 'kling_v4_frames'
       || model === 'kling_v4_omni'
       || model === 'wan_v3'
       || model === 'pixverse_v6'
     ) {
       setSession(userId, {
-        mode: model === 'kling_v4' || model === 'kling_v4_t2v' ? 'picsart_i2v_wait_duration' : 'picsart_i2v_wait_ratio',
+        mode: model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_regular' || model === 'kling_v4_frames' ? 'picsart_i2v_wait_duration' : 'picsart_i2v_wait_ratio',
         picsartI2vModel: model,
         picsartI2vDuration: undefined,
         picsartI2vRatio: undefined,
@@ -5208,8 +5221,8 @@ bot.on('callback_query', async (ctx) => {
       return ctx.editMessageText(
         `🌀 *${model === 'wan_v3' ? 'Wan 3.0' : cfg.label}*\n\n` +
         `${picsartI2vPublicSettings(model, cfg.settingsLabel)}\n\n` +
-        (model === 'kling_v4' || model === 'kling_v4_t2v' ? '*Langkah 1:* Pilih durasi video:' : '*Langkah 1:* Pilih rasio video:'),
-        { parse_mode: 'Markdown', ...(model === 'kling_v4' || model === 'kling_v4_t2v'
+        (model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_regular' || model === 'kling_v4_frames' ? '*Langkah 1:* Pilih durasi video:' : '*Langkah 1:* Pilih rasio video:'),
+        { parse_mode: 'Markdown', ...(model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_regular' || model === 'kling_v4_frames'
           ? Markup.inlineKeyboard([
             KLING4_DURATIONS.map(duration => Markup.button.callback(`${duration} detik · ${formatRupiah(getPicsartI2vPrice(model, duration))}`, `picsart_duration_${duration}`)),
             [Markup.button.callback('« Kembali', 'back_main')],
@@ -6671,6 +6684,24 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
       return ctx.reply('⚠️ Model tidak ditemukan. Mulai lagi dari /menu.');
     }
     const cfg = picsart.PICSART_I2V_MODELS[model];
+    if (model === 'kling_v4_regular' || model === 'kling_v4_frames') {
+      if (ctx.message?.media_group_id) return ctx.reply('Kirim gambar satu per satu, bukan album, agar urutan start dan end frame tidak tertukar.');
+      const messageId = ctx.message?.message_id;
+      const received = session.picsartI2vFrameMessageIds ?? [];
+      if (messageId && received.includes(messageId)) return;
+      const imageUrls = [...(session.picsartI2vImageUrls ?? []), fileUrl];
+      const required = model === 'kling_v4_frames' ? 2 : 1;
+      if (imageUrls.length > required) return;
+      const complete = imageUrls.length === required;
+      setSession(userId, {
+        picsartI2vImageUrl: imageUrls[0], picsartI2vImageUrls: imageUrls,
+        picsartI2vFrameMessageIds: messageId ? [...received, messageId] : received,
+        mode: complete ? 'picsart_i2v_wait_prompt' : 'picsart_i2v_wait_image',
+      });
+      return ctx.reply(complete
+        ? `✅ ${required === 2 ? 'Start dan end frame' : 'Start frame'} diterima untuk ${cfg.label}.\n\nLangkah terakhir: kirim prompt teks untuk adegan video.`
+        : '✅ Start frame diterima.\nSekarang kirim gambar akhir (end frame). Wajib sebelum lanjut ke prompt.');
+    }
     const displayLabel = session.picsartI2vDisplayLabel ?? cfg.label;
     const settingsLabel = (
       model === 'ltx_pro'
@@ -6969,7 +7000,9 @@ bot.on('photo', async (ctx) => {
     return handleImageInput(ctx, '', photo.file_id);
   }
   const fileLink = await ctx.telegram.getFileLink(photo.file_id);
-  if (draft.mode === 'china_video_wait_image' && getSession(ctx.from.id) !== draft) {
+  const orderedKling4Frame = draft.mode === 'picsart_i2v_wait_image'
+    && (draft.picsartI2vModel === 'kling_v4_regular' || draft.picsartI2vModel === 'kling_v4_frames');
+  if ((draft.mode === 'china_video_wait_image' || orderedKling4Frame) && getSession(ctx.from.id) !== draft) {
     return ctx.reply('Proses foto sebelumnya sudah dibatalkan. Kirim foto untuk pilihan yang sedang aktif.');
   }
   await handleImageInput(ctx, fileLink.href, photo.file_id);
@@ -7708,7 +7741,9 @@ bot.on('text', async (ctx) => {
         : [];
     if (!activeDraft.dbUserId || !model || !isPicsartI2vModelKey(model)
       || (model !== 'kling_v4_t2v' && imageUrls.length === 0)
-      || (model === 'kling_v4_t2v' && imageUrls.length > 0)) {
+      || (model === 'kling_v4_t2v' && imageUrls.length > 0)
+      || (model === 'kling_v4_regular' && imageUrls.length !== 1)
+      || (model === 'kling_v4_frames' && imageUrls.length !== 2)) {
       setSession(userId, { mode: 'idle' });
       return ctx.reply('⚠️ Sesi tidak lengkap. Mulai lagi dari /menu.');
     }
@@ -7720,11 +7755,11 @@ bot.on('text', async (ctx) => {
     const cfg = picsart.PICSART_I2V_MODELS[model];
     const ratio = activeDraft.picsartI2vRatio;
     const duration = activeDraft.picsartI2vDuration;
-    if ((model === 'kling_v4' || model === 'kling_v4_t2v') && !KLING4_DURATIONS.includes(duration as Kling4Duration)) {
+    if ((model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_regular' || model === 'kling_v4_frames') && !KLING4_DURATIONS.includes(duration as Kling4Duration)) {
       setSession(userId, { mode: 'idle' });
       return ctx.reply('⚠️ Durasi video belum dipilih. Mulai lagi dari /menu.');
     }
-    if ((model === 'ltx_pro' || model === 'ltx_fast' || model === 'creatify_boreal' || model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_omni') && !ratio) {
+    if ((model === 'ltx_pro' || model === 'ltx_fast' || model === 'creatify_boreal' || model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_omni' || model === 'kling_v4_regular' || model === 'kling_v4_frames') && !ratio) {
       setSession(userId, { mode: 'idle' });
       return ctx.reply('⚠️ Rasio video belum dipilih. Mulai lagi dari /menu.');
     }
@@ -7736,13 +7771,14 @@ bot.on('text', async (ctx) => {
       mode: 'idle',
       picsartI2vImageUrl: undefined,
       picsartI2vImageUrls: undefined,
+      picsartI2vFrameMessageIds: undefined,
       picsartI2vRatio: undefined,
       picsartI2vDuration: undefined,
       picsartI2vDisplayLabel: undefined,
       picsartI2vPriceKey: undefined,
     });
     const statusMsg = await ctx.reply(
-      `⏳ Memproses ${publicLabel}...\nHasil dikirim otomatis (${model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_omni' ? 'biasanya 5–30 menit' : 'biasanya 3–10 menit'}).`,
+      `⏳ Memproses ${publicLabel}...\nHasil dikirim otomatis (${model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_omni' || model === 'kling_v4_regular' || model === 'kling_v4_frames' ? 'biasanya 5–30 menit' : 'biasanya 3–10 menit'}).`,
       { parse_mode: 'Markdown' }
     );
     runPicsartI2v(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, {
@@ -8396,7 +8432,9 @@ bot.on('text', async (ctx) => {
   }
   if (session.mode === 'picsart_i2v_wait_image') {
     return ctx.reply(
-      session.picsartI2vModel === 'wan_v3'
+      session.picsartI2vModel === 'kling_v4_frames'
+        ? `Kirim ${(session.picsartI2vImageUrls?.length ?? 0) === 0 ? 'gambar awal (start frame)' : 'gambar akhir (end frame)'} terlebih dahulu, atau /menu untuk batal.`
+        : session.picsartI2vModel === 'wan_v3'
         ? `📸 Kirim *1–${picsart.PICSART_I2V_MAX_IMAGES} foto acuan*, atau /menu untuk batal.`
         : '📸 Mode ini butuh *foto acuan*. Kirim foto, atau /menu untuk batal.',
       { parse_mode: 'Markdown' }
@@ -9487,7 +9525,7 @@ async function runPicsartI2v(
   const cfg = picsart.PICSART_I2V_MODELS[opts.model];
   const label = customerSafeModelLabel(opts.displayLabel ?? cfg.label, cfg.label);
   const seedance1080 = isSeedance2I2vModel(opts.model);
-  const kling4HD = opts.model === 'kling_v4' || opts.model === 'kling_v4_t2v' || opts.model === 'kling_v4_omni';
+  const kling4HD = opts.model === 'kling_v4' || opts.model === 'kling_v4_t2v' || opts.model === 'kling_v4_omni' || opts.model === 'kling_v4_regular' || opts.model === 'kling_v4_frames';
   const nativeSettings = kling4HD
     ? cfg.settingsLabel.replace('30 detik', `${opts.duration ?? 30} detik`)
     : cfg.settingsLabel;
@@ -9508,7 +9546,7 @@ async function runPicsartI2v(
 
   try {
     stage = 'download';
-    const maxImages = supportsMultiplePicsartI2vImages(opts.model) ? picsart.PICSART_I2V_MAX_IMAGES : 1;
+    const maxImages = opts.model === 'kling_v4_frames' ? 2 : supportsMultiplePicsartI2vImages(opts.model) ? picsart.PICSART_I2V_MAX_IMAGES : 1;
     const images = await Promise.all(
       opts.imageUrls.slice(0, maxImages).map(async (imageUrl, index) => {
         const image = await downloadBuffer(imageUrl);
@@ -9535,7 +9573,7 @@ async function runPicsartI2v(
           ? `⏳ ${label}: mengunggah foto ke server... (1/3)`
           : providerStage === 'submit'
             ? `⏳ ${label}: mengirim perintah ke server... (2/3)`
-            : `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Biasanya ${opts.model === 'kling_v4' || opts.model === 'kling_v4_t2v' || opts.model === 'kling_v4_omni' ? '5–30' : '3–10'} menit. Jangan tutup chat ini.`;
+            : `⏳ ${label}: video sedang dibuat... (3/3)\n⏱️ Biasanya ${kling4HD ? '5–30' : '3–10'} menit. Jangan tutup chat ini.`;
         stage = providerStage;
         console.log(`[picsart-i2v] user=${userId} model=${opts.model} label="${label}" stage=${providerStage}`);
         lastEdit = Date.now();
