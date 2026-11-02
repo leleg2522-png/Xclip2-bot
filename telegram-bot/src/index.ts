@@ -9794,10 +9794,11 @@ async function runPicsartI2v(
     }
   } catch (err: any) {
     const msg = describeError(err);
+    const pollCause = picsart.describePicsartPostSubmitCause(err);
     console.error(
       `[picsart-i2v] user=${userId} dbUser=${dbUserId} model=${opts.model} ` +
       `label="${label}" stage=${stage} images=${opts.imageUrls.length} ratio=${opts.ratio ?? 'default'} ` +
-      `error=${msg}`,
+      `error=${msg}${pollCause ? ` cause=${pollCause}` : ''}`,
       err?.stack ? `\n${err.stack}` : ''
     );
     let friendly = '❌ Gagal memproses. Coba lagi nanti.';

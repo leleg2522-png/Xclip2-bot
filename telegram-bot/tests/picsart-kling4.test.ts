@@ -175,6 +175,10 @@ async function backendTest(model: PublicModel, outcome = 'success', imageCount =
         if (outcome === 'poll-credits') throw Error('PICSART_INSUFFICIENT_CREDITS');
         if (outcome === 'result-failed') return { status: 200, data: { response: { status: 'FAILED' } } };
         if (outcome === 'result-http') return { status: 422, data: { status: 'error', message: 'Invalid request' } };
+        if (outcome === 'result-file-fetch') return { status: 422, data: {
+          status: 'error', reason: 'kling_image_to_video_failed',
+          message: 'Something went wrong when we tried to get the contents of the file.',
+        } };
         if (outcome === 'transient' && events.gets === 1) throw Object.assign(Error('reset'), { code: 'ECONNRESET' });
         return { status: 200, data: { status: 'success', response: {
           status: events.gets === 1 ? 'IN_PROGRESS' : 'COMPLETED',
@@ -196,7 +200,26 @@ async function backendTest(model: PublicModel, outcome = 'success', imageCount =
   });
   if (['success', 'low-first', 'transient'].includes(outcome)) {
     assert.equal((await promise).url, output);
-  } else await assert.rejects(promise);
+  } else await assert.rejects(promise, (error: any) => {
+    if (['poll-credits', 'result-failed', 'result-http', 'result-file-fetch'].includes(outcome)) {
+      assert.equal(error.message, 'PICSART_KLING4_POST_SUBMIT_FAILED job=job-kling4');
+      assert.ok(error.cause, 'Retain the actual provider failure, not just the generic wrapper');
+      if (outcome === 'result-http') {
+        assert.match(picsart.describePicsartPostSubmitCause(error)!, /Invalid request/);
+      }
+      if (outcome === 'result-file-fetch') {
+        const reason = picsart.describePicsartPostSubmitCause(error)!;
+        assert.match(reason, /422/);
+        assert.match(reason, /kling_image_to_video_failed/);
+        assert.match(reason, /contents of the file/);
+      }
+      if (outcome === 'poll-credits') {
+        assert.equal(error.cause.message, 'PICSART_INSUFFICIENT_CREDITS');
+        assert.doesNotMatch(error.message, /CREDITS/, 'Do not allow cause text to trigger account failover');
+      }
+    }
+    return true;
+  });
   const preflightFailure = ['no-credits', 'unknown-credits', 'quote-http', 'quote-invalid', 'quote-timeout'].includes(outcome);
   assert.equal(events.posts, preflightFailure ? 0 : 1, 'Never replay a paid/ambiguous submit');
   assert.equal(events.accounts, ['low-first', 'no-credits'].includes(outcome) ? 2 : 1);
@@ -386,6 +409,14 @@ async function staleRegularPhotoTests() {
 }
 
 async function main() {
+  assert.equal(picsart.describePicsartPostSubmitCause(Error('no cause')), undefined);
+  const diagnostic = picsart.describePicsartPostSubmitCause(Error('wrapper', { cause: Error(
+    'PICSART_GEN_FAILED: 422 https://private.test/file?token=fixture_url ' +
+    'authorization="Bearer fixture_bearer" cookie="session=fixture_cookie" api_key=fixture_key\n' +
+    'refresh_token=fixture_refresh',
+  ) }))!;
+  assert.match(diagnostic, /PICSART_GEN_FAILED: 422/);
+  assert.doesNotMatch(diagnostic, /private\.test|fixture_|[\r\n]/);
   await staleRegularPhotoTests();
   parameterTests();
   const frames = [image, 'https://cdn.example.test/end.jpg'];
@@ -409,7 +440,7 @@ async function main() {
     assert.ok(app.includes(`'mode_pi2v_${model}'`));
     assert.equal(picsart.shouldExportPicsartI2v(model), false);
     for (const duration of KLING4_DURATIONS) {
-      for (const outcome of ['success', 'low-first', 'transient', 'submit-timeout', 'submit-error', 'no-id', 'poll-auth', 'poll-credits', 'result-failed', 'result-http', 'quote-http', 'quote-invalid', 'quote-timeout']) {
+      for (const outcome of ['success', 'low-first', 'transient', 'submit-timeout', 'submit-error', 'no-id', 'poll-auth', 'poll-credits', 'result-failed', 'result-http', 'result-file-fetch', 'quote-http', 'quote-invalid', 'quote-timeout']) {
         await backendTest(model, outcome, model === 'kling_v4_frames' ? 2 : 1, duration);
       }
       for (const ratio of ['9:16', '16:9'] as const) {
@@ -427,7 +458,7 @@ async function main() {
   assert.equal(publicHelpers.isPicsartI2vModelKey('kling_v4'), true);
   assert.equal(publicHelpers.supportsMultiplePicsartI2vImages('kling_v4'), true);
   for (const model of models) {
-    for (const outcome of ['success', 'low-first', 'no-credits', 'unknown-credits', 'transient', 'submit-timeout', 'submit-error', 'no-id', 'poll-auth', 'poll-credits', 'result-failed', 'result-http']) {
+    for (const outcome of ['success', 'low-first', 'no-credits', 'unknown-credits', 'transient', 'submit-timeout', 'submit-error', 'no-id', 'poll-auth', 'poll-credits', 'result-failed', 'result-http', 'result-file-fetch']) {
       await backendTest(model, outcome);
     }
     if (model === 'kling_v4_omni') {

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import { PICSART_I2V_MODELS } from '../src/picsart';
+import { PICSART_I2V_MODELS, describePicsartPostSubmitCause } from '../src/picsart';
 
 const source = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 const helpers = source.slice(source.indexOf('function isSeedance2I2vModel('), source.indexOf('function picsartI2vRatioKeyboard('));
@@ -21,6 +21,7 @@ function harness(options: { upscale?: boolean; failDelivery?: boolean; failUpsca
   };
   const context = vm.createContext({
     picsart: {
+      describePicsartPostSubmitCause,
       PICSART_I2V_MODELS, PICSART_I2V_MAX_IMAGES: 5,
       generatePicsartI2v: async (input: any) => {
         events.order.push('generate');

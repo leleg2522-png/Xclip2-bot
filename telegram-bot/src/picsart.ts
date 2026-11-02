@@ -2989,6 +2989,20 @@ export function isPicsartPostSubmitAuthFailure(error: unknown): boolean {
   return message.includes('PICSART_AUTH_DEAD') || message.includes('PICSART_REFRESH_DEAD');
 }
 
+// Only expose the nested message, never Axios request configs/headers. Keep
+// diagnostics out of the wrapper message: account failover examines that string.
+export function describePicsartPostSubmitCause(error: unknown): string | undefined {
+  const cause = (error as any)?.cause;
+  if (!cause) return undefined;
+  return String(cause.message ?? cause)
+    .replace(/https?:\/\/[^\s"'<>]+/gi, '[url]')
+    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[jwt]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+/gi, 'Bearer [redacted]')
+    .replace(/(["']?(?:access_token|refresh_token|authorization|cookie|password|api[_-]?key)["']?\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;}]+)/gi, '$1[redacted]')
+    .replace(/[\r\n]+/g, ' ')
+    .slice(0, 600);
+}
+
 async function pollPicsartI2vResult(
   credId: number,
   model: PicsartI2vModelKey,
@@ -3370,11 +3384,11 @@ export async function generatePicsartI2v(input: {
           'Job tidak diulang agar tidak membuat generate ganda. Tambahkan token baru bila perlu:\n' +
           '/addpicsartkey rt:...'
         );
-        throw new Error(`PICSART_POST_SUBMIT_AUTH_LOST job=${id}`);
+        throw new Error(`PICSART_POST_SUBMIT_AUTH_LOST job=${id}`, { cause: e });
       }
       // Never let generic account failover interpret a post-acceptance error as
       // permission to submit a second paid Kling 4 job.
-      if (isKling4) throw new Error(`PICSART_KLING4_POST_SUBMIT_FAILED job=${id}`);
+      if (isKling4) throw new Error(`PICSART_KLING4_POST_SUBMIT_FAILED job=${id}`, { cause: e });
       throw e;
     }
   });
