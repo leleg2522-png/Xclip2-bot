@@ -93,6 +93,30 @@ duplicate inside Drive metadata, and validate serialized attributes before
 paid submission. Do not silently truncate prompts or replay accepted jobs.
 Verify finishing separately before claiming delivered 1080p.
 
+## Separate Edan Bot reference evidence
+
+A separate Edan Bot capture shows a completed Seedance 2.5 job submitted with
+one uploaded image and one uploaded video reference. The request selected
+30 seconds, 720p and 16:9. This is evidence for Edan's contract, not a direct
+Picsart Playground submit or proof of the output file's measured resolution.
+
+Edan uses `/api/uploads` for images, `/api/reference-uploads/media` for videos
+(multipart `file`, `model`, `duration`), then `/api/generate` with
+`model: seedance-2.5` and `fields.reference_images` / `fields.reference_videos`,
+alongside `prompt`, `aspect_ratio`, `duration`, and `resolution`.
+Polling is `/api/jobs/{job_id}`; the capture reaches `completed` with result
+and download URLs. Some earlier reference uploads returned HTTP 500; a later,
+different video succeeded. This does not establish a universally reliable
+upload flow.
+
+**Why:** Edan's browser API, internal credit amounts and reference-field names
+are different from the Picsart gateway used by the existing bot route.
+
+**How to apply:** Do not put Edan `reference_images` / `reference_videos` into
+Picsart's payload, infer Edan's upstream provider, or swap the existing
+Picsart route merely because this capture was supplied. Clarify whether the
+user wants a separate Edan option or a provider replacement.
+
 ## Historical Playground contract
 
 Reverse-engineered from an AI Playground HAR. Follows the same access-token / `commonHeaders()` pattern as the other Picsart workflow models.
