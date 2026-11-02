@@ -73,18 +73,25 @@ Do not claim a file bypasses the model's text limit, or that the bot's
 A real paid Playground test with exactly 20,000 ASCII prompt characters was
 accepted, then failed during result polling with `save_to_drive_failed_bad_request`:
 `'attributes' Attribute value must not exceed 20000 characters`.
-The current request duplicates the prompt inside Drive `aiSDKPayload`, alongside
+The original request duplicated the prompt inside Drive `aiSDKPayload`, alongside
 other metadata. Acceptance therefore does not establish successful long-prompt
 generation or delivery.
+
+A subsequent real paid T2V test completed with the same full 20,000-character
+ASCII prompt in `content[].text` after removing the duplicate `prompt` from
+Drive `aiSDKPayload`. The result was a native 30-second video with audio,
+and mandatory external 1080p finishing also completed while preserving audio.
+This verifies that contract, not a universal model prompt maximum or every
+reference modality.
 
 **Why:** The storage failure occurs after paid submission. Treating the bot's
 20,000-character input limit as an end-to-end verified allowance can consume
 provider credits without producing a deliverable.
 
-**How to apply:** Validate the serialized Drive metadata separately from the
-generation text, or verify a reduced-metadata contract that preserves the full
-prompt in `content[].text`. Do not silently truncate prompts. Do not claim the
-reduced-metadata approach works until tested, and do not replay accepted jobs.
+**How to apply:** Keep the full generation prompt in `content[].text`, not a
+duplicate inside Drive metadata, and validate serialized attributes before
+paid submission. Do not silently truncate prompts or replay accepted jobs.
+Verify finishing separately before claiming delivered 1080p.
 
 ## Historical Playground contract
 

@@ -158,6 +158,12 @@ async function checkSubmitContract() {
     assert.equal(captured.content[2].role, 'reference_image');
     assert.equal(captured.content[0].video_url.url, 'https://example.test/video.mp4');
     assert.equal(captured.content[1].audio_url.url, 'https://example.test/audio.mp3');
+    const priorPayload = captured;
+    await assert.rejects(() => context.submitSeedance(1, {
+      prompt: 'test', imageUrls: ['https://example.test/' + 'x'.repeat(20000)],
+      duration: 30, resolution: '480p', ratio: '16:9',
+    }), /PICSART_SEEDANCE25_METADATA_TOO_LARGE/);
+    assert.equal(captured, priorPayload, 'Oversized metadata must fail before a paid HTTP submit');
   }
 }
 

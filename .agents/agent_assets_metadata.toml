@@ -719,3 +719,17 @@ mtime_ms = 1793451593937
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/64d63e39-1ba8-42d2-93ec-043b1e9f88a3/2bcca9ed-dc3e-4baa-9202-9bf2ee59d813"
 storage_version_token = "1793451611616395"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "4s_H27Nd8UmJ4z7i7u3vf"
+uri = "file://generated-artifacts/seedance25-txt-compact-metadata/output-1080p.mp4"
+type = "video"
+title = "Hasil uji TXT 20.000 karakter — Seedance 2.5"
+description = "Uji nyata berhasil: prompt TXT lengkap 20.000 karakter, video 30 detik dengan audio, selesai upscale 1080 × 1882. Saldo pengguna bot tidak dipotong."
+logical_id = "652b1523-42e0-4afe-ba24-c27eeba4ae5e"
+content_hash = "sha256:ff88d8bb0eae81f4a4cba7878df9defe6d0792b1a9030fa9469258d1896eb19f"
+size = 26532811
+mtime_ms = 1793614787601
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/652b1523-42e0-4afe-ba24-c27eeba4ae5e/557e80f4-2ad8-45cb-bc1d-0af8834dc903"
+storage_version_token = "1793614847315490"
+content_type = "video/mp4"

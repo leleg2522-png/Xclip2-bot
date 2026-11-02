@@ -1902,7 +1902,8 @@ export async function submitSeedance(credId: number, input: {
         attributes: {
           model: 'seedance-2.5',
           aiSDKPayload: JSON.stringify({
-            prompt: input.prompt ?? '',
+            // The full prompt belongs in content[].text only. Drive attributes
+            // have a separate 20k storage limit, checked AFTER paid generation.
             aspectRatio: input.ratio,
             resolution,
             duration: input.duration,
@@ -1920,6 +1921,9 @@ export async function submitSeedance(credId: number, input: {
       },
     },
   };
+  if (JSON.stringify(params.options.drive.attributes).length > 20000) {
+    throw new Error('PICSART_SEEDANCE25_METADATA_TOO_LARGE: reference metadata exceeds Drive storage limit');
+  }
   const r = await http.post(`${API_BASE}/gw-v2/workflows/seedance/submit`, { params }, {
     headers: commonHeaders({
       'content-type': 'application/json',

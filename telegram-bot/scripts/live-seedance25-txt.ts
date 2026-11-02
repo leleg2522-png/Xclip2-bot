@@ -7,7 +7,10 @@ import { initPicsart, getCredits, submitSeedance, pollSeedanceResult } from '../
 import { decodeSeedance25Txt } from '../src/seedance25-prompt';
 
 if (!process.argv.includes('--paid')) throw Error('PAID_AUTHORIZATION_REQUIRED');
-const dir = path.resolve(__dirname, '../../generated-artifacts/seedance25-txt-live');
+const compactMetadata = process.argv.includes('--compact-metadata');
+const dir = path.resolve(__dirname, compactMetadata
+  ? '../../generated-artifacts/seedance25-txt-compact-metadata'
+  : '../../generated-artifacts/seedance25-txt-live');
 fs.mkdirSync(dir, { recursive: true });
 const stateFile = path.join(dir, 'state.json');
 let state: any = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : {};

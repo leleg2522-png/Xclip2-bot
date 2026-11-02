@@ -8,7 +8,9 @@ import { generateRenderful1080 } from '../src/renderful-auto-upscale';
 import { inspectFloraUpscaleVideo, normalizeFlora1080 } from '../src/flora-upscale-media';
 
 if (!process.argv.includes('--paid')) throw Error('PAID_AUTHORIZATION_REQUIRED');
-const dir = path.resolve(__dirname, '../../generated-artifacts/seedance25-txt-live');
+const dir = path.resolve(__dirname, process.argv.includes('--compact-metadata')
+  ? '../../generated-artifacts/seedance25-txt-compact-metadata'
+  : '../../generated-artifacts/seedance25-txt-live');
 const stateFile = path.join(dir, 'finishing.json');
 let native = JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'));
 let state: any = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : {};

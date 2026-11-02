@@ -227,6 +227,10 @@ async function checkDocumentToProviderPayload() {
   const content = posted.params.content.find((item: any) => item.type === 'text');
   assert.equal(content.text, prompt);
   assert.equal(content.text.length, 20000);
+  const metadata = posted.params.options.drive.attributes;
+  assert.ok(!('prompt' in JSON.parse(metadata.aiSDKPayload)),
+    'Do not duplicate long prompts into the separately limited Drive metadata');
+  assert.ok(JSON.stringify(metadata).length < 20000);
   assert.equal(posted.params.resolution, '480p');
   assert.equal(posted.params.duration, 30);
   assert.equal(submitCount, 1); assert.equal(finishCount, 1);
