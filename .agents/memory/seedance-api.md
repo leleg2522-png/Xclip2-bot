@@ -68,6 +68,24 @@ locally and send its decoded contents through the existing text parameter.
 Do not claim a file bypasses the model's text limit, or that the bot's
 20,000-character validation is an officially verified Picsart limit.
 
+## Playground storage limit for long prompts
+
+A real paid Playground test with exactly 20,000 ASCII prompt characters was
+accepted, then failed during result polling with `save_to_drive_failed_bad_request`:
+`'attributes' Attribute value must not exceed 20000 characters`.
+The current request duplicates the prompt inside Drive `aiSDKPayload`, alongside
+other metadata. Acceptance therefore does not establish successful long-prompt
+generation or delivery.
+
+**Why:** The storage failure occurs after paid submission. Treating the bot's
+20,000-character input limit as an end-to-end verified allowance can consume
+provider credits without producing a deliverable.
+
+**How to apply:** Validate the serialized Drive metadata separately from the
+generation text, or verify a reduced-metadata contract that preserves the full
+prompt in `content[].text`. Do not silently truncate prompts. Do not claim the
+reduced-metadata approach works until tested, and do not replay accepted jobs.
+
 ## Historical Playground contract
 
 Reverse-engineered from an AI Playground HAR. Follows the same access-token / `commonHeaders()` pattern as the other Picsart workflow models.
