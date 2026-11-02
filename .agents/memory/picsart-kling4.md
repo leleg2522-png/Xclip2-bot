@@ -5,6 +5,31 @@ description: Captured Kling 4 T2V completion, I2V quote acceptance, native setti
 
 # Kling 4 contracts
 
+## Non-regular reference contract
+
+The user requested video references and the documented maximum image count for
+the existing non-regular Kling 4 product, not a change to Kling 4 Pro/regular.
+Use up to eight reference images and one reference video; offer feature
+reference versus base edit and permit video-only input.
+
+**Why:** The official Picsart Omni playground schema explicitly sets
+`imageUrls.array.max` to 8 and exposes singular `videoUrl`. Marketing's broader
+"15 references" claim aggregates other asset types and must not override this
+image-field limit. The compatibility API maps these to `image_list` and
+`video_list` with `refer_type: feature|base`.
+
+**How to apply:** Keep regular start/end routes and T2V reference-free behavior
+separate. Docs do not specify a reference-video byte/duration limit; label the
+19MB MP4 restriction as the bot's operational limit, never as a Picsart limit.
+Do not confuse the output duration cap with an input-video duration limit.
+Video orders need an actual full-input credit quote rather than the historical
+image-only 90-credit assumption. Preserve mandatory 1080p finishing and refunds.
+Documentation and local contract tests are not evidence of a completed live
+Playground video-reference generation.
+
+Sources: https://picsart.com/api-platform/models/kling-v4-omni/advanced and
+https://picsart.com/api-platform/models/kling-v4-omni/api .
+
 ## Regular Kling 4 is an additional product
 
 The public bot name for this new product is **Kling 4 Pro**, not Kling 4 Reguler.

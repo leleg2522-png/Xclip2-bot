@@ -2,6 +2,9 @@ export const KLING4_MODEL = 'kling-v4-omni';
 export const KLING4_DURATION_SECONDS = 30;
 export const KLING4_RESOLUTION = '720p';
 export const KLING4_CREDITS = 90;
+// Picsart's Kling v4 Omni playground schema: imageUrls.array.max = 8;
+// videoUrl is singular. Do not apply these to regular start/end-frame routes.
+export const KLING4_MAX_REFERENCE_IMAGES = 8;
 export const KLING4_DURATIONS = [10, 15, 30] as const;
 export type Kling4Duration = typeof KLING4_DURATIONS[number];
 
@@ -11,6 +14,8 @@ export function buildKling4Params(input: {
   ratio: '9:16' | '16:9';
   imageUrl?: string;
   imageUrls?: string[];
+  videoUrl?: string;
+  referType?: 'feature' | 'base';
   duration?: Kling4Duration;
   outputName?: string;
 }): Record<string, unknown> {
@@ -21,15 +26,16 @@ export function buildKling4Params(input: {
   }
   const imageUrls = input.imageUrls?.length ? input.imageUrls : input.imageUrl ? [input.imageUrl] : [];
   if (input.mode === 'i2v') {
-    if (imageUrls.length === 0) throw new Error('PICSART_KLING4_IMAGE_REQUIRED');
-    if (imageUrls.length > 5) throw new Error('PICSART_KLING4_TOO_MANY_IMAGES');
-    for (const imageUrl of imageUrls) {
+    if (imageUrls.length === 0 && !input.videoUrl) throw new Error('PICSART_KLING4_IMAGE_REQUIRED');
+    if (imageUrls.length > KLING4_MAX_REFERENCE_IMAGES) throw new Error('PICSART_KLING4_TOO_MANY_IMAGES');
+    if (input.referType && !['feature', 'base'].includes(input.referType)) throw Error('PICSART_KLING4_INVALID_VIDEO_MODE');
+    for (const imageUrl of [...imageUrls, ...(input.videoUrl ? [input.videoUrl] : [])]) {
       try {
         const url = new URL(imageUrl);
         if (url.protocol !== 'https:' || url.username || url.password) throw Error();
       } catch { throw new Error('PICSART_KLING4_IMAGE_REQUIRED'); }
     }
-  } else if (input.mode !== 't2v' || imageUrls.length) {
+  } else if (input.mode !== 't2v' || imageUrls.length || input.videoUrl) {
     throw new Error('PICSART_KLING4_UNEXPECTED_IMAGE');
   }
   return {
@@ -38,7 +44,8 @@ export function buildKling4Params(input: {
     duration: String(duration),
     model_name: KLING4_MODEL,
     resolution: KLING4_RESOLUTION,
-    ...(input.mode === 'i2v' ? { image_list: imageUrls.map(image_url => ({ image_url })) } : {}),
+    ...(input.mode === 'i2v' && imageUrls.length ? { image_list: imageUrls.map(image_url => ({ image_url })) } : {}),
+    ...(input.videoUrl ? { video_list: [{ video_url: input.videoUrl, refer_type: input.referType ?? 'feature' }] } : {}),
     options: {
       inputs_transformation: { downscale_oversized_images: true },
       drive: {
@@ -50,7 +57,8 @@ export function buildKling4Params(input: {
             aspectRatio: input.ratio,
             duration,
             resolution: KLING4_RESOLUTION,
-            referType: 'feature',
+            referType: input.referType ?? 'feature',
+            ...(input.videoUrl ? { videoUrl: input.videoUrl } : {}),
             ...(input.mode === 'i2v' ? { imageUrls } : {}),
           }),
           appId: 'com.picsart.ai-playground',

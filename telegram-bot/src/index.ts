@@ -33,6 +33,7 @@ import {
 import { inspectSeedance25Media } from './seedance25-media';
 import { SEEDANCE25_P2, generateSeedance25P2, validateP2References } from './seedance25-edan';
 import { seedance25P2Diagnostic } from './seedance25-p2-diagnostic';
+import { KLING4_REFERENCE_VIDEO_MAX_BYTES } from './kling4-reference-video';
 import { createSeedance25P2Bot, type P2Draft, type P2Job, type P2Mode } from './seedance25-edan-bot';
 import {
   SEEDANCE25_MAX_TXT_BYTES, validateSeedance25Prompt,
@@ -1977,6 +1978,10 @@ interface Session {
   picsartI2vDisplayLabel?: string;
   picsartI2vImageUrl?: string;
   picsartI2vImageUrls?: string[];
+  picsartI2vVideoFileId?: string;
+  picsartI2vVideoMode?: 'feature' | 'base';
+  picsartI2vDraftId?: string;
+  picsartI2vPendingImages?: number;
   picsartI2vFrameMessageIds?: number[];
   picsartI2vPriceKey?: 'picsart_wan_v3';
   // Separate Seedance 2 Mini Video Edit wizard state.
@@ -2765,11 +2770,13 @@ function supportsMultiplePicsartI2vImages(model?: picsart.PicsartI2vModelKey): b
     || model === 'seedance_2_fast'
     || model === 'seedance_2'
     || model === 'kling_v4'
+    || model === 'kling_v4_omni'
     || model === 'wan_v3';
 }
 
 function maxPicsartI2vImages(model?: picsart.PicsartI2vModelKey): number {
-  return model === 'kling_v3' ? KLING_V3_PRO.maxImages : picsart.PICSART_I2V_MAX_IMAGES;
+  return model === 'kling_v4' || model === 'kling_v4_omni' ? 8
+    : model === 'kling_v3' ? KLING_V3_PRO.maxImages : picsart.PICSART_I2V_MAX_IMAGES;
 }
 
 function picsartI2vRatioKeyboard() {
@@ -5175,6 +5182,8 @@ bot.on('callback_query', async (ctx) => {
       picsartI2vRatio: ratio,
       picsartI2vImageUrl: undefined,
       picsartI2vFrameMessageIds: undefined,
+      picsartI2vVideoFileId: undefined, picsartI2vVideoMode: 'feature',
+      picsartI2vDraftId: `${userId}:${Date.now()}:${Math.random()}`, picsartI2vPendingImages: 0,
       picsartI2vImageUrls: supportsMultiplePicsartI2vImages(model) ? [] : undefined,
       picsartI2vPriceKey: model === 'wan_v3' ? 'picsart_wan_v3' : undefined,
     });
@@ -5188,10 +5197,12 @@ bot.on('callback_query', async (ctx) => {
         ? '*Langkah 1:* Kirim *satu gambar awal (start frame)* untuk dianimasikan.'
         : model === 'kling_v4_t2v'
         ? '*Langkah terakhir:* Kirim *prompt teks* (deskripsi adegan). Tidak perlu foto.'
+        : model === 'kling_v4' || model === 'kling_v4_omni'
+        ? '*Langkah 1:* Kirim hingga *8 gambar referensi* dan/atau *1 video MP4*. Batas video bot: *19MB*. Lalu tekan *Lanjut ke Prompt*. Video dapat menjadi referensi gerakan atau bahan edit.'
         : supportsMultiplePicsartI2vImages(model)
         ? `*Langkah 1:* Kirim *1–${picsart.PICSART_I2V_MAX_IMAGES} foto acuan* untuk video kamu.`
         : '*Langkah 1:* Kirim *foto acuan* untuk video kamu.'),
-      { parse_mode: 'Markdown' }
+      { parse_mode: 'Markdown', ...((model === 'kling_v4' || model === 'kling_v4_omni') ? picsartI2vAddPhotoKeyboard(0, model) : {}) }
     );
   }
 
@@ -5217,14 +5228,24 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  if (data === 'picsart_kling4_video_feature' || data === 'picsart_kling4_video_base') {
+    const draft = getSession(userId);
+    if (draft.mode !== 'picsart_i2v_wait_image'
+      || !['kling_v4', 'kling_v4_omni'].includes(draft.picsartI2vModel ?? '')) return;
+    const videoMode = data.endsWith('_base') ? 'base' : 'feature';
+    setSession(userId, { picsartI2vVideoMode: videoMode });
+    return ctx.reply(videoMode === 'base' ? 'Mode video: bahan edit (base).' : 'Mode video: referensi gerakan (feature).');
+  }
+
   if (data === 'picsart_i2v_photos_done') {
     const session = getSession(userId);
+    if (session.picsartI2vPendingImages) return ctx.answerCbQuery('Tunggu semua gambar selesai diterima.').catch(() => {});
     const imageCount = session.picsartI2vImageUrls?.length ?? 0;
       if (
         session.mode !== 'picsart_i2v_wait_image'
         || !session.picsartI2vModel
         || !supportsMultiplePicsartI2vImages(session.picsartI2vModel)
-        || imageCount < 1
+        || (imageCount < 1 && !(['kling_v4', 'kling_v4_omni'].includes(session.picsartI2vModel) && session.picsartI2vVideoFileId))
       ) {
       return ctx.answerCbQuery('Kirim minimal 1 foto dulu ya.').catch(() => {});
     }
@@ -5232,7 +5253,7 @@ bot.on('callback_query', async (ctx) => {
       const label = session.picsartI2vDisplayLabel ?? picsart.PICSART_I2V_MODELS[model].label;
     setSession(userId, { mode: 'picsart_i2v_wait_prompt' });
     return ctx.editMessageText(
-      `🌀 *${label}*\n\n✅ ${imageCount} foto acuan diterima.\n\n*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).`,
+      `🌀 *${label}*\n\n✅ ${imageCount} foto acuan${session.picsartI2vVideoFileId ? ' + 1 video referensi' : ''} diterima.\n\n*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -6333,10 +6354,55 @@ function imgAddPhotoKeyboard() {
 }
 
 function picsartI2vAddPhotoKeyboard(count: number, model?: picsart.PicsartI2vModelKey) {
+  if (model === 'kling_v4' || model === 'kling_v4_omni') {
+    return Markup.inlineKeyboard([
+      [Markup.button.callback('Video: Referensi Gerakan', 'picsart_kling4_video_feature')],
+      [Markup.button.callback('Video: Bahan Edit', 'picsart_kling4_video_base')],
+      [Markup.button.callback('✅ Lanjut ke Prompt', 'picsart_i2v_photos_done')],
+    ]);
+  }
   return Markup.inlineKeyboard([
     [Markup.button.callback(model === 'kling_v3' ? '➕ Tambah Frame Akhir' : `➕ Tambah Foto (${count}/${picsart.PICSART_I2V_MAX_IMAGES})`, 'picsart_i2v_add_photo')],
     [Markup.button.callback('✅ Lanjut ke Prompt', 'picsart_i2v_photos_done')],
   ]);
+}
+
+async function handleKling4ReferenceVideo(ctx: any, file: { file_id: string; file_size?: number; mime_type?: string; file_name?: string }) {
+  const userId = ctx.from.id;
+  const draft = getSession(userId);
+  if (draft.mode !== 'picsart_i2v_wait_image'
+    || !['kling_v4', 'kling_v4_omni'].includes(draft.picsartI2vModel ?? '')) return;
+  if (draft.picsartI2vVideoFileId) return ctx.reply('Maksimal 1 video referensi. Video sebelumnya sudah diterima.');
+  if (file.mime_type && file.mime_type !== 'video/mp4'
+    && !(file.mime_type === 'application/octet-stream' && /\.mp4$/i.test(file.file_name ?? ''))) return ctx.reply('Gunakan video MP4 untuk referensi Kling 4.');
+  if (file.file_size && file.file_size > KLING4_REFERENCE_VIDEO_MAX_BYTES) return ctx.reply('Batas download video bot: 19MB. Kompres video terlebih dahulu.');
+  setSession(userId, { picsartI2vVideoFileId: file.file_id });
+  return ctx.reply(`✅ 1 video referensi diterima. Mode: ${draft.picsartI2vVideoMode ?? 'feature'}.\nKamu juga dapat menambah gambar (maksimal 8), lalu tekan Lanjut ke Prompt.`,
+    picsartI2vAddPhotoKeyboard(draft.picsartI2vImageUrls?.length ?? 0, draft.picsartI2vModel));
+}
+
+async function handleKling4ReferencePhoto(ctx: any, fileId: string) {
+  const userId = ctx.from.id;
+  const draft = getSession(userId);
+  const draftId = draft.picsartI2vDraftId;
+  if (draft.mode !== 'picsart_i2v_wait_image'
+    || !['kling_v4', 'kling_v4_omni'].includes(draft.picsartI2vModel ?? '')) return;
+  if ((draft.picsartI2vImageUrls?.length ?? 0) + (draft.picsartI2vPendingImages ?? 0) >= 8) {
+    return ctx.reply('Maksimal 8 gambar referensi. Tunggu upload selesai atau lanjut ke prompt.');
+  }
+  setSession(userId, { picsartI2vPendingImages: (draft.picsartI2vPendingImages ?? 0) + 1 });
+  try {
+    const link = await retryTelegramFileRead<{ href: string }>(() => ctx.telegram.getFileLink(fileId)).catch(() => null);
+    const current = getSession(userId);
+    if (current.mode !== 'picsart_i2v_wait_image' || current.picsartI2vDraftId !== draftId) return;
+    if (!link) return retryTelegramRateLimit(() => ctx.reply('Gambar referensi tidak bisa dibaca. Kirim ulang gambar atau /menu untuk batal.'));
+    return await handleImageInput(ctx, link.href, fileId);
+  } finally {
+    const current = getSession(userId);
+    if (current.picsartI2vDraftId === draftId) {
+      setSession(userId, { picsartI2vPendingImages: Math.max(0, (current.picsartI2vPendingImages ?? 0) - 1) });
+    }
+  }
 }
 
 function seedance25InputKeyboard() {
@@ -6530,8 +6596,11 @@ async function submitPicsartI2vPrompt(ctx: any, rawPrompt: string, expectedDraft
   const imageUrls = activeDraft.picsartI2vImageUrls?.length
     ? activeDraft.picsartI2vImageUrls
     : activeDraft.picsartI2vImageUrl ? [activeDraft.picsartI2vImageUrl] : [];
+  const referenceModel = model === 'kling_v4' || model === 'kling_v4_omni';
+  const videoFileId = referenceModel ? activeDraft.picsartI2vVideoFileId : undefined;
+  const referType = referenceModel ? activeDraft.picsartI2vVideoMode ?? 'feature' : undefined;
   if (!activeDraft.dbUserId || !model || !isPicsartI2vModelKey(model)
-    || (model !== 'kling_v4_t2v' && imageUrls.length === 0)
+    || (model !== 'kling_v4_t2v' && imageUrls.length === 0 && !videoFileId)
     || (model === 'kling_v4_t2v' && imageUrls.length > 0)
     || (model === 'kling_v4_regular' && imageUrls.length !== 1)
     || (model === 'kling_v4_frames' && imageUrls.length !== 2)) {
@@ -6563,6 +6632,8 @@ async function submitPicsartI2vPrompt(ctx: any, rawPrompt: string, expectedDraft
   setSession(userId, {
     mode: 'idle', picsartI2vImageUrl: undefined, picsartI2vImageUrls: undefined,
     picsartI2vFrameMessageIds: undefined, picsartI2vRatio: undefined,
+    picsartI2vVideoFileId: undefined, picsartI2vVideoMode: undefined,
+    picsartI2vDraftId: undefined, picsartI2vPendingImages: 0,
     picsartI2vDuration: undefined, picsartI2vDisplayLabel: undefined, picsartI2vPriceKey: undefined,
   });
   const statusMsg = await ctx.reply(
@@ -6570,7 +6641,7 @@ async function submitPicsartI2vPrompt(ctx: any, rawPrompt: string, expectedDraft
     { parse_mode: 'Markdown' }
   );
   runPicsartI2v(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, {
-    model, imageUrls, ratio, duration, displayLabel, priceKey,
+    model, imageUrls, ratio, duration, displayLabel, priceKey, videoFileId, referType,
   }).catch(e => console.error(`[${userId}] ${publicLabel} error:`, e.message));
 }
 
@@ -6862,13 +6933,21 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     const publicSettingsLabel = picsartI2vPublicSettings(model, settingsLabel, session.picsartI2vDuration);
     if (supportsMultiplePicsartI2vImages(model)) {
       const maxImages = maxPicsartI2vImages(model);
+      const referenceModel = model === 'kling_v4' || model === 'kling_v4_omni';
+      const received = session.picsartI2vFrameMessageIds ?? [];
+      const messageId = ctx.message?.message_id;
+      if (referenceModel && messageId && received.includes(messageId)) return;
+      if (referenceModel && (session.picsartI2vImageUrls?.length ?? 0) >= maxImages) {
+        return ctx.reply('Maksimal 8 gambar referensi. Kamu masih bisa menambah 1 video atau lanjut ke prompt.', picsartI2vAddPhotoKeyboard(maxImages, model));
+      }
       const imageUrls = [...(session.picsartI2vImageUrls ?? []), fileUrl]
         .slice(0, maxImages);
-      const reachedLimit = imageUrls.length >= maxImages;
+      const reachedLimit = !referenceModel && imageUrls.length >= maxImages;
       setSession(userId, {
         picsartI2vImageUrl: imageUrls[0],
         picsartI2vImageUrls: imageUrls,
         mode: reachedLimit ? 'picsart_i2v_wait_prompt' : 'picsart_i2v_wait_image',
+        ...(referenceModel && messageId ? { picsartI2vFrameMessageIds: [...received, messageId] } : {}),
       });
       if (reachedLimit) {
         return ctx.reply(
@@ -7141,6 +7220,9 @@ bot.on('photo', async (ctx) => {
     if (photo.file_size && photo.file_size > SEEDANCE25_MAX_MEDIA_BYTES) return ctx.reply('Maksimal 19MB per file referensi.');
     return handleImageInput(ctx, '', photo.file_id);
   }
+  if (draft.mode === 'picsart_i2v_wait_image' && ['kling_v4', 'kling_v4_omni'].includes(draft.picsartI2vModel ?? '')) {
+    return handleKling4ReferencePhoto(ctx, photo.file_id);
+  }
   const fileLink = await ctx.telegram.getFileLink(photo.file_id);
   const orderedKling4Frame = draft.mode === 'picsart_i2v_wait_image'
     && (draft.picsartI2vModel === 'kling_v4_regular' || draft.picsartI2vModel === 'kling_v4_frames');
@@ -7158,6 +7240,10 @@ bot.on('video', async (ctx) => {
   const session = getSession(userId);
   const vid = ctx.message.video;
   const MAX_VIDEO_BYTES = 19 * 1024 * 1024; // 19MB — Telegram bot API limit is 20MB
+
+  if (session.mode === 'picsart_i2v_wait_image' && ['kling_v4', 'kling_v4_omni'].includes(session.picsartI2vModel ?? '')) {
+    return handleKling4ReferenceVideo(ctx, vid);
+  }
 
   if (session.mode === 'lipsync_wait_media') {
     if (session.lipsyncMediaType !== 'video') {
@@ -8629,6 +8715,11 @@ bot.on('document', async (ctx) => {
   const session = getSession(userId);
   const doc = ctx.message.document;
 
+  if (session.mode === 'picsart_i2v_wait_image' && ['kling_v4', 'kling_v4_omni'].includes(session.picsartI2vModel ?? '')
+    && (doc.mime_type?.startsWith('video/') || /\.mp4$/i.test(doc.file_name ?? ''))) return handleKling4ReferenceVideo(ctx, doc);
+  if (session.mode === 'picsart_i2v_wait_image' && ['kling_v4', 'kling_v4_omni'].includes(session.picsartI2vModel ?? '')
+    && doc.mime_type?.startsWith('image/')) return handleKling4ReferencePhoto(ctx, doc.file_id);
+
   if (session.mode === 'oneover_wait_prompt') return handleSeedance25Txt(ctx);
   if (session.mode === 'picsart_i2v_wait_prompt'
     && ['kling_v4_regular', 'kling_v4_frames'].includes(session.picsartI2vModel ?? '')) return handleKling4ProTxt(ctx);
@@ -9697,6 +9788,8 @@ async function runPicsartI2v(
   opts: {
     model: picsart.PicsartI2vModelKey;
     imageUrls: string[];
+    videoFileId?: string;
+    referType?: 'feature' | 'base';
     ratio?: picsart.WanV3AspectRatio;
     duration?: Kling4Duration;
     displayLabel?: string;
@@ -9731,7 +9824,10 @@ async function runPicsartI2v(
 
   try {
     stage = 'download';
-    const maxImages = opts.model === 'kling_v4_frames' ? 2 : supportsMultiplePicsartI2vImages(opts.model) ? picsart.PICSART_I2V_MAX_IMAGES : 1;
+    const maxImages = opts.model === 'kling_v4_frames' ? 2
+      : opts.model === 'kling_v4' || opts.model === 'kling_v4_omni' ? 8
+      : supportsMultiplePicsartI2vImages(opts.model) ? picsart.PICSART_I2V_MAX_IMAGES : 1;
+    if ((opts.model === 'kling_v4' || opts.model === 'kling_v4_omni') && opts.imageUrls.length > maxImages) throw Error('PICSART_KLING4_TOO_MANY_IMAGES');
     const images = await Promise.all(
       opts.imageUrls.slice(0, maxImages).map(async (imageUrl, index) => {
         const image = await downloadBuffer(imageUrl);
@@ -9746,11 +9842,21 @@ async function runPicsartI2v(
     console.log(`[${userId}] ${label} started — ${settingsLabel}, ${images.length} image(s) ${totalKb.toFixed(1)}KB`);
 
     let lastEdit = 0;
+    let video: { buffer: Buffer; name: string; mime: string } | undefined;
+    if (opts.videoFileId) {
+      if (opts.model !== 'kling_v4' && opts.model !== 'kling_v4_omni') throw Error('PICSART_KLING4_UNEXPECTED_VIDEO');
+      const link = await retryTelegramFileRead(() => bot.telegram.getFileLink(opts.videoFileId!));
+      const response = await retryTelegramFileRead(() => telegramHttp.get(link.href, {
+        responseType: 'arraybuffer', timeout: 60000, maxContentLength: KLING4_REFERENCE_VIDEO_MAX_BYTES,
+      }));
+      video = { buffer: Buffer.from(response.data), name: 'reference.mp4', mime: 'video/mp4' };
+    }
     const result = await picsart.generatePicsartI2v({
       userId: dbUserId,
       model: opts.model,
       prompt,
       images,
+      video, referType: opts.referType,
       ratio: opts.ratio,
       duration: opts.duration,
       onStatus: (providerStage) => {
