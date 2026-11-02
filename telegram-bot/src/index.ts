@@ -51,6 +51,7 @@ import { registerChinaApiAdmin } from './chinaapi-admin';
 import { generateRenderful1080 } from './renderful-auto-upscale';
 import { inspectFloraUpscaleVideo, normalizeFlora1080 } from './flora-upscale-media';
 import { retryTelegramFileRead, redactTelegramToken } from './telegram-file-retry';
+import { isTelegramRateLimitError, telegramRetryAfterSeconds, retryTelegramRateLimit } from './telegram-rate-limit';
 import { KLING4_DURATIONS, type Kling4Duration } from './picsart-kling4';
 import {
   KLING4_PRO_MAX_TXT_BYTES, KLING4_PRO_PROMPT_HELP, validateKling4ProPrompt,
@@ -6396,21 +6397,23 @@ async function submitSeedance25Prompt(ctx: any, rawPrompt: string, expectedSetti
   let audios: Seedance25ResolvedMedia[];
   try {
     imageUrls = await Promise.all(
-      imageFileIds.map(async (fileId) => (await bot.telegram.getFileLink(fileId)).href)
+      imageFileIds.map(async (fileId) => (await retryTelegramFileRead(() => bot.telegram.getFileLink(fileId))).href)
     );
     const resolve = async (file: Seedance25Media): Promise<Seedance25ResolvedMedia> => ({
-      url: (await bot.telegram.getFileLink(file.fileId)).href, mime: file.mime, duration: file.duration,
+      url: (await retryTelegramFileRead(() => bot.telegram.getFileLink(file.fileId))).href, mime: file.mime, duration: file.duration,
     });
     videos = await Promise.all(videoFiles.map(resolve));
     audios = await Promise.all(audioFiles.map(resolve));
-  } catch {
+  } catch (error: any) {
     // Telegram file URLs can contain the bot token: do not log raw read errors.
-    return ctx.reply('❌ Referensi tidak bisa dibaca. Mulai ulang dari /menu.');
+    const code = Number(error?.response?.error_code);
+    console.warn(`[seedance25:reference] link resolution failed code=${Number.isFinite(code) ? code : 'network-or-file'}`);
+    return retryTelegramRateLimit(() => ctx.reply('❌ Referensi tidak bisa dibaca. Mulai ulang dari /menu.'));
   }
-  const statusMsg = await ctx.reply(
+  const statusMsg = await retryTelegramRateLimit<{ message_id: number }>(() => ctx.reply(
     `⏳ Memproses Seedance 2.5 (${settings.ratio}, ${settings.resolution}p melalui upscale)...\nHasil dikirim otomatis setelah selesai.`,
     { parse_mode: 'Markdown' }
-  );
+  ));
   runPicsartSeedance25(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, imageUrls, settings, videos, audios)
     .catch((e: any) => console.error(`[${userId}] Seedance 2.5 error:`, e.message));
 }
@@ -12959,7 +12962,7 @@ app.listen(PORT, () => {
 
 // Global guard: a thrown error inside any command must NOT crash the whole bot
 // (a crash restarts the process and wipes all in-memory logins → "login mulu").
-bot.catch((err, ctx) => {
+bot.catch(async (err, ctx) => {
   const anyErr = err as any;
   const desc: string = anyErr?.response?.description || anyErr?.message || '';
 
@@ -12976,9 +12979,13 @@ bot.catch((err, ctx) => {
     return;
   }
 
+  if (isTelegramRateLimitError(err)) {
+    console.warn(`⚠️ Telegram rate limit on ${ctx?.updateType}; retry_after=${telegramRetryAfterSeconds(err) ?? 'unknown'}s; no extra reply`);
+    return;
+  }
   console.error(`⚠️ Bot error on update ${ctx?.updateType}:`, err);
   try {
-    ctx?.reply('⚠️ Terjadi error sebentar, coba lagi ya.');
+    await ctx?.reply('⚠️ Terjadi error sebentar, coba lagi ya.');
   } catch {
     /* ignore reply failures */
   }

@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { Telegraf } from 'telegraf';
+import { retryTelegramFileRead } from '../src/telegram-file-retry';
+import { retryTelegramRateLimit } from '../src/telegram-rate-limit';
 import * as limits from '../src/seedance25-picsart';
 import {
   SEEDANCE25_MAX_TXT_BYTES, validateSeedance25Prompt,
@@ -55,9 +57,15 @@ function harness() {
   let body = Buffer.from('complete prompt'), failed = false, cooldown = 0;
   let gate: Promise<void> = Promise.resolve();
   const jobs: any[][] = [], messages: string[] = [], downloads: any[] = [];
-  const getFileLink = async (fileId: string) => ({ href: `https://example.test/${fileId}` });
+  const linkErrors: any[] = [], replyErrors: any[] = [], waits: number[] = [];
+  const getFileLink = async (fileId: string) => {
+    if (linkErrors.length) throw linkErrors.shift();
+    return { href: `https://example.test/${fileId}` };
+  };
   const context = vm.createContext({
     Buffer, SEEDANCE25_MAX_TXT_BYTES, validateSeedance25Prompt,
+    retryTelegramFileRead: (fn: any) => retryTelegramFileRead(fn, async ms => { waits.push(ms); }),
+    retryTelegramRateLimit: (fn: any) => retryTelegramRateLimit(fn, async ms => { waits.push(ms); }),
     validateSeedance25TxtDocument, decodeSeedance25Txt, validateSeedance25Request,
     getSession: () => session,
     setSession: (_: number, update: any) => { session = { ...session, ...update }; },
@@ -69,16 +77,19 @@ function harness() {
     } },
     bot: { telegram: { getFileLink } },
     runPicsartSeedance25: async (...args: any[]) => { jobs.push(args); },
-    console: { error: () => { throw Error('Must not log Telegram download errors'); } },
+    console: { warn() {}, error: () => { throw Error('Must not log Telegram download errors'); } },
   });
   vm.runInContext(helpers, context);
   const ctx = {
     from: { id: 1 }, chat: { id: 2 }, telegram: { getFileLink },
     message: { document: { file_id: 'script', file_name: 'script.txt' } },
-    reply: async (message: string) => { messages.push(message); return { message_id: 99 }; },
+    reply: async (message: string) => {
+      if (replyErrors.length) throw replyErrors.shift();
+      messages.push(message); return { message_id: 99 };
+    },
   };
   return {
-    session: () => session, jobs, messages, downloads,
+    session: () => session, jobs, messages, downloads, linkErrors, replyErrors, waits,
     set: (update: any) => { session = { ...session, ...update }; },
     body: (value: Buffer) => { body = value; }, fail: () => { failed = true; },
     cooldown: () => { cooldown = 10000; },
@@ -179,6 +190,7 @@ async function checkDocumentToProviderPayload() {
   });
   const context = vm.createContext({
     Buffer, ...limits, bot, SEEDANCE25_MAX_TXT_BYTES,
+    retryTelegramFileRead, retryTelegramRateLimit,
     validateSeedance25Prompt, validateSeedance25TxtDocument, decodeSeedance25Txt,
     getSession: () => current,
     setSession: (_: number, update: any) => { current = { ...current, ...update }; },
@@ -240,6 +252,24 @@ async function checkDocumentToProviderPayload() {
 }
 
 async function main() {
+  const rateLimit = () => Object.assign(Error('Too Many Requests'), {
+    response: { error_code: 429, parameters: { retry_after: 8 } },
+  });
+  const retry = harness();
+  retry.set({ seedance25Settings: { ...settings, mode: 'reference' }, seedance25ImageFileIds: ['ref'] });
+  retry.linkErrors.push(rateLimit()); retry.replyErrors.push(rateLimit());
+  await retry.text('A scene');
+  assert.deepEqual(retry.waits, [8000, 8000]);
+  assert.equal(retry.jobs.length, 1, '429 retries must never duplicate generation');
+  assert.equal(retry.messages.length, 1);
+  const invalid = harness();
+  invalid.set({ seedance25Settings: { ...settings, mode: 'reference' }, seedance25ImageFileIds: ['ref'] });
+  invalid.linkErrors.push(Object.assign(Error('invalid file'), { response: { error_code: 400 } }));
+  invalid.replyErrors.push(rateLimit());
+  await invalid.text('A scene');
+  assert.deepEqual(invalid.waits, [8000]);
+  assert.equal(invalid.jobs.length, 0, 'No paid generate after reference failure');
+  assert.match(invalid.messages[0], /Referensi tidak bisa dibaca/);
   checkDecoding(); await checkFlow(); await checkDocumentToProviderPayload();
   console.log('PASS Seedance 2.5 TXT: strict UTF-8, full long prompt, bounds, retry, references, shared text/TXT claim, cancellation and isolation.');
 }
