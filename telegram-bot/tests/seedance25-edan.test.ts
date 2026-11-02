@@ -40,10 +40,25 @@ async function providerTests() {
   });
   for (const bad of [[], [refs[0], refs[0]], [{ ...refs[1], duration: 31 }],
     [{ ...refs[1], duration: 1 }], [{ ...refs[0], size: SEEDANCE25_P2.maxBytes + 1 }],
-    Array.from({ length: 31 }, (_, i) => ({ ...refs[0], fileId: String(i) }))]) {
+    Array.from({ length: 11 }, (_, i) => ({ ...refs[0], fileId: String(i) }))]) {
     assert.throws(() => validateP2References(bad));
   }
   assert.throws(() => seedance25P2Request('move', '4:3' as any, assets));
+  const tenImages = Array.from({ length: 10 }, (_, i) => ({ ...refs[0], fileId: `image-${i}` }));
+  const tenVideos = Array.from({ length: 10 }, (_, i) => ({ ...refs[1], fileId: `video-${i}`, duration: 3 }));
+  validateP2References([...tenImages, ...tenVideos]);
+  const twentyAssets = [...tenImages, ...tenVideos].map(r => ({
+    kind: r.kind, url: `https://example.test/${r.fileId}`,
+  }));
+  const mixed = seedance25P2Request('Ten images and ten videos', '16:9', twentyAssets);
+  assert.equal(mixed.fields.reference_images.length, 10);
+  assert.equal(mixed.fields.reference_videos.length, 10);
+  for (const extra of [{ ...refs[0], fileId: 'image-eleven' }, { ...refs[1], fileId: 'video-eleven', duration: 2 }]) {
+    assert.throws(() => validateP2References([...tenImages, ...tenVideos, extra]), /10 gambar dan 10 video/);
+    assert.throws(() => seedance25P2Request('Too many', '16:9', [
+      ...twentyAssets, { kind: extra.kind, url: 'https://example.test/extra' },
+    ]));
+  }
   assert.throws(() => seedance25P2Request('move', '9:16', [{ kind: 'video', url: 'file:///private' }]));
   for (const failure of ['none', 'upload-auth', 'submit-auth', 'upload-500', 'submit-timeout', 'missing-id', 'poll-auth', 'poll-failed']) {
     const events = { uploads: 0, submits: 0, polls: 0, dead: [] as number[] };
@@ -239,6 +254,35 @@ async function billingTests() {
   assert.ok(source.includes("mode_oneover_seedance25: 'oneover'"));
 }
 
+async function tenPlusTenTests() {
+  for (const input of ['text', 'txt']) {
+    const h = uiHarness(); await h.start(); h.duration(3);
+    assert.match(h.replies.join(' '), /10 gambar dan 10 video sekaligus/);
+    await Promise.all(Array.from({ length: 10 }, (_, i) =>
+      h.message({ photo: [{ file_id: `photo-${i}`, file_unique_id: `p-${i}`, width: 1, height: 1 }] })));
+    await Promise.all(Array.from({ length: 10 }, (_, i) =>
+      h.message({ video: { file_id: `video-${i}`, file_unique_id: `v-${i}`, duration: 3, width: 1, height: 1 } })));
+    const draft = h.sessions.get(1).seedance25P2;
+    assert.equal(draft.refs.length, 20);
+    assert.equal(draft.pending.length, 0);
+    const count = h.downloads.length;
+    await h.message({ photo: [{ file_id: 'photo-eleven', file_unique_id: 'p-eleven', width: 1, height: 1 }] });
+    await h.message({ video: { file_id: 'video-eleven', file_unique_id: 'v-eleven', duration: 2, width: 1, height: 1 } });
+    assert.equal(h.downloads.length, count, 'Reject reference eleven of either kind before downloading');
+    assert.equal(h.sessions.get(1).seedance25P2.refs.length, 20);
+    await h.done();
+    if (input === 'text') await h.message({ text: 'Prompt for all twenty references' });
+    else {
+      h.body(Buffer.from('Prompt for all twenty references'));
+      await h.message({ document: { file_id: 'txt', file_unique_id: 't', file_name: 'prompt.txt' } });
+    }
+    assert.equal(h.jobs.length, 1);
+    assert.equal(h.jobs[0].refs.filter((r: P2Reference) => r.kind === 'image').length, 10);
+    assert.equal(h.jobs[0].refs.filter((r: P2Reference) => r.kind === 'video').length, 10);
+    assert.equal(h.jobs[0].prompt, 'Prompt for all twenty references');
+  }
+}
+
 async function adapterTests() {
   const image = await sharp({ create: { width: 16, height: 16, channels: 3, background: 'white' } }).png().toBuffer();
   const video = execFileSync('ffmpeg', [
@@ -311,7 +355,7 @@ async function adapterTests() {
 }
 
 async function main() {
-  await providerTests(); await uiTests(); await billingTests(); await adapterTests();
+  await providerTests(); await uiTests(); await tenPlusTenTests(); await billingTests(); await adapterTests();
   console.log('PASS Seedance 2.5 P2: HAR mixed references, real Telegram callbacks/media/TXT route, Rp4500/30s/native720, isolated drafts, paid-submit safety, delivery and refunds.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

@@ -119,6 +119,16 @@ the user selected “Tetap memakai referensi”.
 **How to apply:** Keep the same reference inputs, price and delivery settings
 for both prompt-input methods; do not add a reference-free route on this basis.
 
+P2 must allow **10 images plus 10 video references in the same order**, for
+either prompt-input method. This request is scoped to the separate P2 product,
+not a change to the original Picsart limits.
+
+**Why:** The user requested “bisa kirim 10 gambar dan juga 10 video refrensi”.
+
+**How to apply:** Treat the two counts independently, not as ten references
+combined. Preserve the separately enforced duration/size budgets; do not imply
+that permission for ten videos also raises their total duration allowance.
+
 ### Captured evidence and limits
 
 A separate Edan Bot capture shows a completed Seedance 2.5 job submitted with

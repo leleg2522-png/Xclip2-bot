@@ -2,7 +2,7 @@ import { validateSeedance25Prompt } from './seedance25-prompt';
 
 export const SEEDANCE25_P2 = {
   label: 'Seedance 2.5 P2', model: 'seedance-2.5', duration: 30, resolution: '720p',
-  ratios: ['16:9', '9:16', '1:1'], maxImages: 30, maxVideos: 10,
+  ratios: ['16:9', '9:16', '1:1'], maxImages: 10, maxVideos: 10,
   maxBytes: 19 * 1024 * 1024, maxTotalBytes: 100 * 1024 * 1024,
   maxVideoSeconds: 30,
 } as const;
@@ -16,7 +16,7 @@ export function validateP2References(refs: P2Reference[]) {
   if (!refs.length) throw Error('Kirim setidaknya satu gambar atau video referensi.');
   if (refs.filter(r => r.kind === 'image').length > SEEDANCE25_P2.maxImages
     || refs.filter(r => r.kind === 'video').length > SEEDANCE25_P2.maxVideos) {
-    throw Error('Maksimal 30 gambar dan 10 video referensi.');
+    throw Error('Maksimal 10 gambar dan 10 video referensi.');
   }
   if (refs.some(r => !['image', 'video'].includes(r.kind) || !r.fileId
     || !Number.isSafeInteger(r.size) || r.size <= 0 || r.size > SEEDANCE25_P2.maxBytes)) {

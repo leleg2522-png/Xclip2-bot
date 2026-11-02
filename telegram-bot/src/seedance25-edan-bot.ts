@@ -30,7 +30,7 @@ const inputsKeyboard = (id: string) => Markup.inlineKeyboard([
 ]);
 const instructions =
   'Kirim gambar JPG/PNG dan/atau video MP4 sebagai referensi (boleh dicampur). ' +
-  'Batas bot: 30 gambar, 10 video; total video 30 detik, minimal 2 detik per video. ' +
+  'Batas bot: 10 gambar dan 10 video sekaligus; total video 30 detik, minimal 2 detik per video. ' +
   'Maksimal 19MB per file dan 100MB gabungan. Ini referensi, bukan start/end frame.\n' +
   'Tunggu semua file diterima, lalu tekan selesai upload.';
 
