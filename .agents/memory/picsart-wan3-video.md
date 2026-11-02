@@ -17,7 +17,16 @@ previously requested native 1080p without Renderful, then changed the requested
 resolution: “buat wan jadi 720 p”.
 
 **How to apply:** Request `720P` in both the generation payload and Drive metadata,
-keep the existing price and p500 pool, and deliver Picsart's result directly,
+keep the p500 pool, and deliver Picsart's result directly,
 without Renderful. Do not change the separate Flora Wan Uncensored route.
 Do not claim live 720p generation is verified without a completed result.
 The successful historical HAR run is 9:16; it does not independently verify 16:9.
+
+Regular Wan 3.0 costs **Rp6,000 per 30-second generation**.
+
+**Why:** The user requested “harga wan naikan jadi 6k”, raising the regular
+package's price, not lowering the separately priced Uncensored package.
+
+**How to apply:** Keep list prices and balance charges aligned with Rp6,000;
+refund the actual charge on failed delivery. Do not change Wan Uncensored
+pricing or the regular model's native 720p delivery.

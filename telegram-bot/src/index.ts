@@ -259,7 +259,7 @@ const MODEL_PRICES = {
   picsart_seedance_2_fast_edit: 4000, // Seedance 2.0 Fast Video Edit, native 480p
   picsart_seedance_2_video_edit: 4500, // Seedance 2 Video Edit, native 480p
   picsart_seedance_2: 4000, // Seedance 2.0 Mini/Fast/Standard, native 480p
-  picsart_wan_v3: 3000, // Wan 3.0 30s, native 720p
+  picsart_wan_v3: 6000, // Wan 3.0 30s, native 720p
   alriz_seedance_25: 5000, // Historical Alriz tariff; not used for new orders
   picsart_seedance_25: 6000, // Seedance 2.5: native 480p → mandatory 1080p finishing
   oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
