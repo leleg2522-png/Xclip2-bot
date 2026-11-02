@@ -95,6 +95,22 @@ Verify finishing separately before claiming delivered 1080p.
 
 ## Separate Edan Bot reference evidence
 
+### Approved public product
+
+Keep the original Picsart Seedance 2.5 product unchanged and offer the Edan
+route as a separate **Seedance 2.5 P2** product: **30 seconds, Rp4,500,
+native 720p delivery without Renderful finishing**. Do not expose the provider
+name to customers or introduce 10/20-second tariffs without approval.
+
+**Why:** The user selected “Tambahkan opsi Edan Bot” rather than replacing
+Picsart, then specified “30 detik 4,5k” and “720p langsung”.
+
+**How to apply:** Keep provider selection, tariffs and delivery policies
+separate. The original Picsart route still requires 1080p finishing and retains
+its existing price; P2 must not inherit that finishing or change the old route.
+
+### Captured evidence and limits
+
 A separate Edan Bot capture shows a completed Seedance 2.5 job submitted with
 one uploaded image and one uploaded video reference. The request selected
 30 seconds, 720p and 16:9. This is evidence for Edan's contract, not a direct
@@ -110,12 +126,12 @@ different video succeeded. This does not establish a universally reliable
 upload flow.
 
 **Why:** Edan's browser API, internal credit amounts and reference-field names
-are different from the Picsart gateway used by the existing bot route.
+are different from the Picsart gateway used by the original bot route.
 
 **How to apply:** Do not put Edan `reference_images` / `reference_videos` into
 Picsart's payload, infer Edan's upstream provider, or swap the existing
-Picsart route merely because this capture was supplied. Clarify whether the
-user wants a separate Edan option or a provider replacement.
+Picsart route merely because this capture was supplied. The user has approved
+the separate P2 option above, not a replacement.
 
 ## Historical Playground contract
 
@@ -134,5 +150,6 @@ Reverse-engineered from an AI Playground HAR. Follows the same access-token / `c
 **How to apply:** The user explicitly requested returning public Seedance 2.5
 from Alriz to Picsart. Use this verified Picsart contract without importing
 Alriz-specific 1080p or start/end-frame assumptions. Keep already accepted jobs
-on their original provider. The supplied HAR verifies image references but
-not a submitted reference video; do not present unverified input roles as tested.
+on their original provider. The historical Picsart HAR verifies image references
+but not a submitted reference video. The separate completed Edan capture above
+does not establish a live direct-Picsart video-reference test.

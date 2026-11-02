@@ -13,7 +13,7 @@
 - [Flora AI API](flora-ai-api.md) — generate pakai params.image_url/video_url (bukan inputs[]); upload form_fields snake_case; "1 key 1 task" salah (paralel jalan); tak ada endpoint saldo credits
 - [XclipAI referral scheme](xclip-referral-scheme.md) — 5% dari SETIAP top-up undangan masuk saldo utama pengundang; bonus cair hanya saat order PAID, idempotent via UNIQUE(order_id)
 - [Picsart account pools](picsart-account-pools.md) — all Picsart models can use both ~50-credit and higher-credit accounts, with no model exemptions; non-Picsart providers stay unchanged.
-- [Picsart Seedance 2.5 API](seedance-api.md) — verified reference-image contract; public orders return to Picsart with mandatory 1080p finishing.
+- [Seedance 2.5 routes](seedance-api.md) — original Picsart product stays; approved P2 is separate, with native 720p delivery and no finishing.
 - [Kling Motion package routing](edanbot-kling-motion.md) — P2/P3 Edan Bot native; P4/P5 share Alriz DB key pool and deliver directly without Renderful.
 - [Picsart Kling 4 and Omni](picsart-kling4.md) — all Kling 4 modes require Renderful 1080p before delivery; no native fallback. Omni Rp8.500; credit cost uses quotes.
 - [Paid provider post-submit failover](paid-provider-post-submit-failover.md) — failover may retry only before an upstream paid job is accepted; post-submit auth loss must refund, not resubmit.
