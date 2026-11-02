@@ -109,6 +109,16 @@ Picsart, then specified “30 detik 4,5k” and “720p langsung”.
 separate. The original Picsart route still requires 1080p finishing and retains
 its existing price; P2 must not inherit that finishing or change the old route.
 
+For P2, “dua jalur” means two prompt-input methods after reference uploads:
+an ordinary text message or a UTF-8 TXT file. Both still require references;
+it is not approval for reference-free text-to-video.
+
+**Why:** When explicitly asked whether TXT meant without image/video references,
+the user selected “Tetap memakai referensi”.
+
+**How to apply:** Keep the same reference inputs, price and delivery settings
+for both prompt-input methods; do not add a reference-free route on this basis.
+
 ### Captured evidence and limits
 
 A separate Edan Bot capture shows a completed Seedance 2.5 job submitted with
