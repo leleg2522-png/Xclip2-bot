@@ -7,6 +7,14 @@ description: Captured Kling 4 T2V completion, I2V quote acceptance, native setti
 
 ## Regular Kling 4 is an additional product
 
+The public bot name for this new product is **Kling 4 Pro**, not Kling 4 Reguler.
+
+**Why:** The user explicitly requested “namanya kling 4 pro di bot”.
+
+**How to apply:** Use Kling 4 Pro in customer-facing menus, prices, progress,
+and result captions. This is branding, not a request to change provider mode,
+backend model, prices, or the existing Omni-backed Kling 4 product.
+
 Keep the newer regular `kling-v4` product separate from the existing public
 Kling 4 routes, whose backend remains `kling-v4-omni`. The new regular product
 offers only single-start-image I2V and mandatory start–end frames, not T2V,

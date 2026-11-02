@@ -2679,8 +2679,8 @@ function mainMenuKeyboard() {
     [Markup.button.callback(`🎞️ ${KLING_V3_PRO.label}`, 'mode_pi2v_kling_v3')],
     [Markup.button.callback(`🎬 Kling 4 1080p · Image to Video · 10/15/30 detik · mulai ${formatRupiah(getPicsartI2vPrice('kling_v4', 10))}`, 'mode_pi2v_kling_v4')],
     [Markup.button.callback(`✍️ Kling 4 1080p · Text to Video · 10/15/30 detik · mulai ${formatRupiah(getPicsartI2vPrice('kling_v4_t2v', 10))}`, 'mode_pi2v_kling_v4_t2v')],
-    [Markup.button.callback(`🎬 Kling 4 Reguler 1080p · Image to Video · mulai ${formatRupiah(getPicsartI2vPrice('kling_v4_regular', 10))}`, 'mode_pi2v_kling_v4_regular')],
-    [Markup.button.callback(`🎞️ Kling 4 Reguler 1080p · Start–End Frame · mulai ${formatRupiah(getPicsartI2vPrice('kling_v4_frames', 10))}`, 'mode_pi2v_kling_v4_frames')],
+    [Markup.button.callback(`🎬 Kling 4 Pro 1080p · Image to Video · mulai ${formatRupiah(getPicsartI2vPrice('kling_v4_regular', 10))}`, 'mode_pi2v_kling_v4_regular')],
+    [Markup.button.callback(`🎞️ Kling 4 Pro 1080p · Start–End Frame · mulai ${formatRupiah(getPicsartI2vPrice('kling_v4_frames', 10))}`, 'mode_pi2v_kling_v4_frames')],
     [Markup.button.callback('🌐 Kling Omni • 12 detik • 720p', 'mode_pi2v_kling_omni')],
     ...Object.entries(CHINA_VIDEO_MODELS).map(([key, config]) => [
       Markup.button.callback(`${config.label} • ${config.duration} detik • ${config.resolution} • ${formatRupiah(config.price)}`, `mode_china_${key}`),
@@ -3263,7 +3263,7 @@ function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false 
     `• ${KLING_V3_PRO.label} (15 detik) — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Kling 4 1080p · Image to Video (10/15/30 detik) — ${KLING4_DURATIONS.map(duration => `${duration} detik ${formatRupiah(getPicsartI2vPrice('kling_v4', duration))}`).join(' / ')}\n` +
     `• Kling 4 1080p · Text to Video (10/15/30 detik) — ${KLING4_DURATIONS.map(duration => `${duration} detik ${formatRupiah(getPicsartI2vPrice('kling_v4_t2v', duration))}`).join(' / ')}\n` +
-    `• Kling 4 Reguler 1080p · Image to Video / Start–End Frame — ${KLING4_DURATIONS.map(duration => `${duration} detik ${formatRupiah(getPicsartI2vPrice('kling_v4_regular', duration))}`).join(' / ')}\n` +
+    `• Kling 4 Pro 1080p · Image to Video / Start–End Frame — ${KLING4_DURATIONS.map(duration => `${duration} detik ${formatRupiah(getPicsartI2vPrice('kling_v4_regular', duration))}`).join(' / ')}\n` +
     `• Kling Omni (12 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_kling_omni)}\n` +
     `• Wan v2 Image-to-Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Wan 3.0 (30 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_wan_v3)}\n` +

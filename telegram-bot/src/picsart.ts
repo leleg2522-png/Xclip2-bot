@@ -2304,14 +2304,14 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
     pollAttempts: 360,
   },
   kling_v4_regular: {
-    label: 'Kling 4 Reguler 1080p · Image to Video',
+    label: 'Kling 4 Pro 1080p · Image to Video',
     settingsLabel: '30 detik · 720p native',
     workflowPath: 'kling-image-to-video',
     pool: null,
     pollAttempts: 360,
   },
   kling_v4_frames: {
-    label: 'Kling 4 Reguler 1080p · Start–End Frame',
+    label: 'Kling 4 Pro 1080p · Start–End Frame',
     settingsLabel: '30 detik · 720p native',
     workflowPath: 'kling-image-to-video',
     pool: null,
