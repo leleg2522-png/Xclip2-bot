@@ -27,13 +27,13 @@ assert.ok(concurrentCharges.length >= 15, 'all generation runners must retain th
 // Every job is started with immutable local arguments and retains its own
 // captured Telegram status message rather than a shared status slot.
 assert.match(source, /runPicsartI2v\(ctx\.chat\.id, userId, dbUserId, statusMsg\.message_id, prompt, \{\s*model,\s*imageUrls,\s*ratio,\s*duration,\s*displayLabel,\s*priceKey,/s);
-const picsartPromptStart = source.indexOf("// ── Picsart image-to-video prompt ──");
-const picsartPromptEnd = source.indexOf("// ── Picsart Seedance 2.5 prompt", picsartPromptStart);
+const picsartPromptStart = source.indexOf('async function submitPicsartI2vPrompt(');
+const picsartPromptEnd = source.indexOf('async function handleKling4ProTxt(', picsartPromptStart);
 assert.ok(picsartPromptStart >= 0 && picsartPromptEnd > picsartPromptStart);
 const picsartPromptBlock = source.slice(picsartPromptStart, picsartPromptEnd);
 const rereadIndex = picsartPromptBlock.indexOf('const activeDraft = getSession(userId);');
-const modeGuardIndex = picsartPromptBlock.indexOf("if (activeDraft.mode !== 'picsart_i2v_wait_prompt') return;");
-const claimIndex = picsartPromptBlock.indexOf("setSession(userId, {\n      mode: 'idle',");
+const modeGuardIndex = picsartPromptBlock.indexOf("if (activeDraft.mode !== 'picsart_i2v_wait_prompt'");
+const claimIndex = picsartPromptBlock.indexOf("mode: 'idle', picsartI2vImageUrl: undefined");
 const statusAwaitIndex = picsartPromptBlock.indexOf('const statusMsg = await ctx.reply');
 assert.ok(rereadIndex >= 0, 'Picsart prompt must re-read the active draft after login');
 assert.ok(modeGuardIndex > rereadIndex, 'Picsart prompt must validate the re-read mode');

@@ -6,6 +6,7 @@ import ts from 'typescript';
 import * as picsart from '../src/picsart';
 import { buildKling4Params, KLING4_CREDITS, KLING4_DURATIONS } from '../src/picsart-kling4';
 import { buildKling4RegularParams } from '../src/picsart-kling4-regular';
+import { validateKling4ProPrompt, KLING4_PRO_PROMPT_HELP } from '../src/kling4-pro-prompt';
 import { buildKling4OmniParams } from '../src/picsart-kling4-omni';
 
 const backend = fs.readFileSync(path.resolve(__dirname, '../src/picsart.ts'), 'utf8');
@@ -213,9 +214,9 @@ async function wizardTest(model: PublicModel, ratio: '9:16' | '16:9', duration: 
   const state: any = { mode: 'idle', dbUserId: 2, picsartI2vImageUrl: image, picsartI2vImageUrls: [image] };
   const messages: string[] = [], calls: any[][] = [];
   const ctx = vm.createContext({
-    picsart, KLING4_DURATIONS, session: state, userId: 1, fileUrl: image, MODEL_PRICES: { picsart_kling4: 8000, picsart_kling4_10: 3500, picsart_kling4_15: 4000, picsart_kling4_omni: 8500 },
+    picsart, KLING4_DURATIONS, validateKling4ProPrompt, KLING4_PRO_PROMPT_HELP, session: state, userId: 1, fileUrl: image, MODEL_PRICES: { picsart_kling4: 8000, picsart_kling4_10: 3500, picsart_kling4_15: 4000, picsart_kling4_omni: 8500 },
     Markup: { inlineKeyboard: (buttons: any) => ({ buttons }), button: { callback: (text: string, data: string) => ({ text, data }) } },
-    ctx: { chat: { id: 5 }, message: { text: 'A landscape' },
+    ctx: { from: { id: 1 }, chat: { id: 5 }, message: { text: 'A landscape' },
       reply: async (text: string) => { messages.push(text); return { message_id: 6 }; },
       editMessageText: async (text: string) => { messages.push(text); },
       answerCbQuery: async () => {} },
@@ -231,6 +232,7 @@ async function wizardTest(model: PublicModel, ratio: '9:16' | '16:9', duration: 
   vm.runInContext(compile(fragment(app, 'function getPicsartI2vPrice(', '\n//')), ctx);
   vm.runInContext(compile(fragment(app, 'function picsartI2vPublicSettings(', 'function supportsMultiplePicsartI2vImages(')), ctx);
   vm.runInContext(compile(fragment(app, 'function maxPicsartI2vImages(', 'function picsartI2vRatioKeyboard(')), ctx);
+  vm.runInContext(compile(fragment(app, 'async function submitPicsartI2vPrompt(', 'async function handleKling4ProTxt(')), ctx);
   const run = async (code: string) => vm.runInContext(compile(`(async () => { ${code} })()`), ctx);
   ctx.data = `mode_pi2v_${model}`;
   await run(fragment(app, "if (data.startsWith('mode_pi2v_')) {", "if (data === 'mode_kling')"));
@@ -400,7 +402,7 @@ async function main() {
       }), /INVALID_FRAME_COUNT/);
     }
   }
-  assert.throws(() => buildKling4RegularParams({ mode: 'i2v', imageUrls: [image], prompt: '界'.repeat(11001), ratio: '9:16' }), /PROMPT_TOO_LONG/);
+  assert.throws(() => buildKling4RegularParams({ mode: 'i2v', imageUrls: [image], prompt: '界'.repeat(11001), ratio: '9:16' }), /11\.000/);
   assert.throws(() => buildKling4RegularParams({ mode: 'frames', imageUrls: [image, 'http://example.test/a.jpg'], prompt: 'a', ratio: '9:16' }), /INVALID_FRAME_URL/);
   for (const model of ['kling_v4_regular', 'kling_v4_frames'] as const) {
     assert.equal(picsart.PICSART_I2V_MODELS[model].workflowPath, 'kling-image-to-video');

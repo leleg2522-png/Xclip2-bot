@@ -50,6 +50,10 @@ import { generateRenderful1080 } from './renderful-auto-upscale';
 import { inspectFloraUpscaleVideo, normalizeFlora1080 } from './flora-upscale-media';
 import { retryTelegramFileRead, redactTelegramToken } from './telegram-file-retry';
 import { KLING4_DURATIONS, type Kling4Duration } from './picsart-kling4';
+import {
+  KLING4_PRO_MAX_TXT_BYTES, KLING4_PRO_PROMPT_HELP, validateKling4ProPrompt,
+  validateKling4ProTxtDocument, decodeKling4ProTxt,
+} from './kling4-pro-prompt';
 import { generateKlingV3Pro, KLING_V3_PRO } from './kling-v3-pro-edan';
 import { PgDramaStore } from './microdrama-store';
 import { registerMicrodrama } from './microdrama-bot';
@@ -6459,6 +6463,93 @@ function imgLabelFor(userId: number): string {
 
 // ─── Shared photo/image handler ───────────────────────────────────────────────
 
+async function submitPicsartI2vPrompt(ctx: any, rawPrompt: string, expectedDraft?: Session) {
+  const userId = ctx.from.id;
+  const draft = getSession(userId);
+  if (draft.mode !== 'picsart_i2v_wait_prompt' || (expectedDraft && draft !== expectedDraft)) return;
+  if (!draft.dbUserId && !await requireLogin(ctx)) return;
+  const activeDraft = getSession(userId);
+  if (activeDraft.mode !== 'picsart_i2v_wait_prompt' || (expectedDraft && activeDraft !== expectedDraft)) return;
+  const model = activeDraft.picsartI2vModel;
+  let prompt = rawPrompt.trim();
+  try {
+    if (model === 'kling_v4_regular' || model === 'kling_v4_frames') prompt = validateKling4ProPrompt(rawPrompt);
+    else if (!prompt) throw Error('Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
+  } catch (error: any) { return ctx.reply(error.message); }
+  const imageUrls = activeDraft.picsartI2vImageUrls?.length
+    ? activeDraft.picsartI2vImageUrls
+    : activeDraft.picsartI2vImageUrl ? [activeDraft.picsartI2vImageUrl] : [];
+  if (!activeDraft.dbUserId || !model || !isPicsartI2vModelKey(model)
+    || (model !== 'kling_v4_t2v' && imageUrls.length === 0)
+    || (model === 'kling_v4_t2v' && imageUrls.length > 0)
+    || (model === 'kling_v4_regular' && imageUrls.length !== 1)
+    || (model === 'kling_v4_frames' && imageUrls.length !== 2)) {
+    setSession(userId, { mode: 'idle' });
+    return ctx.reply('⚠️ Sesi tidak lengkap. Mulai lagi dari /menu.');
+  }
+  const cooldownMs = getCooldownRemainingMs(userId);
+  if (cooldownMs > 0) {
+    setSession(userId, { mode: 'idle' });
+    return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
+  }
+  const cfg = picsart.PICSART_I2V_MODELS[model];
+  const ratio = activeDraft.picsartI2vRatio;
+  const duration = activeDraft.picsartI2vDuration;
+  const kling4 = ['kling_v4', 'kling_v4_t2v', 'kling_v4_omni', 'kling_v4_regular', 'kling_v4_frames'].includes(model);
+  if (kling4 && model !== 'kling_v4_omni' && !KLING4_DURATIONS.includes(duration as Kling4Duration)) {
+    setSession(userId, { mode: 'idle' });
+    return ctx.reply('⚠️ Durasi video belum dipilih. Mulai lagi dari /menu.');
+  }
+  if ((kling4 || ['ltx_pro', 'ltx_fast', 'creatify_boreal'].includes(model)) && !ratio) {
+    setSession(userId, { mode: 'idle' });
+    return ctx.reply('⚠️ Rasio video belum dipilih. Mulai lagi dari /menu.');
+  }
+  const displayLabel = activeDraft.picsartI2vDisplayLabel;
+  const priceKey = activeDraft.picsartI2vPriceKey;
+  const publicLabel = displayLabel ?? cfg.label;
+  const dbUserId = activeDraft.dbUserId;
+  // Text and TXT claim the same draft synchronously before any status awaits.
+  setSession(userId, {
+    mode: 'idle', picsartI2vImageUrl: undefined, picsartI2vImageUrls: undefined,
+    picsartI2vFrameMessageIds: undefined, picsartI2vRatio: undefined,
+    picsartI2vDuration: undefined, picsartI2vDisplayLabel: undefined, picsartI2vPriceKey: undefined,
+  });
+  const statusMsg = await ctx.reply(
+    `⏳ Memproses ${publicLabel}...\nHasil dikirim otomatis (${kling4 ? 'biasanya 5–30 menit' : 'biasanya 3–10 menit'}).`,
+    { parse_mode: 'Markdown' }
+  );
+  runPicsartI2v(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, {
+    model, imageUrls, ratio, duration, displayLabel, priceKey,
+  }).catch(e => console.error(`[${userId}] ${publicLabel} error:`, e.message));
+}
+
+async function handleKling4ProTxt(ctx: any) {
+  const userId = ctx.from.id;
+  const draft = getSession(userId);
+  if (draft.mode !== 'picsart_i2v_wait_prompt'
+    || !['kling_v4_regular', 'kling_v4_frames'].includes(draft.picsartI2vModel ?? '')) return;
+  try {
+    validateKling4ProTxtDocument(ctx.message.document);
+  } catch (error: any) { return ctx.reply(error.message); }
+  let bytes: Buffer;
+  try {
+    const link = await ctx.telegram.getFileLink(ctx.message.document.file_id);
+    const response = await telegramHttp.get(link.href, {
+      responseType: 'arraybuffer', timeout: 30000, maxContentLength: KLING4_PRO_MAX_TXT_BYTES,
+    });
+    bytes = Buffer.from(response.data);
+  } catch {
+    // Telegram URLs contain bot credentials; never log their errors/configs.
+    if (getSession(userId) === draft) return ctx.reply('File .txt tidak bisa dibaca atau terlalu besar. Kirim ulang file UTF-8.');
+    return;
+  }
+  if (getSession(userId) !== draft) return;
+  let prompt: string;
+  try { prompt = decodeKling4ProTxt(bytes); }
+  catch (error: any) { return ctx.reply(error.message); }
+  return submitPicsartI2vPrompt(ctx, prompt, draft);
+}
+
 async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
   const userId = ctx.from.id;
   const session = getSession(userId);
@@ -6699,7 +6790,7 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
         mode: complete ? 'picsart_i2v_wait_prompt' : 'picsart_i2v_wait_image',
       });
       return ctx.reply(complete
-        ? `✅ ${required === 2 ? 'Start dan end frame' : 'Start frame'} diterima untuk ${cfg.label}.\n\nLangkah terakhir: kirim prompt teks untuk adegan video.`
+        ? `✅ ${required === 2 ? 'Start dan end frame' : 'Start frame'} diterima untuk ${cfg.label}.\n\nLangkah terakhir: ${KLING4_PRO_PROMPT_HELP}`
         : '✅ Start frame diterima.\nSekarang kirim gambar akhir (end frame). Wajib sebelum lanjut ke prompt.');
     }
     const displayLabel = session.picsartI2vDisplayLabel ?? cfg.label;
@@ -7726,71 +7817,7 @@ bot.on('text', async (ctx) => {
 
   // ── Picsart image-to-video prompt ──
   if (session.mode === 'picsart_i2v_wait_prompt') {
-    const prompt = ctx.message.text.trim();
-    if (!prompt) {
-      return ctx.reply('⚠️ Prompt tidak boleh kosong. Kirim deskripsi adegan untuk video kamu.');
-    }
-    if (!session.dbUserId && !await requireLogin(ctx)) return;
-    const activeDraft = getSession(userId);
-    if (activeDraft.mode !== 'picsart_i2v_wait_prompt') return;
-    const model = activeDraft.picsartI2vModel;
-    const imageUrls = activeDraft.picsartI2vImageUrls?.length
-      ? activeDraft.picsartI2vImageUrls
-      : activeDraft.picsartI2vImageUrl
-        ? [activeDraft.picsartI2vImageUrl]
-        : [];
-    if (!activeDraft.dbUserId || !model || !isPicsartI2vModelKey(model)
-      || (model !== 'kling_v4_t2v' && imageUrls.length === 0)
-      || (model === 'kling_v4_t2v' && imageUrls.length > 0)
-      || (model === 'kling_v4_regular' && imageUrls.length !== 1)
-      || (model === 'kling_v4_frames' && imageUrls.length !== 2)) {
-      setSession(userId, { mode: 'idle' });
-      return ctx.reply('⚠️ Sesi tidak lengkap. Mulai lagi dari /menu.');
-    }
-    const cooldownMs = getCooldownRemainingMs(userId);
-    if (cooldownMs > 0) {
-      setSession(userId, { mode: 'idle' });
-      return ctx.reply(`⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`, { parse_mode: 'Markdown' });
-    }
-    const cfg = picsart.PICSART_I2V_MODELS[model];
-    const ratio = activeDraft.picsartI2vRatio;
-    const duration = activeDraft.picsartI2vDuration;
-    if ((model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_regular' || model === 'kling_v4_frames') && !KLING4_DURATIONS.includes(duration as Kling4Duration)) {
-      setSession(userId, { mode: 'idle' });
-      return ctx.reply('⚠️ Durasi video belum dipilih. Mulai lagi dari /menu.');
-    }
-    if ((model === 'ltx_pro' || model === 'ltx_fast' || model === 'creatify_boreal' || model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_omni' || model === 'kling_v4_regular' || model === 'kling_v4_frames') && !ratio) {
-      setSession(userId, { mode: 'idle' });
-      return ctx.reply('⚠️ Rasio video belum dipilih. Mulai lagi dari /menu.');
-    }
-    const displayLabel = activeDraft.picsartI2vDisplayLabel;
-    const priceKey = activeDraft.picsartI2vPriceKey;
-    const publicLabel = displayLabel ?? cfg.label;
-    const dbUserId = activeDraft.dbUserId;
-    setSession(userId, {
-      mode: 'idle',
-      picsartI2vImageUrl: undefined,
-      picsartI2vImageUrls: undefined,
-      picsartI2vFrameMessageIds: undefined,
-      picsartI2vRatio: undefined,
-      picsartI2vDuration: undefined,
-      picsartI2vDisplayLabel: undefined,
-      picsartI2vPriceKey: undefined,
-    });
-    const statusMsg = await ctx.reply(
-      `⏳ Memproses ${publicLabel}...\nHasil dikirim otomatis (${model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_omni' || model === 'kling_v4_regular' || model === 'kling_v4_frames' ? 'biasanya 5–30 menit' : 'biasanya 3–10 menit'}).`,
-      { parse_mode: 'Markdown' }
-    );
-    runPicsartI2v(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, {
-      model,
-      imageUrls,
-      ratio,
-      duration,
-      displayLabel,
-      priceKey,
-    })
-      .catch(e => console.error(`[${userId}] ${publicLabel} error:`, e.message));
-    return;
+    return submitPicsartI2vPrompt(ctx, ctx.message.text);
   }
 
   // ── Picsart Seedance 2.5 prompt (legacy callback/session IDs retained) ──
@@ -8552,6 +8579,8 @@ bot.on('document', async (ctx) => {
   const doc = ctx.message.document;
 
   if (session.mode === 'oneover_wait_prompt') return handleSeedance25Txt(ctx);
+  if (session.mode === 'picsart_i2v_wait_prompt'
+    && ['kling_v4_regular', 'kling_v4_frames'].includes(session.picsartI2vModel ?? '')) return handleKling4ProTxt(ctx);
   if (session.mode === 'oneover_wait_image') {
     if (doc.mime_type?.startsWith('video/')) return handleSeedance25Reference(ctx, 'video', doc);
     if (doc.mime_type?.startsWith('audio/')) return handleSeedance25Reference(ctx, 'audio', doc);
