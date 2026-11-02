@@ -32,6 +32,7 @@ import {
 } from './seedance25-picsart';
 import { inspectSeedance25Media } from './seedance25-media';
 import { SEEDANCE25_P2, generateSeedance25P2, validateP2References } from './seedance25-edan';
+import { seedance25P2Diagnostic } from './seedance25-p2-diagnostic';
 import { createSeedance25P2Bot, type P2Draft, type P2Job, type P2Mode } from './seedance25-edan-bot';
 import {
   SEEDANCE25_MAX_TXT_BYTES, validateSeedance25Prompt,
@@ -9536,20 +9537,28 @@ async function runSeedance25P2(job: P2Job) {
     return;
   }
   let refund = true;
+  let stage = 'account';
+  let acceptedJobId: string | undefined;
+  let referenceIndex = 0;
   try {
     const result = await generateSeedance25P2(prompt, ratio, refs, {
       cookies: getAvailableEdanbotCookies, markDead: markEdanbotCookieDead,
       upload: async (cookie, reference) => {
+        referenceIndex = refs.indexOf(reference) + 1;
+        stage = 'telegram-link';
         const url = await bot.telegram.getFileLink(reference.fileId);
+        stage = 'telegram-download';
         const response = await telegramHttp.get(url.href, {
           responseType: 'arraybuffer', timeout: 60000, maxContentLength: SEEDANCE25_P2.maxBytes,
         });
         const bytes = Buffer.from(response.data);
+        stage = 'reference-validation';
         if (bytes.length !== reference.size) throw Error('SEEDANCE25_P2_REFERENCE_CHANGED');
         if (reference.kind === 'image') {
           const metadata = await sharp(bytes, { limitInputPixels: 40000000 }).metadata();
           if (!['jpeg', 'png'].includes(metadata.format ?? '')) throw Error('INVALID_IMAGE');
           const mime = metadata.format === 'png' ? 'image/png' : 'image/jpeg';
+          stage = 'reference-upload';
           const asset = await uploadToEdanbot(cookie, bytes, `reference.${metadata.format === 'png' ? 'png' : 'jpg'}`, mime);
           if (asset.type !== 'image') throw Error('SEEDANCE25_P2_INVALID_ASSET');
           return { kind: 'image', url: asset.url };
@@ -9558,6 +9567,7 @@ async function runSeedance25P2(job: P2Job) {
         form.append('file', bytes, { filename: 'reference.mp4', contentType: 'video/mp4' });
         form.append('model', SEEDANCE25_P2.model);
         form.append('duration', String(SEEDANCE25_P2.duration));
+        stage = 'reference-upload';
         const uploaded = await edanbotHttp.post('https://edanbot.digital/api/reference-uploads/media', form, {
           headers: { ...form.getHeaders(), cookie, origin: 'https://edanbot.digital', referer: 'https://edanbot.digital/dashboard' },
         });
@@ -9565,16 +9575,23 @@ async function runSeedance25P2(job: P2Job) {
         return { kind: 'video', url: uploaded.data.url };
       },
       submit: async (cookie, body) => {
+        stage = 'submit';
         const response = await edanbotHttp.post('https://edanbot.digital/api/generate', body, {
           headers: { cookie, origin: 'https://edanbot.digital', referer: 'https://edanbot.digital/dashboard' },
         });
         return response.data?.job_id;
       },
-      accepted: jobId => console.log(`[seedance25-p2] accepted=${jobId}`),
+      accepted: jobId => {
+        acceptedJobId = jobId;
+        stage = 'poll';
+        console.log(`[seedance25-p2] accepted=${jobId}`);
+      },
       poll: (cookie, jobId) => pollEdanbotJob(cookie, jobId, 30 * 60000),
     });
     // Native delivery, no Renderful or provider fallback. sendResult uploads
     // bytes/self-hosts large files; never expose the upstream result URL.
+    acceptedJobId = result.jobId;
+    stage = 'delivery';
     if (!await sendResult(chatId, result.url,
       `${SEEDANCE25_P2.label} · 30 detik · 720p · ${ratio}\n\n/menu untuk buat lagi`, true)) {
       throw Error('SEEDANCE25_P2_DELIVERY_FAILED');
@@ -9583,9 +9600,12 @@ async function runSeedance25P2(job: P2Job) {
     markGenSuccess(userId);
     await incrementKlingUsage(dbUserId).catch(() => {});
     await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-  } catch {
-    // Do not print Axios configs, cookies, Telegram URLs, or provider errors.
-    console.error('[seedance25-p2] generation_or_delivery_failed');
+  } catch (error) {
+    console.error('[seedance25-p2] generation_or_delivery_failed', JSON.stringify({
+      dbUserId, statusMsgId, stage, jobId: acceptedJobId ?? null,
+      referenceIndex, referenceCount: refs.length,
+      ...seedance25P2Diagnostic(error),
+    }));
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
       `${SEEDANCE25_P2.label} tidak berhasil diproses atau dikirim. Saldo akan dikembalikan.\n/menu untuk mulai ulang.`).catch(() => {});
   } finally {

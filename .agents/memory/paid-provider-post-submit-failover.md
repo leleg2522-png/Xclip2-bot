@@ -9,6 +9,18 @@ For paid asynchronous providers, account failover is allowed only before a job s
 
 **How to apply:** Keep pre-submit account acquisition, upload, and submit retries distinct from post-submit polling. Convert post-submit authentication sentinels into a non-retryable error that bypasses generic account failover.
 
+For Seedance 2.5 P2 diagnostics, retain stage and accepted job correlation but
+only log allowlisted error codes and numeric HTTP/Telegram statuses.
+
+**Why:** Raw provider errors and Axios objects can echo private references,
+prompts, cookies or token-bearing Telegram URLs. Hiding all failures behind one
+generic label prevented diagnosis, but dumping the whole error is not a safe fix.
+
+**How to apply:** Extend reviewed diagnostic categories when needed rather than
+logging arbitrary upstream bodies. A generic failure alone does not establish
+which stage failed or prove a successful refund; inspect the matching job and
+refund records without replaying a paid submit.
+
 Preserve the original post-submit error as a nested cause, but keep the
 non-retryable wrapper message distinct from raw provider diagnostics. Log only
 a redacted description of that cause, never Axios headers/configs or media URLs.

@@ -13,6 +13,7 @@ import {
   type P2ProviderDeps, type P2Reference,
 } from '../src/seedance25-edan';
 import { validateSeedance25Prompt } from '../src/seedance25-prompt';
+import { seedance25P2Diagnostic } from '../src/seedance25-p2-diagnostic';
 
 const source = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true);
@@ -205,7 +206,7 @@ async function billingTests() {
     const events = { charge: 0, provider: 0, refund: 0, released: 0, usage: 0, deliveries: 0 };
     const replies: string[] = [];
     const context = vm.createContext({
-      SEEDANCE25_P2, validateP2References, validateSeedance25Prompt,
+      SEEDANCE25_P2, validateP2References, validateSeedance25Prompt, seedance25P2Diagnostic,
       MODEL_PRICES: { seedance25_p2: 4500 },
       beginCharge: async (_id: number, price: number, max: number) => {
         events.charge++; assert.equal(price, 4500); assert.equal(max, 3);
@@ -293,7 +294,7 @@ async function adapterTests() {
   const snapshots = [{ ...refs[0], size: image.length }, { ...refs[1], size: video.length, duration: 2 }];
   const calls: string[] = [], charges: number[] = [], refunds: number[] = [];
   const context = vm.createContext({
-    Buffer, FormData, sharp, inspectSeedance25Media, generateSeedance25P2, validateP2References,
+    Buffer, FormData, sharp, inspectSeedance25Media, generateSeedance25P2, validateP2References, seedance25P2Diagnostic,
     validateSeedance25Prompt, SEEDANCE25_P2, MODEL_PRICES: { seedance25_p2: 4500 },
     getSession() {}, setSession() {}, getCooldownRemainingMs: () => 0,
     beginCharge: async (_id: number, price: number) => { charges.push(price); return { ok: true }; },
