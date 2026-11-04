@@ -1,4 +1,4 @@
-export type HarModelKey = 'heygen' | 'xclip_motion' | 'banana21_t2i' | 'banana21_i2i';
+export type HarModelKey = 'heygen' | 'xclip_motion' | 'banana21_t2i' | 'banana21_i2i' | 'banana_lite_t2i' | 'banana_lite_i2i';
 export type HarAspectRatio = '9:16' | '16:9' | '1:1' | '4:3' | '3:4';
 
 export const HAR_MODELS = {
@@ -6,6 +6,8 @@ export const HAR_MODELS = {
   xclip_motion: { label: 'Xclip Motion', priceKey: 'xclip_motion', video: true, needsImage: true, needsVideo: true },
   banana21_t2i: { label: 'Nano Banana 2.1 Text to Image', priceKey: 'banana21', video: false, needsImage: false, needsVideo: false },
   banana21_i2i: { label: 'Nano Banana 2.1 Image to Image', priceKey: 'banana21', video: false, needsImage: true, needsVideo: false },
+  banana_lite_t2i: { label: 'Nano Banana 2 Lite Text to Image', priceKey: 'nb_2lite', video: false, needsImage: false, needsVideo: false },
+  banana_lite_i2i: { label: 'Nano Banana 2 Lite Image to Image', priceKey: 'nb_2lite', video: false, needsImage: true, needsVideo: false },
 } as const;
 
 export function harWorkflow(model: HarModelKey): string {
@@ -34,7 +36,8 @@ export function buildHarModelParams(input: {
   if (!(cfg.video ? ['9:16', '16:9'] : ['9:16', '16:9', '1:1', '4:3', '3:4']).includes(input.ratio)) {
     throw new Error('PICSART_INVALID_HAR_RATIO');
   }
-  const model = cfg.video ? 'heygen-video-1' : 'gemini-nano-banana-2.1';
+  const lite = input.model === 'banana_lite_t2i' || input.model === 'banana_lite_i2i';
+  const model = cfg.video ? 'heygen-video-1' : lite ? 'gemini-3.1-flash-lite-image' : 'gemini-nano-banana-2.1';
   const params: Record<string, any> = cfg.video ? {
     model, prompt: input.prompt, duration: 15, resolution: '768p',
     prompt_enhancement: 'turbo', aspect_ratio: input.ratio,
@@ -43,7 +46,7 @@ export function buildHarModelParams(input: {
   } : {
     prompt: input.prompt, model, count: 1,
     imageUrls,
-    aspectRatio: input.ratio, imageSize: '4K',
+    aspectRatio: input.ratio, ...(!lite ? { imageSize: '4K' } : {}),
     thinkingConfig: { thinkingLevel: 'MINIMAL' },
   };
   const payload = cfg.video ? {
@@ -51,7 +54,7 @@ export function buildHarModelParams(input: {
     aspectRatio: input.ratio, promptEnhancement: 'turbo',
     imageUrls, ...(input.videoUrl ? { videoUrls: [input.videoUrl] } : {}),
   } : {
-    prompt: input.prompt, aspectRatio: input.ratio, resolution: '4K',
+    prompt: input.prompt, aspectRatio: input.ratio, ...(!lite ? { resolution: '4K' } : {}),
     count: 1, thinkingLevel: 'minimal', imageUrls: params.imageUrls,
   };
   return {

@@ -70,7 +70,9 @@ async function billingTests() {
   const to = source.indexOf('// Kirim gambar hasil', from);
   const runSource = source.slice(from, to);
   assert.match(runSource, /picsart\.generateHarModel/);
-  assert.match(runSource, /'banana21_i2i' : 'banana21_t2i'/);
+  assert.match(runSource, /'banana_lite_i2i' : 'banana_lite_t2i'/);
+  assert.doesNotMatch(runSource, /4K/);
+  assert.doesNotMatch(source, /Nano Banana[^\n]*4K/);
   assert.doesNotMatch(runSource, /generateBananaSnapgen|snapgenSubmitImage|snapgenPollImage|SNAPGEN_API_KEY|generateBananaRenderful|getNextRenderfulPoolKey|bytedanceUpscalerHttp/);
   const harFrom = source.indexOf('async function runHarModel(');
   assert.match(source.slice(harFrom, source.indexOf('// ─── Background: Kling Motion V3 Standard', harFrom)), /picsart\.generateHarModel/);
@@ -98,7 +100,7 @@ async function billingTests() {
           if (outcome === 'no-key') throw Error('PICSART_NO_ACCOUNT');
           events.submits++;
           assert.equal(body.userId, 3);
-          assert.equal(body.model, mode === 'i2i' ? 'banana21_i2i' : 'banana21_t2i');
+          assert.equal(body.model, mode === 'i2i' ? 'banana_lite_i2i' : 'banana_lite_t2i');
           assert.equal(body.ratio, '1:1');
           assert.equal(body.images.length, mode === 'i2i' ? 2 : 0);
           assert.equal(body.images.some((image: any) => image.name.includes('PRIVATE')), false);
@@ -107,8 +109,8 @@ async function billingTests() {
           if (outcome === 'poll-failed') throw Error('PICSART_ACCEPTED_JOB_FAILED');
           return { url: 'https://provider.test/output.png' };
         } },
-        sendImageResult: async (_chat: number, _url: string, caption: string, require4k: boolean) => {
-          events.deliveries++; assert.equal(require4k, true); assert.match(caption, /4K/);
+        sendImageResult: async (_chat: number, _url: string, caption: string, require4k: boolean | 'native') => {
+          events.deliveries++; assert.equal(require4k, 'native'); assert.doesNotMatch(caption, /4K/);
           return !['delivery', 'low-resolution'].includes(outcome);
         },
         addSaldo: async (_id: number, amount: number) => { events.refunds.push(amount); },
@@ -132,7 +134,7 @@ async function billingTests() {
 async function deliveryTests() {
   const from = source.indexOf('async function sendImageResult(');
   const to = source.indexOf('// ─── Background: Gemini Omni', from);
-  for (const width of [1024, 4096]) for (const fallback of [false, true]) {
+  for (const width of [1024, 4096]) for (const fallback of [false, true]) for (const quality of [true, 'native'] as const) {
     const buf = await sharp({ create: { width, height: width, channels: 3, background: 'white' } }).png().toBuffer();
     let photos = 0, documents = 0, hosted = 0;
     const context = vm.createContext({
@@ -146,16 +148,17 @@ async function deliveryTests() {
       publishMedia: async (bytes: Buffer) => { hosted++; assert.deepEqual(bytes, buf); return 'https://our-domain.test/dl/output.png'; },
     });
     vm.runInContext(compile(source.slice(from, to)), context);
-    assert.equal(await context.sendImageResult(1, 'https://provider.test/image.png', '4K image', true), width >= 3840);
+    const acceptable = quality === 'native' || width >= 3840;
+    assert.equal(await context.sendImageResult(1, 'https://provider.test/image.png', 'image', quality), acceptable);
     assert.equal(photos, 0, 'Never compress a 4K result through sendPhoto');
-    assert.equal(documents, width >= 3840 ? 1 : 0);
-    assert.equal(hosted, width >= 3840 && fallback ? 1 : 0);
+    assert.equal(documents, acceptable ? 1 : 0);
+    assert.equal(hosted, acceptable && fallback ? 1 : 0);
   }
 }
 async function main() {
   await contractTests();
   await billingTests();
   await deliveryTests();
-  console.log('Banana Pro/2/Lite use Picsart, never SnapGen: T2I/I2I, two references, 4K delivery, independent prices/refunds and unchanged separate Banana 2.1 package passed; legacy Renderful contracts also passed.');
+  console.log('Banana Pro/2/Lite use Picsart Lite: T2I/I2I, two references, native original-file delivery, no public 4K claims, independent prices/refunds and separate Banana 2.1 passed; legacy Renderful contracts also passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

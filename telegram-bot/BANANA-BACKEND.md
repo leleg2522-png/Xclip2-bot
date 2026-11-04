@@ -1,30 +1,23 @@
-# Banana image packages — SnapGen AI
+# Banana image packages — Picsart Banana 2 Lite
 
-Banana Pro, Banana 2 and Banana Lite use SnapGen again for text-to-image and
-image-to-image. Per the existing product rule, Pro and Lite follow Banana 2's
-backend (`nano-banana-2`); public names and individual prices stay separate.
-Banana 2.1 remains on its existing independent route.
+Banana Pro, Banana 2 and Banana 2 Lite share Picsart's
+`gemini-3.1-flash-lite-image` backend for text-to-image and image-to-image.
+Public package names, prices, ratios and the two-reference-photo limit stay
+separate and unchanged. The standalone Banana 2.1 · 4K package remains on
+`gemini-nano-banana-2.1`.
 
-The bot uses its existing `SNAPGEN_API_KEY` environment variable. Renderful's
-`/addkey` pool is not used for these image packages. No key or balance is
-created by switching the route.
+The Lite model ID is listed in Picsart's public AI Playground catalog and the
+deep link at https://picsart.com/ai-models/nano-banana-2-lite/ .
+Lite has no output-resolution selector in that catalog. Do not send the
+Banana 2.1 `imageSize: "4K"` option or promise 4K for the shared packages.
+Deliver original native-resolution files as documents (or temporary download
+links), without photo compression. The separate Banana 2.1 route still requires
+an actual 4K result.
 
-The existing adapter submits multipart data to `/generate_image` with `4K`,
-`jpeg`, and the requested ratio. Up to two reference photos are downloaded by
-the bot and sent as file bytes, never as Telegram-token URLs. Pending results
-poll `/history/{uuid}`; immediate completed responses do not need polling.
-There is one submit only: missing IDs, timeouts, rejected requests or polling
-failures never replay the job or switch to another paid provider.
+The existing Picsart account pool handles upload, submit and polling.
+No SnapGen or Renderful fallback is active. Accepted jobs must never be replayed
+on another provider. Failed generation or delivery refunds the full package
+charge.
 
-Delivery still verifies actual 4K dimensions and sends full-resolution documents
-or our own temporary download link rather than compressed Telegram photos.
-Failed generation, invalid resolution, missing key or failed delivery refunds
-the full package charge.
-
-`test:banana` checks active SnapGen routing, multipart contracts, both input
-modes, immediate/polled results, no paid replay, individual prices/refunds, real
-image delivery, and Banana 2.1 isolation. Legacy Renderful helper contracts are
-retained as offline checks, not the active provider.
-
-This code change does not deploy Railway, start local Telegram polling, or
-perform paid live generation.
+Offline verification: `pnpm test:banana`, `pnpm test:har-models`, `pnpm build`.
+These tests do not perform live paid generation or publish the Railway bot.

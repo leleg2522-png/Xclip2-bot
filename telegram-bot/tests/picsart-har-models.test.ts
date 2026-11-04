@@ -36,9 +36,11 @@ for (const model of Object.keys(HAR_MODELS) as HarModelKey[]) {
     assert.deepEqual(p.reference_videos, cfg.needsVideo ? [{ type: 'url', url: video }] : undefined);
     assert.equal(harWorkflow(model), '/gw-v2/workflows/heygen/v1/models/video/generate');
   } else {
-    assert.equal(p.model, 'gemini-nano-banana-2.1');
+    const lite = model === 'banana_lite_t2i' || model === 'banana_lite_i2i';
+    assert.equal(p.model, lite ? 'gemini-3.1-flash-lite-image' : 'gemini-nano-banana-2.1');
     assert.equal(p.count, 1);
-    assert.equal(p.imageSize, '4K');
+    assert.equal(p.imageSize, lite ? undefined : '4K');
+    assert.equal(JSON.parse(p.options.drive.attributes.aiSDKPayload).resolution, lite ? undefined : '4K');
     assert.deepEqual(p.thinkingConfig, { thinkingLevel: 'MINIMAL' });
     assert.deepEqual(p.imageUrls, cfg.needsImage ? [image] : []);
     assert.equal(harWorkflow(model), '/gw-v2/workflows/gemini/v2/images');
@@ -87,7 +89,8 @@ async function testBackend(model: HarModelKey, failure?: 'poll-auth' | 'no-url' 
       post: async (url: string, data: any) => {
         events.submissions++;
         assert.equal(url, `https://api.picsart.com${harWorkflow(model)}/submit`);
-        assert.equal(data.params.model, cfg.video ? 'heygen-video-1' : 'gemini-nano-banana-2.1');
+        const lite = model === 'banana_lite_t2i' || model === 'banana_lite_i2i';
+        assert.equal(data.params.model, cfg.video ? 'heygen-video-1' : lite ? 'gemini-3.1-flash-lite-image' : 'gemini-nano-banana-2.1');
         if (multipleImages) {
           assert.equal(data.params.imageUrls.length, 2);
           assert.ok(data.params.imageUrls[0].endsWith('first.jpg'));
@@ -234,7 +237,7 @@ main().catch(error => { console.error(error); process.exitCode = 1; });
 
 async function testBilling(model: HarModelKey, outcome: 'success' | 'delivery' | 'provider' | 'insufficient' | 'upscale' | 'upscale-error') {
   const cfg = HAR_MODELS[model];
-  const prices = { heygen: 2500, xclip_motion: 3500, banana21: 600 };
+  const prices = { heygen: 2500, xclip_motion: 3500, banana21: 600, nb_2lite: 500 };
   const events = { charges: [] as number[], refunds: [] as number[], releases: 0, successes: 0, generations: 0, upscales: 0, deliveries: 0 };
   const start = bot.indexOf('async function runHarModel(');
   const end = bot.indexOf('// ─── Background: Kling MC V3 Pro P4', start);
@@ -242,7 +245,8 @@ async function testBilling(model: HarModelKey, outcome: 'success' | 'delivery' |
     events.deliveries++;
     assert.equal(url, cfg.video ? `${video}?upscaled=1080p` : image);
     assert.ok(caption.includes(cfg.label));
-    assert.ok(caption.includes(cfg.video ? '1080p' : '4K'));
+    if (cfg.video) assert.ok(caption.includes('1080p'));
+    else assert.doesNotMatch(caption, /4K/);
     assert.doesNotMatch(caption, /picsart/i);
     return outcome === 'success';
   };

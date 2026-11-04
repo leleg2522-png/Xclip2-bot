@@ -65,7 +65,7 @@ alongside authentication before interpreting validation errors.
 ## Banana provider migration scope
 
 Only Banana Pro, Banana Lite and Banana 2 are in the shared provider migration.
-These packages use Picsart's Banana 2.1 backend for both text-to-image and image-to-image.
+These packages now use Picsart's Banana 2 Lite backend for both text-to-image and image-to-image.
 The separate Banana 2.1 package remains unchanged.
 
 **Why:** The user clarified: “yg di ganti banana pro banana lite dan banan 2
@@ -77,7 +77,7 @@ When asked to clarify “kembalikan itu banan ke awal”, the user explicitly
 selected “Tetap Picsart”, not Renderful or SnapGen.
 
 **How to apply:** Preserve the three public package names and their individual
-prices, while routing all three through the shared Picsart Banana 2.1 backend.
+prices, while routing all three through the shared Picsart Banana 2 Lite backend.
 Do not change the separate
 Banana 2.1 package's price or wizard as part of this migration.
 
@@ -92,3 +92,14 @@ yg sama dengan banan 2”.
 **How to apply:** Future Banana 2 backend changes should also apply to Pro/Lite
 unless the user separates them again. Do not restore a distinct Pro backend
 solely because the public package is named Pro.
+
+The shared packages must now use Banana 2 Lite instead of Banana 2.1.
+Do not mention “4K” in customer-facing Banana menus, progress, results or errors,
+including the separate Banana 2.1 package. Keep delivery at original quality.
+
+**Why:** The user requested “ganti semua jadi pake yg banana 2 lite” after
+reviewing the shared backend, then explicitly said “gausah ngomong 4k ke user”.
+
+**How to apply:** Keep the separate Banana 2.1 backend unchanged; the Lite switch
+applies to the shared Pro/2/Lite packages. Do not enforce a 4K result on Lite or
+silently substitute a different provider to meet the old resolution promise.

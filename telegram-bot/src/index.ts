@@ -239,9 +239,9 @@ const MODEL_PRICES = {
   veo_lite: 1500,      // Veo 3.1 Lite Full HD (SnapGen, with audio)
   picsart_veo31_4k: 2500, // Veo 3.1 Lite native 720p
   picsart_minimax_h3: 4000, // MiniMax H3 Max, 15s image-to-video / start-end frame
-  nb_pro: 500,         // Nano Banana Pro package (Picsart, shared Banana 2.1 backend)
-  nb_2: 500,           // Nano Banana 2 package (Picsart, shared Banana 2.1 backend)
-  nb_2lite: 500,       // Nano Banana 2 Lite package (Picsart, shared Banana 2.1 backend)
+  nb_pro: 500,         // Nano Banana Pro package (Picsart, shared Banana 2 Lite backend)
+  nb_2: 500,           // Nano Banana 2 package (Picsart, shared Banana 2 Lite backend)
+  nb_2lite: 500,       // Nano Banana 2 Lite package (Picsart, shared Banana 2 Lite backend)
   seedream: 500,       // Seedream 2.7 4K (Picsart, image-to-image)
   gpt_image: 500,      // GPT Image 2 (Picsart openai-image-editing)
   gpt_image_25: 600,   // GPT Image 2.5 Sunburst / Flare
@@ -2738,7 +2738,7 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🤖 GPT Image 2.5 Flare', 'mode_gpt25_flare')],
     [Markup.button.callback('🍌 Nano Banana Pro', 'mode_nbpro')],
     [Markup.button.callback('🍌 Nano Banana 2', 'mode_nb2')],
-    [Markup.button.callback('🍌 Nano Banana 2.1 · 4K', 'menu_banana21')],
+    [Markup.button.callback('🍌 Nano Banana 2.1', 'menu_banana21')],
     [Markup.button.callback('🍌 Nano Banana 2 Lite', 'mode_nb2lite')],
   ]);
 }
@@ -3308,7 +3308,7 @@ function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false 
     `• ${ALRIZ_KLING_P5.label} (1K/1080p) — ${formatRupiah(MODEL_PRICES.kling_v3_standard)}\n` +
     `• Heygen Video (15 detik · 1080p) — ${formatRupiah(promoPrice('heygen', MODEL_PRICES.heygen))}\n` +
     `• Xclip Motion (3–15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.xclip_motion)}\n` +
-    `• Nano Banana 2.1 4K (teks/foto) — ${formatRupiah(MODEL_PRICES.banana21)}\n` +
+    `• Nano Banana 2.1 (teks/foto) — ${formatRupiah(MODEL_PRICES.banana21)}\n` +
     `• ByteDance Upscaler 1K — ${formatRupiah(MODEL_PRICES.bytedance_upscale)}\n` +
     `• AI Lipsync (semua model) — ${formatRupiah(MODEL_PRICES.lipsync)}\n\n` +
     `• AI Audio (semua model) — ${formatRupiah(MODEL_PRICES.audio)}\n\n` +
@@ -5342,7 +5342,7 @@ bot.on('callback_query', async (ctx) => {
 
   if (data === 'menu_banana21') {
     return ctx.editMessageText(
-      `🍌 *Nano Banana 2.1 · 4K*\nHarga: *${formatRupiah(MODEL_PRICES.banana21)}* per gambar.\n\nPilih mode:`,
+      `🍌 *Nano Banana 2.1*\nHarga: *${formatRupiah(MODEL_PRICES.banana21)}* per gambar.\n\nPilih mode:`,
       { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
         [Markup.button.callback('✍️ Text to Image', 'mode_har_banana21_t2i')],
         [Markup.button.callback('🖼️ Image to Image', 'mode_har_banana21_i2i')],
@@ -5366,7 +5366,7 @@ bot.on('callback_query', async (ctx) => {
     }
     return ctx.editMessageText(
       `*${cfg.label}*\nHarga: *${formatRupiah(await userModelPrice(getSession(userId).dbUserId!, model, MODEL_PRICES[cfg.priceKey]))}* per ${cfg.video ? 'video' : 'gambar'}.\n` +
-      `${cfg.video ? 'Output: 15 detik · 1080p.' : 'Output: 1 gambar · 4K.'}\n\nPilih rasio:`,
+      `${cfg.video ? 'Output: 15 detik · 1080p.' : 'Output: 1 gambar.'}\n\nPilih rasio:`,
       { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
         [Markup.button.callback('📱 9:16', 'har_ratio_916'), Markup.button.callback('🖥️ 16:9', 'har_ratio_169')],
         ...(!cfg.video ? [[Markup.button.callback('⬜ 1:1', 'har_ratio_11')]] : []),
@@ -6154,7 +6154,7 @@ bot.on('callback_query', async (ctx) => {
       imgImageUrls: undefined,
     });
     return ctx.editMessageText(
-      `${cfg.label} · 4K\n\nGenerate gambar (${formatRupiah(MODEL_PRICES[cfg.priceKey])}).\n` +
+      `${cfg.label}\n\nGenerate gambar (${formatRupiah(MODEL_PRICES[cfg.priceKey])}).\n` +
       `Teks atau foto acuan menjadi gambar.\n\nPilih rasio gambar:`,
       { parse_mode: 'Markdown', ...imgRatioKeyboard() }
     );
@@ -9061,7 +9061,7 @@ async function runHarModel(
       if (!finished.upscaled) throw new Error('HAR_VIDEO_1080_FINISH_FAILED');
       deliveryUrl = finished.url;
     }
-    const caption = `${cfg.label} (${ratio} · ${cfg.video ? '15 detik · 1080p' : '4K'})\n\n/menu untuk buat lagi`;
+    const caption = `${cfg.label} (${ratio}${cfg.video ? ' · 15 detik · 1080p' : ''})\n\n/menu untuk buat lagi`;
     const delivered = cfg.video ? await sendResult(chatId, deliveryUrl, caption, true) : await sendImageResult(chatId, deliveryUrl, caption);
     if (delivered) {
       refund = false;
@@ -11240,21 +11240,21 @@ async function runImage(
 
     const generated = await picsart.generateHarModel({
       userId: dbUserId,
-      model: opts.inputMode === 'i2i' ? 'banana21_i2i' : 'banana21_t2i',
+      model: opts.inputMode === 'i2i' ? 'banana_lite_i2i' : 'banana_lite_t2i',
       prompt,
       ratio: ratio as HarAspectRatio,
       images,
       onStatus: stage => {
         const text = stage === 'upload' ? 'mengunggah foto acuan'
-          : stage === 'submit' ? 'mengirim perintah' : 'gambar 4K sedang dibuat';
+          : stage === 'submit' ? 'mengirim perintah' : 'gambar sedang dibuat';
         void bot.telegram.editMessageText(chatId, statusMsgId, undefined,
           `🎨 ${label}: ${text}...\nHasil dikirim otomatis.`).catch(() => {});
       },
     });
     const outputUrl = generated.url;
 
-    const caption = `🎨 ${label} (${ratio} · 4K)\n\n/menu untuk buat lagi`;
-    const delivered = await sendImageResult(chatId, outputUrl, caption, true);
+    const caption = `🎨 ${label} (${ratio})\n\n/menu untuk buat lagi`;
+    const delivered = await sendImageResult(chatId, outputUrl, caption, 'native');
     if (delivered) {
       refund = false;
       const newCount = await incrementKlingUsage(dbUserId);
@@ -11290,7 +11290,7 @@ async function runImage(
 
 // Kirim gambar hasil via replyWithPhoto; fallback ke document jika gagal. Kita
 // unduh sendiri lalu upload bytes-nya supaya URL upstream tidak pernah terlihat.
-async function sendImageResult(chatId: number, outputUrl: string, caption: string, require4k = false): Promise<boolean> {
+async function sendImageResult(chatId: number, outputUrl: string, caption: string, require4k: boolean | 'native' = false): Promise<boolean> {
   let buf: Buffer | null = null;
   try {
     const res = await telegramHttp.get(outputUrl, { responseType: 'arraybuffer', timeout: 120_000 });
@@ -11308,8 +11308,8 @@ async function sendImageResult(chatId: number, outputUrl: string, caption: strin
   const opts = { caption };
   if (require4k) {
     const meta = await sharp(buf).metadata();
-    if (Math.max(meta.width ?? 0, meta.height ?? 0) < 3840) {
-      await bot.telegram.sendMessage(chatId, '❌ Hasil belum memenuhi kualitas 4K. Saldo akan dikembalikan.').catch(() => {});
+    if (require4k === true && Math.max(meta.width ?? 0, meta.height ?? 0) < 3840) {
+      await bot.telegram.sendMessage(chatId, '❌ Hasil belum memenuhi kualitas yang diminta. Saldo akan dikembalikan.').catch(() => {});
       return false;
     }
     // Telegram sendPhoto compresses 4K even when the file is under 10MB.
@@ -11321,7 +11321,7 @@ async function sendImageResult(chatId: number, outputUrl: string, caption: strin
       console.error('Full-resolution image delivery failed:', describeError(error));
       const link = await publishMedia(buf, false);
       await bot.telegram.sendMessage(chatId,
-        `📥 Download gambar 4K (segera simpan, link berlaku sementara):\n${link}\n\n${caption}`);
+        `📥 Download gambar (segera simpan, link berlaku sementara):\n${link}\n\n${caption}`);
       return true;
     }
   }
