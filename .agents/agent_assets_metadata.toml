@@ -761,3 +761,17 @@ mtime_ms = 1793827853843
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/73488354-214e-4184-865f-ed1c5ac31e44/c6569a53-d788-455f-b5f9-38181339db82"
 storage_version_token = "1793827950001049"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "swv16l_Lf_YNJKnrVexRD"
+uri = "file://generated-artifacts/microdrama-china-mandarin-test/shot-2.mp4"
+type = "video"
+title = "Dracin Mandarin — klip kedua"
+description = "Kelanjutan sekitar 10 detik dari klip pertama. Su Yue menyerahkan surat pelepasan hak, tetapi Lin Wan masih tidak percaya. Audio Mandarin asli."
+logical_id = "e3487dec-be8e-4e48-951b-1900d02f7813"
+content_hash = "sha256:035ba91d3f0da4e8688b646c146b7a76c1928a15bc22032c45be3d54a9a694e3"
+size = 3508205
+mtime_ms = 1793832500961
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/e3487dec-be8e-4e48-951b-1900d02f7813/d012fb33-225d-4dba-a094-3e52e1a03901"
+storage_version_token = "1793832574341958"
+content_type = "video/mp4"
