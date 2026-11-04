@@ -24,6 +24,20 @@ Do not promise rapid turnaround from the short output duration. Two sequential h
 
 **How to apply:** Separate automation from speed guarantees. For faster episode pipelines, consider independent scenes generated in parallel from approved character references; do not describe dependent continuation scenes as parallelizable.
 
+## MiniMax Mandarin dialogue evidence
+
+MiniMax H3 Turbo can produce native Mandarin speech. Compare Mandarin dialogue
+using normalized characters, not whitespace-separated word matching.
+
+**Why:** A Chinese-family-drama sample's independent Whisper transcription
+matched its requested Mandarin line after removing punctuation. Its timestamp
+extended to the end of the clip despite an earlier speech-finish instruction.
+
+**How to apply:** Use Mandarin transcription rather than forcing Indonesian.
+Check speech timing and clip-end truncation separately from textual accuracy.
+A matching transcript does not establish lip synchronization, correct speaker
+assignment, or stable voices across a whole episode.
+
 ## Bot credential management
 
 Manage DeAPI credentials as a pool in the bot's Railway database.

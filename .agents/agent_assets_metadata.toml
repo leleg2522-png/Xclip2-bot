@@ -733,3 +733,31 @@ mtime_ms = 1793614787601
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/652b1523-42e0-4afe-ba24-c27eeba4ae5e/557e80f4-2ad8-45cb-bc1d-0af8834dc903"
 storage_version_token = "1793614847315490"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "VR6DO28GtEIajN_mphjhY"
+uri = "file://generated-artifacts/microdrama-china-mandarin-test/reference-sheet.jpg"
+type = "image"
+title = "Acuan dracin Mandarin"
+description = "Dari kiri: 林婉 (anak kandung), 苏月 (anak angkat), dan ruang keluarga di Shanghai. Gambar acuan untuk tes episode satu menit."
+logical_id = "85049a44-4851-4cb3-b81c-8e220626e2ad"
+content_hash = "sha256:ee77c7f4c68303308665d95b26f75dce0b0d13f06310e6302055f021abafffda"
+size = 104352
+mtime_ms = 1793827587839
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/85049a44-4851-4cb3-b81c-8e220626e2ad/985672b1-558c-4c58-be81-59778750b73d"
+storage_version_token = "1793827633974003"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "sAuU7CrMSdEbn9uw_jfme"
+uri = "file://generated-artifacts/microdrama-china-mandarin-test/shot-1.mp4"
+type = "video"
+title = "Dracin Mandarin — klip pertama"
+description = "Preview pertama sekitar 10 detik dari target episode satu menit. Konflik anak kandung dan anak angkat di Shanghai, dengan dialog Mandarin asli."
+logical_id = "73488354-214e-4184-865f-ed1c5ac31e44"
+content_hash = "sha256:f53e2e5828355341ab06a2174105d409f770d64bb2d1a681c27024eb6813a9b7"
+size = 2893817
+mtime_ms = 1793827853843
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/73488354-214e-4184-865f-ed1c5ac31e44/c6569a53-d788-455f-b5f9-38181339db82"
+storage_version_token = "1793827950001049"
+content_type = "video/mp4"
