@@ -15,7 +15,7 @@ import { newEpisode } from '../src/episode-types';
 
 const root = path.resolve(__dirname, '../../generated-artifacts/microdrama-china-mandarin-test');
 type Job = { attempted?: boolean; id?: string; keyId?: number; quotedUsd?: number; file?: string; status?: string; error?: string };
-type State = { capUsd: number; reservedUsd: number; jobs: Record<string, Job>; approvedShots: number[] };
+type State = { capUsd: number; reservedUsd: number; jobs: Record<string, Job>; approvedShots: number[]; finishAuthorized?: boolean };
 async function exists(file: string) {
   try { await fs.access(file); return true; } catch { return false; }
 }
@@ -132,7 +132,12 @@ No people, no collage, no writing, no logos.`,
       console.log(`REFERENCES_READY reserved_usd=${state.reservedUsd.toFixed(6)}`);
     } else {
       if (!Number.isInteger(number) || number < 1 || number > 6) throw new Error('SHOT_NUMBER');
-      if (number > 1 && !state.approvedShots.includes(number - 1)) throw new Error('PREVIOUS_CLIP_APPROVAL_REQUIRED');
+      if (number > 1 && !state.approvedShots.includes(number - 1) && !state.finishAuthorized) {
+        throw new Error('PREVIOUS_CLIP_APPROVAL_REQUIRED');
+      }
+      if (number > 1 && state.jobs[`video_${number - 1}`]?.status !== 'downloaded') {
+        throw new Error('PREVIOUS_CLIP_NOT_COMPLETE');
+      }
       const file = path.join(root, `shot-${number}.mp4`);
       if (mode === 'transcript') {
         await media.probe(file);
@@ -180,7 +185,9 @@ No people, no collage, no writing, no logos.`,
         await sharp({ create: { width: 1152, height: 672, channels: 3, background: 'white' } })
           .composite(tiles.map((input, i) => ({ input, left: i * 384, top: 0 }))).jpeg()
           .toFile(path.join(root, `shot-${number}-samples.jpg`));
-        console.log(`CLIP_REVIEW_REQUIRED shot=${number}: do not generate the next clip before user approval.`);
+        console.log(state.finishAuthorized
+          ? `CLIP_READY shot=${number}: owner authorized completing this test without intermediate approval.`
+          : `CLIP_REVIEW_REQUIRED shot=${number}: do not generate the next clip before user approval.`);
       }
     }
   } catch (error) {

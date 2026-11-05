@@ -775,3 +775,17 @@ mtime_ms = 1793832500961
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/e3487dec-be8e-4e48-951b-1900d02f7813/d012fb33-225d-4dba-a094-3e52e1a03901"
 storage_version_token = "1793832574341958"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "uxrBshAqwCWPoF6cc906B"
+uri = "file://generated-artifacts/microdrama-china-mandarin-test/shot-3.mp4"
+type = "video"
+title = "Dracin Mandarin — klip ketiga"
+description = "Klip ketiga berhasil selesai; dialog Mandarin cocok dengan naskah setelah tanda baca diabaikan. Ini belum video gabungan satu menit."
+logical_id = "e1505fc2-cfcf-461f-8ecd-ef26d14c2c04"
+content_hash = "sha256:b321f4b2d00ebdbf0f520f70ba94dd20ea9d63704b515b75289b11e746386f7e"
+size = 3118469
+mtime_ms = 1793836807124
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/e1505fc2-cfcf-461f-8ecd-ef26d14c2c04/d5af7f7f-49b7-4633-87f0-f99bd93a314b"
+storage_version_token = "1793836985026132"
+content_type = "video/mp4"
