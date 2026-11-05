@@ -17,7 +17,7 @@ assert.ok(start > 0 && end > start);
 const runnerSource = source.slice(start, end);
 assert.match(runnerSource, /await upscaleGeneratedVideo\(resultUrl, userId, chatId, statusMsgId\)/);
 assert.match(runnerSource, /if \(!delivered && finalVideo\.upscaled\)/);
-assert.match(source, /flora_minimax_h3_480:\s*3500/);
+assert.match(source, /flora_minimax_h3_480:\s*10000/);
 assert.match(source, /flora_wan_v3_480:\s*15000/);
 assert.match(source, /flora_seedance_2_480:\s*15000/);
 assert.match(source, /Seedance 2 Uncensored • 15 detik • 1080p/);
@@ -96,7 +96,7 @@ function harness(options: Options = {}) {
     buildFlora480VideoParams,
     resolveFlora480VideoModel,
     isFloraWorkspaceSetupError,
-    MODEL_PRICES: { flora_minimax_h3_480: 3500, flora_wan_v3_480: 15000, flora_seedance_2_480: 15000 },
+    MODEL_PRICES: { flora_minimax_h3_480: 10000, flora_wan_v3_480: 15000, flora_seedance_2_480: 15000 },
     FLORA_BASE: 'https://provider.example.test',
     console: { log() {}, warn() {}, error() {} },
     setTimeout: (callback: () => void) => callback(),
@@ -324,7 +324,7 @@ async function main() {
   for (const key of ['minimax_h3_480', 'wan_v3_480'] as const) {
     const { events, run } = harness();
     await run(key);
-    assert.deepEqual(events.charges, [key === 'minimax_h3_480' ? 3500 : 15000]);
+    assert.deepEqual(events.charges, [key === 'minimax_h3_480' ? 10000 : 15000]);
     assert.equal(events.submissions.length, 1);
     assert.equal(events.submissions[0].model, `live-${key}`);
     assert.equal(events.submissions[0].params.duration, String(FLORA_480_VIDEO_MODELS[key].durationSeconds));
@@ -431,7 +431,7 @@ async function main() {
     await failed.run('minimax_h3_480');
     assert.equal(failed.events.submissions.length, 1, 'accepted job must never be resubmitted');
     assert.equal(failed.events.upscales.length, 0, 'a failed generation must not be upscaled');
-    assert.deepEqual(failed.events.refunds, [3500]);
+    assert.deepEqual(failed.events.refunds, [10000]);
     assert.deepEqual(failed.events.releases, [1]);
     assert.equal(failed.events.dead.length, /BILLING|Unauthorized/.test(error.message) ? 1 : 0);
     assert.doesNotMatch(failed.events.messages.join(' '), /FLORA_|BILLING|provider details|PROMPT_MODERATED/);
@@ -455,7 +455,7 @@ async function main() {
   const empty = harness({ keys: [] });
   await empty.run('minimax_h3_480');
   assert.equal(empty.events.submissions.length, 0);
-  assert.deepEqual(empty.events.refunds, [3500]);
+  assert.deepEqual(empty.events.refunds, [10000]);
   assert.deepEqual(empty.events.releases, [1]);
 
   const noSaldo = harness({ chargeOk: false });

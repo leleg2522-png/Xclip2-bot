@@ -221,7 +221,7 @@ const MODEL_PRICES = {
   gemini_omni_12: 3500,
   gemini_omni_12_4k: 4000,
   gemini_omni_11_flora: 3000,
-  flora_minimax_h3_480: 3500,
+  flora_minimax_h3_480: 10000,
   flora_wan_v3_480: 15000,
   flora_seedance_2_480: 15000,
   chat: 100,           // Chat AI per pesan

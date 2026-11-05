@@ -42,7 +42,15 @@ This price instruction applies to these separate Uncensored choices only.
 wan 3,0 uncecored jadi 15k juga”.
 
 **How to apply:** Keep their durations and providers unchanged. Do not apply
-this tariff to MiniMax Uncensored or to the original Seedance 2 and Wan routes.
+this tariff to the original Seedance 2 and Wan routes.
+
+MiniMax H3 Uncensored costs Rp10,000 per video, not the Rp15,000 tariff of the
+other two Uncensored choices.
+
+**Why:** The user subsequently requested “minimax uncecored jadi 10 k”.
+
+**How to apply:** Keep its 15-second duration and provider unchanged. Do not
+apply this price to the separate MiniMax H3 Max route.
 
 Seedance 2 Mini Video Edit and Seedance 2 Fast Video Edit stay separate from
 each other and from their image-to-video variants. Each Video Edit route
