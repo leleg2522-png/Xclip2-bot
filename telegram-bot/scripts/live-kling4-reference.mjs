@@ -7,9 +7,13 @@ if (!process.argv.includes('--paid')) throw Error('PAID_AUTHORIZATION_REQUIRED')
 const root = path.resolve(import.meta.dirname, '../..');
 const womanDance = process.argv.includes('--woman-dance');
 const fight = process.argv.includes('--fight');
+const squarePixels = process.argv.includes('--square-pixels');
+if (squarePixels && !fight) throw Error('QA_SQUARE_PIXEL_TEST_REQUIRES_FIGHT');
 if (fight && womanDance) throw Error('QA_CHOOSE_ONE_EXPERIMENT');
 const ratio = fight ? '16:9' : '9:16';
-const dir = path.join(root, fight ? 'generated-artifacts/kling4-fight-reference-live' : womanDance
+const dir = path.join(root, squarePixels
+  ? 'generated-artifacts/kling4-fight-square-pixels-live'
+  : fight ? 'generated-artifacts/kling4-fight-reference-live' : womanDance
   ? 'generated-artifacts/kling4-woman-dance-live'
   : 'generated-artifacts/kling4-reference-live');
 fs.mkdirSync(dir, { recursive: true });
@@ -180,7 +184,8 @@ try {
         fs.copyFileSync(path.join(root, 'generated-artifacts/microdrama-china-mandarin-test/char_LINWAN.jpg'),
           path.join(dir, imageName));
       } else await sharp(Buffer.from(svg)).png().toFile(path.join(dir, imageName));
-      const reference = fs.readFileSync(path.join(root, fight
+      const reference = fs.readFileSync(path.join(root, squarePixels
+        ? 'generated-artifacts/fight-reference-square-pixels-10s.mp4' : fight
         ? 'generated-artifacts/fight-reference-10s.mp4' : womanDance
         ? 'exports/kling26_motion_test.mp4'
         : 'generated-artifacts/flowy-motion-control-test/motion-3s.mp4'));
@@ -231,8 +236,8 @@ try {
     await finish(source);
   }
 } catch (e) {
-  const diagnostic = /^(QA_|PICSART_|FLORA_UPSCALE_)[A-Z0-9_]+$/.test(e.message)
-    ? e.message : e.response?.status ? `HTTP_${e.response.status}` : 'NETWORK_OR_PROVIDER_FAILURE';
+  const diagnostic = String(e.message ?? '').match(/^((?:QA_|PICSART_|FLORA_UPSCALE_)[A-Z0-9_]+)/)?.[1]
+    ?? (e.response?.status ? `HTTP_${e.response.status}` : 'NETWORK_OR_PROVIDER_FAILURE');
   save({ lastError: diagnostic, stoppedAt: new Date().toISOString() });
   console.log('TEST_STOPPED', diagnostic);
   process.exitCode = 1;
