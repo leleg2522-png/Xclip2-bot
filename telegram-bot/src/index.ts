@@ -3550,7 +3550,7 @@ const budgetVideoBot = createBudgetVideoBot({
           : /_(UNSUPPORTED_IMAGE_FORMAT|INVALID_FILE_CONTENT|EMPTY_FILE|INVALID_REFERENCE_IMAGE)$/.test(code)
             ? 'Foto referensi ditolak. Gunakan foto JPG/PNG/WebP yang valid, maksimal 10 MB.'
           : code === 'DEAPI_POOL_NO_USABLE_KEY'
-            ? 'Semua akun untuk model ini sedang tidak tersedia atau kena limit. Coba lagi setelah reset.'
+            ? 'Semua akun untuk model ini sedang tidak tersedia, dibatasi, atau ditangguhkan. Coba lagi nanti.'
             : 'Video belum berhasil dibuat atau dikirim. Tidak ada submit ulang otomatis.';
         await bot.telegram.editMessageText(chatId, statusId, undefined, `${message}\n/menu untuk kembali`).catch(() => {});
       },

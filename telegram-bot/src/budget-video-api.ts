@@ -1,6 +1,7 @@
 import { DeapiDramaRenderer } from './microdrama-deapi';
 import { PooledDeapiRenderer } from './deapi-pooled-renderer';
 import { DeapiRateLimitError } from './deapi-rate-limit';
+import { DeapiAccountSuspendedError } from './deapi-rejections';
 import type { DeapiKeySource } from './deapi-key-pool';
 
 export const BUDGET_VIDEO_MODELS = {
@@ -44,7 +45,8 @@ export class BudgetVideoApi {
       let id: string;
       try { id = await renderer.submit(input.prompt, 71, frame, keyId); }
       catch (error) {
-        if (!(error instanceof DeapiRateLimitError) || error.phase !== 'SUBMIT') throw error;
+        if (!(error instanceof DeapiRateLimitError || error instanceof DeapiAccountSuspendedError)
+          || error.phase !== 'SUBMIT') throw error;
         skipped.push(keyId);
         continue;
       }

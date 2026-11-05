@@ -1,5 +1,6 @@
 import { MICRODRAMA_SETTINGS } from './microdrama-plan';
 import { DeapiRateLimitError, deapiRetryAt, explicitDeapiRateRejection } from './deapi-rate-limit';
+import { DeapiAccountSuspendedError, explicitDeapiSuspension } from './deapi-rejections';
 
 export interface DramaRenderer {
   prepare?(prompt: string, frame?: Buffer, skipIds?: number[]): Promise<{ price: number; keyId: number }>;
@@ -40,7 +41,13 @@ export class DeapiDramaRenderer implements DramaRenderer {
         throw new DeapiRateLimitError(quote ? 'QUOTE' : 'SUBMIT', deapiRetryAt(r.headers));
       }
     }
-    if (!r.ok) throw new Error(`DEAPI_${quote ? 'QUOTE' : 'SUBMIT'}_HTTP_${r.status}`);
+    if (!r.ok) {
+      if (r.status === 403) {
+        const body = await r.json().catch(() => null);
+        if (explicitDeapiSuspension(body)) throw new DeapiAccountSuspendedError(quote ? 'QUOTE' : 'SUBMIT');
+      }
+      throw new Error(`DEAPI_${quote ? 'QUOTE' : 'SUBMIT'}_HTTP_${r.status}`);
+    }
     return await r.json() as any;
   }
 

@@ -154,6 +154,46 @@ async function billing() {
   }
 }
 
+async function suspendedAccounts() {
+  for (const scenario of ['suspended', 'generic-forbidden', 'has-job', 'has-running-status', 'poll-forbidden']) {
+    const pool = keyPool(), submits: string[] = [], polls: string[] = [];
+    const api = new BudgetVideoApi(pool, undefined, async (url, options) => {
+      const auth = new Headers(options?.headers).get('authorization')!;
+      if (String(url).endsWith('/price')) return Response.json({ data: { price: 0.1, is_estimated: false } });
+      if (options?.method === 'POST') {
+        submits.push(auth);
+        if (auth.endsWith('-1') && scenario !== 'poll-forbidden') {
+          const body: any = { message: scenario === 'generic-forbidden'
+            ? 'Forbidden' : 'Client account is suspended. If you believe this is a mistake, contact us.' };
+          if (scenario === 'has-job') body.data = { request_id: 'accepted-do-not-replay' };
+          if (scenario === 'has-running-status') body.data = { status: 'processing' };
+          return Response.json(body, { status: 403 });
+        }
+        return Response.json({ data: { request_id: 'bound-job' } });
+      }
+      polls.push(auth);
+      if (scenario === 'poll-forbidden') return Response.json({ message: 'Client account is suspended.' }, { status: 403 });
+      return Response.json({ data: { status: 'done', result_url: 'https://cdn.test/result.mp4' } });
+    }, wait);
+    if (scenario === 'suspended') {
+      assert.equal(await api.generate(input('deapi_h3')), 'https://cdn.test/result.mp4');
+      assert.deepEqual(submits, ['Bearer fixture-key-1', 'Bearer fixture-key-2']);
+      assert.deepEqual(polls, ['Bearer fixture-key-2']);
+      assert.equal(pool.limits[0].scope, 'account');
+      assert.equal(pool.limits[0].id, 1);
+      // A new renderer instance skips the persisted account hold, even for another model.
+      await api.generate(input('deapi_ltx'));
+      assert.equal(submits.length, 3);
+      assert.equal(submits[2], 'Bearer fixture-key-2');
+    } else {
+      await assert.rejects(api.generate(input('deapi_h3')), /DEAPI_(SUBMIT|POLL)_HTTP_403/);
+      assert.equal(submits.length, 1, 'Unknown/ambiguous 403 and accepted polling failures never replay');
+      assert.equal(pool.limits.length, 0, 'Only a proven suspended-account refusal creates a hold');
+    }
+    assert.deepEqual(pool.disabled, [], 'A suspension must never delete or permanently disable the key');
+  }
+}
+
 async function wizard() {
   for (const model of Object.keys(BUDGET_VIDEO_MODELS) as BudgetVideoModel[]) {
     for (const withImage of [false, true]) {
@@ -206,7 +246,7 @@ async function wizard() {
 }
 
 async function main() {
-  await contracts(); await billing(); await wizard();
+  await contracts(); await suspendedAccounts(); await billing(); await wizard();
   console.log('PASS four Rp500 video packages: real request contracts, menu wizard, stale buttons, duplicate prompts, persistent cooldown scopes, accepted-job safety and full failed-delivery refunds. No paid API calls.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

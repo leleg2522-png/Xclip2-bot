@@ -45,7 +45,7 @@ export class DeapiKeyPool implements DeapiKeySource {
     const r = await this.query(`UPDATE deapi_key_pool SET last_used_at=NOW()
       WHERE id=(SELECT id FROM deapi_key_pool WHERE status='available' AND NOT(id=ANY($1::int[]))
         AND NOT EXISTS (SELECT 1 FROM deapi_key_cooldowns c WHERE c.key_id=deapi_key_pool.id
-          AND c.retry_at>NOW() AND (cardinality($2::text[])=0 OR c.scope=ANY($2::text[])))
+          AND c.retry_at>NOW() AND (c.scope='account' OR cardinality($2::text[])=0 OR c.scope=ANY($2::text[])))
         ORDER BY last_used_at ASC NULLS FIRST,id LIMIT 1 FOR UPDATE SKIP LOCKED)
       RETURNING id,api_key`, [skipIds, scopes]);
     return this.key(r.rows[0]);

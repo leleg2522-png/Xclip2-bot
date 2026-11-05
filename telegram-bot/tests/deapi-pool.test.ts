@@ -28,6 +28,7 @@ async function databaseContract() {
   assert.match(calls.at(-1)!.sql, /FOR UPDATE SKIP LOCKED/);
   assert.deepEqual(calls.at(-1)!.params, [[2], []]);
   assert.match(calls.at(-1)!.sql, /c\.retry_at>NOW\(\)/);
+  assert.match(calls.at(-1)!.sql, /c\.scope='account'/, 'Account holds override every caller/model scope');
   await pool.next([], ['quotes', 'videos/animations:fixture-model']);
   assert.deepEqual(calls.at(-1)!.params, [[], ['quotes', 'videos/animations:fixture-model']]);
   const retryAt = Date.now() + 60_000;
