@@ -1,3 +1,4 @@
+import { DeapiRateLimitError } from './deapi-rate-limit';
 import { createHash } from 'node:crypto';
 import type { DramaProject, DramaStore } from './microdrama-store';
 import { episodeProject, referenceNames, selectedRefs, type EpisodeProject, type MediaJob, type ShotWork, type Take } from './episode-types';
@@ -173,15 +174,30 @@ export class EpisodeEngine {
     if (job.failed) throw new Error('DEAPI_JOB_FAILED');
     if (job.attempted && !job.id) throw new Error('EPISODE_UNCERTAIN');
     if (!job.id) {
-      await this.guard(p);
-      const q = await this.d.api.quote(req), e = p.episode;
-      const spent = refs ? e.refSpent : e.spent, budget = refs ? e.refBudget : e.budget;
-      if (!budget || q.price > cap + 0.000001 || spent + q.price > budget + 0.000001) throw new Error('EPISODE_BUDGET');
-      await this.guard(p);
-      job.attempted = true; job.price = q.price; job.keyId = q.keyId;
-      if (refs) e.refSpent += q.price; else e.spent += q.price;
-      await save(); // Both account identity and conservative spend reservation precede the paid request.
-      job.id = await this.d.api.submit(req, q.keyId); await save();
+      const limitedKeys: number[] = [];
+      while (!job.id) {
+        await this.guard(p);
+        const q = await this.d.api.quote(req, limitedKeys), e = p.episode;
+        if (limitedKeys.includes(q.keyId)) throw new Error('DEAPI_POOL_NO_USABLE_KEY');
+        const spent = refs ? e.refSpent : e.spent, budget = refs ? e.refBudget : e.budget;
+        if (!budget || q.price > cap + 0.000001 || spent + q.price > budget + 0.000001) throw new Error('EPISODE_BUDGET');
+        await this.guard(p);
+        job.attempted = true; job.price = q.price; job.keyId = q.keyId;
+        if (refs) e.refSpent += q.price; else e.spent += q.price;
+        await save(); // Binding and conservative reservation always precede a paid call.
+        try {
+          job.id = await this.d.api.submit(req, q.keyId);
+        } catch (error) {
+          if (!(error instanceof DeapiRateLimitError) || error.phase !== 'SUBMIT') throw error;
+          // Explicit rejection only: release this reservation, never an accepted/ambiguous job.
+          if (refs) e.refSpent = spent; else e.spent = spent;
+          job.attempted = false; job.price = undefined; job.keyId = undefined; await save();
+          limitedKeys.push(q.keyId);
+          if (limitedKeys.length >= 100) throw new Error('DEAPI_POOL_NO_USABLE_KEY');
+          continue;
+        }
+        await save();
+      }
     }
     try { return await this.d.api.result(job.id, job.keyId!); }
     catch (error) {

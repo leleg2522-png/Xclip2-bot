@@ -56,6 +56,18 @@ Manage DeAPI credentials as a pool in the bot's Railway database.
 
 **How to apply:** Preserve database-managed credential selection when changing the microdrama renderer. Keep accepted jobs tied to their original account; adding or disabling a pool key must not move an existing paid job to another account.
 
+On a rate limit, automatically try another DeAPI pool credential without
+deleting or marking the rate-limited credential dead. Keep it for use after
+the limit resets; rate limiting is not proof the balance is exhausted.
+
+**Why:** The user explicitly requested automatic switching on limits while
+retaining the previous credential if its balance remains.
+
+**How to apply:** Distinguish explicit pre-acceptance HTTP 429 rejection from
+timeouts and accepted jobs. Only the former allows a fresh submit on another
+key. Respect reset headers, preserve accepted-job bindings, and never infer
+zero balance from a limit.
+
 ## Generation rate limits versus credit balance
 
 A successful price quote does not establish that a video submit has available quota. A repeated HTTP 429 after a minute-scale cooldown may be a daily limit, not exhausted credits.

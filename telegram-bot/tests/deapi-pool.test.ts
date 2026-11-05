@@ -5,6 +5,8 @@ import { registerDeapiAdmin } from '../src/deapi-admin';
 import { MicrodramaEngine } from '../src/microdrama-engine';
 import type { DramaProject } from '../src/microdrama-store';
 import type { DramaRenderer } from '../src/microdrama-deapi';
+import { DeapiDramaRenderer } from '../src/microdrama-deapi';
+import { DeapiRateLimitError, deapiRetryAt } from '../src/deapi-rate-limit';
 
 async function databaseContract() {
   const calls: Array<{ sql: string; params?: any[] }> = [];
@@ -60,7 +62,7 @@ function poolFixture() {
 }
 
 async function rotationTests() {
-  for (const status of [401, 402, 403, 500]) {
+  for (const status of [401, 402, 403, 429, 500]) {
     const f = poolFixture();
     const pooled = new PooledDeapiRenderer(f.pool, key => {
       const c = f.client(key);
@@ -112,11 +114,19 @@ async function rotationTests() {
   }
 }
 
-async function engineBindingTests() {
+async function engineBindingTests(mode: 'poll' | 'rate' | 'all-rate' | 'ambiguous' = 'poll') {
   const f = poolFixture();
-  let failPoll = true;
+  let failPoll = mode === 'poll';
   const renderer = new PooledDeapiRenderer(f.pool, key => {
     const c = f.client(key);
+    c.submit = async () => {
+      f.events.submits.push(key);
+      if (mode === 'ambiguous') throw new Error('DEAPI_SUBMIT_HTTP_429');
+      if (mode === 'all-rate' || (mode === 'rate' && key === 'fake-key-1')) {
+        throw new DeapiRateLimitError('SUBMIT', Date.now() + 60_000);
+      }
+      return `job-${key}`;
+    };
     c.poll = async id => {
       f.events.polls.push(`${key}:${id}`);
       if (failPoll) throw new Error('DEAPI_POLL_HTTP_403');
@@ -146,6 +156,32 @@ async function engineBindingTests() {
       async lastFrame() { return Buffer.from('png'); }, async assemble() { return Buffer.from('video'); } },
   };
   await new MicrodramaEngine(deps).act(row.id, 42, 'approve');
+  if (mode === 'rate') {
+    assert.equal(row.status, 'delivered', 'Rejected 429 immediately moves to another key');
+    assert.deepEqual(f.events.submits.slice(0, 2), ['fake-key-1', 'fake-key-2']);
+    assert.equal(row.jobs[0].keyId, 2);
+    assert(f.events.polls.every(value => value.startsWith('fake-key-2:')));
+    assert(saves.some(p => !p.jobs[0].attempted && !p.jobs[0].id), 'Explicit rejection is cleared durably before retry');
+    assert(saves.some(p => p.jobs[0].attempted && p.jobs[0].keyId === 2 && !p.jobs[0].id),
+      'Replacement key is persisted before its paid call');
+    assert.deepEqual(f.events.disabled, [], 'Rate-limited keys retain their balance and status');
+    return;
+  }
+  if (mode === 'all-rate') {
+    assert.equal(row.status, 'paused');
+    assert.equal(row.jobs[0].attempted, false);
+    assert.equal(row.jobs[0].id, undefined);
+    assert.deepEqual(f.events.submits, ['fake-key-1', 'fake-key-2'], 'At most one submit per key, no infinite loop');
+    assert.deepEqual(f.events.disabled, []);
+    return;
+  }
+  if (mode === 'ambiguous') {
+    assert.equal(row.status, 'uncertain');
+    assert.equal(row.jobs[0].attempted, true);
+    await new MicrodramaEngine(deps).act(row.id, 42, 'resume');
+    assert.deepEqual(f.events.submits, ['fake-key-1'], 'Unverified 429 never clears the write-ahead marker');
+    return;
+  }
   assert.equal(row.status, 'paused');
   assert.equal(row.jobs[0].keyId, 1);
   assert.equal(row.jobs[0].id, 'job-fake-key-1');
@@ -158,6 +194,72 @@ async function engineBindingTests() {
   assert.equal(f.events.next, 2, 'Only a new scene selects another key; resumed scene keeps original');
   assert.deepEqual(f.events.polls.slice(0, 2), ['fake-key-1:job-fake-key-1', 'fake-key-1:job-fake-key-1']);
   assert.equal(row.jobs[1].keyId, 2);
+}
+
+async function rateLimitTests() {
+  const now = Date.now();
+  assert.equal(deapiRetryAt(new Headers({ 'retry-after': '90' }), now), now + 90_000);
+  const daily = Math.floor(now / 1000) + 86400;
+  assert.equal(deapiRetryAt(new Headers({ 'retry-after': '60', 'x-ratelimit-daily-reset': String(daily) }), now), daily * 1000);
+  assert.equal(deapiRetryAt(new Headers(), now), now + 60_000);
+  for (const body of [
+    { message: 'Too Many Attempts.' }, { error: { message: 'Rate limit exceeded' } },
+    { message: 'Limit', data: { request_id: 'already-accepted' } },
+    { message: 'Limit', data: { status: 'queued' } },
+    null, '<html>proxy failure</html>',
+  ]) {
+    let calls = 0;
+    const client = new DeapiDramaRenderer('fixture', async () => {
+      calls++;
+      return new Response(typeof body === 'string' ? body : JSON.stringify(body),
+        { status: 429, headers: { 'Retry-After': '120' } });
+    });
+    const safe = !!body && typeof body === 'object' && !('data' in body);
+    await assert.rejects(client.submit('prompt', 71), error =>
+      safe ? error instanceof DeapiRateLimitError && error.retryAt >= now + 120_000
+        : error instanceof Error && !(error instanceof DeapiRateLimitError));
+    assert.equal(calls, 1);
+  }
+  {
+    const f = poolFixture();
+    let clock = now, reject = true;
+    const pooled = new PooledDeapiRenderer(f.pool, key => {
+      const c = f.client(key);
+      c.quote = async () => {
+        if (reject && key === 'fake-key-1') throw new DeapiRateLimitError('QUOTE', now + 90_000);
+        return 0.218;
+      };
+      return c;
+    }, () => clock);
+    assert.equal((await pooled.prepare('prompt')).keyId, 2);
+    reject = false;
+    assert.equal((await pooled.prepare('prompt')).keyId, 2, 'Cooldown skips the first key even if its quote would succeed');
+    clock += 90_001;
+    const choices = await Promise.all([pooled.prepare('prompt'), pooled.prepare('prompt')]);
+    assert(choices.some(choice => choice.keyId === 1), 'Preserved key automatically returns after reset');
+    assert.deepEqual(f.events.disabled, []);
+  }
+  {
+    const f = poolFixture();
+    const pooled = new PooledDeapiRenderer(f.pool, key => {
+      const c = f.client(key);
+      c.quote = async () => { throw new DeapiRateLimitError('QUOTE', now + 60_000); };
+      return c;
+    });
+    await assert.rejects(pooled.prepare('prompt'), /NO_USABLE_KEY/);
+    assert.deepEqual(f.events.disabled, []);
+    assert.equal(f.events.submits.length, 0);
+  }
+  {
+    let calls = 0;
+    const client = new DeapiDramaRenderer('fixture', async () => {
+      calls++;
+      if (calls === 1) return new Response('{}', { status: 429, headers: { 'retry-after': '1' } });
+      return Response.json({ data: { status: 'done', result_url: 'https://cdn.test/video.mp4' } });
+    }, async () => {});
+    assert.equal(await client.poll('accepted-job'), 'https://cdn.test/video.mp4');
+    assert.equal(calls, 2, 'Polling limits retry the same job, never a fresh generation');
+  }
 }
 
 async function adminTests() {
@@ -195,7 +297,9 @@ async function adminTests() {
 }
 
 async function main() {
-  await databaseContract(); await rotationTests(); await engineBindingTests(); await adminTests();
-  console.log('PASS DeAPI DB pool, key isolation, pre-quote rotation, persistent job binding, no post-submit failover and admin management (offline).');
+  await databaseContract(); await rotationTests(); await rateLimitTests();
+  for (const mode of ['poll', 'rate', 'all-rate', 'ambiguous'] as const) await engineBindingTests(mode);
+  await adminTests();
+  console.log('PASS DeAPI pool: rate-limit rotation, cooldown recovery, retained keys, durable accepted-job binding, ambiguity safety and admin management (offline).');
 }
 main().catch(e => { console.error(e); process.exitCode = 1; });

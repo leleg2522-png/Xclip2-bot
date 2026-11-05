@@ -1,7 +1,8 @@
 import { MICRODRAMA_SETTINGS } from './microdrama-plan';
+import { DeapiRateLimitError, deapiRetryAt, explicitDeapiRateRejection } from './deapi-rate-limit';
 
 export interface DramaRenderer {
-  prepare?(prompt: string, frame?: Buffer): Promise<{ price: number; keyId: number }>;
+  prepare?(prompt: string, frame?: Buffer, skipIds?: number[]): Promise<{ price: number; keyId: number }>;
   quote(prompt: string, frame?: Buffer): Promise<number>;
   submit(prompt: string, seed: number, frame?: Buffer, keyId?: number): Promise<string>;
   poll(id: string, keyId?: number): Promise<string>;
@@ -29,6 +30,12 @@ export class DeapiDramaRenderer implements DramaRenderer {
     const r = await this.request(`https://api.deapi.ai/api/v2/videos/${endpoint}${quote ? '/price' : ''}`, {
       method: 'POST', ...this.payload(prompt, seed, frame), signal: AbortSignal.timeout(quote ? 60_000 : 120_000),
     });
+    if (r.status === 429) {
+      const body = await r.json().catch(() => null);
+      if (quote || explicitDeapiRateRejection(body)) {
+        throw new DeapiRateLimitError(quote ? 'QUOTE' : 'SUBMIT', deapiRetryAt(r.headers));
+      }
+    }
     if (!r.ok) throw new Error(`DEAPI_${quote ? 'QUOTE' : 'SUBMIT'}_HTTP_${r.status}`);
     return await r.json() as any;
   }

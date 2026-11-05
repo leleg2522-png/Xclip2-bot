@@ -1,19 +1,24 @@
 import { DeapiDramaRenderer } from './microdrama-deapi';
 import { MICRODRAMA_SETTINGS } from './microdrama-plan';
 import type { DeapiKeySource } from './deapi-key-pool';
+import { DeapiRateLimitError, deapiRetryAt, explicitDeapiRateRejection } from './deapi-rate-limit';
 
 export interface EpisodeRequest {
   kind: 'image' | 'video' | 'transcript'; prompt: string; images?: Buffer[]; source?: Buffer; seed: number;
 }
 export interface EpisodeApi {
-  quote(r: EpisodeRequest): Promise<{ price: number; keyId: number }>;
+  quote(r: EpisodeRequest, skipIds?: number[]): Promise<{ price: number; keyId: number }>;
   submit(r: EpisodeRequest, keyId: number): Promise<string>;
   result(id: string, keyId: number): Promise<Buffer>;
 }
 
 /** Immutable credential binding for every paid image, video and transcription job. */
 export class DeapiEpisodeApi implements EpisodeApi {
+  private cooldowns = new Map<string, number>();
   constructor(private pool: DeapiKeySource, private request: typeof fetch = fetch) {}
+  private bucket(r: EpisodeRequest, keyId: number): string {
+    return `${keyId}:${r.kind}:${r.kind === 'image' && r.images?.length ? 'edit' : 'generate'}`;
+  }
   private body(r: EpisodeRequest, price: boolean) {
     const image = r.kind === 'image', transcript = r.kind === 'transcript';
     const edit = image && !!r.images?.length;
@@ -47,15 +52,24 @@ export class DeapiEpisodeApi implements EpisodeApi {
         ...(data.json ? { 'Content-Type': 'application/json' } : {}) }, body: data.body,
       signal: AbortSignal.timeout(price ? 60_000 : 120_000),
     });
+    if (res.status === 429) {
+      const body = await res.json().catch(() => null);
+      if (price || explicitDeapiRateRejection(body)) {
+        throw new DeapiRateLimitError(price ? 'QUOTE' : 'SUBMIT', deapiRetryAt(res.headers));
+      }
+    }
     if (!res.ok) throw new Error(`EPISODE_${price ? 'QUOTE' : 'SUBMIT'}_${res.status}`);
     return await res.json() as any;
   }
-  async quote(r: EpisodeRequest) {
-    const skip: number[] = [];
+  async quote(r: EpisodeRequest, skipIds: number[] = []) {
+    const skip: number[] = [...new Set(skipIds)];
     while (skip.length < 100) {
       const key = await this.pool.next(skip);
       if (!key || skip.includes(key.id)) break;
       skip.push(key.id);
+      const bucket = this.bucket(r, key.id);
+      if ((this.cooldowns.get(bucket) ?? 0) > Date.now()) continue;
+      this.cooldowns.delete(bucket);
       try {
         const q = await this.send(r, key.apiKey, true), price = Number(q.data?.price);
         const max = r.kind === 'image' ? 0.10 : r.kind === 'video' ? 0.30 : 0.03;
@@ -68,6 +82,10 @@ export class DeapiEpisodeApi implements EpisodeApi {
         const code = e instanceof Error ? e.message : '';
         if (code === 'EPISODE_QUOTE_401') { await this.pool.disable(key.id); continue; }
         if (code === 'EPISODE_QUOTE_402' || code === 'EPISODE_QUOTE_403') continue;
+        if (e instanceof DeapiRateLimitError && e.phase === 'QUOTE') {
+          this.cooldowns.set(bucket, e.retryAt);
+          continue;
+        }
         throw e;
       }
     }
@@ -76,7 +94,14 @@ export class DeapiEpisodeApi implements EpisodeApi {
   async submit(r: EpisodeRequest, keyId: number): Promise<string> {
     const key = await this.pool.get(keyId);
     if (!key) throw new Error('DEAPI_JOB_KEY_MISSING');
-    const p = await this.send(r, key.apiKey, false);
+    let p: any;
+    try { p = await this.send(r, key.apiKey, false); }
+    catch (error) {
+      if (error instanceof DeapiRateLimitError && error.phase === 'SUBMIT') {
+        this.cooldowns.set(this.bucket(r, keyId), error.retryAt);
+      }
+      throw error;
+    }
     if (typeof p.data?.request_id !== 'string' || !p.data.request_id) throw new Error('EPISODE_SUBMIT_NO_ID');
     return p.data.request_id;
   }

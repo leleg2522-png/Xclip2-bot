@@ -1,5 +1,6 @@
 import { scenePrompt, type BuatSimpelWriter } from './microdrama-plan';
 import type { DramaRenderer } from './microdrama-deapi';
+import { DeapiRateLimitError } from './deapi-rate-limit';
 import type { DramaMedia } from './microdrama-media';
 import type { DramaProject, DramaStore } from './microdrama-store';
 
@@ -125,15 +126,31 @@ export class MicrodramaEngine {
         if (!await this.d.authorized(p.owner)) throw new Error('DRAMA_ADMIN_REVOKED');
         const frame = n ? await this.d.media.lastFrame(videos[n - 1]) : undefined;
         const prompt = scenePrompt(p.plan, n);
-        const prepared = this.d.renderer.prepare ? await this.d.renderer.prepare(prompt, frame)
-          : { price: await this.d.renderer.quote(prompt, frame), keyId: undefined };
-        const { price, keyId } = prepared;
-        if (!Number.isFinite(p.quotes[n]) || price > p.quotes[n] + 0.000001) throw new Error('DRAMA_BUDGET_CHANGED');
-        await this.d.notify(p, `Memproses adegan ${n + 1}/2. Estimasi klip ${cost(price)}. Antrean provider dapat memakan puluhan menit.`);
-        // Write-ahead marker BEFORE making a paid call. Missing ID after any failure permanently blocks resubmit.
-        job.attempted = true; job.price = price; job.keyId = keyId; await save();
-        job.id = await this.d.renderer.submit(prompt, 71 + n, frame, job.keyId);
-        await save();
+        const rateLimitedKeys: number[] = [];
+        while (!job.id) {
+          const prepared = this.d.renderer.prepare ? await this.d.renderer.prepare(prompt, frame, rateLimitedKeys)
+            : { price: await this.d.renderer.quote(prompt, frame), keyId: undefined };
+          const { price, keyId } = prepared;
+          if (keyId && rateLimitedKeys.includes(keyId)) throw new Error('DEAPI_POOL_NO_USABLE_KEY');
+          if (!Number.isFinite(p.quotes[n]) || price > p.quotes[n] + 0.000001) throw new Error('DRAMA_BUDGET_CHANGED');
+          if (!await this.d.authorized(p.owner)) throw new Error('DRAMA_ADMIN_REVOKED');
+          await this.d.notify(p, `Memproses adegan ${n + 1}/2. Estimasi klip ${cost(price)}. Antrean provider dapat memakan puluhan menit.`);
+          // Persist the original binding before every paid attempt. Ambiguous failures never rotate.
+          job.attempted = true; job.price = price; job.keyId = keyId; await save();
+          try {
+            job.id = await this.d.renderer.submit(prompt, 71 + n, frame, job.keyId);
+          } catch (error) {
+            if (!(error instanceof DeapiRateLimitError) || error.phase !== 'SUBMIT') throw error;
+            // Only a verified 429 rejection proves no paid job was accepted.
+            job.attempted = false; job.keyId = undefined; job.price = undefined; await save();
+            if (!keyId || !this.d.renderer.prepare) throw error;
+            rateLimitedKeys.push(keyId);
+            if (rateLimitedKeys.length >= 100) throw new Error('DEAPI_POOL_NO_USABLE_KEY');
+            await this.d.notify(p, 'Batas penggunaan sementara tercapai. Mencoba akun lain tanpa mengirim ulang job yang sudah diterima.');
+            continue;
+          }
+          await save();
+        }
       }
       if (!job.url) {
         try { job.url = await this.d.renderer.poll(job.id, job.keyId); }
