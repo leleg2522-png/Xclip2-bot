@@ -15,7 +15,6 @@ export const VIDEO_FAMILIES = [
   { id: 'sora', label: 'Sora' },
   { id: 'heygen', label: 'Heygen' },
   { id: 'creatify', label: 'Creatify' },
-  { id: 'happyhorse', label: 'HappyHorse' },
 ] as const;
 export type VideoFamilyId = typeof VIDEO_FAMILIES[number]['id'];
 const FAMILY_PREFIX = 'menu_video_family_';
@@ -36,7 +35,7 @@ export function videoFamilyForCallback(data: string): VideoFamilyId | undefined 
   const singleModels: Record<string, VideoFamilyId> = {
     mode_pi2v_grok_imagine: 'grok', mode_pi2v_pixverse_v6: 'pixverse',
     mode_rw: 'runway', mode_sora: 'sora', mode_har_heygen: 'heygen',
-    mode_pi2v_creatify_boreal: 'creatify', mode_china_happyhorse11: 'happyhorse',
+    mode_pi2v_creatify_boreal: 'creatify',
   };
   return singleModels[data];
 }

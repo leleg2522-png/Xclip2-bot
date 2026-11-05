@@ -23,7 +23,7 @@ vm.runInContext(ts.transpileModule(priceFn.getText(ast), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText, prices);
 const tariff = vm.runInContext('hargaText()', prices);
-assert.doesNotMatch(tariff, /Wan v2|Wan 3\.0 \(30 detik · 480p\)|Seedance 2\.0 \(15 detik · 480p\)/);
+assert.doesNotMatch(tariff, /Wan v2|Wan 3\.0 \(30 detik · 480p\)|Seedance 2\.0 \(15 detik · 480p\)|HappyHorse/i);
 assert.match(tariff, /Wan 3\.0 \(30 detik · 720p\)/);
 assert.match(tariff, /Seedance 2 Uncensored/);
 assert.match(tariff, /MiniMax H3 \(15 detik · 2K\)/);
@@ -41,7 +41,8 @@ async function exercise(session: any, callback?: string, text?: string) {
 }
 
 async function main() {
-  for (const callback of ['mode_pi2v_wan_v2', 'mode_china_wan3', 'mode_china_seedance2']) {
+  for (const callback of ['mode_pi2v_wan_v2', 'mode_china_wan3', 'mode_china_seedance2',
+    'mode_china_happyhorse11', 'menu_video_family_happyhorse']) {
     const result = await exercise({ mode: 'idle' }, callback);
     assert.equal(result.next, 0);
     assert.equal(result.ack, 1);
@@ -52,6 +53,7 @@ async function main() {
       { mode: `picsart_i2v_wait_${step}`, picsartI2vModel: 'wan_v2' },
       { mode: `china_video_wait_${step}`, chinaVideoModel: 'wan3' },
       { mode: `china_video_wait_${step}`, chinaVideoModel: 'seedance2' },
+      { mode: `china_video_wait_${step}`, chinaVideoModel: 'happyhorse11' },
     ]) {
       for (const text of [undefined, 'generate video']) {
         const result = await exercise(session, undefined, text);
@@ -69,7 +71,6 @@ async function main() {
   for (const session of [
     { mode: 'picsart_i2v_wait_prompt', picsartI2vModel: 'wan_v3' },
     { mode: 'china_video_wait_prompt', chinaVideoModel: 'minimax_h3' },
-    { mode: 'china_video_wait_prompt', chinaVideoModel: 'happyhorse11' },
     { mode: 'flora_wan_v3_480_wait_prompt' },
     { mode: 'flora_seedance_2_480_wait_prompt' },
     { mode: 'idle', picsartI2vModel: 'wan_v2' },

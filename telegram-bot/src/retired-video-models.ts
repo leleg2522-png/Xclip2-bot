@@ -1,7 +1,8 @@
 import type { Context, MiddlewareFn } from 'telegraf';
 
 export function isRetiredVideoCallback(callback: string): boolean {
-  return ['mode_pi2v_wan_v2', 'mode_china_wan3', 'mode_china_seedance2'].includes(callback);
+  return ['mode_pi2v_wan_v2', 'mode_china_wan3', 'mode_china_seedance2',
+    'mode_china_happyhorse11', 'menu_video_family_happyhorse'].includes(callback);
 }
 
 interface VideoDraft {
@@ -22,7 +23,7 @@ export function retiredVideoModelsGuard(deps: {
       ? ctx.callbackQuery.data : undefined;
     const session = deps.session(userId);
     const removedDraft = (session.mode.startsWith('picsart_i2v_wait_') && session.picsartI2vModel === 'wan_v2')
-      || (session.mode.startsWith('china_video_wait_') && ['wan3', 'seedance2'].includes(session.chinaVideoModel ?? ''));
+      || (session.mode.startsWith('china_video_wait_') && ['wan3', 'seedance2', 'happyhorse11'].includes(session.chinaVideoModel ?? ''));
     const removedButton = typeof callback === 'string' && isRetiredVideoCallback(callback);
     if (!removedButton && !removedDraft) return next();
     if (removedDraft) deps.reset(userId);

@@ -19,7 +19,7 @@ or changing its generation contract separately from reorganizing its menu.
 
 Remove Wan v2, Seedance 2.0 480p at Rp2,000, and Wan 3.0 480p at
 Rp2,000. Do not confuse the two 480p packages with their Uncensored variants.
-Remove all Flora image-generation models as well, not other providers' images
+Remove HappyHorse as well. Remove all Flora image-generation models, not other providers' images
 or Flora video/audio services.
 
 **Why:** The user explicitly requested these removals, separately from the
