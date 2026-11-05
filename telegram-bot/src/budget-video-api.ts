@@ -63,11 +63,21 @@ export class BudgetVideoApi {
     body.set('duration', String(BUDGET_VIDEO_MODELS[input.model].duration));
     body.set('orientation', input.ratio === '9:16' ? 'portrait' : input.ratio === '16:9' ? 'landscape' : 'square');
     if (input.model === 'vela') body.set('resolution', '720p');
-    input.images.forEach((image, i) => body.append('files', new Blob([new Uint8Array(image.bytes)], { type: image.mime }), `frame-${i + 1}`));
+    input.images.forEach((image, i) => {
+      const extension = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' } as Record<string, string>)[image.mime];
+      // SnapGen validates the filename extension as well as the Content-Type.
+      body.append('files', new Blob([new Uint8Array(image.bytes)], { type: image.mime }), `frame-${i + 1}.${extension}`);
+    });
     const r = await this.request(`https://api.snapgen.ai/uapi/v1/video-gen/${input.model}`, {
       method: 'POST', headers, body, signal: AbortSignal.timeout(120_000),
     });
-    if (!r.ok) throw Error(`SNAPGEN_SUBMIT_HTTP_${r.status}`);
+    if (!r.ok) {
+      const rejection: any = await r.json().catch(() => null);
+      const rawCode = rejection?.detail?.error_code ?? rejection?.error_code;
+      // Retain only a bounded machine code, never raw upstream text, URLs or inputs.
+      const code = typeof rawCode === 'string' && /^[A-Z][A-Z0-9_]{0,47}$/.test(rawCode) ? `_${rawCode}` : '';
+      throw Error(`SNAPGEN_SUBMIT_HTTP_${r.status}${code}`);
+    }
     const result: any = await r.json();
     if (typeof result.uuid !== 'string' || !result.uuid) throw Error('SNAPGEN_SUBMIT_UNCERTAIN');
     accepted(result.uuid);

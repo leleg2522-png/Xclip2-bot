@@ -36,6 +36,8 @@ async function contracts() {
         assert.equal(body.get('orientation'), 'portrait');
         assert.equal(body.get('resolution'), model === 'vela' ? '720p' : null, 'Never invent MUSE resolution');
         assert.equal(body.getAll('files').length, model === 'vela' ? 2 : 1);
+        assert.equal((body.getAll('files')[0] as File).name, 'frame-1.jpg');
+        if (model === 'vela') assert.equal((body.getAll('files')[1] as File).name, 'frame-2.png');
         return Response.json({ uuid: 'accepted-job', model_name: `${model}-ai-video`, status: 1 });
       }
       polls++;
@@ -85,20 +87,38 @@ async function contracts() {
       assert.deepEqual(pool.disabled, []);
     }
   }
-  for (const failure of ['timeout', 'bad-id', 'post-accept', 'traffic']) {
+  for (const failure of ['timeout', 'bad-id', 'post-accept', 'traffic', 'invalid-image']) {
     let submits = 0;
     const api = new BudgetVideoApi(keyPool(), 'fixture', async (_url, options) => {
       if (options?.method === 'POST') {
         submits++;
         if (failure === 'timeout') throw Error('socket timeout');
         if (failure === 'bad-id') return Response.json({});
+        if (failure === 'invalid-image') return Response.json({ detail: {
+          error_code: 'UNSUPPORTED_IMAGE_FORMAT', error_message: 'private provider details must not enter logs',
+        } }, { status: 400 });
         return Response.json({ uuid: 'accepted', model_name: 'vela-ai-video' });
       }
       if (failure === 'post-accept') return new Response('', { status: 401 });
       return Response.json({ status: 3, model_name: 'vela-ai-video', error_code: 'HIGH_TRAFFIC_ERROR' });
     }, wait);
-    await assert.rejects(api.generate(input('vela')));
+    await assert.rejects(api.generate(input('vela')),
+      failure === 'invalid-image' ? /SNAPGEN_SUBMIT_HTTP_400_UNSUPPORTED_IMAGE_FORMAT$/ : undefined);
     assert.equal(submits, 1, 'Failures never replay a paid SnapGen submit');
+  }
+  for (const [mime, extension] of [['image/jpeg','jpg'], ['image/png','png'], ['image/webp','webp']]) {
+    let submits = 0;
+    const api = new BudgetVideoApi(keyPool(), 'fixture', async (_url, options) => {
+      submits++;
+      const body = options!.body as FormData;
+      const file = body.get('files') as File;
+      assert.equal(file.name, `frame-1.${extension}`);
+      assert.equal(file.type, mime);
+      return Response.json({ detail: { error_code: 'INVALID_FILE_CONTENT' } }, { status: 400 });
+    }, wait);
+    await assert.rejects(api.generate({ ...input('muse'), images: [{ ...image, mime }] }),
+      /SNAPGEN_SUBMIT_HTTP_400_INVALID_FILE_CONTENT$/);
+    assert.equal(submits, 1);
   }
   await assert.rejects(new BudgetVideoApi(keyPool(), 'fixture').generate({ ...input('vela'), images: [] }), /IMAGE_INVALID/);
 }

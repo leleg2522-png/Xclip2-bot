@@ -59,6 +59,17 @@ Do not copy the illustrative 20-credit response into pricing assumptions:
 the live accepted test returned an estimate of 1 credit. Always use actual API
 billing fields. The archive documents Vela Image separately, not MUSE Image.
 
+SnapGen validates an uploaded reference's filename extension, not just its
+MIME type or actual image content.
+
+**Why:** A controlled MUSE upload of a valid JPEG named `frame-1` returned
+HTTP 400 `UNSUPPORTED_IMAGE_FORMAT`, explicitly requiring `.png`, `.jpg`,
+`.jpeg`, or `.webp`. The same image with a `.jpg` filename was accepted.
+
+**How to apply:** Preserve a MIME-appropriate extension on every multipart
+reference, including Vela end frames. Read nested `detail.error_code` for
+diagnostics without logging raw provider messages, credentials, or file URLs.
+
 ## Vela image-to-video
 
 The official Vela UAPI is `POST /uapi/v1/video-gen/vela`, multipart with
