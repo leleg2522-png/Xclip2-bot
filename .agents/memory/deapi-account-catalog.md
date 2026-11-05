@@ -40,6 +40,16 @@ assignment, or stable voices across a whole episode.
 
 ## Bot credential management
 
+The user requested additional standalone LTX and MiniMax video packages from
+DeAPI: ten seconds each, selling for Rp1,000 per video.
+
+**Why:** The user said “tambahkan juga LTX DAN MINIMAX 10 DETIK DARI DEAPI
+DENGAN HARGA 1K”. Here 1K is the selling price, not a resolution requirement.
+
+**How to apply:** Add distinct choices within the existing LTX and MiniMax
+families. Preserve existing variants and their prices. Use the existing
+database-managed DeAPI pool and failed-delivery refund rules.
+
 Manage DeAPI credentials as a pool in the bot's Railway database.
 
 **Why:** The user explicitly requested “buatkan pool api untuk de api di DB”. A database-managed pool avoids requiring hosting-variable changes for each additional key.
