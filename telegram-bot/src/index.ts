@@ -3547,6 +3547,8 @@ const budgetVideoBot = createBudgetVideoBot({
         console.error(`[budget-video] model=${input.model} user=${userId} code=${code}`);
         const message = code === 'SNAPGEN_HIGH_TRAFFIC'
           ? 'Layanan sedang ramai. Video belum berhasil dibuat.'
+          : code === 'SNAPGEN_CONTENT_MODERATION'
+            ? 'Prompt atau foto ditolak oleh filter konten model. Gunakan konten yang sesuai ketentuan layanan. Video tidak dibuat; saldo akan dikembalikan.'
           : /_(UNSUPPORTED_IMAGE_FORMAT|INVALID_FILE_CONTENT|EMPTY_FILE|INVALID_REFERENCE_IMAGE)$/.test(code)
             ? 'Foto referensi ditolak. Gunakan foto JPG/PNG/WebP yang valid, maksimal 10 MB.'
           : code === 'DEAPI_POOL_NO_USABLE_KEY'

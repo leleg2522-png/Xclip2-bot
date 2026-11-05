@@ -17,6 +17,15 @@ export interface BudgetVideoInput { model: BudgetVideoModel; ratio: VideoRatio; 
 export function isBudgetVideoModel(value: string): value is BudgetVideoModel {
   return Object.hasOwn(BUDGET_VIDEO_MODELS, value);
 }
+
+function snapgenVideoFailure(history: any): Error {
+  const raw = history?.error_code || history?.generated_video?.[0]?.error_code;
+  if (raw === 'HIGH_TRAFFIC_ERROR') return Error('SNAPGEN_HIGH_TRAFFIC');
+  if (raw === 'CONTENT_MODERATION_ERROR') return Error('SNAPGEN_CONTENT_MODERATION');
+  const suffix = typeof raw === 'string' && /^[A-Z][A-Z0-9_]{0,47}$/.test(raw) ? `_${raw}` : '';
+  return Error(`SNAPGEN_JOB_FAILED${suffix}`);
+}
+
 export function validateBudgetVideo(input: BudgetVideoInput) {
   if (!isBudgetVideoModel(input.model) || !['9:16', '16:9', '1:1'].includes(input.ratio)
     || !input.prompt.trim() || input.prompt.length > 20_000) throw Error('VIDEO_INPUT_INVALID');
@@ -84,7 +93,7 @@ export class BudgetVideoApi {
     if (typeof result.uuid !== 'string' || !result.uuid) throw Error('SNAPGEN_SUBMIT_UNCERTAIN');
     accepted(result.uuid);
     if (result.model_name !== model) throw Error('SNAPGEN_MODEL_MISMATCH');
-    if (Number(result.status) === 3) throw Error('SNAPGEN_JOB_FAILED');
+    if (Number(result.status) === 3) throw snapgenVideoFailure(result);
     for (let attempt = 0; attempt < 90; attempt++) {
       await this.sleep(10_000);
       const poll = await this.request(`https://api.snapgen.ai/uapi/v1/history/${encodeURIComponent(result.uuid)}`, {
@@ -99,7 +108,7 @@ export class BudgetVideoApi {
       if (history.model_name !== model) throw Error('SNAPGEN_MODEL_MISMATCH');
       const video = history.generated_video?.[0];
       if (Number(history.status) === 3 || Number(video?.status) === 3) {
-        throw Error(history.error_code === 'HIGH_TRAFFIC_ERROR' ? 'SNAPGEN_HIGH_TRAFFIC' : 'SNAPGEN_JOB_FAILED');
+        throw snapgenVideoFailure(history);
       }
       if (Number(history.status) === 2 || Number(video?.status) === 2) {
         if (typeof video?.video_url !== 'string' || !video.video_url.startsWith('https://')) throw Error('SNAPGEN_RESULT_INVALID');

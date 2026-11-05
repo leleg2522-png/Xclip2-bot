@@ -87,7 +87,7 @@ async function contracts() {
       assert.deepEqual(pool.disabled, []);
     }
   }
-  for (const failure of ['timeout', 'bad-id', 'post-accept', 'traffic', 'invalid-image']) {
+  for (const failure of ['timeout', 'bad-id', 'post-accept', 'traffic', 'invalid-image', 'moderation', 'nested-moderation', 'submit-moderation']) {
     let submits = 0;
     const api = new BudgetVideoApi(keyPool(), 'fixture', async (_url, options) => {
       if (options?.method === 'POST') {
@@ -97,13 +97,24 @@ async function contracts() {
         if (failure === 'invalid-image') return Response.json({ detail: {
           error_code: 'UNSUPPORTED_IMAGE_FORMAT', error_message: 'private provider details must not enter logs',
         } }, { status: 400 });
+        if (failure === 'submit-moderation') return Response.json({
+          uuid: 'accepted', model_name: 'vela-ai-video', status: 3, error_code: 'CONTENT_MODERATION_ERROR',
+        });
         return Response.json({ uuid: 'accepted', model_name: 'vela-ai-video' });
       }
       if (failure === 'post-accept') return new Response('', { status: 401 });
+      if (failure === 'moderation') return Response.json({
+        status: 3, model_name: 'vela-ai-video', error_code: 'CONTENT_MODERATION_ERROR', used_credit: 0,
+      });
+      if (failure === 'nested-moderation') return Response.json({
+        status: 1, model_name: 'vela-ai-video',
+        generated_video: [{ status: 3, error_code: 'CONTENT_MODERATION_ERROR' }],
+      });
       return Response.json({ status: 3, model_name: 'vela-ai-video', error_code: 'HIGH_TRAFFIC_ERROR' });
     }, wait);
     await assert.rejects(api.generate(input('vela')),
-      failure === 'invalid-image' ? /SNAPGEN_SUBMIT_HTTP_400_UNSUPPORTED_IMAGE_FORMAT$/ : undefined);
+      failure.includes('moderation') ? /SNAPGEN_CONTENT_MODERATION$/
+        : failure === 'invalid-image' ? /SNAPGEN_SUBMIT_HTTP_400_UNSUPPORTED_IMAGE_FORMAT$/ : undefined);
     assert.equal(submits, 1, 'Failures never replay a paid SnapGen submit');
   }
   for (const [mime, extension] of [['image/jpeg','jpg'], ['image/png','png'], ['image/webp','webp']]) {
