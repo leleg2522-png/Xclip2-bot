@@ -39,4 +39,5 @@
 - [DeAPI model access and keys](deapi-account-catalog.md) — catalogue is account-scoped; Seedance is plan-blocked; user wants bot credentials pooled in the Railway DB.
 - [Microdrama LLM provider](microdrama-llm-provider.md) — user selected BUAT SIMPEL as the microdrama brain; specific model remains undecided.
 - [Rekalume image HAR](rekalume-image-har.md) — Banana Pro edit completed at real 1K/4K; sanitized capture lacks auth, so it cannot independently replay generation.
-- [SnapGen MUSE](snapgen-muse.md) — image Rp500, video Rp1,000; verify api.snapgen.ai-specific contracts, not similarly named docs.
+- [SnapGen MUSE](snapgen-muse.md) — image and video Rp500 each; verify api.snapgen.ai-specific contracts, not similarly named docs.
+- [Video menu organization](video-menu-organization.md) — user prefers grouping by model family, not by use case; menu cleanup must preserve existing models and pricing.

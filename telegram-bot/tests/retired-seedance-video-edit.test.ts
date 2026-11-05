@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { retiredSeedanceVideoEditGuard } from '../src/retired-seedance-video-edit';
 
 const source = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
-const menu = source.slice(source.indexOf('function mainMenuKeyboard()'), source.indexOf('function seedanceMiniEditRatioKeyboard()'));
+const menu = source.slice(source.indexOf('function videoModelRows()'), source.indexOf('function seedanceMiniEditRatioKeyboard()'));
 const prices = source.slice(source.indexOf('function hargaText('), source.indexOf('// Buat order QRIS'));
 assert.doesNotMatch(menu, /Seedance.*Video Edit|mode_seedance_(mini|fast|2)_edit/);
 assert.doesNotMatch(prices, /Seedance.*Video Edit|picsart_seedance_2_(mini_edit|fast_edit|video_edit)/);

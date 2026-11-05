@@ -1,6 +1,7 @@
 import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
 import { retiredSeedanceVideoEditGuard } from './retired-seedance-video-edit';
+import { buildVideoMenuScreen } from './video-menu';
 import FormData from 'form-data';
 import { Client, Pool } from 'pg';
 import { HttpsProxyAgent } from 'https-proxy-agent';
@@ -2668,22 +2669,8 @@ async function upscaleGeneratedVideo(
 
 // ─── Keyboards ────────────────────────────────────────────────────────────────
 
-function mainMenuKeyboard() {
-  return Markup.inlineKeyboard([
-    // ── Akun & Saldo ──
-    [
-      Markup.button.callback('💳 Isi Saldo', 'menu_topup'),
-      Markup.button.callback('💰 Cek Saldo', 'menu_saldo'),
-    ],
-    [
-      Markup.button.callback('📋 Lihat Tarif', 'menu_harga'),
-      Markup.button.callback('🧾 Riwayat Top-up', 'menu_riwayat'),
-    ],
-    [Markup.button.callback('🎁 Program Referral', 'menu_referral')],
-    [Markup.button.url('💬 Masuk Grup Diskusi', 'https://t.me/+r9196est92MxNWE1')],
-    [Markup.button.callback('🔍 Cek Status Pembayaran', 'menu_cekbayar')],
-    // ── Generate Video ──
-    [Markup.button.callback('── 🎬 Generate Video ──', 'noop')],
+function videoModelRows() {
+  return [
     [Markup.button.callback('🕹️ Kling Motion Control', 'menu_kling_list')],
     [Markup.button.callback('🎬 Heygen Video · 15 detik · 1080p', 'mode_har_heygen')],
     [Markup.button.callback('🌊 Seedance 2.0 Mini 1080p', 'mode_pi2v_seedance_2_mini')],
@@ -2723,6 +2710,25 @@ function mainMenuKeyboard() {
     [Markup.button.callback('🎬 MiniMax H3 • 15 detik', 'mode_minimax_h3')],
     [Markup.button.callback('✨ Gemini Omni', 'mode_gomni')],
     [Markup.button.callback('✨ Gemini Omni 1.2', 'mode_gomni12')],
+  ];
+}
+
+function mainMenuKeyboard() {
+  return Markup.inlineKeyboard([
+    // ── Akun & Saldo ──
+    [
+      Markup.button.callback('💳 Isi Saldo', 'menu_topup'),
+      Markup.button.callback('💰 Cek Saldo', 'menu_saldo'),
+    ],
+    [
+      Markup.button.callback('📋 Lihat Tarif', 'menu_harga'),
+      Markup.button.callback('🧾 Riwayat Top-up', 'menu_riwayat'),
+    ],
+    [Markup.button.callback('🎁 Program Referral', 'menu_referral')],
+    [Markup.button.url('💬 Masuk Grup Diskusi', 'https://t.me/+r9196est92MxNWE1')],
+    [Markup.button.callback('🔍 Cek Status Pembayaran', 'menu_cekbayar')],
+    // Model video disusun dalam submenu, bukan satu daftar panjang.
+    [Markup.button.callback('🎬 Generate Video', 'menu_video')],
     [Markup.button.callback('── 🔧 Video Tools ──', 'noop')],
     [Markup.button.callback('⬆️ ByteDance Upscaler 1K • Rp500', 'mode_bytedance_upscale')],
     [Markup.button.callback('🎙️ AI Lipsync (Rp3.000)', 'menu_lipsync')],
@@ -4616,6 +4622,12 @@ bot.on('callback_query', async (ctx) => {
     return;
   }
 
+  if (data === 'menu_video' || data.startsWith('menu_video_family_')) {
+    const screen = buildVideoMenuScreen(data, videoModelRows());
+    if (!screen) return ctx.reply('Menu model tidak ditemukan. Gunakan /menu untuk membuka daftar terbaru.');
+    return ctx.editMessageText(screen.text, Markup.inlineKeyboard(screen.rows));
+  }
+
   if (data === 'menu_kling_list') {
     if (!await requireLogin(ctx)) return;
     return ctx.editMessageText(
@@ -4629,7 +4641,9 @@ bot.on('callback_query', async (ctx) => {
           [Markup.button.callback(`🎭 ${KLING_P4.label} · 1K · ${formatRupiah(MODEL_PRICES.kling_p4)}`, 'mode_klingp4')],
           [Markup.button.callback(`🕺 Xclip Motion · 1080p · ${formatRupiah(MODEL_PRICES.xclip_motion)}`, 'mode_har_xclip_motion')],
           [Markup.button.callback(`🎭 ${ALRIZ_KLING_P5.label} · 1K · ${formatRupiah(MODEL_PRICES.kling_v3_standard)}`, 'mode_klingv3std')],
-          [Markup.button.callback('⬅️ Kembali', 'back_main')],
+          [Markup.button.callback('Kembali ke Kling', 'menu_video_family_kling')],
+          [Markup.button.callback('Daftar Model Video', 'menu_video')],
+          [Markup.button.callback('Menu Utama', 'back_main')],
         ]),
       }
     );
