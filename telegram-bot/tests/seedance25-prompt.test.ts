@@ -196,7 +196,7 @@ async function checkDocumentToProviderPayload() {
     setSession: (_: number, update: any) => { current = { ...current, ...update }; },
     requireLogin: async () => true, getCooldownRemainingMs: () => 0,
     telegramHttp: { get: async () => ({ data: bytes }) },
-    MODEL_PRICES: { picsart_seedance_25: 6000 }, MAX_PARALLEL_GENERATIONS_PER_USER: 3,
+    MODEL_PRICES: { picsart_seedance_25: 15000 }, MAX_PARALLEL_GENERATIONS_PER_USER: 3,
     beginCharge: async (_: number, amount: number) => { charges.push(amount); return { ok: true }; },
     addSaldo: async (_: number, amount: number) => { refunds.push(amount); },
     releaseGenerating() {}, incrementKlingUsage: async () => 1, markGenSuccess() {},
@@ -246,7 +246,7 @@ async function checkDocumentToProviderPayload() {
   assert.equal(posted.params.resolution, '480p');
   assert.equal(posted.params.duration, 30);
   assert.equal(submitCount, 1); assert.equal(finishCount, 1);
-  assert.deepEqual(charges, [6000]); assert.deepEqual(refunds, []);
+  assert.deepEqual(charges, [15000]); assert.deepEqual(refunds, []);
   assert.deepEqual(deliveries, ['https://example.test/1080.mp4']);
   console.log('PASS actual Telegraf document route → full 20,000-character Picsart payload → simulated accepted job → mandatory 1080p delivery; one charge.');
 }

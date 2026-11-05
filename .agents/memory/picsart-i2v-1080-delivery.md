@@ -31,9 +31,18 @@ and prices unchanged. This does not include their separate Video Edit routes.
 
 The separate Flora Seedance 2 option is displayed as Seedance 2 Uncensored
 with 1080p delivery through automatic Renderful finishing. Its generation
-stays at 480p, 15 seconds, and Rp6,000 with landscape and portrait choices.
+stays at 480p and 15 seconds, with landscape and portrait choices.
 Keep it separate from the original Seedance routes. Uncensored is only a
 public label, not a change to provider content policies.
+
+Seedance 2 Uncensored and Wan 3.0 Uncensored each cost Rp15,000 per video.
+This price instruction applies to these separate Uncensored choices only.
+
+**Why:** The user explicitly requested “seedance 2 uncecored jadi 15 k dan
+wan 3,0 uncecored jadi 15k juga”.
+
+**How to apply:** Keep their durations and providers unchanged. Do not apply
+this tariff to MiniMax Uncensored or to the original Seedance 2 and Wan routes.
 
 Seedance 2 Mini Video Edit and Seedance 2 Fast Video Edit stay separate from
 each other and from their image-to-video variants. Each Video Edit route

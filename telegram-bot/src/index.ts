@@ -222,8 +222,8 @@ const MODEL_PRICES = {
   gemini_omni_12_4k: 4000,
   gemini_omni_11_flora: 3000,
   flora_minimax_h3_480: 3500,
-  flora_wan_v3_480: 10000,
-  flora_seedance_2_480: 10000,
+  flora_wan_v3_480: 15000,
+  flora_seedance_2_480: 15000,
   chat: 100,           // Chat AI per pesan
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
   kling_p3: 4000,      // Kling MC V3.0 PRO P3 (Edanbot)
@@ -254,9 +254,9 @@ const MODEL_PRICES = {
   picsart_ltx_pro: 2500, // LTX 2.5 Pro 10s, native 1080p
   picsart_ltx_fast: 3000, // LTX 2.5 Fast 20s, native 1080p
   picsart_kling_omni: 3500, // Kling Omni 12s, native 720p
-  picsart_kling4: 8000, // Kling 4 I2V/T2V, 30s with mandatory 1080p finishing
-  picsart_kling4_10: 3500,
-  picsart_kling4_15: 4000,
+  picsart_kling4: 15000, // Kling 4 I2V/T2V, 30s with mandatory 1080p finishing
+  picsart_kling4_10: 5000,
+  picsart_kling4_15: 7000,
   picsart_seedance_2_mini: 3500, // Seedance 2.0 Mini, native 480p
   picsart_seedance_2_mini_edit: 3500, // Seedance 2.0 Mini Video Edit, native 480p
   picsart_seedance_2_fast_edit: 4000, // Seedance 2.0 Fast Video Edit, native 480p
@@ -264,7 +264,7 @@ const MODEL_PRICES = {
   picsart_seedance_2: 4000, // Seedance 2.0 Mini/Fast/Standard, native 480p
   picsart_wan_v3: 6000, // Wan 3.0 30s, native 720p
   alriz_seedance_25: 5000, // Historical Alriz tariff; not used for new orders
-  picsart_seedance_25: 6000, // Seedance 2.5: native 480p → mandatory 1080p finishing
+  picsart_seedance_25: 15000, // Seedance 2.5, 30s: native 480p → mandatory 1080p finishing
   oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
   kling_21_p2: 3000,   // Public Kling 2.1 P2; Flora Kling 2.5 first-frame backend

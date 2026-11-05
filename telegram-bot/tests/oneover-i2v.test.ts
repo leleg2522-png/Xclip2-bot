@@ -42,7 +42,7 @@ assert.equal(resolveOneOverAccountId({ apiKey: 'test', authorization: 'opaque-to
 
 assert.match(bot, /oneover_seedance_25: 6000/);
 assert.match(bot, /alriz_seedance_25: 5000/);
-assert.match(bot, /picsart_seedance_25: 6000/);
+assert.match(bot, /picsart_seedance_25: 15000/);
 assert.doesNotMatch(bot, /picsart_seedance_25_720/);
 assert.match(bot, /picsart_wan_v3: 6000/);
 assert.match(bot, /Seedance 2\.5 Teks \/ Gambar/);

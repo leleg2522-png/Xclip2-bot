@@ -39,7 +39,7 @@ function harness(options: Options = {}) {
     Buffer, validateSeedance25Request, MAX_PARALLEL_GENERATIONS_PER_USER: 3,
     SEEDANCE25_MAX_MEDIA_BYTES, SEEDANCE25_MAX_TOTAL_BYTES, SEEDANCE25_MAX_REFERENCE_SECONDS,
     seedance25ReferenceName,
-    MODEL_PRICES: { picsart_seedance_25: 6000 },
+    MODEL_PRICES: { picsart_seedance_25: 15000 },
     beginCharge: async (_: number, price: number) => {
       events.charges.push(price); return { ok: !options.chargeFails, reason: 'saldo' };
     },
@@ -236,7 +236,7 @@ async function main() {
   for (const draft of [settings, { ...settings, mode: 't2v' as const, audio: false, ratio: '16:9' as const }]) {
     const h = harness(); await h.run(draft, draft.mode === 't2v' ? 0 : 30);
     assert.deepEqual(h.events.order, ['generate', 'finish', 'deliver']);
-    assert.deepEqual(h.events.charges, [6000]); assert.deepEqual(h.events.refunds, []);
+    assert.deepEqual(h.events.charges, [15000]); assert.deepEqual(h.events.refunds, []);
     assert.deepEqual(h.events.releases, [1]); assert.deepEqual(h.events.successes, [1]);
     const request = h.events.inputs[0];
     assert.equal(request.resolution, '480p'); assert.equal(request.duration, 30);
@@ -247,7 +247,7 @@ async function main() {
   }
   for (const [images, videos, audios] of [[0, 0, 1], [0, 1, 0], [30, 10, 10]]) {
     const h = harness(); await h.run(settings, images, 1, videos, audios);
-    assert.deepEqual(h.events.charges, [6000]); assert.deepEqual(h.events.refunds, []);
+    assert.deepEqual(h.events.charges, [15000]); assert.deepEqual(h.events.refunds, []);
     assert.equal(h.events.inputs[0].images.length, images);
     assert.equal(h.events.inputs[0].videos.length, videos);
     assert.equal(h.events.inputs[0].audios.length, audios);
@@ -255,14 +255,14 @@ async function main() {
   }
   for (const options of [{ mediaInvalid: true }, { mediaSeconds: 16 }]) {
     const h = harness(options); await h.run(settings, 0, 1, 2, 0);
-    assert.deepEqual(h.events.refunds, [6000]); assert.equal(h.events.inputs.length, 0);
+    assert.deepEqual(h.events.refunds, [15000]); assert.equal(h.events.inputs.length, 0);
   }
   for (const options of [
     { downloadFails: true }, { generationFails: true }, { finishingFails: true },
     { finishingThrows: true }, { deliveryFails: true }, { deliveryThrows: true },
   ]) {
     const h = harness(options); await h.run();
-    assert.deepEqual(h.events.refunds, [6000]); assert.deepEqual(h.events.releases, [1]);
+    assert.deepEqual(h.events.refunds, [15000]); assert.deepEqual(h.events.releases, [1]);
     assert.deepEqual(h.events.successes, []);
     assert.ok(h.events.inputs.length <= 1);
     assert.ok(h.events.deliveries.every(d => d.url.endsWith('-1080.mp4')), 'Never deliver native fallback');
@@ -288,7 +288,7 @@ async function main() {
   await checkSubmitContract();
   await checkMultiReferenceUploads();
   await checkAcceptedJobBinding();
-  assert.match(source, /picsart_seedance_25:\s*6000,/);
-  console.log('PASS Seedance 2.5 Picsart: public inputs, native 480p → mandatory 1080p, Rp6000 billing/refunds, isolation, no accepted-job replay.');
+  assert.match(source, /picsart_seedance_25:\s*15000,/);
+  console.log('PASS Seedance 2.5 Picsart: public inputs, native 480p → mandatory 1080p, Rp15000 billing/refunds, isolation, no accepted-job replay.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

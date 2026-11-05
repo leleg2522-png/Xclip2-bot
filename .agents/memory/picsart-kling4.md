@@ -93,12 +93,11 @@ Kling MC V3 Pro P5 package.
 
 ## Approved public price
 
-Both Kling 4 modes cost **Rp3.500 for 10 seconds**, **Rp4.000 for 15 seconds**,
-and **Rp8.000 for 30 seconds**.
+Kling 4 costs **Rp5.000 for 10 seconds**, **Rp7.000 for 15 seconds**,
+and **Rp15.000 for 30 seconds**.
 
-**Why:** The user answered `8000` for the original 30-second package, then set
-“harga 10 detik 3,5 k 15 detik 5k” after requesting duration choices. The user
-subsequently revised the 15-second price: “harga 15 detik jadi 4k saja”.
+**Why:** The user superseded the earlier tariffs with “naikan harg akling 4
+10 detik jadi 5k ,15 detik 7k 30 detik 15 k”.
 
 **How to apply:** Keep the same duration-based prices for image-to-video and
 text-to-video; charge and fully refund the selected duration's price when
