@@ -25,3 +25,14 @@ the similarly named documentation host must not be assumed interchangeable.
 
 **How to apply:** Require provider-specific endpoint and payload evidence before
 adding paid submits; do not guess a MUSE endpoint from other model families.
+
+Do not substitute Vela Image for MUSE Image based on legacy "Meta AI" naming.
+
+**Why:** Inspection of SnapGen's public frontend found an image helper named
+Meta AI that explicitly labels its result `vela-ai-image` and posts to
+`/vela/generate`. A separate Muse video helper uses the browser's
+`/video-gen/meta` route. These names do not establish a MUSE image UAPI contract.
+
+**How to apply:** Verify both the actual model identity and API-key endpoint
+before spending credits. Browser-session forms are not proof that an equivalent
+UAPI route accepts the same fields.
