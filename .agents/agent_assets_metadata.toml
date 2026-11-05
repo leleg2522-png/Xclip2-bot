@@ -831,3 +831,17 @@ mtime_ms = 1793880493685
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/7899c27d-62f9-464a-ba37-14d5245cf3ee/970228e9-7ffa-4a81-aafe-0c6d220a5cdc"
 storage_version_token = "1793880514148215"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "aJKFlvB4uZPriYQpgvjzP"
+uri = "file://generated-artifacts/kling4-reference-live/output-1080p.mp4"
+type = "video"
+title = "Hasil Kling 4 Reference-to-Video — 1080p"
+description = "Tes Picsart dengan foto robot biru dan video referensi tari 3 detik. Hasil 10,04 detik, 1080×1920 setelah upscale."
+logical_id = "a2512945-40c9-4a54-ac0f-859b04e2b495"
+content_hash = "sha256:c973451ba0245db1ba6bc7a8b42dc35304608f83032a718aebf99b9943416d7e"
+size = 6539194
+mtime_ms = 1793903072463
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/a2512945-40c9-4a54-ac0f-859b04e2b495/a0f67369-9ca4-48fa-9cfb-fea78c2290fe"
+storage_version_token = "1793903086477796"
+content_type = "video/mp4"

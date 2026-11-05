@@ -5,6 +5,24 @@ description: Captured Kling 4 T2V completion, I2V quote acceptance, native setti
 
 # Kling 4 contracts
 
+## Completed combined-reference test
+
+The non-regular `kling-v4-omni` route has completed a real request with one
+original blue-robot image and one three-second dance-reference MP4, using
+`image_list` plus `video_list` with `refer_type: feature`. The requested
+ten-second portrait output completed at 720×1280, approximately 10.04 seconds;
+the full-input quote was 30 credits. Sampled frames preserve the robot and
+show dancing, but do not establish exact choreography transfer.
+
+**Why:** Earlier HAR-only evidence did not establish a completed request with
+an actual video reference. This authorized live experiment resolves that narrow
+gap, not the maximum image count, longer reference limits, or base-edit mode.
+
+**How to apply:** Treat the single-image plus short-video feature-reference
+combination as live-verified. Older “video references blocked” notes below are
+historical; do not generalize this result to every input combination. Keep
+mandatory 1080p finishing and never replay an accepted paid job.
+
 ## Non-regular reference contract
 
 The user requested video references and the documented maximum image count for
@@ -24,8 +42,8 @@ separate. Docs do not specify a reference-video byte/duration limit; label the
 Do not confuse the output duration cap with an input-video duration limit.
 Video orders need an actual full-input credit quote rather than the historical
 image-only 90-credit assumption. Preserve mandatory 1080p finishing and refunds.
-Documentation and local contract tests are not evidence of a completed live
-Playground video-reference generation.
+Documentation and local contract tests alone are not evidence of a completed
+live Playground video-reference generation; see the narrow completed test above.
 
 Sources: https://picsart.com/api-platform/models/kling-v4-omni/advanced and
 https://picsart.com/api-platform/models/kling-v4-omni/api .
