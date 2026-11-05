@@ -36,3 +36,18 @@ Meta AI that explicitly labels its result `vela-ai-image` and posts to
 **How to apply:** Verify both the actual model identity and API-key endpoint
 before spending credits. Browser-session forms are not proof that an equivalent
 UAPI route accepts the same fields.
+
+Use the official documentation download when individual documentation pages
+cannot be read: `https://docs.snapgen.ai/downloads/docs-content.zip`.
+
+**Why:** The documentation is client-rendered; its own header exposes this
+archive of original Markdown. It supplied the actual MUSE UAPI contract after
+ordinary page fetching and public application bundles did not.
+
+**How to apply:** Read the archive's MUSE video resource. It specifies
+`POST /uapi/v1/video-gen/muse`, multipart form fields `prompt`,
+`model=muse-ai-video`, `duration=10`, and `orientation`. Optional reference
+fields accept up to ten images combined; output resolution is not selectable.
+Do not copy the illustrative 20-credit response into pricing assumptions:
+the live accepted test returned an estimate of 1 credit. Always use actual API
+billing fields. The archive documents Vela Image separately, not MUSE Image.

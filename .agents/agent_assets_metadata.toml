@@ -789,3 +789,17 @@ mtime_ms = 1793836807124
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/e1505fc2-cfcf-461f-8ecd-ef26d14c2c04/d5af7f7f-49b7-4633-87f0-f99bd93a314b"
 storage_version_token = "1793836985026132"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "py0XeO0Bl6sfiYh0OgifB"
+uri = "file://generated-artifacts/snapgen-muse-test/muse-video-test.mp4"
+type = "video"
+title = "Hasil tes MUSE Video — 10 detik"
+description = "Video asli dari SnapGen MUSE: 720×1280 (9:16), 10 detik, memiliki audio. Biaya terverifikasi 1 kredit; saldo SnapGen turun dari 2.010 menjadi 2.009. Tidak ada pemotongan saldo pengguna bot."
+logical_id = "1ea22d00-50a6-4e2a-abf8-42e0d135f7ff"
+content_hash = "sha256:c98a10d6d29cd7445dfd50b654999bbb1343adb142f73510599051e4d7a2a865"
+size = 5819349
+mtime_ms = 1793870901331
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/1ea22d00-50a6-4e2a-abf8-42e0d135f7ff/200b71ce-2098-483e-a990-2097a1b45a2a"
+storage_version_token = "1793870931243693"
+content_type = "video/mp4"
