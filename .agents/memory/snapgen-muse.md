@@ -4,12 +4,12 @@ description: Requested image/video packages, selling price, and documentation id
 ---
 
 The user wants both MUSE AI Image and MUSE AI Video in the existing Telegram
-bot. MUSE Image costs Rp500 per generated image; MUSE Video costs Rp1,000
+bot. MUSE Image costs Rp500 per generated image; MUSE Video costs Rp500
 per generated video.
 
 **Why:** The user selected “Gambar dan video” and supplied “1000” when asked for
 the selling price per result, then revised the image price with “untuk muse
-gambar harga 500”.
+gambar harga 500” and the video price with “harga 500 per video”.
 
 **How to apply:** Keep image and video choices distinct and use the existing
 saldo and failed-delivery refund rules. This selling-price decision does not
