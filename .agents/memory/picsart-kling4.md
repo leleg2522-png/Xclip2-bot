@@ -20,6 +20,13 @@ fail before content generation. This was not evidence of a violence-filter block
 ffprobe before upload. Fixing the file does not authorize replaying the accepted
 paid job; request separate authorization for a new generation.
 
+The separately authorized square-pixel follow-up completed with a ten-second
+fantasy-duel reference and a still of both adult characters. Native output was
+approximately 10.04 seconds at 1280×720 and used 30 credits. Sampled frames show
+both combatants exchanging attacks with ice/energy effects. This establishes
+acceptance of that non-graphic fantasy-fight example, not unrestricted violence
+support or frame-exact choreography transfer.
+
 ## Completed combined-reference test
 
 The non-regular `kling-v4-omni` route has completed a real request with one

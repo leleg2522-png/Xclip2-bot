@@ -866,3 +866,17 @@ mtime_ms = 1793920648355
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/4a30cf30-5e19-449e-a805-162bf5140720/d8e9569e-3cee-4fcb-8fbe-ead7b54bf800"
 storage_version_token = "1793920662348391"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "oZo44HIO8D641eQZ4qN_B"
+uri = "file://generated-artifacts/kling4-fight-square-pixels-live/output-1080p.mp4"
+type = "video"
+title = "Kling 4 — Pertarungan Fantasi 1080p"
+description = "Hasil Picsart Kling 4 dengan foto dua karakter dan referensi pertarungan 10 detik. Durasi akhir 10,04 detik, 1920×1080 setelah upscale."
+logical_id = "39427836-fe74-47a6-80eb-aa098d77c829"
+content_hash = "sha256:c8b6abc59ce715c165109405b37af37b343ffd049f7506f8878ee4b6d2d756ab"
+size = 14233193
+mtime_ms = 1793922006374
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/39427836-fe74-47a6-80eb-aa098d77c829/754e887f-7ac0-40d2-bf7a-6d56e0d85ad6"
+storage_version_token = "1793922030362221"
+content_type = "video/mp4"
