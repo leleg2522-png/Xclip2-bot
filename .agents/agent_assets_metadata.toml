@@ -817,3 +817,17 @@ mtime_ms = 1793878429701
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/fc5fd93f-a54a-4453-a2b3-5f88a4b47778/1753a33f-466a-4ba8-a304-dd9d00d529ac"
 storage_version_token = "1793878449803890"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "xbDdJfc1ThqlO5ezCdL8s"
+uri = "file://generated-artifacts/deapi-pool-key-test/key-9/h3-i2v-test.mp4"
+type = "video"
+title = "Hasil tes H3 dengan key baru"
+description = "Image-to-video berhasil selesai menggunakan key pool ID 9. Durasi 10,157 detik, resolusi native 768×1344, dengan audio. Satu job, tanpa pemotongan saldo pengguna bot."
+logical_id = "7899c27d-62f9-464a-ba37-14d5245cf3ee"
+content_hash = "sha256:df7830c0aa7daf576a544c167d35ecc2fadc5e856d99871561471bfc8bb4674b"
+size = 4235666
+mtime_ms = 1793880493685
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/7899c27d-62f9-464a-ba37-14d5245cf3ee/970228e9-7ffa-4a81-aafe-0c6d220a5cdc"
+storage_version_token = "1793880514148215"
+content_type = "video/mp4"
