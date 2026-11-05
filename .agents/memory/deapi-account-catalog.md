@@ -41,10 +41,11 @@ assignment, or stable voices across a whole episode.
 ## Bot credential management
 
 The user requested additional standalone LTX and MiniMax video packages from
-DeAPI: ten seconds each, selling for Rp1,000 per video.
+DeAPI: ten seconds each, selling for Rp500 per video.
 
-**Why:** The user said “tambahkan juga LTX DAN MINIMAX 10 DETIK DARI DEAPI
-DENGAN HARGA 1K”. Here 1K is the selling price, not a resolution requirement.
+**Why:** The user originally requested ten-second LTX and MiniMax packages at
+Rp1,000, then changed the selling price: “harga nya 500 deh per video LTX DAN H3 deapi”.
+The new Rp500 price supersedes Rp1,000; it is not a resolution requirement.
 
 **How to apply:** Add distinct choices within the existing LTX and MiniMax
 families. Preserve existing variants and their prices. Use the existing
