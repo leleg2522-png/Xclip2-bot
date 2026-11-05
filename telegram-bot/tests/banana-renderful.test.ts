@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import sharp from 'sharp';
 import { generateBananaRenderful, type BananaApi, type BananaModel } from '../src/banana-renderful';
+import { generateBananaSnapgen } from '../src/banana-snapgen';
 
 const source = fs.readFileSync(path.resolve(__dirname, '../src/index.ts'), 'utf8');
 const models: BananaModel[] = ['nano-banana-pro', 'nano-banana-2', 'nano-banana-2-lite'];
@@ -69,11 +70,10 @@ async function billingTests() {
   const from = source.indexOf('async function runImage(');
   const to = source.indexOf('// Kirim gambar hasil', from);
   const runSource = source.slice(from, to);
-  assert.match(runSource, /picsart\.generateHarModel/);
-  assert.match(runSource, /'banana_lite_i2i' : 'banana_lite_t2i'/);
+  assert.match(runSource, /generateBananaSnapgen/);
   assert.doesNotMatch(runSource, /4K/);
   assert.doesNotMatch(source, /Nano Banana[^\n]*4K/);
-  assert.doesNotMatch(runSource, /generateBananaSnapgen|snapgenSubmitImage|snapgenPollImage|SNAPGEN_API_KEY|generateBananaRenderful|getNextRenderfulPoolKey|bytedanceUpscalerHttp/);
+  assert.doesNotMatch(runSource, /picsart\.generateHarModel|generateBananaRenderful|getNextRenderfulPoolKey|bytedanceUpscalerHttp/);
   const harFrom = source.indexOf('async function runHarModel(');
   assert.match(source.slice(harFrom, source.indexOf('// ─── Background: Kling Motion V3 Standard', harFrom)), /picsart\.generateHarModel/);
   assert.match(source, /banana21:\s*600/);
@@ -96,19 +96,21 @@ async function billingTests() {
         },
         sharp: () => ({ metadata: async () => ({ format: 'png' }) }),
         describeError: (error: any) => error.message,
-        picsart: { generateHarModel: async (body: any) => {
-          if (outcome === 'no-key') throw Error('PICSART_NO_ACCOUNT');
+        generateBananaSnapgen,
+        SNAPGEN_API_KEY: outcome === 'no-key' ? undefined : 'test-only-key',
+        snapgenSubmitImage: async (body: any) => {
           events.submits++;
-          assert.equal(body.userId, 3);
-          assert.equal(body.model, mode === 'i2i' ? 'banana_lite_i2i' : 'banana_lite_t2i');
-          assert.equal(body.ratio, '1:1');
+          assert.equal(body.model, 'nano-banana-2');
+          assert.equal(body.aspectRatio, '1:1');
           assert.equal(body.images.length, mode === 'i2i' ? 2 : 0);
           assert.equal(body.images.some((image: any) => image.name.includes('PRIVATE')), false);
-          body.onStatus?.('submit');
-          if (outcome === 'provider') throw Error('Picsart internal provider failed');
-          if (outcome === 'poll-failed') throw Error('PICSART_ACCEPTED_JOB_FAILED');
+          if (outcome === 'provider') throw Error('SnapGen internal provider failed');
+          return { uuid: 'accepted-job' };
+        },
+        snapgenPollImage: async () => {
+          if (outcome === 'poll-failed') throw Error('SNAPGEN_ACCEPTED_JOB_FAILED');
           return { url: 'https://provider.test/output.png' };
-        } },
+        },
         sendImageResult: async (_chat: number, _url: string, caption: string, require4k: boolean | 'native') => {
           events.deliveries++; assert.equal(require4k, 'native'); assert.doesNotMatch(caption, /4K/);
           return !['delivery', 'low-resolution'].includes(outcome);
@@ -159,6 +161,6 @@ async function main() {
   await contractTests();
   await billingTests();
   await deliveryTests();
-  console.log('Banana Pro/2/Lite use Picsart Lite: T2I/I2I, two references, native original-file delivery, no public 4K claims, independent prices/refunds and separate Banana 2.1 passed; legacy Renderful contracts also passed.');
+   console.log('Banana Pro/2/Lite use SnapGen Banana 2: T2I/I2I, two references, native original-file delivery, no public 4K claims, independent prices/refunds and separate Banana 2.1 passed; legacy Renderful contracts also passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

@@ -65,19 +65,16 @@ alongside authentication before interpreting validation errors.
 ## Banana provider migration scope
 
 Only Banana Pro, Banana Lite and Banana 2 are in the shared provider migration.
-These packages now use Picsart's Banana 2 Lite backend for both text-to-image and image-to-image.
+These packages now use SnapGen's shared Banana 2 backend for both text-to-image and image-to-image.
 The separate Banana 2.1 package remains unchanged.
 
 **Why:** The user clarified: “yg di ganti banana pro banana lite dan banan 2
 banana 2,1 mah tidak”, superseding the earlier “semua model banana” wording.
-The user cancelled the later SnapGen request with “tidak jadi deh” and
-subsequently corrected that Banana must not move to SnapGen. Treat that
-cancellation as cancelling the provider change, not merely stopping further work.
-When asked to clarify “kembalikan itu banan ke awal”, the user explicitly
-selected “Tetap Picsart”, not Renderful or SnapGen.
+Earlier SnapGen cancellations and the “Tetap Picsart” selection were superseded
+by the later request “banan kayanya kembalikan jaddi pake snapgen lagi deh kayanya”.
 
 **How to apply:** Preserve the three public package names and their individual
-prices, while routing all three through the shared Picsart Banana 2 Lite backend.
+prices, while routing all three through the shared SnapGen Banana 2 backend.
 Do not change the separate
 Banana 2.1 package's price or wizard as part of this migration.
 
@@ -93,13 +90,15 @@ yg sama dengan banan 2”.
 unless the user separates them again. Do not restore a distinct Pro backend
 solely because the public package is named Pro.
 
-The shared packages must now use Banana 2 Lite instead of Banana 2.1.
+The earlier Picsart migration used Banana 2 Lite instead of Banana 2.1.
 Do not mention “4K” in customer-facing Banana menus, progress, results or errors,
 including the separate Banana 2.1 package. Keep delivery at original quality.
 
-**Why:** The user requested “ganti semua jadi pake yg banana 2 lite” after
-reviewing the shared backend, then explicitly said “gausah ngomong 4k ke user”.
+**Why:** The user requested “ganti semua jadi pake yg banana 2 lite” for the
+earlier Picsart backend, then explicitly said “gausah ngomong 4k ke user”.
+The later SnapGen return changes the provider, not that customer-copy rule.
 
-**How to apply:** Keep the separate Banana 2.1 backend unchanged; the Lite switch
-applies to the shared Pro/2/Lite packages. Do not enforce a 4K result on Lite or
-silently substitute a different provider to meet the old resolution promise.
+**How to apply:** Keep the separate Banana 2.1 backend unchanged. SnapGen's
+existing shared Banana 2 adapter may request its configured resolution internally,
+but do not expose a 4K promise or reject a successfully generated image solely
+for not meeting that older resolution promise. Deliver the original file.
