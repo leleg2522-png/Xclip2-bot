@@ -17,7 +17,12 @@ export class DeapiEpisodeApi implements EpisodeApi {
   private cooldowns = new Map<string, number>();
   constructor(private pool: DeapiKeySource, private request: typeof fetch = fetch) {}
   private bucket(r: EpisodeRequest, keyId: number): string {
-    return `${keyId}:${r.kind}:${r.kind === 'image' && r.images?.length ? 'edit' : 'generate'}`;
+    return `${keyId}:${this.scope(r)}`;
+  }
+  private scope(r: EpisodeRequest): string {
+    if (r.kind === 'image') return `images/${r.images?.length ? 'edits' : 'generations'}:Flux_2_Klein_4B_BF16`;
+    if (r.kind === 'transcript') return 'audio/transcriptions:WhisperLargeV3Ct2';
+    return `videos/animations:${MICRODRAMA_SETTINGS.model}`;
   }
   private body(r: EpisodeRequest, price: boolean) {
     const image = r.kind === 'image', transcript = r.kind === 'transcript';
@@ -64,7 +69,7 @@ export class DeapiEpisodeApi implements EpisodeApi {
   async quote(r: EpisodeRequest, skipIds: number[] = []) {
     const skip: number[] = [...new Set(skipIds)];
     while (skip.length < 100) {
-      const key = await this.pool.next(skip);
+      const key = await this.pool.next(skip, ['quotes', this.scope(r)]);
       if (!key || skip.includes(key.id)) break;
       skip.push(key.id);
       const bucket = this.bucket(r, key.id);
@@ -83,6 +88,7 @@ export class DeapiEpisodeApi implements EpisodeApi {
         if (code === 'EPISODE_QUOTE_401') { await this.pool.disable(key.id); continue; }
         if (code === 'EPISODE_QUOTE_402' || code === 'EPISODE_QUOTE_403') continue;
         if (e instanceof DeapiRateLimitError && e.phase === 'QUOTE') {
+          await this.pool.markLimited(key.id, 'quotes', e.retryAt);
           this.cooldowns.set(bucket, e.retryAt);
           continue;
         }
@@ -98,6 +104,7 @@ export class DeapiEpisodeApi implements EpisodeApi {
     try { p = await this.send(r, key.apiKey, false); }
     catch (error) {
       if (error instanceof DeapiRateLimitError && error.phase === 'SUBMIT') {
+        await this.pool.markLimited(keyId, this.scope(r), error.retryAt);
         this.cooldowns.set(this.bucket(r, keyId), error.retryAt);
       }
       throw error;

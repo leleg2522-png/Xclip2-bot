@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { DeapiKeyPool } from '../src/deapi-key-pool';
 import { PooledDeapiRenderer } from '../src/deapi-pooled-renderer';
-import { registerDeapiAdmin } from '../src/deapi-admin';
+import { registerDeapiAdmin, deapiLimitTime } from '../src/deapi-admin';
 import { MicrodramaEngine } from '../src/microdrama-engine';
 import type { DramaProject } from '../src/microdrama-store';
 import type { DramaRenderer } from '../src/microdrama-deapi';
@@ -17,6 +17,7 @@ async function databaseContract() {
       return { rows: [{ id: 7, api_key: 'fixture-private-token' }], rowCount: 1 };
     }
     if (sql.includes('COUNT(*)')) return { rows: [{ available: 1, dead: 0 }], rowCount: 1 };
+    if (sql.includes('AS cooldowns')) return { rows: [{ id: 7, status: 'available', cooldowns: [] }], rowCount: 1 };
     return { rows: [{ id: 7, status: 'available' }], rowCount: 1 };
   } });
   await pool.ensureSchema();
@@ -25,15 +26,22 @@ async function databaseContract() {
   assert.doesNotMatch(calls.at(-1)!.sql, /fixture-private-token/);
   assert.deepEqual(await pool.next([2]), { id: 7, apiKey: 'fixture-private-token' });
   assert.match(calls.at(-1)!.sql, /FOR UPDATE SKIP LOCKED/);
-  assert.deepEqual(calls.at(-1)!.params, [[2]]);
+  assert.deepEqual(calls.at(-1)!.params, [[2], []]);
+  assert.match(calls.at(-1)!.sql, /c\.retry_at>NOW\(\)/);
+  await pool.next([], ['quotes', 'videos/animations:fixture-model']);
+  assert.deepEqual(calls.at(-1)!.params, [[], ['quotes', 'videos/animations:fixture-model']]);
+  const retryAt = Date.now() + 60_000;
+  await pool.markLimited(7, 'quotes', retryAt);
+  assert.deepEqual(calls.at(-1)!.params, [7, 'quotes', new Date(retryAt).toISOString()]);
+  assert.match(calls.at(-1)!.sql, /GREATEST/);
   assert.equal(await pool.disable(7), true);
   assert.deepEqual(await pool.get(7), { id: 7, apiKey: 'fixture-private-token' });
   assert.doesNotMatch(calls.at(-1)!.sql, /status=/, 'Disabled credentials still poll their accepted jobs');
   assert.equal(await pool.get(-1), null);
   assert.equal(await pool.restore(7), true);
   assert.deepEqual(await pool.stats(), { available: 1, dead: 0 });
-  assert.deepEqual(await pool.list(), [{ id: 7, status: 'available' }]);
-  assert.match(calls.at(-1)!.sql, /^SELECT id,status FROM/);
+  assert.deepEqual(await pool.list(), [{ id: 7, status: 'available', cooldowns: [] }]);
+  assert.match(calls.at(-1)!.sql, /^SELECT p.id,p.status/);
   await assert.rejects(pool.addKeys(['invalid key']), /INVALID_KEY_FORMAT/);
   const broken = new DeapiKeyPool({ query: async () => { throw new Error('credential in database error'); } });
   await assert.rejects(broken.next(), e => String(e) === 'Error: DEAPI_POOL_DATABASE_FAILED');
@@ -44,6 +52,7 @@ function poolFixture() {
     submits: [] as string[], polls: [] as string[], downloads: [] as string[] };
   let sequence = 0;
   const pool = {
+    async markLimited() {},
     async next(skip: number[] = []) {
       events.next++;
       const id = skip.length ? [1, 2].find(n => !skip.includes(n)) : (++sequence % 2 ? 1 : 2);
@@ -202,6 +211,9 @@ async function rateLimitTests() {
   const daily = Math.floor(now / 1000) + 86400;
   assert.equal(deapiRetryAt(new Headers({ 'retry-after': '60', 'x-ratelimit-daily-reset': String(daily) }), now), daily * 1000);
   assert.equal(deapiRetryAt(new Headers(), now), now + 60_000);
+  assert.equal(deapiRetryAt(new Headers({ 'retry-after': '60', 'x-ratelimit-reset': String(Math.floor(now / 1000) + 60),
+    'x-ratelimit-daily-reset': String(daily), 'x-ratelimit-daily-remaining': '2' }), now), now + 60_000,
+  'Minute limit does not skip a paid account until tomorrow when daily quota remains');
   for (const body of [
     { message: 'Too Many Attempts.' }, { error: { message: 'Rate limit exceeded' } },
     { message: 'Limit', data: { request_id: 'already-accepted' } },
@@ -267,7 +279,10 @@ async function adminTests() {
   let admin = true, deleted = 0;
   const pool = {
     async addKeys(keys: string[]) { inserted.push(keys); return keys.length; },
-    async stats() { return { available: 1, dead: 0 }; }, async list() { return [{ id: 7, status: 'available' }]; },
+    async stats() { return { available: 1, dead: 0 }; }, async list() {
+      return [{ id: 7, status: 'available', cooldowns: [{ scope: 'videos/animations:test-model',
+        limited_at: '2026-11-05T01:00:00Z', retry_at: '2026-11-05T02:00:00Z' }] }];
+    },
     async disable(id: number) { return id === 7; }, async restore(id: number) { return id === 7; },
   };
   registerDeapiAdmin({ command(name: string, fn: any) { commands.set(name, fn); } } as any, pool as any, async () => admin);
@@ -286,6 +301,9 @@ async function adminTests() {
   assert.deepEqual(inserted, [['private-fixture-key', 'other-fixture-key']]);
   await command('deapipool');
   assert.match(messages.at(-1)!, /Tersedia: 1/);
+  assert.match(messages.at(-1)!, /Kena limit:.*08\.00\.00 WIB/);
+  assert.match(messages.at(-1)!, /Coba lagi mulai:.*09\.00\.00 WIB/);
+  assert.match(deapiLimitTime('2026-11-05T02:00:00Z'), /05\/11\/2026/);
   await command('nonaktifdeapikey', '7');
   assert.match(messages.at(-1)!, /dinonaktifkan/);
   await command('restoredeapikey', '7');

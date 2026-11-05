@@ -1,6 +1,13 @@
 import type { Telegraf } from 'telegraf';
 import type { DeapiKeyPool } from './deapi-key-pool';
 
+export function deapiLimitTime(value: string): string {
+  return new Intl.DateTimeFormat('id-ID', {
+    timeZone: 'Asia/Jakarta', day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  }).format(new Date(value)) + ' WIB';
+}
+
 export function registerDeapiAdmin(bot: Telegraf<any>, pool: DeapiKeyPool, requireAdmin: (ctx: any) => Promise<boolean>) {
   async function allowed(ctx: any) {
     if (!await requireAdmin(ctx)) return false;
@@ -23,8 +30,10 @@ export function registerDeapiAdmin(bot: Telegraf<any>, pool: DeapiKeyPool, requi
     try {
       const stats = await pool.stats(), rows = await pool.list();
       return ctx.reply(`Pool DeAPI • microdrama\nTersedia: ${stats.available}\nNonaktif: ${stats.dead}\n\n` +
-        rows.map(r => `ID ${r.id}: ${r.status}`).join('\n') +
-        '\n\n/adddeapikey KEY\n/nonaktifdeapikey ID\n/restoredeapikey ID\n\nKey reusable; biaya memakai saldo akun DeAPI. Nonaktif hanya menghentikan pemilihan untuk job baru, bukan polling job lama.');
+        rows.map(r => `ID ${r.id}: ${r.status}` + (r.cooldowns ?? []).map(c =>
+          `\n  Limit ${c.scope}\n  Kena limit: ${deapiLimitTime(c.limited_at)}\n  Coba lagi mulai: ${deapiLimitTime(c.retry_at)}`
+        ).join('')).join('\n') +
+        '\n\n/adddeapikey KEY\n/nonaktifdeapikey ID\n/restoredeapikey ID\n\nKey yang masih kena limit otomatis dilewati untuk model terkait sampai waktu reset. Key tidak dihapus dan saldo tidak dianggap habis. Waktu tanpa informasi reset provider memakai jeda sementara.\nNonaktif hanya menghentikan pemilihan untuk job baru, bukan polling job lama.');
     } catch { return ctx.reply('Pool DeAPI belum dapat dibaca. Coba lagi nanti.'); }
   });
   for (const [name, restore] of [['nonaktifdeapikey', false], ['restoredeapikey', true]] as const) {

@@ -199,7 +199,8 @@ async function workflow() {
 async function contracts() {
   const seen: Array<{ url: string; init: RequestInit }> = [];
   let priceOnly = false, failSubmit = false;
-  const source = { next: async () => ({ id: 9, apiKey: 'fixture' }), get: async () => ({ id: 9, apiKey: 'fixture' }), disable: async () => false };
+  const source = { next: async () => ({ id: 9, apiKey: 'fixture' }), get: async () => ({ id: 9, apiKey: 'fixture' }),
+    disable: async () => false, markLimited: async () => {} };
   const api = new DeapiEpisodeApi(source, (async (url: any, init: any) => {
     seen.push({ url, init });
     if (failSubmit && !url.endsWith('/price')) throw new Error('socket');

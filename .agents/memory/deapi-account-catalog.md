@@ -69,6 +69,17 @@ timeouts and accepted jobs. Only the former allows a fresh submit on another
 key. Respect reset headers, preserve accepted-job bindings, and never infer
 zero balance from a limit.
 
+Persist the time a key hits a limit and its next eligible time in the Railway
+pool so later users and restarted bot processes skip it until reset.
+
+**Why:** The user explicitly requested time marking so new users do not retry
+the same limited credential.
+
+**How to apply:** Enforce cooldowns during database selection, not only in
+process-local memory. Show times in WIB to admins. Separate model/endpoint
+limits from quote limits; never apply a daily reset when the daily quota still
+has remaining requests.
+
 ## Generation rate limits versus credit balance
 
 A successful price quote does not establish that a video submit has available quota. A repeated HTTP 429 after a minute-scale cooldown may be a daily limit, not exhausted credits.

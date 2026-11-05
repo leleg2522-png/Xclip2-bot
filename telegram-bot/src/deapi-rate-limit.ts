@@ -12,7 +12,9 @@ export function deapiRetryAt(headers: Headers, now = Date.now()): number {
   const candidates = [
     Number.isFinite(seconds) ? now + Math.max(0, seconds) * 1000 : date,
     Number(headers.get('x-ratelimit-reset')) * 1000,
-    Number(headers.get('x-ratelimit-daily-reset')) * 1000,
+    // A daily reset can be present even when the daily quota is NOT exhausted.
+    headers.get('x-ratelimit-daily-remaining') !== null && Number(headers.get('x-ratelimit-daily-remaining')) > 0
+      ? NaN : Number(headers.get('x-ratelimit-daily-reset')) * 1000,
   ].filter(value => Number.isFinite(value) && value > now);
   // The next request can retry the key after the provider's indicated window.
   return candidates.length ? Math.max(...candidates) : now + 60_000;

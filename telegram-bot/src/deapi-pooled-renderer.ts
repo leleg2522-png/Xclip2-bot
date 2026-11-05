@@ -1,6 +1,7 @@
 import { DeapiDramaRenderer, type DramaRenderer } from './microdrama-deapi';
 import type { DeapiKeySource } from './deapi-key-pool';
 import { DeapiRateLimitError } from './deapi-rate-limit';
+import { MICRODRAMA_SETTINGS } from './microdrama-plan';
 
 /** Rotation requires pre-submit preparation or an explicit unaccepted rate rejection. */
 export class PooledDeapiRenderer implements DramaRenderer {
@@ -9,14 +10,18 @@ export class PooledDeapiRenderer implements DramaRenderer {
     private client: (key: string) => DramaRenderer = key => new DeapiDramaRenderer(key),
     private now: () => number = Date.now) {}
 
+  private scope(frame?: Buffer): string {
+    return `videos/${frame ? 'animations' : 'generations'}:${MICRODRAMA_SETTINGS.model}`;
+  }
+
   private bucket(keyId: number, frame?: Buffer): string {
-    return `${keyId}:${frame ? 'animations' : 'generations'}`;
+    return `${keyId}:${this.scope(frame)}`;
   }
 
   async prepare(prompt: string, frame?: Buffer, skipIds: number[] = []): Promise<{ price: number; keyId: number }> {
     const skip: number[] = [...new Set(skipIds)];
     while (skip.length < 100) {
-      const key = await this.pool.next(skip);
+      const key = await this.pool.next(skip, ['quotes', this.scope(frame)]);
       if (!key || skip.includes(key.id)) break;
       skip.push(key.id);
       const bucket = this.bucket(key.id, frame);
@@ -30,7 +35,9 @@ export class PooledDeapiRenderer implements DramaRenderer {
         if (code === 'DEAPI_QUOTE_HTTP_401') { await this.pool.disable(key.id); continue; }
         if (code === 'DEAPI_QUOTE_HTTP_402' || code === 'DEAPI_QUOTE_HTTP_403') continue;
         if (code === 'DEAPI_QUOTE_HTTP_429') {
-          this.cooldowns.set(bucket, error instanceof DeapiRateLimitError ? error.retryAt : this.now() + 60_000);
+          const retryAt = error instanceof DeapiRateLimitError ? error.retryAt : this.now() + 60_000;
+          await this.pool.markLimited(key.id, 'quotes', retryAt);
+          this.cooldowns.set(bucket, retryAt);
           continue;
         }
         throw error;
@@ -55,6 +62,7 @@ export class PooledDeapiRenderer implements DramaRenderer {
       return await (await this.bound(keyId)).submit(prompt, seed, frame);
     } catch (error) {
       if (keyId && error instanceof DeapiRateLimitError && error.phase === 'SUBMIT') {
+        await this.pool.markLimited(keyId, this.scope(frame), error.retryAt);
         this.cooldowns.set(this.bucket(keyId, frame), error.retryAt);
       }
       throw error;

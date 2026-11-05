@@ -44,6 +44,7 @@
     "test:microdrama-pg": "tsx tests/microdrama-pg.test.ts",
     "test:deapi-pool": "tsx tests/deapi-pool.test.ts && tsx tests/deapi-episode-rate-limit.test.ts",
     "setup:deapi-pool": "tsx scripts/setup-deapi-pool.ts",
+    "setup:deapi-cooldowns": "tsx scripts/setup-deapi-cooldowns.ts --apply",
     "start": "node dist/index.js"
   },
   "dependencies": {

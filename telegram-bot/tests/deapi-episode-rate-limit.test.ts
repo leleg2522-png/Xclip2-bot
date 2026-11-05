@@ -10,6 +10,7 @@ async function main() {
       images: kind === 'video' ? [Buffer.from('frame')] : undefined, source: Buffer.from('wav') };
     let disabled = 0;
     const pool = {
+      async markLimited() {},
       async next(skip: number[] = []) {
         const id = [1, 2].find(id => !skip.includes(id));
         return id ? { id, apiKey: `fixture-${id}` } : null;
