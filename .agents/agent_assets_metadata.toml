@@ -285,8 +285,15 @@ logical_id = "3c9c6b79-5a09-4d54-af98-3e3553e4d4af"
 id = "dy7Dz0eTbWPanV6a7D0s8"
 uri = "file://exports/kling26_motion_test.mp4"
 type = "video"
-title = "Hasil Tes Kling 2.6 Pro Motion Control (Flora AI)"
+title = "Video referensi dance — 14,9 detik"
+description = "Ini video referensi yang dipakai pada tes Kling 4 perempuan tadi, bukan hasil generatenya. Penari memakai pakaian biru dengan bagian atas merah-putih dan melakukan gestur tangan."
 logical_id = "669378d9-5b42-4247-8a91-46ad4e2d2dce"
+content_hash = "sha256:9458cfc4f6b3e5ac65526ea9fb7c1f1101a4b8fe3e45282a5061e36896a06b08"
+size = 4328143
+mtime_ms = 1789122716249
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/669378d9-5b42-4247-8a91-46ad4e2d2dce/83c33418-3635-40a5-99d7-b25302cedb3a"
+storage_version_token = "1793920708257464"
+content_type = "video/mp4"
 
 [[outputs]]
 id = "i7k2vH3igR1HngFOT1iFm"
