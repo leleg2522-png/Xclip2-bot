@@ -5,7 +5,10 @@ import vm from 'node:vm';
 import { createRequire } from 'node:module';
 if (!process.argv.includes('--paid')) throw Error('PAID_AUTHORIZATION_REQUIRED');
 const root = path.resolve(import.meta.dirname, '../..');
-const dir = path.join(root, 'generated-artifacts/kling4-reference-live');
+const womanDance = process.argv.includes('--woman-dance');
+const dir = path.join(root, womanDance
+  ? 'generated-artifacts/kling4-woman-dance-live'
+  : 'generated-artifacts/kling4-reference-live');
 fs.mkdirSync(dir, { recursive: true });
 const statePath = path.join(dir, 'state.json');
 let state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : {};
@@ -61,6 +64,23 @@ http.interceptors.response.use(response => {
       save({ jobId: id, status: 'accepted' });
       console.log('PICSART_ACCEPTED', id);
     } else console.log('PICSART_SUBMIT_HTTP', response.status);
+  }
+  if (/\/result$/.test(response.config.url ?? '') &&
+      ['FAILED', 'ERROR', 'CANCELLED'].includes(String(response.data?.response?.status).toUpperCase())) {
+    const result = response.data.response;
+    // Keep only machine-code fields; never raw inputs or signed reference URLs.
+    const codes = [];
+    function visit(value, depth = 0) {
+      if (!value || typeof value !== 'object' || depth > 5) return;
+      for (const [key, child] of Object.entries(value)) {
+        if (/code|reason|type/i.test(key) && typeof child === 'string' &&
+            /^[A-Z][A-Z0-9_]{1,100}$/.test(child)) codes.push(child);
+        if (child && typeof child === 'object') visit(child, depth + 1);
+      }
+    }
+    visit(result);
+    save({ providerFailureStatus: result.status, providerFailureCodes: [...new Set(codes)] });
+    console.log('PROVIDER_FAILED', result.status, JSON.stringify([...new Set(codes)]));
   }
   return response;
 });
@@ -125,7 +145,9 @@ async function finish(source) {
 try {
   if (state.status === 'completed') console.log('ALREADY_COMPLETED');
   else {
-    const prompt = 'Create a continuous 10-second vertical full-body animation. Use the blue robot with orange headphones in the image as the sole character. Use the reference video as guidance for the body movement and dance rhythm, not its human appearance. The friendly blue robot performs a lively dance with bent knees, alternating arm swings and small side steps. Preserve its blue body, orange headphones, glowing cyan eyes and orange chest panel. Soft neutral studio background, fixed camera, entire body visible, smooth natural movement. No text, no logos, no additional characters.';
+    const prompt = womanDance
+      ? 'Create a continuous 10-second vertical dance challenge video. Use the adult woman from the reference image as the sole subject, preserving her face, black shoulder-length hair, cream long-sleeve blouse and dark gray trousers. Use the reference video to guide the timing, hand gestures, arm movements and dance rhythm. Keep her original outfit throughout. Show her dancing naturally in a simple well-lit studio with a fixed camera and her full body visible. Friendly cheerful expression, smooth coherent motion. No text, no logos, no additional people.'
+      : 'Create a continuous 10-second vertical full-body animation. Use the blue robot with orange headphones in the image as the sole character. Use the reference video as guidance for the body movement and dance rhythm, not its human appearance. The friendly blue robot performs a lively dance with bent knees, alternating arm swings and small side steps. Preserve its blue body, orange headphones, glowing cyan eyes and orange chest panel. Soft neutral studio background, fixed camera, entire body visible, smooth natural movement. No text, no logos, no additional characters.';
     if (!state.jobId) {
       if (state.submitAttempted) throw Error('QA_PRIOR_SUBMIT_NO_REPLAY');
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1280" viewBox="0 0 720 1280">
@@ -146,19 +168,29 @@ try {
       <rect x="294" y="606" width="133" height="138" rx="24" fill="#ff9c35"/>
       </g><g fill="#5ef6ff"><ellipse cx="302" cy="363" rx="18" ry="27"/><ellipse cx="418" cy="363" rx="18" ry="27"/>
       <path d="M328 399 Q360 421 392 399" fill="none" stroke="#5ef6ff" stroke-width="8" stroke-linecap="round"/></g></svg>`;
-      await sharp(Buffer.from(svg)).png().toFile(path.join(dir, 'robot.png'));
-      const reference = fs.readFileSync(path.join(root, 'generated-artifacts/flowy-motion-control-test/motion-3s.mp4'));
+      const imageName = womanDance ? 'woman.jpg' : 'robot.png';
+      if (womanDance) {
+        fs.copyFileSync(path.join(root, 'generated-artifacts/microdrama-china-mandarin-test/char_LINWAN.jpg'),
+          path.join(dir, imageName));
+      } else await sharp(Buffer.from(svg)).png().toFile(path.join(dir, imageName));
+      const reference = fs.readFileSync(path.join(root, womanDance
+        ? 'exports/kling26_motion_test.mp4'
+        : 'generated-artifacts/flowy-motion-control-test/motion-3s.mp4'));
+      const referenceFacts = await inspectFloraUpscaleVideo(reference);
       const candidates = (await db.query(`SELECT id FROM picsart_credentials WHERE status='available'
         ORDER BY (access_expires_at > NOW() + INTERVAL '5 minutes') DESC NULLS LAST, updated_at DESC LIMIT 6`)).rows;
       for (const candidate of candidates) {
         try {
           // Only uploads, quote and balance checks may rotate accounts.
-          const imageUrl = await picsart.uploadFile(candidate.id, fs.readFileSync(path.join(dir, 'robot.png')), 'robot.png', 'image/png', { gateway: true });
+          const imageUrl = await picsart.uploadFile(candidate.id, fs.readFileSync(path.join(dir, imageName)),
+            imageName, womanDance ? 'image/jpeg' : 'image/png', { gateway: true });
           const videoUrl = await picsart.uploadFile(candidate.id, reference, 'dance-reference.mp4', 'video/mp4', { gateway: true });
           const input = { mode: 'i2v', duration: 10, imageUrls: [imageUrl], videoUrl, referType: 'feature' };
           await preflightKling4OmniCredits(candidate.id, prompt, imageUrl, '9:16', input);
           save({ credentialId: candidate.id, duration: 10, ratio: '9:16', model: 'kling-v4-omni',
-            imageCount: 1, videoCount: 1, referenceSeconds: 3, botSaldoCharged: false });
+            imageCount: 1, videoCount: 1, referenceSeconds: referenceFacts.duration,
+            referenceKind: womanDance ? 'adult-woman-dance-challenge' : 'robot-dance',
+            botSaldoCharged: false });
           console.log('FULL_REFERENCE_PREFLIGHT_PASSED');
           // Submission is outside the catch: no second account after any attempt.
           state.prepared = { imageUrl, videoUrl };

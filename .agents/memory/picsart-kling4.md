@@ -18,6 +18,13 @@ show dancing, but do not establish exact choreography transfer.
 an actual video reference. This authorized live experiment resolves that narrow
 gap, not the maximum image count, longer reference limits, or base-edit mode.
 
+An additional authorized test completed with one generated adult-woman portrait
+and a 14.899978-second dance-challenge reference video. Output was approximately
+10.04 seconds at 720×1280, with a 30-credit full-input quote. Sampled frames
+preserve the cream blouse and dark trousers and show dance hand gestures.
+This verifies that specific near-15-second reference, not a maximum input limit
+or guaranteed acceptance of all female subjects, outfits, and dances.
+
 **How to apply:** Treat the single-image plus short-video feature-reference
 combination as live-verified. Older “video references blocked” notes below are
 historical; do not generalize this result to every input combination. Keep

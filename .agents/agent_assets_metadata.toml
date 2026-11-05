@@ -845,3 +845,17 @@ mtime_ms = 1793903072463
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/a2512945-40c9-4a54-ac0f-859b04e2b495/a0f67369-9ca4-48fa-9cfb-fea78c2290fe"
 storage_version_token = "1793903086477796"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "7lwg75PtkQ83mW95d4Csy"
+uri = "file://generated-artifacts/kling4-woman-dance-live/output-1080p.mp4"
+type = "video"
+title = "Kling 4 — Perempuan Dance Challenge 1080p"
+description = "Hasil tes Picsart menggunakan foto perempuan dewasa dan video referensi dance 14,9 detik. Video akhir 10,04 detik, 1080×1920 setelah upscale."
+logical_id = "4a30cf30-5e19-449e-a805-162bf5140720"
+content_hash = "sha256:7f9b4095929bef17ff22d7f094ea99cd5e8cb3b015370d42bed0a4cb42faee89"
+size = 6357045
+mtime_ms = 1793920648355
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/4a30cf30-5e19-449e-a805-162bf5140720/d8e9569e-3cee-4fcb-8fbe-ead7b54bf800"
+storage_version_token = "1793920662348391"
+content_type = "video/mp4"
