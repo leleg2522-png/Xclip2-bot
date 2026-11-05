@@ -6,7 +6,10 @@ import { createRequire } from 'node:module';
 if (!process.argv.includes('--paid')) throw Error('PAID_AUTHORIZATION_REQUIRED');
 const root = path.resolve(import.meta.dirname, '../..');
 const womanDance = process.argv.includes('--woman-dance');
-const dir = path.join(root, womanDance
+const fight = process.argv.includes('--fight');
+if (fight && womanDance) throw Error('QA_CHOOSE_ONE_EXPERIMENT');
+const ratio = fight ? '16:9' : '9:16';
+const dir = path.join(root, fight ? 'generated-artifacts/kling4-fight-reference-live' : womanDance
   ? 'generated-artifacts/kling4-woman-dance-live'
   : 'generated-artifacts/kling4-reference-live');
 fs.mkdirSync(dir, { recursive: true });
@@ -145,7 +148,9 @@ async function finish(source) {
 try {
   if (state.status === 'completed') console.log('ALREADY_COMPLETED');
   else {
-    const prompt = womanDance
+    const prompt = fight
+      ? 'Create a 10-second widescreen cinematic fantasy duel between the two adult characters in the reference image. Preserve their identities and costumes: the silver-haired ice warrior and the dark-haired gravity warrior. Use the reference video to guide the order, timing and choreography of their attacks, defensive dodges, rapid exchanges and camera movement. An intense energetic clash of blue ice and crimson gravitational energy in a ruined stone arena, realistic physical momentum, readable action, consistent anatomy and two characters only. Show powerful magical impacts and stone debris without blood, gore or graphic injuries. No text, no logos. Match the reference sequence as closely as possible within ten seconds.'
+      : womanDance
       ? 'Create a continuous 10-second vertical dance challenge video. Use the adult woman from the reference image as the sole subject, preserving her face, black shoulder-length hair, cream long-sleeve blouse and dark gray trousers. Use the reference video to guide the timing, hand gestures, arm movements and dance rhythm. Keep her original outfit throughout. Show her dancing naturally in a simple well-lit studio with a fixed camera and her full body visible. Friendly cheerful expression, smooth coherent motion. No text, no logos, no additional people.'
       : 'Create a continuous 10-second vertical full-body animation. Use the blue robot with orange headphones in the image as the sole character. Use the reference video as guidance for the body movement and dance rhythm, not its human appearance. The friendly blue robot performs a lively dance with bent knees, alternating arm swings and small side steps. Preserve its blue body, orange headphones, glowing cyan eyes and orange chest panel. Soft neutral studio background, fixed camera, entire body visible, smooth natural movement. No text, no logos, no additional characters.';
     if (!state.jobId) {
@@ -168,12 +173,15 @@ try {
       <rect x="294" y="606" width="133" height="138" rx="24" fill="#ff9c35"/>
       </g><g fill="#5ef6ff"><ellipse cx="302" cy="363" rx="18" ry="27"/><ellipse cx="418" cy="363" rx="18" ry="27"/>
       <path d="M328 399 Q360 421 392 399" fill="none" stroke="#5ef6ff" stroke-width="8" stroke-linecap="round"/></g></svg>`;
-      const imageName = womanDance ? 'woman.jpg' : 'robot.png';
-      if (womanDance) {
+      const imageName = fight ? 'fighters.jpg' : womanDance ? 'woman.jpg' : 'robot.png';
+      if (fight) {
+        fs.copyFileSync(path.join(root, 'generated-artifacts/fight-characters.jpg'), path.join(dir, imageName));
+      } else if (womanDance) {
         fs.copyFileSync(path.join(root, 'generated-artifacts/microdrama-china-mandarin-test/char_LINWAN.jpg'),
           path.join(dir, imageName));
       } else await sharp(Buffer.from(svg)).png().toFile(path.join(dir, imageName));
-      const reference = fs.readFileSync(path.join(root, womanDance
+      const reference = fs.readFileSync(path.join(root, fight
+        ? 'generated-artifacts/fight-reference-10s.mp4' : womanDance
         ? 'exports/kling26_motion_test.mp4'
         : 'generated-artifacts/flowy-motion-control-test/motion-3s.mp4'));
       const referenceFacts = await inspectFloraUpscaleVideo(reference);
@@ -183,13 +191,13 @@ try {
         try {
           // Only uploads, quote and balance checks may rotate accounts.
           const imageUrl = await picsart.uploadFile(candidate.id, fs.readFileSync(path.join(dir, imageName)),
-            imageName, womanDance ? 'image/jpeg' : 'image/png', { gateway: true });
-          const videoUrl = await picsart.uploadFile(candidate.id, reference, 'dance-reference.mp4', 'video/mp4', { gateway: true });
+            imageName, fight || womanDance ? 'image/jpeg' : 'image/png', { gateway: true });
+          const videoUrl = await picsart.uploadFile(candidate.id, reference, 'motion-reference.mp4', 'video/mp4', { gateway: true });
           const input = { mode: 'i2v', duration: 10, imageUrls: [imageUrl], videoUrl, referType: 'feature' };
-          await preflightKling4OmniCredits(candidate.id, prompt, imageUrl, '9:16', input);
-          save({ credentialId: candidate.id, duration: 10, ratio: '9:16', model: 'kling-v4-omni',
+          await preflightKling4OmniCredits(candidate.id, prompt, imageUrl, ratio, input);
+          save({ credentialId: candidate.id, duration: 10, ratio, model: 'kling-v4-omni',
             imageCount: 1, videoCount: 1, referenceSeconds: referenceFacts.duration,
-            referenceKind: womanDance ? 'adult-woman-dance-challenge' : 'robot-dance',
+            referenceKind: fight ? 'two-adult-fantasy-duel' : womanDance ? 'adult-woman-dance-challenge' : 'robot-dance',
             botSaldoCharged: false });
           console.log('FULL_REFERENCE_PREFLIGHT_PASSED');
           // Submission is outside the catch: no second account after any attempt.
@@ -205,7 +213,7 @@ try {
       const { imageUrl, videoUrl } = state.prepared;
       delete state.prepared;
       const id = await submitPicsartI2v(state.credentialId, 'kling_v4', prompt, imageUrl, {
-        ratio: '9:16', duration: 10, imageUrls: [imageUrl], videoUrl, referType: 'feature',
+        ratio, duration: 10, imageUrls: [imageUrl], videoUrl, referType: 'feature',
       });
       if (id !== state.jobId) throw Error('QA_JOB_STATE_MISMATCH');
     } else console.log('RESUME_SAME_JOB', state.jobId);

@@ -5,6 +5,21 @@ description: Captured Kling 4 T2V completion, I2V quote acceptance, native setti
 
 # Kling 4 contracts
 
+## Reference-video pixel aspect ratio
+
+Normalize reference-video sample/pixel aspect ratio to 1:1 before upload; checking
+only frame dimensions is insufficient. Full-input options quotes can succeed
+before the accepted run fails normalization with HTTP 422 and “non-square pixels
+detected. PAR (Pixel Aspect Ratio) should be 1:1”.
+
+**Why:** Scaling a source with slightly nonstandard display aspect to 1280×720
+preserved a non-square SAR and caused the authorized fight-reference test to
+fail before content generation. This was not evidence of a violence-filter block.
+
+**How to apply:** Use `setsar=1` when preparing reference clips and verify with
+ffprobe before upload. Fixing the file does not authorize replaying the accepted
+paid job; request separate authorization for a new generation.
+
 ## Completed combined-reference test
 
 The non-regular `kling-v4-omni` route has completed a real request with one
