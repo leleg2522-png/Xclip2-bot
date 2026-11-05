@@ -7,6 +7,7 @@ import { Markup } from 'telegraf';
 import { CHINA_VIDEO_MODELS } from '../src/chinaapi-video';
 import { buildVideoMenuScreen, VIDEO_FAMILIES, videoFamilyForCallback } from '../src/video-menu';
 import { isRetiredVideoCallback } from '../src/retired-video-models';
+import { BUDGET_VIDEO_MODELS, isBudgetVideoModel } from '../src/budget-video-api';
 
 // Evaluate only pure menu functions, never import the running bot or connect to its DB.
 const source = fs.readFileSync(path.resolve(__dirname, '../src/index.ts'), 'utf8');
@@ -17,7 +18,7 @@ const functions = ast.statements.filter(s => ts.isFunctionDeclaration(s)
   && functionNames.includes(s.name?.text || '')).map(s => s.getText(ast)).join('\n');
 assert.equal(functions.match(/function /g)?.length, functionNames.length);
 const context = vm.createContext({
-  Markup, CHINA_VIDEO_MODELS, buildVideoMenuScreen, isRetiredVideoCallback,
+  Markup, CHINA_VIDEO_MODELS, buildVideoMenuScreen, isRetiredVideoCallback, BUDGET_VIDEO_MODELS, isBudgetVideoModel,
   MODEL_PRICES: { seedance25_p2: 6000 },
   KLING_V3_PRO: { label: 'Kling v3 Pro' },
   formatRupiah: (value: number) => `Rp${value}`,
@@ -29,6 +30,7 @@ vm.runInContext(ts.transpileModule(functions, {
 const modelRows = JSON.parse(JSON.stringify(vm.runInContext('videoModelRows()', context)));
 const main = JSON.parse(JSON.stringify(vm.runInContext('mainMenuKeyboard().reply_markup.inline_keyboard', context)));
 const expected = [
+  'mode_bvideo_vela', 'mode_bvideo_muse', 'mode_bvideo_deapi_ltx', 'mode_bvideo_deapi_h3',
   'menu_kling_list', 'mode_har_heygen',
   'mode_pi2v_seedance_2_mini', 'mode_pi2v_seedance_2_fast', 'mode_pi2v_seedance_2',
   'mode_oneover_seedance25', 'mode_seedance25_p2', 'mode_pi2v_grok_imagine',
@@ -79,9 +81,9 @@ for (const family of VIDEO_FAMILIES) {
   assert.equal(vm.runInContext(`generationDraftKindForContinuation(${JSON.stringify(callback)})`, context), undefined);
   assert.equal(vm.runInContext(`isGenerationEntryCallback(${JSON.stringify(callback)})`, context), false);
 }
-assert.deepEqual(reached.sort(), [...expected].sort(), 'All 36 remaining entries reachable exactly once');
-assert.deepEqual(counts, { kling: 11, seedance: 6, veo: 3, wan: 2, minimax: 3,
-  gemini: 3, ltx: 2, grok: 1, pixverse: 1, runway: 1, sora: 1, heygen: 1, creatify: 1 });
+assert.deepEqual(reached.sort(), [...expected].sort(), 'All 40 entries reachable exactly once');
+assert.deepEqual(counts, { kling: 11, seedance: 6, veo: 3, wan: 2, minimax: 4,
+  gemini: 3, ltx: 3, grok: 1, pixverse: 1, runway: 1, sora: 1, heygen: 1, creatify: 1, vela: 1, muse: 1 });
 assert(!root.rows.flat().some(b => b.callback_data === 'menu_video_family_happyhorse'));
 assert.equal(buildVideoMenuScreen('menu_video_family_happyhorse', modelRows), undefined);
 assert.equal(buildVideoMenuScreen('menu_video_family_invalid', modelRows), undefined);
@@ -118,6 +120,6 @@ async function mainTest() {
   const mcStart = source.indexOf("if (data === 'menu_kling_list')");
   const mcBranch = source.slice(mcStart, source.indexOf('\n  }\n', mcStart));
   for (const back of ['menu_video_family_kling', 'menu_video', 'back_main']) assert(mcBranch.includes(`'${back}'`));
-  console.log('Video menu passed: 13 families, all 36 remaining entries, navigation and draft guards; no paid API calls.');
+  console.log('Video menu passed: 15 families, all 40 entries including four Rp500 packages, navigation and draft guards; no paid API calls.');
 }
 mainTest().catch(error => { console.error(error); process.exitCode = 1; });

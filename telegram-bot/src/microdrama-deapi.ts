@@ -12,16 +12,20 @@ export interface DramaRenderer {
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export class DeapiDramaRenderer implements DramaRenderer {
-  constructor(private key: string, private request: typeof fetch = fetch, private sleep = wait) {}
+  constructor(private key: string, private request: typeof fetch = fetch, private sleep = wait,
+    private settings: { model: string; width: number; height: number; frames: number; fps: number } = MICRODRAMA_SETTINGS) {}
 
   private headers() { return { Authorization: `Bearer ${this.key}`, Accept: 'application/json' }; }
 
   private payload(prompt: string, seed: number, frame?: Buffer): { body: string | FormData; headers: Record<string, string> } {
-    const data = { ...MICRODRAMA_SETTINGS, prompt, seed };
+    const data = { ...this.settings, prompt, seed };
     if (!frame) return { body: JSON.stringify(data), headers: { ...this.headers(), 'Content-Type': 'application/json' } };
     const body = new FormData();
     Object.entries(data).forEach(([key, value]) => body.append(key, String(value)));
-    body.append('first_frame_image', new Blob([new Uint8Array(frame)], { type: 'image/png' }), 'continuity.png');
+    const jpeg = frame[0] === 0xff && frame[1] === 0xd8;
+    const webp = frame.subarray(0, 4).toString() === 'RIFF' && frame.subarray(8, 12).toString() === 'WEBP';
+    const mime = jpeg ? 'image/jpeg' : webp ? 'image/webp' : 'image/png';
+    body.append('first_frame_image', new Blob([new Uint8Array(frame)], { type: mime }), `continuity.${jpeg ? 'jpg' : webp ? 'webp' : 'png'}`);
     return { body, headers: this.headers() };
   }
 

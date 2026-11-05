@@ -8,10 +8,11 @@ export class PooledDeapiRenderer implements DramaRenderer {
   private cooldowns = new Map<string, number>();
   constructor(private pool: DeapiKeySource,
     private client: (key: string) => DramaRenderer = key => new DeapiDramaRenderer(key),
-    private now: () => number = Date.now) {}
+    private now: () => number = Date.now,
+    private model: string = MICRODRAMA_SETTINGS.model) {}
 
   private scope(frame?: Buffer): string {
-    return `videos/${frame ? 'animations' : 'generations'}:${MICRODRAMA_SETTINGS.model}`;
+    return `videos/${frame ? 'animations' : 'generations'}:${this.model}`;
   }
 
   private bucket(keyId: number, frame?: Buffer): string {

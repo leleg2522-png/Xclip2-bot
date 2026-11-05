@@ -15,12 +15,18 @@ export const VIDEO_FAMILIES = [
   { id: 'sora', label: 'Sora' },
   { id: 'heygen', label: 'Heygen' },
   { id: 'creatify', label: 'Creatify' },
+  { id: 'vela', label: 'Vela AI' },
+  { id: 'muse', label: 'MUSE AI' },
 ] as const;
 export type VideoFamilyId = typeof VIDEO_FAMILIES[number]['id'];
 const FAMILY_PREFIX = 'menu_video_family_';
 const button = (text: string, callback_data: string): VideoMenuButton => ({ text, callback_data });
 
 export function videoFamilyForCallback(data: string): VideoFamilyId | undefined {
+  if (data === 'mode_bvideo_vela') return 'vela';
+  if (data === 'mode_bvideo_muse') return 'muse';
+  if (data === 'mode_bvideo_deapi_ltx') return 'ltx';
+  if (data === 'mode_bvideo_deapi_h3') return 'minimax';
   if (data === 'menu_kling_list' || data.startsWith('mode_pi2v_kling_')
     || ['mode_kling21', 'mode_kling21p2'].includes(data)) return 'kling';
   if (data.startsWith('mode_pi2v_seedance_')

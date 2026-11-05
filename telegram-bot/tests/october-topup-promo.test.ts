@@ -173,7 +173,7 @@ async function main() {
   const priceTableContext = vm.createContext({
     octoberPromoPrice, octoberPromoText,
     formatRupiah: (amount: number) => 'Rp' + amount.toLocaleString('id-ID'),
-    KLING4_DURATIONS: [10, 15, 30], CHINA_VIDEO_MODELS: {},
+    KLING4_DURATIONS: [10, 15, 30], CHINA_VIDEO_MODELS: {}, BUDGET_VIDEO_MODELS: {},
     KLING_P4: { label: 'P4' }, ALRIZ_KLING_P5: { label: 'P5' },
     KLING_V3_PRO: { label: 'Kling v3 Pro' },
   });

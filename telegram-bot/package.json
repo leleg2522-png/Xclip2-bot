@@ -6,6 +6,7 @@
   "scripts": {
     "test:topup": "tsx tests/klikqris-mypg.test.ts",
     "test:video-menu": "tsx tests/video-menu.test.ts && tsx tests/retired-video-models.test.ts",
+    "test:budget-video": "tsx tests/budget-video.test.ts",
     "test:telegram": "tsx tests/telegram-file-retry.test.ts && tsx tests/telegram-rate-limit.test.ts",
     "test:october-promo": "tsx tests/october-topup-promo.test.ts",
     "dev": "tsx src/index.ts",

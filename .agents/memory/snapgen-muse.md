@@ -15,6 +15,13 @@ gambar harga 500” and the video price with “harga 500 per video”.
 saldo and failed-delivery refund rules. This selling-price decision does not
 authorize owner-funded live generation tests or establish video durations.
 
+Vela AI Video also sells for Rp500 per video.
+
+**Why:** The user explicitly answered 500 when asked the selling price for Vela.
+
+**How to apply:** Keep Vela's five-second package separate from MUSE's
+ten-second package. Do not change unrelated models' prices.
+
 Do not treat a public model-status listing as an API request contract. Verify
 that any documentation actually describes the existing api.snapgen.ai service.
 

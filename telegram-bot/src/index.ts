@@ -3,6 +3,8 @@ import axios from 'axios';
 import { retiredSeedanceVideoEditGuard } from './retired-seedance-video-edit';
 import { isRetiredVideoCallback, retiredVideoModelsGuard } from './retired-video-models';
 import { retiredFloraImagesGuard } from './retired-flora-images';
+import { BUDGET_VIDEO_MODELS, BudgetVideoApi, isBudgetVideoModel } from './budget-video-api';
+import { createBudgetVideoBot, executeBudgetVideoOrder, type BudgetVideoMode, type BudgetVideoDraft } from './budget-video-bot';
 import { buildVideoMenuScreen } from './video-menu';
 import FormData from 'form-data';
 import { Client, Pool } from 'pg';
@@ -1746,6 +1748,7 @@ picsart.initPicsart(db, (msg: string) => {
 // ─── Session state ────────────────────────────────────────────────────────────
 
 type Mode =
+  | BudgetVideoMode
   | P2Mode
   | 'idle'
   | 'kling_wait_image'
@@ -1867,10 +1870,12 @@ type GenerationDraftKind =
   | 'flora_wan_v3_480'
   | 'flora_seedance_2_480'
   | 'china_video'
-  | 'seedance25_p2';
+  | 'seedance25_p2'
+  | 'budget_video';
 
 interface Session {
   mode: Mode;
+  budgetVideo?: BudgetVideoDraft;
   seedance25P2?: P2Draft;
   chinaVideoModel?: ChinaVideoModelKey;
   chinaVideoRatio?: ChinaVideoRatio;
@@ -2099,6 +2104,7 @@ function setSession(userId: number, data: Partial<Session>) {
 }
 
 const GENERATION_DRAFT_MODES = new Set<Mode>([
+  'budget_video_ratio', 'budget_video_image', 'budget_video_end', 'budget_video_prompt',
   's25p2_wait_ratio', 's25p2_wait_media', 's25p2_wait_prompt',
   'china_video_wait_ratio', 'china_video_wait_image', 'china_video_wait_prompt',
   'kling_wait_image', 'kling_wait_video', 'kling_wait_prompt',
@@ -2135,6 +2141,7 @@ const GENERATION_DRAFT_MODES = new Set<Mode>([
 ]);
 
 function generationDraftKindForStart(data: string): GenerationDraftKind | undefined {
+  if (data.startsWith('mode_bvideo_') && isBudgetVideoModel(data.slice('mode_bvideo_'.length))) return 'budget_video';
   if (data.startsWith('mode_china_') && isChinaVideoModel(data.slice('mode_china_'.length))) return 'china_video';
   if (data.startsWith('mode_har_') && Object.hasOwn(HAR_MODELS, data.slice(9))) return 'har_models';
   if (data.startsWith('mode_pi2v_')) return 'picsart_i2v';
@@ -2178,6 +2185,7 @@ function generationDraftKindForStart(data: string): GenerationDraftKind | undefi
 }
 
 function generationDraftKindForContinuation(data: string): GenerationDraftKind | undefined {
+  if (data.startsWith('bvideo_')) return 'budget_video';
   if (data.startsWith('s25p2_')) return 'seedance25_p2';
   if (data.startsWith('china_ratio_')) return 'china_video';
   if (data.startsWith('har_ratio_')) return 'har_models';
@@ -2673,6 +2681,9 @@ async function upscaleGeneratedVideo(
 
 function videoModelRows() {
   return [
+    ...Object.entries(BUDGET_VIDEO_MODELS).map(([key, config]) => [
+      Markup.button.callback(`${config.label} · ${config.duration} detik · ${config.quality} · Rp500`, `mode_bvideo_${key}`),
+    ]),
     [Markup.button.callback('🕹️ Kling Motion Control', 'menu_kling_list')],
     [Markup.button.callback('🎬 Heygen Video · 15 detik · 1080p', 'mode_har_heygen')],
     [Markup.button.callback('🌊 Seedance 2.0 Mini 1080p', 'mode_pi2v_seedance_2_mini')],
@@ -3318,6 +3329,9 @@ function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false 
     `• ByteDance Upscaler 1K — ${formatRupiah(MODEL_PRICES.bytedance_upscale)}\n` +
     `• AI Lipsync (semua model) — ${formatRupiah(MODEL_PRICES.lipsync)}\n\n` +
     `• AI Audio (semua model) — ${formatRupiah(MODEL_PRICES.audio)}\n\n` +
+    Object.values(BUDGET_VIDEO_MODELS).map(config =>
+      `• ${config.label} (${config.duration} detik · ${config.quality}) — Rp500`
+    ).join('\n') + '\n\n' +
     '🎨 *Gambar*\n' +
     `• Seedream 2.7 4K — ${formatRupiah(MODEL_PRICES.seedream)} 🔥PROMO\n` +
     `• GPT Image 2 — ${formatRupiah(MODEL_PRICES.gpt_image)} 🔥PROMO\n` +
@@ -3491,6 +3505,71 @@ async function pollPendingTopups(): Promise<void> {
 
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
+
+const budgetVideoApi = new BudgetVideoApi(deapiKeyPool, SNAPGEN_API_KEY);
+const budgetVideoBot = createBudgetVideoBot({
+  session: getSession, set: setSession,
+  download: async (ctx, fileId) => {
+    // Download Telegram references ourselves; never expose token-bearing URLs upstream.
+    const link = await ctx.telegram.getFileLink(fileId);
+    const r = await telegramHttp.get(link.href, {
+      responseType: 'arraybuffer', timeout: 60_000, maxContentLength: 10 * 1024 * 1024,
+    });
+    const bytes = Buffer.from(r.data);
+    const m = await sharp(bytes, { limitInputPixels: 25_000_000 }).metadata();
+    const mime = ({ jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' } as Record<string, string>)[m.format ?? ''];
+    if (!mime || !bytes.length || bytes.length > 10 * 1024 * 1024 || !m.width || !m.height
+      || Math.min(m.width, m.height) < 64 || Math.max(m.width, m.height) > 5000) throw Error('VIDEO_REFERENCE_INVALID');
+    return { bytes, mime };
+  },
+  run: async (ctx, dbUserId, input, statusId) => {
+    const config = BUDGET_VIDEO_MODELS[input.model], chatId = ctx.chat.id, userId = ctx.from.id;
+    await executeBudgetVideoOrder(input, {
+      charge: () => beginCharge(dbUserId, config.price),
+      rejected: async reason => {
+        await bot.telegram.editMessageText(chatId, statusId, undefined, chargeFailMsg(reason, config.price)).catch(() => {});
+      },
+      generate: () => budgetVideoApi.generate(input, (jobId, keyId) => {
+        console.log(`[budget-video] accepted model=${input.model} user=${userId} job=${jobId} keyId=${keyId ?? 'snapgen'}`);
+      }),
+      deliver: async url => {
+        const delivered = await sendResult(chatId, url,
+          `${config.label} · ${config.duration} detik · ${input.ratio} · ${config.quality}\nRp500/video\n\n/menu untuk buat lagi`, true);
+        if (delivered) {
+          markGenSuccess(userId);
+          await bot.telegram.deleteMessage(chatId, statusId).catch(() => {});
+        }
+        return delivered;
+      },
+      failed: async error => {
+        const raw = error instanceof Error ? error.message : '';
+        const code = /^[A-Z][A-Z0-9_]{1,80}$/.test(raw) ? raw : 'VIDEO_FAILED';
+        console.error(`[budget-video] model=${input.model} user=${userId} code=${code}`);
+        const message = code === 'SNAPGEN_HIGH_TRAFFIC'
+          ? 'Layanan sedang ramai. Video belum berhasil dibuat.'
+          : code === 'DEAPI_POOL_NO_USABLE_KEY'
+            ? 'Semua akun untuk model ini sedang tidak tersedia atau kena limit. Coba lagi setelah reset.'
+            : 'Video belum berhasil dibuat atau dikirim. Tidak ada submit ulang otomatis.';
+        await bot.telegram.editMessageText(chatId, statusId, undefined, `${message}\n/menu untuk kembali`).catch(() => {});
+      },
+      refund: async () => { await addSaldo(dbUserId, config.price); },
+      refunded: async () => { await bot.telegram.sendMessage(chatId, 'Saldo Rp500 dikembalikan karena video tidak berhasil dikirim.').catch(() => {}); },
+      release: () => releaseGenerating(dbUserId),
+    });
+  },
+  error: () => {
+    console.error('[budget-video] background completion/refund failed');
+    const owner = process.env.PICSART_OWNER_CHAT_ID;
+    if (owner) void bot.telegram.sendMessage(owner, 'Paket video Rp500 mengalami kegagalan penyelesaian. Periksa log dan saldo; jangan ulangi job provider secara otomatis.').catch(() => {});
+  },
+});
+
+bot.use(async (ctx, next) => {
+  if (!ctx.from || !ctx.message || !getSession(ctx.from.id).mode.startsWith('budget_video_')
+    || ('text' in ctx.message && ctx.message.text.startsWith('/'))) return next();
+  if (!await requireLogin(ctx)) return;
+  return budgetVideoBot.message(ctx);
+});
 
 const seedance25P2Bot = createSeedance25P2Bot({
   getSession, setSession,
@@ -4540,6 +4619,10 @@ bot.on('callback_query', async (ctx) => {
       await ctx.reply('⚠️ Tombol ini berasal dari proses yang sudah tidak aktif. Gunakan menu atau draft yang sedang berjalan.').catch(() => {});
       return;
     }
+  }
+
+  if (data.startsWith('mode_bvideo_') || data.startsWith('bvideo_')) {
+    return budgetVideoBot.callback(ctx, data);
   }
 
   if (data === 'mode_seedance25_p2' || data.startsWith('s25p2_')) {
