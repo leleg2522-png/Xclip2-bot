@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "test:topup": "tsx tests/klikqris-mypg.test.ts",
-    "test:video-menu": "tsx tests/video-menu.test.ts",
+    "test:video-menu": "tsx tests/video-menu.test.ts && tsx tests/retired-video-models.test.ts",
     "test:telegram": "tsx tests/telegram-file-retry.test.ts && tsx tests/telegram-rate-limit.test.ts",
     "test:october-promo": "tsx tests/october-topup-promo.test.ts",
     "dev": "tsx src/index.ts",
@@ -24,7 +24,7 @@
     "test:xclipmotion": "tsx tests/xclip-motion-flora.test.ts",
     "test:har-models": "tsx tests/picsart-har-models.test.ts",
     "test:banana": "tsx tests/banana-renderful.test.ts && tsx tests/banana-snapgen.test.ts",
-    "test:floraimage": "tsx tests/flora-image-generation.test.ts",
+    "test:floraimage": "tsx tests/flora-image-generation.test.ts && tsx tests/retired-flora-images.test.ts",
     "test:lipsync": "tsx tests/lipsync.test.ts",
     "test:audio": "tsx tests/audio-generation.test.ts",
     "test:bytedance-upscale": "tsx tests/bytedance-upscale.test.ts",

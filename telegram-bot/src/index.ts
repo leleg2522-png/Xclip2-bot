@@ -1,6 +1,8 @@
 import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
 import { retiredSeedanceVideoEditGuard } from './retired-seedance-video-edit';
+import { isRetiredVideoCallback, retiredVideoModelsGuard } from './retired-video-models';
+import { retiredFloraImagesGuard } from './retired-flora-images';
 import { buildVideoMenuScreen } from './video-menu';
 import FormData from 'form-data';
 import { Client, Pool } from 'pg';
@@ -2691,10 +2693,9 @@ function videoModelRows() {
     [Markup.button.callback(`🎬 Kling 4 Pro 1080p · Image to Video · mulai ${formatRupiah(getPicsartI2vPrice('kling_v4_regular', 10))}`, 'mode_pi2v_kling_v4_regular')],
     [Markup.button.callback(`🎞️ Kling 4 Pro 1080p · Start–End Frame · mulai ${formatRupiah(getPicsartI2vPrice('kling_v4_frames', 10))}`, 'mode_pi2v_kling_v4_frames')],
     [Markup.button.callback('🌐 Kling Omni • 12 detik • 720p', 'mode_pi2v_kling_omni')],
-    ...Object.entries(CHINA_VIDEO_MODELS).map(([key, config]) => [
+    ...Object.entries(CHINA_VIDEO_MODELS).filter(([key]) => !isRetiredVideoCallback(`mode_china_${key}`)).map(([key, config]) => [
       Markup.button.callback(`${config.label} • ${config.duration} detik • ${config.resolution} • ${formatRupiah(config.price)}`, `mode_china_${key}`),
     ]),
-    [Markup.button.callback('🌀 Wan v2 Image-to-Video', 'mode_pi2v_wan_v2')],
     [Markup.button.callback('🌀 Wan 3.0 • 30 detik • 720p', 'mode_pi2v_wan_v3')],
     [Markup.button.callback('MiniMax H3 Uncensored • 15 detik • hingga 1K', 'mode_flora_minimax_h3_480')],
     [Markup.button.callback('Wan 3.0 Uncensored • 30 detik • hingga 1K', 'mode_flora_wan_v3_480')],
@@ -2738,7 +2739,6 @@ function mainMenuKeyboard() {
     [Markup.button.callback('💬 Chat AI (Rp100/pesan)', 'mode_chat')],
     // ── Generate Gambar ──
     [Markup.button.callback('── 🎨 Generate Gambar ──', 'noop')],
-    [Markup.button.callback('🌿 AI Image Generation (Rp500)', 'menu_flora_image')],
     [Markup.button.callback('🌸 Seedream 2.7 4K 🔥PROMO', 'mode_seedream')],
     [Markup.button.callback('🤖 GPT Image 2 🔥PROMO', 'mode_gptimg')],
     [Markup.button.callback('🤖 GPT Image 2.5 Sunburst', 'mode_gpt25_sunburst')],
@@ -3296,7 +3296,6 @@ function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false 
     `• Kling 4 1080p · Text to Video (10/15/30 detik) — ${KLING4_DURATIONS.map(duration => `${duration} detik ${formatRupiah(getPicsartI2vPrice('kling_v4_t2v', duration))}`).join(' / ')}\n` +
     `• Kling 4 Pro 1080p · Image to Video / Start–End Frame — ${KLING4_DURATIONS.map(duration => `${duration} detik ${formatRupiah(getPicsartI2vPrice('kling_v4_regular', duration))}`).join(' / ')}\n` +
     `• Kling Omni (12 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_kling_omni)}\n` +
-    `• Wan v2 Image-to-Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Wan 3.0 (30 detik · 720p) — ${formatRupiah(MODEL_PRICES.picsart_wan_v3)}\n` +
     `• PixVerse v6 (15 detik · 720p) — ${formatRupiah(promoPrice('pixverse_v6', MODEL_PRICES.picsart_i2v))}\n` +
     `• Kling 2.1 Pro (10 detik) — ${formatRupiah(promoPrice('kling_v21_pro', MODEL_PRICES.kling_21_pro))}\n` +
@@ -3305,7 +3304,7 @@ function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false 
     `• MiniMax H3 Uncensored (15 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.flora_minimax_h3_480)}\n` +
     `• Wan 3.0 Uncensored (30 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.flora_wan_v3_480)}\n` +
     `• Seedance 2 Uncensored (15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.flora_seedance_2_480)}\n` +
-    Object.values(CHINA_VIDEO_MODELS).map(config =>
+    Object.entries(CHINA_VIDEO_MODELS).filter(([key]) => !isRetiredVideoCallback(`mode_china_${key}`)).map(([, config]) =>
       `• ${config.label} (${config.duration} detik · ${config.resolution}) — ${formatRupiah(config.price)}`
     ).join('\n') + '\n' +
     `• Kling MC3.0 PRO — ${formatRupiah(MODEL_PRICES.kling_mc)} 🔥PROMO\n` +
@@ -3324,7 +3323,6 @@ function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false 
     `• GPT Image 2 — ${formatRupiah(MODEL_PRICES.gpt_image)} 🔥PROMO\n` +
     `• GPT Image 2.5 Sunburst — ${formatRupiah(MODEL_PRICES.gpt_image_25)}\n` +
     `• GPT Image 2.5 Flare — ${formatRupiah(MODEL_PRICES.gpt_image_25)}\n` +
-    `• AI Image Generation (semua model) — ${formatRupiah(MODEL_PRICES.flora_image)}\n` +
     `• Nano Banana Pro — ${formatRupiah(MODEL_PRICES.nb_pro)}\n` +
     `• Nano Banana 2 — ${formatRupiah(MODEL_PRICES.nb_2)}\n` +
     `• Nano Banana 2 Lite — ${formatRupiah(MODEL_PRICES.nb_2lite)}\n\n` +
@@ -3527,6 +3525,24 @@ bot.use(async (ctx, next) => {
 });
 
 // Register before every handler so old buttons/media/prompts cannot reach billing.
+bot.use(retiredFloraImagesGuard({
+  mode: userId => getSession(userId).mode,
+  reset: userId => {
+    floraImageMenuCache.delete(userId);
+    setSession(userId, {
+      mode: 'idle', generationDraft: false, generationDraftKind: undefined,
+      floraImageModelId: undefined, floraImageModelLabel: undefined,
+    });
+  },
+}));
+bot.use(retiredVideoModelsGuard({
+  session: userId => getSession(userId),
+  reset: userId => setSession(userId, {
+    mode: 'idle', generationDraft: false, generationDraftKind: undefined,
+    picsartI2vModel: undefined, picsartI2vImageUrl: undefined,
+    chinaVideoModel: undefined, chinaVideoImageUrl: undefined, chinaVideoRatio: undefined,
+  }),
+}));
 bot.use(retiredSeedanceVideoEditGuard({
   mode: userId => getSession(userId).mode,
   reset: userId => setSession(userId, {

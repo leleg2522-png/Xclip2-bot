@@ -372,7 +372,7 @@ async function main() {
   assert.equal(draft.mode, 'idle');
   assert.match(replies.at(-1)!, /Saldo tidak dipotong/);
   assert.match(source, /mode_china_\$\{key\}/);
-  assert.match(source, /Object\.values\(CHINA_VIDEO_MODELS\)\.map/);
+  assert.match(source, /Object\.entries\(CHINA_VIDEO_MODELS\)\.filter\(\(\[key\]\) => !isRetiredVideoCallback/);
   for (const mode of ['ratio', 'image', 'prompt']) assert.match(source, new RegExp(`'china_video_wait_${mode}'`));
   assert.match(source, /return 'china_video'/);
   console.log('ChinaAPI model contracts, one-submit policy, native media checks, billing and refunds passed (offline).');

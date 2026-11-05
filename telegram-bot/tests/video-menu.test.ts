@@ -6,6 +6,7 @@ import ts from 'typescript';
 import { Markup } from 'telegraf';
 import { CHINA_VIDEO_MODELS } from '../src/chinaapi-video';
 import { buildVideoMenuScreen, VIDEO_FAMILIES, videoFamilyForCallback } from '../src/video-menu';
+import { isRetiredVideoCallback } from '../src/retired-video-models';
 
 // Evaluate only pure menu functions, never import the running bot or connect to its DB.
 const source = fs.readFileSync(path.resolve(__dirname, '../src/index.ts'), 'utf8');
@@ -16,7 +17,7 @@ const functions = ast.statements.filter(s => ts.isFunctionDeclaration(s)
   && functionNames.includes(s.name?.text || '')).map(s => s.getText(ast)).join('\n');
 assert.equal(functions.match(/function /g)?.length, functionNames.length);
 const context = vm.createContext({
-  Markup, CHINA_VIDEO_MODELS, buildVideoMenuScreen,
+  Markup, CHINA_VIDEO_MODELS, buildVideoMenuScreen, isRetiredVideoCallback,
   MODEL_PRICES: { seedance25_p2: 6000 },
   KLING_V3_PRO: { label: 'Kling v3 Pro' },
   formatRupiah: (value: number) => `Rp${value}`,
@@ -35,8 +36,8 @@ const expected = [
   'mode_pi2v_kling_v3_turbo', 'mode_pi2v_kling_v26_pro', 'mode_pi2v_kling_v3',
   'mode_pi2v_kling_v4', 'mode_pi2v_kling_v4_t2v', 'mode_pi2v_kling_v4_regular',
   'mode_pi2v_kling_v4_frames', 'mode_pi2v_kling_omni',
-  'mode_china_minimax_h3', 'mode_china_happyhorse11', 'mode_china_wan3', 'mode_china_seedance2',
-  'mode_pi2v_wan_v2', 'mode_pi2v_wan_v3', 'mode_flora_minimax_h3_480',
+  'mode_china_minimax_h3', 'mode_china_happyhorse11',
+  'mode_pi2v_wan_v3', 'mode_flora_minimax_h3_480',
   'mode_flora_wan_v3_480', 'mode_flora_seedance_2_480', 'mode_kling21', 'mode_kling21p2',
   'mode_gomni11_flora', 'mode_rw', 'mode_sora', 'mode_veofast', 'mode_veolite', 'mode_veo31',
   'mode_minimax_h3', 'mode_gomni', 'mode_gomni12',
@@ -45,9 +46,10 @@ assert.deepEqual(modelRows.flat().map((b: any) => b.callback_data).sort(), [...e
 assert.equal(main.flat().filter((b: any) => b.callback_data === 'menu_video').length, 1);
 assert(!main.flat().some((b: any) => expected.includes(b.callback_data)), 'No flat video list in main menu');
 for (const callback of ['menu_topup', 'menu_saldo', 'menu_harga', 'menu_referral',
-  'mode_bytedance_upscale', 'menu_lipsync', 'menu_audio', 'mode_chat', 'menu_flora_image', 'mode_nb2']) {
+  'mode_bytedance_upscale', 'menu_lipsync', 'menu_audio', 'mode_chat', 'mode_nb2']) {
   assert(main.flat().some((b: any) => b.callback_data === callback), `${callback} remains available`);
 }
+assert(!main.flat().some((b: any) => b.callback_data === 'menu_flora_image'), 'Flora images removed');
 
 const root = buildVideoMenuScreen('menu_video', modelRows)!;
 assert.equal(root.rows.flat().length, VIDEO_FAMILIES.length + 1);
@@ -77,8 +79,8 @@ for (const family of VIDEO_FAMILIES) {
   assert.equal(vm.runInContext(`generationDraftKindForContinuation(${JSON.stringify(callback)})`, context), undefined);
   assert.equal(vm.runInContext(`isGenerationEntryCallback(${JSON.stringify(callback)})`, context), false);
 }
-assert.deepEqual(reached.sort(), [...expected].sort(), 'All 40 existing entries reachable exactly once');
-assert.deepEqual(counts, { kling: 11, seedance: 7, veo: 3, wan: 4, minimax: 3,
+assert.deepEqual(reached.sort(), [...expected].sort(), 'All 37 remaining entries reachable exactly once');
+assert.deepEqual(counts, { kling: 11, seedance: 6, veo: 3, wan: 2, minimax: 3,
   gemini: 3, ltx: 2, grok: 1, pixverse: 1, runway: 1, sora: 1, heygen: 1, creatify: 1, happyhorse: 1 });
 assert.equal(buildVideoMenuScreen('menu_video_family_invalid', modelRows), undefined);
 assert.equal(buildVideoMenuScreen('menu_video_family_toString', modelRows), undefined);
@@ -114,6 +116,6 @@ async function mainTest() {
   const mcStart = source.indexOf("if (data === 'menu_kling_list')");
   const mcBranch = source.slice(mcStart, source.indexOf('\n  }\n', mcStart));
   for (const back of ['menu_video_family_kling', 'menu_video', 'back_main']) assert(mcBranch.includes(`'${back}'`));
-  console.log('Video menu passed: 14 families, all 40 original entries, navigation and draft guards; no paid API calls.');
+  console.log('Video menu passed: 14 families, all 37 remaining entries, navigation and draft guards; no paid API calls.');
 }
 mainTest().catch(error => { console.error(error); process.exitCode = 1; });
