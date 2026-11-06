@@ -41,3 +41,4 @@
 - [Rekalume image HAR](rekalume-image-har.md) — Banana Pro edit completed at real 1K/4K; sanitized capture lacks auth, so it cannot independently replay generation.
 - [SnapGen MUSE](snapgen-muse.md) — image and video Rp500 each; verify api.snapgen.ai-specific contracts, not similarly named docs.
 - [Video menu organization](video-menu-organization.md) — user prefers grouping by model family, not by use case; menu cleanup must preserve existing models and pricing.
+- [Workspace dependency recovery](workspace-dependency-recovery.md) — when a workspace package fetch is blocked, offline filtered installs may restore only the needed artifact dependency closure.

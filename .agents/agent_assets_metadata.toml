@@ -1020,3 +1020,31 @@ mtime_ms = 1793972419013
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/47dbf288-c55e-48a5-9c44-084fd2bf314e/6c115558-aa15-4d34-ac9d-9aecb929fed2"
 storage_version_token = "1793972435314110"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "d4aijpjs3-snkO8PSRcXf"
+uri = "file://generated-artifacts/muse-korean-drama/drama-korea-seoul-60s.mp4"
+type = "video"
+title = "Microdrama Korea — Lobby Hujan"
+description = "Video vertikal 60 detik, dialog Korea dengan subtitle Indonesia yang tertanam. H.264, 720×1280, audio AAC."
+logical_id = "9f24f2ac-4fa6-4cc6-b571-d96683890e87"
+content_hash = "sha256:c6f4f91d665ebd76a52bf59af3c01da3c3b9809e6ec7141b157c97b4f140a61e"
+size = 17899667
+mtime_ms = 1793977344650
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/9f24f2ac-4fa6-4cc6-b571-d96683890e87/f5d81fc0-295c-47cb-b83e-efb8e9b265b2"
+storage_version_token = "1793977396207502"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "VC8gVhs509CV8Tg0VXv2x"
+uri = "file://generated-artifacts/muse-korean-drama/dialog-id.srt"
+type = "unspecified"
+title = "Subtitle Indonesia (SRT)"
+description = "Berkas subtitle terpisah untuk microdrama Korea 60 detik."
+logical_id = "59304df2-9a10-4e71-8c45-f4abc1633b74"
+content_hash = "sha256:42442e923b243cc443fb3c808a115db4a8faedd65c9221e7688436f76f19184d"
+size = 482
+mtime_ms = 1793974682089
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/59304df2-9a10-4e71-8c45-f4abc1633b74/c8efbf11-5bc1-4cec-9c22-d7ce82cf90ed"
+storage_version_token = "1793977397546053"
+content_type = "application/octet-stream"
