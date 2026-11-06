@@ -1,13 +1,20 @@
 ---
 name: Microdrama LLM provider choice
-description: User selected BUAT SIMPEL for the automatic microdrama brain.
+description: User selected Botelexkey and its claude-fable-5.1 alias for the microdrama brain, replacing BUAT SIMPEL.
 ---
 
-Use BUAT SIMPEL as the LLM provider for the proposed automatic microdrama workflow.
+Use Botelexkey with its `claude-fable-5.1` model alias as the requested
+microdrama LLM provider, superseding the earlier BUAT SIMPEL choice.
 
-**Why:** The user explicitly said “nah iya gw ingin menggunakan mereka untuk otak nya” after reviewing BUAT SIMPEL's public API information.
+**Why:** The user supplied `https://botelexkey.store/#models` and explicitly
+requested “coba ganti LLM ke sini pake model ai claude fable 5,1”.
 
-**How to apply:** Preserve this provider choice when scoping or implementing the microdrama workflow. This does not select a specific underlying model or authorize paid generation.
+**How to apply:** Change only the microdrama/director LLM, not the video model.
+The provider's public catalog lists this alias; that does not independently
+verify the identity of its upstream model or successful director/vision output.
+Use a separate credential for this provider; never forward BUAT SIMPEL's key
+to the new domain. Preserve explicit failures rather than silently reverting
+to the old provider or another model.
 
 The microdrama workflow belongs in the existing XclipAI Telegram bot, not a standalone web app.
 
