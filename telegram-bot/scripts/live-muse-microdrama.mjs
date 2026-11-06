@@ -5,6 +5,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 const exec = promisify(execFile);
 if (!process.argv.includes('--approved')) throw Error('APPROVAL_REQUIRED');
+const gentleContinuation = process.argv.includes('--approved-gentle-continuation');
 const dir = path.resolve(import.meta.dirname, '../../generated-artifacts/muse-ceo-microdrama');
 const base = 'https://api.snapgen.ai/uapi/v1';
 const key = process.env.SNAPGEN_API_KEY;
@@ -15,15 +16,15 @@ const characters = `Photorealistic Indonesian romantic microdrama, vertical 9:16
 const scenes = [
   `Opening: Nara enters the marble office lobby carrying a paper food-delivery bag, visibly nervous but dignified. Arga is clearly visible beside her near the elevator, watching her kindly. Establish both lead faces in a medium two-shot before close-up of Nara. Nara quietly says in Indonesian: "Permisi, saya antar pesanan." Arga turns toward her as a rude female office manager approaches. Ten seconds of coherent storytelling.`,
   `Continue in the same lobby. A haughty female office manager in a black office dress blocks Nara carrying her food bag, looking at Nara's worn clothes. Arga stands behind them within sight. The manager dismissively says: "Kurir lewat belakang. Jangan kotori lobi!" Nara lowers her eyes, then answers softly: "Saya cuma mencari nafkah, Bu." Show hurt and dignity, no slapstick.`,
-  `The office manager knocks Nara's paper delivery bag from her hands; one closed food container falls to the marble floor. Nara kneels to pick it up, fighting tears, without physical injury. Arga steps forward and firmly says: "Cukup. Dia tamu saya." Manager recoils in surprise. Nara looks up at the handsome CEO, startled. Clear dramatic reaction shots.`,
-  `Arga kneels beside Nara and helps pick up the closed food container. He notices a small old red braided bracelet on her wrist. Cut from the bracelet to his shocked face and her puzzled expression, maintaining the same lobby and costumes. Arga softly asks: "Gelang itu... dari mana?" Nara answers: "Dari anak yang dulu saya tolong." Romantic tension, restrained emotion.`,
+  `All three adults are standing calmly in the same office lobby. The office manager points politely toward the service reception. Nara holds her paper food bag securely and looks uncertain. Arga steps beside Nara and says with calm authority: "Sebentar. Dia tamu saya." The manager nods and walks away. Nara looks up at Arga in grateful surprise. Gentle dramatic reaction shots, no physical confrontation, no falling objects.`,
+  `Arga and Nara remain standing beside each other in the same office lobby. Nara offers him the paper delivery bag. He notices a small old red braided bracelet on her wrist. Cut from the bracelet to his surprised face and her curious expression, maintaining the same costumes. Arga softly asks: "Gelang itu... dari mana?" Nara answers: "Dari anak yang dulu saya tolong." Warm romantic tension and restrained emotion.`,
   `Arga and Nara stand together in the lobby, close medium two-shot. Arga takes an identical old red braided bracelet from his inner suit pocket and holds it beside hers. No flashback, remain in the present. Arga says emotionally: "Anak itu aku, Nara. Sepuluh tahun aku mencarimu." Nara looks at his face, stunned, tears welling. Gentle camera push-in.`,
   `Final cliffhanger, same two adults in the office lobby. Arga gently offers his open hand, never grabbing her. Nara looks from the matching red bracelets to his face. Arga says: "Izinkan aku membalas kebaikanmu." Nara replies: "Tapi... kenapa harus aku?" He smiles warmly and says: "Karena aku tak pernah lupa." Finish on their emotional eye contact, romantic dramatic ending, no text.`,
 ];
 const captions = [
   [[0.5,4.2,'Nara: Permisi, saya antar pesanan.']],
   [[0.4,4.8,'Kurir lewat belakang. Jangan kotori lobi!'],[5.1,9.5,'Nara: Saya cuma mencari nafkah, Bu.']],
-  [[4.0,8.8,'Arga: Cukup. Dia tamu saya.']],
+  [[4.0,8.8,'Arga: Sebentar. Dia tamu saya.']],
   [[1.4,5.0,'Arga: Gelang itu... dari mana?'],[5.2,9.6,'Nara: Dari anak yang dulu saya tolong.']],
   [[1.2,5.3,'Arga: Anak itu aku, Nara.'],[5.4,9.6,'Sepuluh tahun aku mencarimu.']],
   [[0.3,3.5,'Arga: Izinkan aku membalas kebaikanmu.'],[3.7,6.6,'Nara: Tapi... kenapa harus aku?'],[6.8,9.8,'Arga: Karena aku tak pernah lupa.']],
@@ -128,13 +129,32 @@ function time(s) {
   return `${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor(s/60)%60).padStart(2,'0')}:${(s%60).toFixed(3).padStart(6,'0').replace('.',',')}`;
 }
 try {
+  if (gentleContinuation && !state.gentleContinuationAuthorized) {
+    const previous = state.scenes[2];
+    if (!previous?.failed || previous.errorCode !== 'CONTENT_MODERATION_ERROR') {
+      throw Error('GENTLE_CONTINUATION_REQUIRES_KNOWN_FAILED_SCENE');
+    }
+    if (state.scenes.slice(3).some(s => s?.attempted)) {
+      throw Error('GENTLE_CONTINUATION_LATER_SCENES_ALREADY_SUBMITTED');
+    }
+    // Keep the rejected UUID and billing evidence; this is a separately
+    // authorized replacement scene, not a replay of the failed paid job.
+    state.supersededScenes ??= [];
+    state.supersededScenes.push({ scene: 3, ...previous });
+    state.scenes[2] = { prompt: characters + '\nSCENE: ' + scenes[2] };
+    state.gentleContinuationAuthorized = true;
+    delete state.lastError;
+    await save();
+    console.log('SEPARATELY_AUTHORIZED_GENTLE_CONTINUATION');
+  }
   if (state.completed) { console.log('ALREADY_COMPLETED'); }
   else {
     const accountResponse = await fetch(base+'/account', { headers, signal:AbortSignal.timeout(30000) });
     if (!accountResponse.ok) throw Error(`MUSE_ACCOUNT_HTTP_${accountResponse.status}`);
     const a = await accountResponse.json();
     if (!a.is_active || a.plan_id !== 'PP0001') throw Error('MUSE_PREMIUM_REQUIRED');
-    if (Number(a.user_credit?.available_credit) < 6) throw Error('MUSE_INSUFFICIENT_CREDIT');
+    const remaining = 6 - state.scenes.filter(s => s?.downloaded).length;
+    if (Number(a.user_credit?.available_credit) < remaining) throw Error('MUSE_INSUFFICIENT_CREDIT');
     console.log('MUSE_ACCOUNT_READY');
     await scene(0);
     await exec('ffmpeg',['-v','error','-threads','2','-ss','2','-i',path.join(dir,'scene-1.mp4'),
