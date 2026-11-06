@@ -908,3 +908,17 @@ mtime_ms = 1793946238224
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/3748730b-836d-4bf9-b370-eed14cd26db5/db82a1e7-c5b3-438c-8d73-d09b0dbc68b7"
 storage_version_token = "1793946499323395"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "_THxbZRumwaBY0_2UzYba"
+uri = "file://generated-artifacts/muse-ceo-microdrama-chained/ceo-itu-mengenalku-60s.mp4"
+type = "video"
+title = "CEO Itu Mengenalku — Versi Adegan Menyambung"
+description = "Microdrama MUSE AI 60 detik, vertikal 720×1280 dengan audio. Adegan 2–6 menggunakan frame terakhir adegan sebelumnya sebagai acuan awal. Versi lama tetap disimpan."
+logical_id = "f39bd197-3f2e-4e5c-8979-b0f44e9458bc"
+content_hash = "sha256:8788abdef81c3ede986cbde921e630f97c98a99886d7d3fe0f695ca4a471a208"
+size = 17660014
+mtime_ms = 1793947366632
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/f39bd197-3f2e-4e5c-8979-b0f44e9458bc/f58466dc-0c4d-4289-a7eb-9fa9045227c3"
+storage_version_token = "1793947394025179"
+content_type = "video/mp4"

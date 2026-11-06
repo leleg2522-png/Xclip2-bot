@@ -6,7 +6,10 @@ import { promisify } from 'node:util';
 const exec = promisify(execFile);
 if (!process.argv.includes('--approved')) throw Error('APPROVAL_REQUIRED');
 const gentleContinuation = process.argv.includes('--approved-gentle-continuation');
-const dir = path.resolve(import.meta.dirname, '../../generated-artifacts/muse-ceo-microdrama');
+const chainEndFrames = process.argv.includes('--chain-end-frames');
+if (chainEndFrames && gentleContinuation) throw Error('CHOOSE_ONE_EXPERIMENT');
+const originalDir = path.resolve(import.meta.dirname, '../../generated-artifacts/muse-ceo-microdrama');
+const dir = chainEndFrames ? originalDir + '-chained' : originalDir;
 const base = 'https://api.snapgen.ai/uapi/v1';
 const key = process.env.SNAPGEN_API_KEY;
 if (!key) throw Error('SNAPGEN_KEY_MISSING');
@@ -54,7 +57,10 @@ function safeCode(r) {
   return typeof value === 'string' && /^[A-Z0-9_]{1,80}$/.test(value) ? value : 'UNKNOWN';
 }
 async function scene(i) {
-  const s = state.scenes[i] ??= { prompt: characters + '\nSCENE: ' + scenes[i] };
+  const continuity = chainEndFrames && i > 0
+    ? '\nCONTINUITY: The attached image is the exact final frame of the preceding scene. Begin at this exact image composition: same camera angle, positions, poses, faces, clothing, props, lighting and background. Continue movement naturally from that instant. Do not restart the encounter or reset the actors. After the opening moment, develop the next story beat below. No establishing shot, no fade, no opening transition.\n'
+    : '\n';
+  const s = state.scenes[i] ??= { prompt: characters + continuity + 'SCENE: ' + scenes[i] };
   const file = path.join(dir, `scene-${i+1}.mp4`);
   if (s.downloaded) return file;
   if (s.failed) throw Error(`SCENE_${i+1}_PREVIOUSLY_FAILED_${s.errorCode}`);
@@ -64,8 +70,21 @@ async function scene(i) {
     body.set('prompt', s.prompt); body.set('model','muse-ai-video');
     body.set('duration','10'); body.set('orientation','portrait');
     if (i > 0) {
-      body.append('files', new Blob([await fs.readFile(path.join(dir,'cast-reference.jpg'))],
-        { type:'image/jpeg' }), 'cast-reference.jpg');
+      let reference = 'cast-reference.jpg';
+      if (chainEndFrames) {
+        if (!state.scenes[i-1]?.downloaded) throw Error('PREVIOUS_SCENE_NOT_READY');
+        reference = `scene-${i}-last-frame.png`;
+        // Decode to EOF and keep overwriting one image, leaving the actual last
+        // decoded frame rather than a timestamp approximation.
+        await exec('ffmpeg', ['-v','error','-threads','2','-sseof','-1',
+          '-i',path.join(dir,`scene-${i}.mp4`),'-an','-fps_mode','passthrough',
+          '-update','1','-threads','2','-y',path.join(dir,reference)]);
+        s.referenceScene = i;
+        s.referenceFile = reference;
+      }
+      const mime = chainEndFrames ? 'image/png' : 'image/jpeg';
+      body.append('files', new Blob([await fs.readFile(path.join(dir,reference))],
+        { type:mime }), reference);
     }
     s.attempted = true;
     await save();
@@ -129,6 +148,19 @@ function time(s) {
   return `${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor(s/60)%60).padStart(2,'0')}:${(s%60).toFixed(3).padStart(6,'0').replace('.',',')}`;
 }
 try {
+  if (chainEndFrames && !state.chainEndFrames) {
+    if (state.scenes.some(s => s?.attempted)) throw Error('CHAIN_STATE_ALREADY_HAS_SUBMISSIONS');
+    const source = JSON.parse(await fs.readFile(path.join(originalDir,'state.json'),'utf8'));
+    if (!source.scenes[0]?.downloaded) throw Error('ORIGINAL_FIRST_SCENE_MISSING');
+    await fs.copyFile(path.join(originalDir,'scene-1.mp4'),path.join(dir,'scene-1.mp4'));
+    state.scenes[0] = {
+      downloaded: true, reusedFromOriginal: true, usedCredit: 0,
+      media: source.scenes[0].media,
+    };
+    state.chainEndFrames = true;
+    await save();
+    console.log('CHAINED_EXPERIMENT_FIRST_SCENE_REUSED');
+  }
   if (gentleContinuation && !state.gentleContinuationAuthorized) {
     const previous = state.scenes[2];
     if (!previous?.failed || previous.errorCode !== 'CONTENT_MODERATION_ERROR') {
