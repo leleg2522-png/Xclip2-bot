@@ -9,7 +9,7 @@ export interface Bible {
   cast: CastMember[]; locations: Location[];
   beats: Array<{ objective: string; location: string; cast: string[] }>;
 }
-export interface Dialogue { speaker: string; text: string }
+export interface Dialogue { speaker: string; text: string; subtitleId?: string }
 export interface Shot {
   number: number; scene: number; cast: string[]; location: string;
   camera: string; action: string; startState: string; endState: string;

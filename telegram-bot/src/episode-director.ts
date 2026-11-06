@@ -33,7 +33,7 @@ export function validateBible(value: any, minutes: number): Bible {
   return { title: str(p.title, 90), synopsis: str(p.synopsis, 1000), style: str(p.style, 500), cast, locations, beats };
 }
 
-export function validateScene(value: any, e: Episode, scene: number, allowChain = false): Shot[] {
+export function validateScene(value: any, e: Episode, scene: number, allowChain = false, korean = false): Shot[] {
   const beat = e.bible!.beats[scene];
   if (!Array.isArray(value?.shots) || value.shots.length !== 3) throw new Error('DIRECTOR_FORMAT');
   return value.shots.map((s: any, i: number) => {
@@ -41,7 +41,12 @@ export function validateScene(value: any, e: Episode, scene: number, allowChain 
       || (s.continuation && i !== 1 && !allowChain)) throw new Error('DIRECTOR_FORMAT');
     const dialogue = s.dialogue.map((d: any) => {
       if (!d || !beat.cast.includes(d.speaker)) throw new Error('DIRECTOR_FORMAT');
-      return { speaker: d.speaker, text: str(d.text, 90) };
+      const spokenLine = str(d.text, 90);
+      if (korean && /[\r\n]/.test(spokenLine)) throw new Error('DIRECTOR_FORMAT');
+      if (!korean) return { speaker: d.speaker, text: spokenLine };
+      const subtitleId = str(d.subtitleId, 120);
+      if (/[\r\n]|-->/.test(subtitleId)) throw new Error('DIRECTOR_FORMAT');
+      return { speaker: d.speaker, text: spokenLine, subtitleId };
     });
     if (dialogue.reduce((sum: number, d: any) => sum + d.text.length, 0) > 140) throw new Error('DIRECTOR_FORMAT');
     return { number: scene * 3 + i + 1, scene, cast: [...beat.cast], location: beat.location,
@@ -63,7 +68,7 @@ export interface Director {
 /** Creative decisions only. No tools, provider credentials, budgets or executable instructions from the LLM. */
 export class EpisodeDirector implements Director {
   private llm: MicrodramaLlm;
-  constructor(key: string, request: typeof fetch = fetch, private chainShots = false) {
+  constructor(key: string, request: typeof fetch = fetch, private chainShots = false, private language: 'id' | 'ko' = 'id') {
     this.llm = new MicrodramaLlm(key, request);
   }
   private async ask(model: string, system: string, prompt: string, images: Buffer[] = [], tokens = 4500): Promise<any> {
@@ -79,10 +84,13 @@ export class EpisodeDirector implements Director {
     return json(raw);
   }
   async bible(idea: string, minutes: number, model: string, previous?: Bible) {
-    const p = await this.ask(model, `You are an experienced Indonesian drama director and continuity supervisor.
+    const languageRules = this.language === 'ko'
+      ? 'Write an authentic contemporary Korean TV drama set in Seoul. Cast are fictional adult South Koreans. Dialogue is natural Korean in Hangul. Synopsis and visual descriptions are in English.'
+      : 'Write an Indonesian drama with natural Indonesian dialogue; visual descriptions are in English.';
+    const p = await this.ask(model, `You are an experienced drama director and continuity supervisor.
 Design a complete ${minutes}-minute episode: exactly ${minutes * 2} story beats of 30 seconds each, 3 ten-second shots per beat.
 Build a hook, motivated conflict, escalation, reveal and cliffhanger, not repetitive filler.
-1-2 adult characters only; 1-3 stable locations. Indonesian story and natural dialogue; English visual descriptions.
+1-2 adult characters only; 1-3 stable locations. ${languageRules}
 Return ONLY these keys, no shot lists or dialogue yet: {"title":"","synopsis":"","style":"","cast":[{"id":"RAKA","name":"","age":30,"look":"stable facial traits, hair, exact wardrobe","voice":"stable timbre and delivery","personality":""}],
 "locations":[{"id":"HOUSE","description":"exact visual layout, props, lighting"}],
 "beats":[{"objective":"story development and emotional change","location":"HOUSE","cast":["RAKA"]}]}.
@@ -98,21 +106,24 @@ Do not add characters or change clothing midway. No background extras.`, previou
     const p = await this.ask(model, `You are the episode's director, cinematographer and continuity supervisor.
 Write exactly THREE ten-second shots for the requested 30-second beat.
 Return {"shots":[{"camera":"","action":"","startState":"","endState":"","imagePrompt":"","videoPrompt":"",
-"negativePrompt":"","continuation":false,"dialogue":[{"speaker":"CHAR_ID","text":"Short Indonesian spoken line"}]}]}.
+ "negativePrompt":"","continuation":false,"dialogue":[{"speaker":"CHAR_ID","text":"Short spoken line","subtitleId":"Indonesian translation when requested"}]}]}.
 ${this.chainShots
     ? 'Every shot after the episode opening MUST continue directly from the previous shot final frame. Preserve the opening framing and screen positions. Set continuation=true except for the very first episode shot. Use gentle camera motion, no resets or cuts.'
     : 'The first and third shots MUST use independent locked references (continuation=false). Only shot two may continue shot one last frame. Never build long last-frame chains.'}
 Use only the beat's cast and location. Keep locked faces, wardrobe, spatial screen directions, props and character knowledge.
 Use purposeful coverage/reaction shots, not repeated static conversations. Provide explicit framing, blocking, expression, camera movement, light and sound.
 imagePrompt describes the single first frame, no collage/text. videoPrompt directs action, not dialogue (dialogue is added by code).
-Prefer one speaking character and one brief line per shot; <=140 dialogue characters total, all speech finishes before 8.5 seconds. No overlapping speakers.
+${this.language === 'ko'
+    ? 'Write dialogue naturally in Korean Hangul and include an accurate concise Indonesian subtitleId for every spoken line. Do not render subtitles in imagePrompt or videoPrompt.'
+    : 'Write natural Indonesian dialogue; subtitleId may be omitted.'}
+Prefer one speaking character and one brief line per shot; <=140 spoken dialogue characters total, all speech finishes before 8.5 seconds. No overlapping speakers.
 Write a SPECIFIC negativePrompt for EACH shot, tailored to its framing, actor identities, visible hands, fixed props, motion and speaking character. Include relevant face drift, hand/body deformation, prop teleportation, extra actors and wrong-speaker/lip-sync failure risks. Do not blindly repeat one generic list. Negative constraints must not contradict the desired action or suppress the intended speaker.
 Be concise: target action<=400, imagePrompt<=600, videoPrompt<=700, negativePrompt<=700 chars.
 Hard limits: action<=900, camera<=300, states<=400, imagePrompt<=1200, videoPrompt<=1600, negativePrompt<=1000 chars.
 State changes must be motivated by the action; no teleportation or wardrobe changes.`, JSON.stringify({
       bible: e.bible, scene: scene + 1, beat: e.bible!.beats[scene], previousState: last?.endState || 'Opening shot',
     }));
-    return validateScene(p, e, scene, this.chainShots);
+    return validateScene(p, e, scene, this.chainShots, this.language === 'ko');
   }
   async review(model: string, instructions: string, images: Buffer[]): Promise<Quality> {
     const p = await this.ask(model, `You are a strict visual continuity reviewer. Actually inspect the supplied images.
@@ -128,15 +139,15 @@ Do not claim to verify voices, dialogue audio or frame-perfect lip-sync from sti
   }
 }
 
-export function lockedPrompt(e: Episode, s: Shot, video: boolean, repair = '') {
+export function lockedPrompt(e: Episode, s: Shot, video: boolean, repair = '', language: 'id' | 'ko' = 'id') {
   const b = e.bible!;
   return [
-    'Photorealistic Indonesian drama, vertical 9:16. Preserve the exact identities in the reference images. No extra actors.',
+    `Photorealistic ${language === 'ko' ? 'Korean television drama set in Seoul with fictional adult Korean characters' : 'Indonesian drama'}, vertical 9:16. Preserve the exact identities from the approved individual character-reference images. No extra actors.`,
     b.style, ...b.cast.filter(c => s.cast.includes(c.id)).map(c => `${c.id}, adult ${c.age}: ${c.look}. Voice: ${c.voice}`),
     `Location: ${b.locations.find(l => l.id === s.location)!.description}`,
     `Start continuity: ${s.startState}`, `Camera: ${s.camera}`,
     video ? `${s.videoPrompt}\nAction: ${s.action}\nEnd continuity: ${s.endState}` : s.imagePrompt,
-    video ? 'Exactly one ten-second shot. Native Indonesian audio. Only the named speaker speaks/moves lips; others listen silently. Finish all speech by 8.5 seconds.' : 'Single cinematic first frame, no contact sheet or collage.',
+    video ? `Exactly one ten-second shot. ${language === 'ko' ? 'Korean spoken dialogue in Hangul. Subtitles are added separately and must not appear in the video image.' : 'Native Indonesian audio.'} Only the named speaker speaks/moves lips; others listen silently. Finish all speech by 8.5 seconds.` : 'Single cinematic first frame, no contact sheet or collage.',
     ...(video ? s.dialogue.map(d => `${d.speaker} says ${JSON.stringify(d.text)}`) : []),
     'No on-screen writing, captions, logos or music. Stable anatomy and face. Quiet room ambience.',
     s.negativePrompt ? `Shot-specific negative constraints from the director: ${s.negativePrompt}` : '',

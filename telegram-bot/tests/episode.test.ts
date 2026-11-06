@@ -207,10 +207,12 @@ async function contracts() {
       const body = JSON.parse(init.body);
       messages.push(body.messages);
       const output = messages.length === 1 ? bible()
-        : messages.length === 2 ? { shots: scene(e, 0) }
+        : messages.length === 2 ? { shots: scene(e, 0).map(s => ({
+          ...s, dialogue: s.dialogue.map(d => ({ ...d, subtitleId: 'Terjemahan bahasa Indonesia.' })),
+        })) }
         : { pass: false, issues: ['Fixture identity mismatch'], repair: 'Use the approved character reference.' };
       return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(output) } }] }));
-    }) as any);
+    }) as any, false, 'ko');
     await client.bible('story', 1, 'fixture-model');
     await client.scene(e, 0, 'fixture-model');
     await client.review('fixture-model', 'Inspect fixture only', [Buffer.from('fixture-jpeg')]);
@@ -219,6 +221,8 @@ async function contracts() {
       assert.ok(m[0].content.startsWith(FILM_DIRECTOR_ROLE), 'Bible, shot prompts and review share the film-production role');
       assert.match(m[0].content, /CURRENT TASK:/);
     }
+    assert.match(messages[0][0].content, /authentic contemporary Korean TV drama/);
+    assert.match(messages[1][0].content, /subtitleId/);
   }
   {
     const e = newEpisode(1); e.bible = bible();
@@ -227,6 +231,13 @@ async function contracts() {
     assert.equal(validateScene(input, e, 0)[0].action.length, 734, 'Preserve moderately verbose action without rewriting');
     assert.match(validateScene(input, e, 0)[0].negativePrompt!, /letter duplication/);
     assert.match(lockedPrompt(e, validateScene(input, e, 0)[0], true), /Shot-specific negative constraints/);
+    const koreanInput = { shots: input.shots.map(s => ({
+      ...s, dialogue: s.dialogue.map(d => ({ ...d, subtitleId: 'Terjemahan Indonesia.' })),
+    })) };
+    assert.match(lockedPrompt(e, validateScene(koreanInput, e, 0, false, true)[0], true, '', 'ko'),
+      /Korean spoken dialogue in Hangul/);
+    assert.throws(() => validateScene(input, e, 0, false, true), /DIRECTOR_FORMAT/,
+      'Korean spoken lines require Indonesian subtitle text');
     const missingNegative = { shots: input.shots.map(s => ({ ...s, negativePrompt: undefined })) };
     assert.throws(() => validateScene(missingNegative, e, 0), /DIRECTOR_FORMAT/);
     assert.equal(validateBible({ ...e.bible, synopsis: 'A'.repeat(771) }, 1).synopsis.length, 771);

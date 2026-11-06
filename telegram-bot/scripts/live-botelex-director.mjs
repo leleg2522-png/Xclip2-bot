@@ -9,8 +9,11 @@ const { newEpisode } = require('../dist/episode-types.js');
 const { MICRODRAMA_LLM_DEFAULT, microdramaLlmKey } = require('../dist/microdrama-llm.js');
 const root = path.resolve(import.meta.dirname, '../..');
 const scriptTest = process.argv.includes('--script-test');
+const koreanDrama = process.argv.includes('--korean-drama');
 const museNegative = process.argv.includes('--muse-negative');
-const dir = path.join(root, museNegative
+const dir = path.join(root, koreanDrama
+  ? 'generated-artifacts/botelex-korean-drama-plan'
+  : museNegative
   ? 'generated-artifacts/botelex-muse-negative-plan'
   : scriptTest
   ? 'generated-artifacts/botelex-director-script-test'
@@ -99,20 +102,27 @@ try {
     await save();
     return response;
   };
-  const d = new EpisodeDirector(key, request, museNegative);
+  const d = new EpisodeDirector(key, request, museNegative || koreanDrama, koreanDrama ? 'ko' : 'id');
   const episode = newEpisode(1);
   episode.bible = await once('bible', () => d.bible(
-    museNegative
+    koreanDrama
+      ? '한국 서울을 배경으로 한 1분 분량의 따뜻한 로맨스 한국 드라마를 쓴다. 성인 한국인 두 명만 출연한다. cast[0]는 ID DOYUN, 이름 강도윤, 33세 잘생긴 남성 CEO이며 승인된 첫 번째 남성 캐릭터 레퍼런스를 따라간다. cast[1]은 ID SEOYEON, 이름 윤서연, 29세 생활이 어려운 여성 배달원이며 승인된 두 번째 여성 캐릭터 레퍼런스를 따라간다. 조용한 회사 로비 한 곳에만 머문다. 과거 비 오는 밤에 서로 도왔던 두 사람이 그 기억을 알아보는 감정적 이야기. 한국 드라마다운 설렘과 놀라움은 담되 과장된 재벌 클리셰, 모욕, 신체 접촉은 피한다. 공개된 캐릭터 레퍼런스 이미지 속 두 사람의 실제 얼굴과 헤어, 의상은 변경하지 않는다. 카메라와 화면 좌우 위치를 유지해 여섯 쇼트를 이전 장면의 마지막 프레임과 연결한다. 화면에는 남녀 주인공 외 인물이나 군중이 절대 나오지 않는다. 단순한 시선·표정 연기만 쓰며 복잡한 손동작과 소품 건네기는 피한다. spoken dialogue는 자연스러운 한국어 한글로만 쓴다. 매 대사에 정확하고 간결한 인도네시아어 subtitleId를 포함한다. 줄거리와 카메라·이미지·영상 프롬프트는 영어로 작성한다. 마지막은 따뜻한 감정의 고백 직전에서 끝낸다. 각 샷에는 해당 구도, 배우, 손, 소품, 동작, 말하는 사람에 맞춘 별개의 구체적 negativePrompt를 쓴다.'
+      : museNegative
       ? 'Buat microdrama romantis Indonesia tepat satu menit: Arga CEO tampan dewasa dan Nara wanita dewasa sederhana yang mengantar makanan, ternyata pernah saling menolong dan baru saling mengenali. HANYA dua tokoh dewasa itu dari awal sampai akhir; lobi kantor kecil yang kosong, tanpa orang lewat, pegawai, manajer atau satpam. Semua tokoh berdiri tenang. Satu kalimat singkat dari satu pembicara per shot. Aksi sederhana: tatapan, senyum, anggukan. Satu kantong makanan tetap di tangan Nara sepanjang episode; tidak dijatuhkan atau dipindahkan. Tanpa peragaan kenangan, flashback, menyentuh wajah/tangan, gelang tambahan, merogoh kantong atau pergantian baju. Jadikan dialog pendek sebagai pengungkapan masa lalu. Semua shot akan disambung memakai frame terakhir shot sebelumnya. Akhiri dengan pengungkapan romantis, bukan aksi fisik.'
       : 'Microdrama romantis Indonesia satu menit: Arga, CEO tampan dewasa, bertemu Nara, wanita dewasa yang hidup sederhana dan mengantar makanan. Mereka menyadari pernah saling menolong. Hanya dua pemeran, satu lobi kantor, gerakan sederhana, dialog singkat, tanpa kekerasan. Akhiri dengan pengungkapan emosional.',
     1, state.model), value => validateBible(value, 1));
+  if (koreanDrama && (episode.bible.cast.length !== 2
+      || episode.bible.cast[0].id !== 'DOYUN'
+      || episode.bible.cast[1].id !== 'SEOYEON')) {
+    throw Error('KDRAMA_CHARACTER_REFERENCE_ORDER_MISMATCH');
+  }
   for (let i=0; i<2; i++) {
     const shots = await once(`scene${i+1}`, () => d.scene(episode, i, state.model),
-      value => validateScene(value, episode, i, museNegative));
+    value => validateScene(value, episode, i, museNegative || koreanDrama, koreanDrama));
     episode.shots.push(...shots.map(shot => ({ shot })));
   }
   let quality;
-  if (!scriptTest && !museNegative) {
+  if (!scriptTest && !museNegative && !koreanDrama) {
     const imageDir = path.join(root,'generated-artifacts/muse-ceo-microdrama-strict');
     const images = await Promise.all(['scene-1-check.jpg','sample-6.jpg'].map(n=>fs.readFile(path.join(imageDir,n))));
     quality = await once('vision', () => d.review(state.model,

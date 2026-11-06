@@ -10,12 +10,14 @@ const dryRun = process.argv.includes('--dry-run');
 if (!dryRun && !process.argv.includes('--approved')) throw Error('APPROVAL_REQUIRED');
 const gentleContinuation = process.argv.includes('--approved-gentle-continuation');
 const strictQuality = process.argv.includes('--strict-quality');
-const claudeDriven = process.argv.includes('--claude-plan');
+const koreanDrama = process.argv.includes('--korean-drama');
+const claudeDriven = process.argv.includes('--claude-plan') || koreanDrama;
 if (claudeDriven && strictQuality) throw Error('CHOOSE_ONE_EXPERIMENT');
 const chainEndFrames = claudeDriven || strictQuality || process.argv.includes('--chain-end-frames');
 if (chainEndFrames && gentleContinuation) throw Error('CHOOSE_ONE_EXPERIMENT');
 const originalDir = path.resolve(import.meta.dirname, '../../generated-artifacts/muse-ceo-microdrama');
-const dir = claudeDriven ? originalDir + '-claude-negatives'
+const dir = koreanDrama ? path.resolve(import.meta.dirname, '../../generated-artifacts/muse-korean-drama')
+  : claudeDriven ? originalDir + '-claude-negatives'
   : strictQuality ? originalDir + '-strict'
   : chainEndFrames ? originalDir + '-chained' : originalDir;
 const base = 'https://api.snapgen.ai/uapi/v1';
@@ -23,6 +25,10 @@ const key = process.env.SNAPGEN_API_KEY;
 if (!dryRun && !key) throw Error('SNAPGEN_KEY_MISSING');
 const headers = { 'x-api-key': key, Accept: 'application/json' };
 const pause = ms => new Promise(r => setTimeout(r, ms));
+const characterRefs = koreanDrama ? [
+  path.resolve(import.meta.dirname, '../../generated-artifacts/k-drama-character-references/arga-ceo.jpg'),
+  path.resolve(import.meta.dirname, '../../generated-artifacts/k-drama-character-references/nara-delivery-worker.jpg'),
+] : [];
 const characters = `Photorealistic Indonesian romantic microdrama, vertical 9:16, cinematic live action, adult actors only. Maintain exactly the same two leads throughout: ARGA, handsome Indonesian male CEO aged 30, neat short black side-part hair, clean shaven, navy tailored suit, white shirt, no tie, silver watch; NARA, Indonesian woman aged 24 with a modest low-income background, warm brown eyes, long black hair in a low ponytail, faded light-blue long-sleeve blouse, dark trousers, old brown canvas shoulder bag. Respectful portrayal, not caricature. Modern Jakarta luxury office lobby. Natural human movements and emotional acting, consistent faces and clothing. No written text, captions, watermarks or logos. Clear audible Indonesian speech with correct speaker turns, natural room ambience and subtle dramatic instrumental music. No English speech.`;
 const scenes = [
   `Opening: Nara enters the marble office lobby carrying a paper food-delivery bag, visibly nervous but dignified. Arga is clearly visible beside her near the elevator, watching her kindly. Establish both lead faces in a medium two-shot before close-up of Nara. Nara quietly says in Indonesian: "Permisi, saya antar pesanan." Arga turns toward her as a rude female office manager approaches. Ten seconds of coherent storytelling.`,
@@ -45,13 +51,28 @@ if (claudeDriven) {
   const require = createRequire(import.meta.url);
   const { lockedPrompt, validateBible, validateScene } = require('../dist/episode-director.js');
   const { newEpisode } = require('../dist/episode-types.js');
-  const plan = JSON.parse(await fs.readFile(path.resolve(import.meta.dirname,
-    '../../generated-artifacts/botelex-muse-negative-plan/state.json'), 'utf8'));
+  if (koreanDrama) {
+    for (const file of characterRefs) {
+      const size = (await fs.stat(file)).size;
+      if (!size || size > 10 * 1024 * 1024) throw Error('KOREAN_CHARACTER_REFERENCE_INVALID_SIZE');
+    }
+  }
+  const planFile = koreanDrama
+    ? '../../generated-artifacts/botelex-korean-drama-plan/state.json'
+    : '../../generated-artifacts/botelex-muse-negative-plan/state.json';
+  const plan = JSON.parse(await fs.readFile(path.resolve(import.meta.dirname, planFile), 'utf8'));
   if (!plan.completed || plan.model !== 'claude-fable-5.1') throw Error('CLAUDE_PLAN_NOT_READY');
   claudeEpisode = newEpisode(1);
   claudeEpisode.bible = validateBible(plan.results.bible, 1);
-  claudeShots = [0,1].flatMap(i => validateScene({ shots: plan.results[`scene${i+1}`] },claudeEpisode,i,true));
-  if (claudeShots.length !== 6 || claudeShots.some(s => !s.negativePrompt)) throw Error('CLAUDE_NEGATIVE_PROMPTS_MISSING');
+  if (koreanDrama && (claudeEpisode.bible.cast.length !== 2
+      || claudeEpisode.bible.cast[0].id !== 'DOYUN'
+      || claudeEpisode.bible.cast[1].id !== 'SEOYEON')) {
+    throw Error('KDRAMA_CHARACTER_REFERENCE_ORDER_MISMATCH');
+  }
+  claudeShots = [0,1].flatMap(i => validateScene(
+    { shots: plan.results[`scene${i+1}`] }, claudeEpisode, i, true, koreanDrama));
+  if (claudeShots.length !== 6 || claudeShots.some(s => !s.negativePrompt
+      || (koreanDrama && s.dialogue.some(d => !d.subtitleId)))) throw Error('CLAUDE_PROMPT_NEGATIVE_OR_SUBTITLE_MISSING');
   directorPrompt = lockedPrompt;
 }
 function buildPrompt(i) {
@@ -60,7 +81,11 @@ function buildPrompt(i) {
     : '\n';
   if (claudeDriven) {
     const shot = claudeShots[i];
-    return directorPrompt(claudeEpisode, shot, true) + continuity
+    const fixedCharacters = koreanDrama
+      ? `\nFIXED CAST REFERENCES: Attached image 1 is the approved Korean male CEO, ${claudeEpisode.bible.cast[0].id} (${claudeEpisode.bible.cast[0].name}); preserve this exact face, hair and wardrobe. Image 2 is the approved Korean woman, ${claudeEpisode.bible.cast[1].id} (${claudeEpisode.bible.cast[1].name}); preserve her exact face, hair and wardrobe.${i > 0 ? ' Image 3 is the exact final decoded frame of the previous clip; continue from it without replacing either identity in images 1 and 2.' : ' Use both approved lead identities in the opening shot.'}\n`
+      : '';
+    return directorPrompt(claudeEpisode, shot, true, '', koreanDrama ? 'ko' : 'id') + continuity
+      + fixedCharacters
       + (i === 0 ? `\nOpening-frame composition from the director: ${shot.imagePrompt}` : '')
       + '\nUse only natural quiet room ambience. The named adult characters are the only people in view.';
   }
@@ -74,8 +99,8 @@ if (dryRun) {
   // Inspect all prompts without filesystem writes, credentials or network calls.
   console.log(JSON.stringify({
     strictQuality, chainEndFrames, paidSubmissions: 0,
-    newScenes: strictQuality ? 6 : chainEndFrames ? 5 : 6,
-    prompts: scenes.map((_,i) => buildPrompt(i)),
+    newScenes: koreanDrama ? 6 : strictQuality ? 6 : chainEndFrames ? 5 : 6,
+    prompts: Array.from({length:6},(_,i) => buildPrompt(i)),
   }, null, 2));
   process.exit(0);
 }
@@ -106,7 +131,11 @@ function safeCode(r) {
 async function scene(i) {
   const s = state.scenes[i] ??= {
     prompt: buildPrompt(i),
-    ...(claudeDriven ? { directorModel: 'claude-fable-5.1', negativePrompt: claudeShots[i].negativePrompt } : {}),
+    ...(claudeDriven ? {
+      directorModel: 'claude-fable-5.1',
+      negativePrompt: claudeShots[i].negativePrompt,
+      ...(koreanDrama ? { approvedCharacterReferences: characterRefs.map(f => path.basename(f)) } : {}),
+    } : {}),
   };
   const file = path.join(dir, `scene-${i+1}.mp4`);
   if (s.downloaded) return file;
@@ -116,6 +145,9 @@ async function scene(i) {
     const body = new FormData();
     body.set('prompt', s.prompt); body.set('model','muse-ai-video');
     body.set('duration','10'); body.set('orientation','portrait');
+    for (const reference of characterRefs) {
+      body.append('files', new Blob([await fs.readFile(reference)], { type:'image/jpeg' }), path.basename(reference));
+    }
     if (i > 0) {
       let reference = 'cast-reference.jpg';
       if (chainEndFrames) {
@@ -200,6 +232,7 @@ try {
     state.claudeDriven = true; state.chainEndFrames = true;
     state.title = claudeEpisode.bible.title;
     state.directorModel = 'claude-fable-5.1';
+    if (koreanDrama) state.characterReferenceFiles = characterRefs.map(file => path.basename(file));
     await save();
   }
   if (strictQuality && !state.strictQuality) {
@@ -254,9 +287,13 @@ try {
     // Keep reference-based scene jobs sequential to stop spending on first failure.
     for (let i=1; i<6; i++) await scene(i);
     let srt = '', index = 0;
-    const activeCaptions = claudeDriven ? claudeShots.map(s => s.dialogue.map((d,i,all) => [
-      1+i*6/all.length, 1+(i+1)*6/all.length, `${d.speaker}: ${d.text}`,
-    ])) : strictQuality ? strictCaptions : captions;
+    const activeCaptions = koreanDrama
+      ? claudeShots.map(s => s.dialogue.map((d,i,all) => [
+        1+i*6/all.length, 1+(i+1)*6/all.length, d.subtitleId,
+      ]))
+      : claudeDriven ? claudeShots.map(s => s.dialogue.map((d,i,all) => [
+        1+i*6/all.length, 1+(i+1)*6/all.length, `${d.speaker}: ${d.text}`,
+      ])) : strictQuality ? strictCaptions : captions;
     activeCaptions.forEach((rows,i) => rows.forEach(([start,end,text]) => {
       srt += `${++index}\n${time(i*10+start)} --> ${time(i*10+end)}\n${text}\n\n`;
     }));
@@ -272,9 +309,20 @@ try {
         '-y',path.join(dir,`part-${i+1}.mp4`)],{timeout:180000});
     }
     await fs.writeFile(path.join(dir,'concat.txt'),scenes.map((_,i)=>`file 'part-${i+1}.mp4'`).join('\n'));
+    const stitchedFile = path.join(dir, koreanDrama ? 'seoul-drama-stitched.mp4' : 'ceo-itu-mengenalku-60s.mp4');
     await exec('ffmpeg',['-v','error','-f','concat','-safe','0','-i',path.join(dir,'concat.txt'),
-      '-c','copy','-movflags','+faststart','-y',path.join(dir,'ceo-itu-mengenalku-60s.mp4')],{timeout:180000});
-    state.finalMedia = (await probe(path.join(dir,'ceo-itu-mengenalku-60s.mp4'))).format;
+      '-c','copy','-movflags','+faststart','-y',stitchedFile],{timeout:180000});
+    let finalFile = stitchedFile;
+    if (koreanDrama) {
+      const subtitleFile = path.join(dir,'dialog-id.srt');
+      finalFile = path.join(dir,'drama-korea-seoul-60s.mp4');
+      const subtitleFilter = `subtitles=${subtitleFile}:force_style='FontName=DejaVu Sans,FontSize=26,Outline=2,Shadow=1,Alignment=2,MarginV=48'`;
+      await exec('ffmpeg',['-v','error','-threads','2','-i',stitchedFile,'-vf',subtitleFilter,
+        '-c:v','libx264','-threads','2','-preset','fast','-crf','19','-pix_fmt','yuv420p',
+        '-c:a','copy','-movflags','+faststart','-y',finalFile],{timeout:300000});
+    }
+    state.finalMedia = (await probe(finalFile)).format;
+    state.finalMediaPath = path.basename(finalFile);
     state.completed = true; state.usedCredit = state.scenes.reduce((sum,s)=>sum+Number(s.usedCredit||0),0);
     await save(); console.log('MICRODRAMA_COMPLETED',JSON.stringify({duration:state.finalMedia.duration,usedCredit:state.usedCredit}));
   }
