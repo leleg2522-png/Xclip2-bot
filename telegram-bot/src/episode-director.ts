@@ -44,7 +44,9 @@ export function validateScene(value: any, e: Episode, scene: number): Shot[] {
     });
     if (dialogue.reduce((sum: number, d: any) => sum + d.text.length, 0) > 140) throw new Error('DIRECTOR_FORMAT');
     return { number: scene * 3 + i + 1, scene, cast: [...beat.cast], location: beat.location,
-      camera: str(s.camera, 300), action: str(s.action, 700), startState: str(s.startState, 400),
+      // Internal verbosity cap, not a provider API limit. Match the prototype's
+      // 900-character bound without truncating or rewriting model decisions.
+      camera: str(s.camera, 300), action: str(s.action, 900), startState: str(s.startState, 400),
       endState: str(s.endState, 400), imagePrompt: str(s.imagePrompt, 1200), videoPrompt: str(s.videoPrompt, 1600),
       dialogue, continuation: s.continuation };
   });
@@ -99,7 +101,7 @@ Use only the beat's cast and location. Keep locked faces, wardrobe, spatial scre
 Use purposeful coverage/reaction shots, not repeated static conversations. Provide explicit framing, blocking, expression, camera movement, light and sound.
 imagePrompt describes the single first frame, no collage/text. videoPrompt directs action, not dialogue (dialogue is added by code).
 0-2 turns per shot, <=140 dialogue characters total, all speech finishes before 8.5 seconds. No overlapping speakers.
-camera<=300, action<=700, states<=400, imagePrompt<=1200, videoPrompt<=1600 chars.
+Target action<=600 chars; hard action limit 900 chars. camera<=300, states<=400, imagePrompt<=1200, videoPrompt<=1600 chars.
 State changes must be motivated by the action; no teleportation or wardrobe changes.`, JSON.stringify({
       bible: e.bible, scene: scene + 1, beat: e.bible!.beats[scene], previousState: last?.endState || 'Opening shot',
     }));

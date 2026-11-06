@@ -936,3 +936,17 @@ mtime_ms = 1793949432192
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/9b27940a-c2d0-44bc-a01b-4f15739edd85/f24f569d-db60-4dcd-ad05-3865591317ed"
 storage_version_token = "1793950627961512"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "9winxxDPG-hFW963UbsoR"
+uri = "file://generated-artifacts/botelex-director-script-test/naskah-uji-satu-menit.txt"
+type = "text"
+title = "Naskah Fable 5.1 — Nasi Bungkus di Lantai Satu"
+description = "Hasil uji nyata Botelexkey: rencana episode satu menit, enam shot, aksi, kamera, dan dialog Indonesia. Belum dirender menjadi video."
+logical_id = "306bba51-7048-4a5e-96d5-10aff97f6007"
+content_hash = "sha256:31b60006a43bef9586344dab2e78f5ed245445b6dc34c1ddc4744bfbe3cd6241"
+size = 10075
+mtime_ms = 1793970119250
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/306bba51-7048-4a5e-96d5-10aff97f6007/580b61b7-c380-4436-8e8f-9715f3e60541"
+storage_version_token = "1793970159741447"
+content_type = "text/plain"

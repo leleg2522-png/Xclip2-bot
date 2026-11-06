@@ -197,6 +197,14 @@ async function workflow() {
   console.log('PASS 1–20 minute planning, approvals, reference locking, replay safety, budgets, pause/resume, QA, retakes, delivery and roles');
 }
 async function contracts() {
+  {
+    const e = newEpisode(1); e.bible = bible();
+    const shots = scene(e, 0);
+    const input = { shots: shots.map(s => ({ ...s, action: 'A'.repeat(734) })) };
+    assert.equal(validateScene(input, e, 0)[0].action.length, 734, 'Preserve moderately verbose action without rewriting');
+    input.shots[0].action = 'A'.repeat(901);
+    assert.throws(() => validateScene(input, e, 0), /DIRECTOR_FORMAT/, 'Still reject unbounded actions');
+  }
   const seen: Array<{ url: string; init: RequestInit }> = [];
   let priceOnly = false, failSubmit = false;
   const source = { next: async () => ({ id: 9, apiKey: 'fixture' }), get: async () => ({ id: 9, apiKey: 'fixture' }),

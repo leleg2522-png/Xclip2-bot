@@ -69,3 +69,18 @@ Treat a successful HTTP status or short LLM probe as insufficient proof that the
 **Why:** BUAT SIMPEL returned HTTP 200 with non-JSON response bodies and later HTTP 524 for full non-streaming action-storyboard requests while a minimal completion succeeded. A provider-listed alternative alias completed the six-shot plan through streaming; the exact cause of the original alias failures was not established.
 
 **How to apply:** Validate the actual director response and its full schema before any paid media submit. Prefer streaming for long creative requests when supported, consume content separately from reasoning deltas, and preserve sanitized failure diagnostics. Do not infer an invalid credential from a long-request timeout. A successful demonstration using another alias does not authorize changing the bot's default model. Never silently substitute a handwritten plan while claiming the selected LLM produced it.
+
+Preserve fictional assistant output separately from transport diagnostics so a
+local validation failure can be investigated and revalidated without another
+billed LLM request.
+
+**Why:** A complete Botelexkey storyboard was initially rejected because its
+action description modestly exceeded an internal verbosity cap, not because
+the API or credential failed. The original response could be validated after
+revisiting that internal cap, without rewriting the story or resubmitting it.
+
+**How to apply:** Distinguish provider requirements from local size budgets.
+Keep bounds explicit and tested; never silently truncate creative decisions,
+relax ownership/billing safeguards, or claim a short probe verifies the full
+director and vision workflow. Do not retain credentials, request authorization
+headers or private reasoning in diagnostic output.
