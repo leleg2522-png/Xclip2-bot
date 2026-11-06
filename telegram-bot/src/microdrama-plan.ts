@@ -1,4 +1,5 @@
 import { MicrodramaLlm } from './microdrama-llm';
+import { FILM_DIRECTOR_ROLE } from './film-director-role';
 
 export const MICRODRAMA_SETTINGS = {
   model: 'MiniMaxH3_33B_Turbo_INT8',
@@ -92,7 +93,7 @@ export class MicrodramaWriter {
 
   async write(idea: string, model: string, previous?: DramaPlan): Promise<DramaPlan> {
     const message = await this.llm.complete(model, [
-          { role: 'system', content: PLAN_INSTRUCTIONS },
+          { role: 'system', content: FILM_DIRECTOR_ROLE + '\n\nCURRENT TASK:\n' + PLAN_INSTRUCTIONS },
           ...(previous ? [{ role: 'assistant', content: JSON.stringify(previous) }] : []),
           { role: 'user', content: previous ? `Revise the script with this feedback: ${idea}` : `Story idea: ${idea}` },
         ], 3000, 0.7);

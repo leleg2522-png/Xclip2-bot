@@ -138,6 +138,10 @@ async function providerTests() {
   assert.equal(body.model, 'gpt-6-luna');
   assert.equal(body.stream, true);
   assert.equal(body.messages.length, 2);
+  assert.match(body.messages[0].content, /FILM DIRECTOR \/ SUTRADARA/);
+  assert.match(body.messages[0].content, /SCREENWRITER \/ PENULIS NASKAH/);
+  assert.match(body.messages[0].content, /PROMPT DESIGNER \/ PERANCANG PROMPT/);
+  assert.match(body.messages[0].content, /CINEMATOGRAPHER \/ KAMERAWAN/);
   assert.equal(body.response_format, undefined, 'Do not presume gateway supports structured-output extensions');
   await assert.rejects(writer.write('idea', 'off'), /UNAVAILABLE/);
   assert.equal(calls.filter(c => c.url.endsWith('completions')).length, 1);

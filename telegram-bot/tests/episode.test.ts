@@ -5,7 +5,8 @@ import { promisify } from 'node:util';
 import { promises as fs } from 'node:fs';
 import { Telegraf } from 'telegraf';
 import { newEpisode, episodeProject, type Bible, type Episode, type EpisodeProject } from '../src/episode-types';
-import { validateBible, validateScene, lockedPrompt, type Director } from '../src/episode-director';
+import { validateBible, validateScene, lockedPrompt, EpisodeDirector, type Director } from '../src/episode-director';
+import { FILM_DIRECTOR_ROLE } from '../src/film-director-role';
 import { EpisodeEngine, type EpisodeStore } from '../src/episode-engine';
 import { EpisodeMedia, parseTranscript, dialogueIssues, episodeSrt } from '../src/episode-media';
 import { DeapiEpisodeApi, type EpisodeRequest } from '../src/episode-api';
@@ -198,6 +199,27 @@ async function workflow() {
   console.log('PASS 1–20 minute planning, approvals, reference locking, replay safety, budgets, pause/resume, QA, retakes, delivery and roles');
 }
 async function contracts() {
+  {
+    const e = newEpisode(1); e.bible = bible();
+    const messages: any[] = [];
+    const client = new EpisodeDirector('offline-fixture-key', (async (url: any, init: any) => {
+      if (String(url).endsWith('/models')) return new Response(JSON.stringify({ data: [{ id: 'fixture-model' }] }));
+      const body = JSON.parse(init.body);
+      messages.push(body.messages);
+      const output = messages.length === 1 ? bible()
+        : messages.length === 2 ? { shots: scene(e, 0) }
+        : { pass: false, issues: ['Fixture identity mismatch'], repair: 'Use the approved character reference.' };
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(output) } }] }));
+    }) as any);
+    await client.bible('story', 1, 'fixture-model');
+    await client.scene(e, 0, 'fixture-model');
+    await client.review('fixture-model', 'Inspect fixture only', [Buffer.from('fixture-jpeg')]);
+    assert.equal(messages.length, 3);
+    for (const m of messages) {
+      assert.ok(m[0].content.startsWith(FILM_DIRECTOR_ROLE), 'Bible, shot prompts and review share the film-production role');
+      assert.match(m[0].content, /CURRENT TASK:/);
+    }
+  }
   {
     const e = newEpisode(1); e.bible = bible();
     const shots = scene(e, 0);
