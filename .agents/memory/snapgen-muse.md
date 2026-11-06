@@ -84,6 +84,11 @@ simple hand movements, persistent props and one speaking character at a time.
 Treat these as generation guidance, not a guarantee of anatomy or lip-sync.
 An end-frame reference can carry existing defects into the next clip; improving
 all scenes can require a fresh first scene rather than reusing a flawed one.
+Matching clip-boundary frames does not establish consistency throughout a clip.
+A completed six-scene trial with longer negative constraints and simplified
+blocking still introduced an unrequested background man in later scenes.
+Do not claim that stronger negative wording alone fixes cast continuity or
+that still-frame inspection verifies speech or lip-sync.
 
 ## Vela image-to-video
 

@@ -922,3 +922,17 @@ mtime_ms = 1793947366632
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/f39bd197-3f2e-4e5c-8979-b0f44e9458bc/f58466dc-0c4d-4289-a7eb-9fa9045227c3"
 storage_version_token = "1793947394025179"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "sG4mMnuZtAZN99oDVYj-O"
+uri = "file://generated-artifacts/muse-ceo-microdrama-strict/ceo-itu-mengenalku-60s.mp4"
+type = "video"
+title = "CEO Itu Mengenalku — Versi Aturan Lebih Ketat"
+description = "Enam adegan baru MUSE AI, durasi 60 detik, vertikal 720×1280 dengan audio. Memakai aturan anatomi, identitas, properti, dan satu pembicara per adegan; frame akhir diteruskan ke adegan berikutnya. Masih terlihat tokoh latar tambahan pada bagian akhir, sehingga belum bebas cacat."
+logical_id = "9b27940a-c2d0-44bc-a01b-4f15739edd85"
+content_hash = "sha256:836e09bece050301a8d7ce3f6438f4c41fe7e6db1a3133fed9385be92cf083b9"
+size = 13898562
+mtime_ms = 1793949432192
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/9b27940a-c2d0-44bc-a01b-4f15739edd85/c593318b-d701-41da-992e-36483fc8d443"
+storage_version_token = "1793949494569321"
+content_type = "video/mp4"
