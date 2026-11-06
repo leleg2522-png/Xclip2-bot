@@ -70,6 +70,21 @@ HTTP 400 `UNSUPPORTED_IMAGE_FORMAT`, explicitly requiring `.png`, `.jpg`,
 reference, including Vela end frames. Read nested `detail.error_code` for
 diagnostics without logging raw provider messages, credentials, or file URLs.
 
+## MUSE quality constraints
+
+Put negative constraints inside the documented `prompt` field; do not assume
+that a separate `negative_prompt` multipart field is recognized.
+
+**Why:** The official downloadable MUSE resource documents prompt and reference
+inputs but no dedicated negative-prompt parameter. Silently sending an
+unverified field would falsely imply that the model is applying those controls.
+
+**How to apply:** Pair concise exclusions with achievable staging: stable cast,
+simple hand movements, persistent props and one speaking character at a time.
+Treat these as generation guidance, not a guarantee of anatomy or lip-sync.
+An end-frame reference can carry existing defects into the next clip; improving
+all scenes can require a fresh first scene rather than reusing a flawed one.
+
 ## Vela image-to-video
 
 The official Vela UAPI is `POST /uapi/v1/video-gen/vela`, multipart with

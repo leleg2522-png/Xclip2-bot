@@ -3,16 +3,20 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { qualityRules, strictScenes, strictCaptions } from './muse-microdrama-quality.mjs';
 const exec = promisify(execFile);
-if (!process.argv.includes('--approved')) throw Error('APPROVAL_REQUIRED');
+const dryRun = process.argv.includes('--dry-run');
+if (!dryRun && !process.argv.includes('--approved')) throw Error('APPROVAL_REQUIRED');
 const gentleContinuation = process.argv.includes('--approved-gentle-continuation');
-const chainEndFrames = process.argv.includes('--chain-end-frames');
+const strictQuality = process.argv.includes('--strict-quality');
+const chainEndFrames = strictQuality || process.argv.includes('--chain-end-frames');
 if (chainEndFrames && gentleContinuation) throw Error('CHOOSE_ONE_EXPERIMENT');
 const originalDir = path.resolve(import.meta.dirname, '../../generated-artifacts/muse-ceo-microdrama');
-const dir = chainEndFrames ? originalDir + '-chained' : originalDir;
+const dir = strictQuality ? originalDir + '-strict'
+  : chainEndFrames ? originalDir + '-chained' : originalDir;
 const base = 'https://api.snapgen.ai/uapi/v1';
 const key = process.env.SNAPGEN_API_KEY;
-if (!key) throw Error('SNAPGEN_KEY_MISSING');
+if (!dryRun && !key) throw Error('SNAPGEN_KEY_MISSING');
 const headers = { 'x-api-key': key, Accept: 'application/json' };
 const pause = ms => new Promise(r => setTimeout(r, ms));
 const characters = `Photorealistic Indonesian romantic microdrama, vertical 9:16, cinematic live action, adult actors only. Maintain exactly the same two leads throughout: ARGA, handsome Indonesian male CEO aged 30, neat short black side-part hair, clean shaven, navy tailored suit, white shirt, no tie, silver watch; NARA, Indonesian woman aged 24 with a modest low-income background, warm brown eyes, long black hair in a low ponytail, faded light-blue long-sleeve blouse, dark trousers, old brown canvas shoulder bag. Respectful portrayal, not caricature. Modern Jakarta luxury office lobby. Natural human movements and emotional acting, consistent faces and clothing. No written text, captions, watermarks or logos. Clear audible Indonesian speech with correct speaker turns, natural room ambience and subtle dramatic instrumental music. No English speech.`;
@@ -32,6 +36,25 @@ const captions = [
   [[1.2,5.3,'Arga: Anak itu aku, Nara.'],[5.4,9.6,'Sepuluh tahun aku mencarimu.']],
   [[0.3,3.5,'Arga: Izinkan aku membalas kebaikanmu.'],[3.7,6.6,'Nara: Tapi... kenapa harus aku?'],[6.8,9.8,'Arga: Karena aku tak pernah lupa.']],
 ];
+function buildPrompt(i) {
+  const continuity = chainEndFrames && i > 0
+    ? '\nCONTINUITY: The attached image is the exact final frame of the preceding scene. Begin at this exact image composition: same camera angle, positions, poses, faces, clothing, props, lighting and background. Continue movement naturally from that instant. Do not restart the encounter or reset the actors. After the opening moment, develop the next story beat below. No establishing shot, no fade, no opening transition.\n'
+    : '\n';
+  const cast = strictQuality
+    ? characters.replace('and subtle dramatic instrumental music', 'only, without music')
+    : characters;
+  return cast + continuity + 'SCENE: ' + (strictQuality ? strictScenes[i] : scenes[i])
+    + (strictQuality ? '\n' + qualityRules : '');
+}
+if (dryRun) {
+  // Inspect all prompts without filesystem writes, credentials or network calls.
+  console.log(JSON.stringify({
+    strictQuality, chainEndFrames, paidSubmissions: 0,
+    newScenes: strictQuality ? 6 : chainEndFrames ? 5 : 6,
+    prompts: scenes.map((_,i) => buildPrompt(i)),
+  }, null, 2));
+  process.exit(0);
+}
 await fs.mkdir(dir, { recursive: true });
 const lockPath = path.join(dir, 'running.lock');
 const lock = await fs.open(lockPath, 'wx');
@@ -57,10 +80,7 @@ function safeCode(r) {
   return typeof value === 'string' && /^[A-Z0-9_]{1,80}$/.test(value) ? value : 'UNKNOWN';
 }
 async function scene(i) {
-  const continuity = chainEndFrames && i > 0
-    ? '\nCONTINUITY: The attached image is the exact final frame of the preceding scene. Begin at this exact image composition: same camera angle, positions, poses, faces, clothing, props, lighting and background. Continue movement naturally from that instant. Do not restart the encounter or reset the actors. After the opening moment, develop the next story beat below. No establishing shot, no fade, no opening transition.\n'
-    : '\n';
-  const s = state.scenes[i] ??= { prompt: characters + continuity + 'SCENE: ' + scenes[i] };
+  const s = state.scenes[i] ??= { prompt: buildPrompt(i) };
   const file = path.join(dir, `scene-${i+1}.mp4`);
   if (s.downloaded) return file;
   if (s.failed) throw Error(`SCENE_${i+1}_PREVIOUSLY_FAILED_${s.errorCode}`);
@@ -148,7 +168,13 @@ function time(s) {
   return `${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor(s/60)%60).padStart(2,'0')}:${(s%60).toFixed(3).padStart(6,'0').replace('.',',')}`;
 }
 try {
-  if (chainEndFrames && !state.chainEndFrames) {
+  if (strictQuality && !state.strictQuality) {
+    if (state.scenes.some(s => s?.attempted || s?.downloaded)) throw Error('STRICT_STATE_ALREADY_USED');
+    state.strictQuality = true;
+    state.chainEndFrames = true;
+    await save();
+  }
+  if (chainEndFrames && !strictQuality && !state.chainEndFrames) {
     if (state.scenes.some(s => s?.attempted)) throw Error('CHAIN_STATE_ALREADY_HAS_SUBMISSIONS');
     const source = JSON.parse(await fs.readFile(path.join(originalDir,'state.json'),'utf8'));
     if (!source.scenes[0]?.downloaded) throw Error('ORIGINAL_FIRST_SCENE_MISSING');
@@ -194,7 +220,7 @@ try {
     // Keep reference-based scene jobs sequential to stop spending on first failure.
     for (let i=1; i<6; i++) await scene(i);
     let srt = '', index = 0;
-    captions.forEach((rows,i) => rows.forEach(([start,end,text]) => {
+    (strictQuality ? strictCaptions : captions).forEach((rows,i) => rows.forEach(([start,end,text]) => {
       srt += `${++index}\n${time(i*10+start)} --> ${time(i*10+end)}\n${text}\n\n`;
     }));
     await fs.writeFile(path.join(dir,'dialog-id.srt'),srt);
