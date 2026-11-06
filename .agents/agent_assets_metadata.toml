@@ -992,3 +992,31 @@ mtime_ms = 1793972126774
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/8dbe6ce5-e14f-41b8-aa31-c59d53d253ac/0fd5f94e-6d44-4a62-8441-190adfe2b926"
 storage_version_token = "1793972330114825"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "EK4T5HqxUMyp0aQgPsfpO"
+uri = "file://generated-artifacts/k-drama-character-references/arga-ceo.jpg"
+type = "image"
+title = "Referensi Karakter — Arga, CEO Korea"
+description = "Karakter pria dewasa fiktif, setelan biru, portrait frontal tiga-perempat. Tolong periksa wajah dan pakaian sebelum dipakai untuk video."
+logical_id = "7416315b-cca3-4f4c-885d-65896d0ea4fa"
+content_hash = "sha256:75c0e513a79c530f5d798dd4c3370da066d516613cd23f4f458ad94147e1644a"
+size = 92264
+mtime_ms = 1793972418413
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/7416315b-cca3-4f4c-885d-65896d0ea4fa/2a4d81f8-3960-4ea6-a74b-4b1bbe946659"
+storage_version_token = "1793972433950012"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "ueyqnOkKF4qngLNkU26_b"
+uri = "file://generated-artifacts/k-drama-character-references/nara-delivery-worker.jpg"
+type = "image"
+title = "Referensi Karakter — Nara, Kurir Makanan Korea"
+description = "Karakter wanita dewasa fiktif, blus kuning dan strap tas hijau, portrait frontal tiga-perempat. Tolong periksa wajah dan pakaian sebelum dipakai untuk video."
+logical_id = "47dbf288-c55e-48a5-9c44-084fd2bf314e"
+content_hash = "sha256:86eb05d8666ddc2940157d151c5463b01fdb1d964a52a953a36d9d452087c1c7"
+size = 94293
+mtime_ms = 1793972419013
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/47dbf288-c55e-48a5-9c44-084fd2bf314e/6c115558-aa15-4d34-ac9d-9aecb929fed2"
+storage_version_token = "1793972435314110"
+content_type = "image/jpeg"
