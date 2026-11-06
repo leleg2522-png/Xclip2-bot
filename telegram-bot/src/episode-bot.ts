@@ -3,6 +3,7 @@ import type { PgDramaStore, DramaProject } from './microdrama-store';
 import { episodeProject, newEpisode, referenceNames, type EpisodeProject } from './episode-types';
 import { EpisodeEngine, type EpisodeAction } from './episode-engine';
 import { EpisodeDirector } from './episode-director';
+import { microdramaLlmKey } from './microdrama-llm';
 import { EpisodeMedia } from './episode-media';
 import type { EpisodeApi } from './episode-api';
 import type { Director } from './episode-director';
@@ -79,7 +80,7 @@ export function registerEpisode(
     await text(p.chat, episodeSummary(p), episodeButtons(p));
     if (p.episode.phase === 'idea') input.set(p.owner, { id: p.id, revision: false });
   }
-  const engine = new EpisodeEngine({ store, api, director: clients.director || new EpisodeDirector(process.env.BUATSIMPEL_API_KEY || ''),
+  const engine = new EpisodeEngine({ store, api, director: clients.director || new EpisodeDirector(microdramaLlmKey()),
     media: clients.media || new EpisodeMedia(), authorized, deliver, present, inspect: clients.inspect,
     notify: (p, value) => text(p.chat, value),
     preview: async (p, name, bytes) => {
@@ -91,7 +92,7 @@ export function registerEpisode(
   async function allowed(ctx: any) {
     if (!await requireAdmin(ctx)) return false;
     if (ctx.chat?.type !== 'private') { await ctx.reply('Sutradara episode hanya tersedia di chat pribadi admin.'); return false; }
-    if (!store.ready || !process.env.BUATSIMPEL_API_KEY) { await ctx.reply('Sutradara belum siap: periksa penyimpanan dan konfigurasi LLM. Belum ada submit berbayar.'); return false; }
+    if (!store.ready || !(clients.director || microdramaLlmKey())) { await ctx.reply('Sutradara belum siap: periksa penyimpanan dan konfigurasi BOTELEX_API_KEY. Belum ada submit berbayar.'); return false; }
     return true;
   }
   function run(ctx: any, promise: Promise<boolean>) {

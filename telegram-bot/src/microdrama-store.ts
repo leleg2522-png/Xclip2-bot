@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import type { DramaPlan } from './microdrama-plan';
 import type { Episode } from './episode-types';
+import { MICRODRAMA_LLM_DEFAULT } from './microdrama-llm';
 
 export type DramaStatus = 'idea' | 'writing' | 'draft' | 'revision' | 'quoting' | 'quoted'
   | 'rendering' | 'paused' | 'uncertain' | 'failed' | 'ready' | 'delivered' | 'cancelled';
@@ -42,7 +43,7 @@ export class PgDramaStore implements DramaStore {
 
   async model(owner: number): Promise<string> {
     const r = await this.pool.query('SELECT model FROM microdrama_models WHERE owner=$1', [owner]);
-    return r.rows[0]?.model || process.env.MICRODRAMA_LLM_MODEL || 'gpt-6-luna';
+    return r.rows[0]?.model || process.env.MICRODRAMA_LLM_MODEL || MICRODRAMA_LLM_DEFAULT;
   }
 
   async setModel(owner: number, model: string) {

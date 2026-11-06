@@ -136,7 +136,7 @@ async function providerTests() {
   await writer.write('idea', 'gpt-6-luna');
   const body = JSON.parse(calls[1].options.body);
   assert.equal(body.model, 'gpt-6-luna');
-  assert.equal(body.stream, false);
+  assert.equal(body.stream, true);
   assert.equal(body.messages.length, 2);
   assert.equal(body.response_format, undefined, 'Do not presume gateway supports structured-output extensions');
   await assert.rejects(writer.write('idea', 'off'), /UNAVAILABLE/);

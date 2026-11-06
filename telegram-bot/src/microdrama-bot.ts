@@ -1,6 +1,7 @@
 import { Markup, type Telegraf } from 'telegraf';
 import type { PgDramaStore, DramaProject } from './microdrama-store';
-import { BuatSimpelWriter } from './microdrama-plan';
+import { MicrodramaWriter } from './microdrama-plan';
+import { microdramaLlmKey } from './microdrama-llm';
 import type { DramaRenderer } from './microdrama-deapi';
 import { FfmpegDramaMedia } from './microdrama-media';
 import { MicrodramaEngine } from './microdrama-engine';
@@ -33,11 +34,11 @@ export function registerMicrodrama(
   bot: Telegraf<any>, store: PgDramaStore, requireAdmin: (ctx: any) => Promise<boolean>,
   authorized: (owner: number) => Promise<boolean>,
   deliver: (p: DramaProject, video: Buffer) => Promise<string | undefined>,
-  clients: { writer?: BuatSimpelWriter; renderer: DramaRenderer; media?: FfmpegDramaMedia; commands?: string[] },
+  clients: { writer?: MicrodramaWriter; renderer: DramaRenderer; media?: FfmpegDramaMedia; commands?: string[] },
 ) {
   const inputOwners = new Set<number>();
-  const writer = clients?.writer || new BuatSimpelWriter(process.env.BUATSIMPEL_API_KEY || '');
-  const configured = () => Boolean(process.env.BUATSIMPEL_API_KEY);
+  const writer = clients?.writer || new MicrodramaWriter(microdramaLlmKey());
+  const configured = () => Boolean(clients.writer || microdramaLlmKey());
   async function present(p: DramaProject) {
     if (p.episode) { await sendText(bot, p.chat, 'Proyek ini memakai sutradara episode. Buka /microdrama.'); return; }
     let text = `Microdrama admin • ${p.id.slice(0, 8)}\nStatus: ${p.status}\nModel naskah: ${p.model}\n`;
@@ -72,7 +73,7 @@ export function registerMicrodrama(
     if (!await requireAdmin(ctx)) return false;
     if (ctx.chat?.type !== 'private') { await ctx.reply('Microdrama admin hanya tersedia di chat pribadi bot.'); return false; }
     if (!configured()) {
-      await ctx.reply('Microdrama belum dikonfigurasi: BUATSIMPEL_API_KEY harus tersedia di environment bot. Key video DeAPI dikelola lewat /deapipool di database.');
+      await ctx.reply('Microdrama belum dikonfigurasi: BOTELEX_API_KEY harus tersedia di environment bot. Key video DeAPI dikelola lewat /deapipool di database.');
       return false;
     }
     if (!store.ready) {

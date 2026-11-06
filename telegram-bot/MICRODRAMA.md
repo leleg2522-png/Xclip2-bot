@@ -9,7 +9,7 @@ menu or call any customer saldo deduction/refund functions.
 atau ketik `/microdrama 7`; semua bilangan bulat 1–20 didukung. Pilihan awal
 yang disarankan 1 menit. Status: `/microdramastatus`.
 
-1. Kirim ide. BUAT SIMPEL menyusun bible (alur, wajah/pakaian/suara karakter,
+1. Kirim ide. Botelexkey (`claude-fable-5.1`) menyusun bible (alur, wajah/pakaian/suara karakter,
    lokasi, gaya visual). Revisi bible tersedia sebelum membuat referensi.
 2. Minta estimasi dan setujui **biaya referensi**. Gambar menggunakan FLUX.2
    Klein; maksimal dua karakter dewasa dan tiga lokasi. Ada cadangan dua
@@ -93,14 +93,14 @@ estimasi aktual disetujui.
 
 ## Configuration
 
-The process running the bot needs `BUATSIMPEL_API_KEY` and its existing
+The process running the bot needs `BOTELEX_API_KEY` and its existing
 Telegram/PostgreSQL credentials. DeAPI credentials come exclusively from the
 Railway `deapi_key_pool` table; there is no runtime `DEAPI_API_KEY` fallback.
 Credentials in the Replit workspace are not automatically configured on a
 separate Railway service.
 
 `MICRODRAMA_LLM_MODEL` optionally selects the initial LLM gateway alias
-(default `gpt-6-luna`). `/microdramamodel` lists live enabled aliases and lets
+(default `claude-fable-5.1`). `/microdramamodel` lists live enabled aliases and lets
 each admin choose a default for **new** projects. Gateway aliases do not prove
 the identity of the model behind them. There is no automatic model fallback.
 
@@ -117,10 +117,10 @@ before Telegram handlers start; failure disables only this feature.
    yang menjadi sumber **service bot yang sekarang**. Perubahan lokal di Replit
    tidak otomatis menjadi kode build Railway; redeploy versi lama saja tidak
    akan menambahkan fitur ini.
-3. Pada **Variables** service bot tersebut, tambahkan `BUATSIMPEL_API_KEY`
+3. Pada **Variables** service bot tersebut, tambahkan `BOTELEX_API_KEY`
    secara privat. Key DeAPI disimpan di database, bukan Variables bot.
    Jangan mengganti token Telegram, koneksi database, atau key fitur lain.
-4. `MICRODRAMA_LLM_MODEL=gpt-6-luna` bersifat opsional. Contoh nama variabel
+4. `MICRODRAMA_LLM_MODEL=claude-fable-5.1` bersifat opsional. Contoh nama variabel
    tanpa kredensial ada di `.env.example`; file itu bukan konfigurasi rahasia.
 5. Pertahankan service dan konfigurasi deploy yang sudah berjalan. Paket bot
    memakai `telegram-bot/Dockerfile` dengan konteks build folder `telegram-bot`

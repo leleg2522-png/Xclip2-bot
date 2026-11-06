@@ -42,6 +42,7 @@ externalPort = 3001
 [userenv]
 
 [userenv.shared]
+MICRODRAMA_LLM_MODEL = "claude-fable-5.1"
 
 [nix]
 channel = "stable-25_05"
