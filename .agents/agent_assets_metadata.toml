@@ -880,3 +880,17 @@ mtime_ms = 1793922006374
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/39427836-fe74-47a6-80eb-aa098d77c829/754e887f-7ac0-40d2-bf7a-6d56e0d85ad6"
 storage_version_token = "1793922030362221"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "qsSHa0Q8pLVQ7dhXGmt4l"
+uri = "file://generated-artifacts/muse-ceo-microdrama/preview-20-detik.mp4"
+type = "video"
+title = "CEO Itu Mengenalku — preview 20 detik"
+description = "Dua adegan MUSE yang berhasil, vertikal 720×1280 dengan audio. Ini preview, belum video satu menit."
+logical_id = "7a409f0e-cbf4-45be-af43-8ec1b367a56d"
+content_hash = "sha256:4fdda451185bb438b874b7ba8f5b714f8f0ead91496b2685659bf73643843b8c"
+size = 5575541
+mtime_ms = 1793945647408
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/7a409f0e-cbf4-45be-af43-8ec1b367a56d/432fd33a-7be3-446b-b316-f00d74fc52e5"
+storage_version_token = "1793945658562506"
+content_type = "video/mp4"

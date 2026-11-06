@@ -1,0 +1,171 @@
+// Six owner-requested MUSE scenes. Persist accepted jobs; never replay a submit.
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+const exec = promisify(execFile);
+if (!process.argv.includes('--approved')) throw Error('APPROVAL_REQUIRED');
+const dir = path.resolve(import.meta.dirname, '../../generated-artifacts/muse-ceo-microdrama');
+const base = 'https://api.snapgen.ai/uapi/v1';
+const key = process.env.SNAPGEN_API_KEY;
+if (!key) throw Error('SNAPGEN_KEY_MISSING');
+const headers = { 'x-api-key': key, Accept: 'application/json' };
+const pause = ms => new Promise(r => setTimeout(r, ms));
+const characters = `Photorealistic Indonesian romantic microdrama, vertical 9:16, cinematic live action, adult actors only. Maintain exactly the same two leads throughout: ARGA, handsome Indonesian male CEO aged 30, neat short black side-part hair, clean shaven, navy tailored suit, white shirt, no tie, silver watch; NARA, Indonesian woman aged 24 with a modest low-income background, warm brown eyes, long black hair in a low ponytail, faded light-blue long-sleeve blouse, dark trousers, old brown canvas shoulder bag. Respectful portrayal, not caricature. Modern Jakarta luxury office lobby. Natural human movements and emotional acting, consistent faces and clothing. No written text, captions, watermarks or logos. Clear audible Indonesian speech with correct speaker turns, natural room ambience and subtle dramatic instrumental music. No English speech.`;
+const scenes = [
+  `Opening: Nara enters the marble office lobby carrying a paper food-delivery bag, visibly nervous but dignified. Arga is clearly visible beside her near the elevator, watching her kindly. Establish both lead faces in a medium two-shot before close-up of Nara. Nara quietly says in Indonesian: "Permisi, saya antar pesanan." Arga turns toward her as a rude female office manager approaches. Ten seconds of coherent storytelling.`,
+  `Continue in the same lobby. A haughty female office manager in a black office dress blocks Nara carrying her food bag, looking at Nara's worn clothes. Arga stands behind them within sight. The manager dismissively says: "Kurir lewat belakang. Jangan kotori lobi!" Nara lowers her eyes, then answers softly: "Saya cuma mencari nafkah, Bu." Show hurt and dignity, no slapstick.`,
+  `The office manager knocks Nara's paper delivery bag from her hands; one closed food container falls to the marble floor. Nara kneels to pick it up, fighting tears, without physical injury. Arga steps forward and firmly says: "Cukup. Dia tamu saya." Manager recoils in surprise. Nara looks up at the handsome CEO, startled. Clear dramatic reaction shots.`,
+  `Arga kneels beside Nara and helps pick up the closed food container. He notices a small old red braided bracelet on her wrist. Cut from the bracelet to his shocked face and her puzzled expression, maintaining the same lobby and costumes. Arga softly asks: "Gelang itu... dari mana?" Nara answers: "Dari anak yang dulu saya tolong." Romantic tension, restrained emotion.`,
+  `Arga and Nara stand together in the lobby, close medium two-shot. Arga takes an identical old red braided bracelet from his inner suit pocket and holds it beside hers. No flashback, remain in the present. Arga says emotionally: "Anak itu aku, Nara. Sepuluh tahun aku mencarimu." Nara looks at his face, stunned, tears welling. Gentle camera push-in.`,
+  `Final cliffhanger, same two adults in the office lobby. Arga gently offers his open hand, never grabbing her. Nara looks from the matching red bracelets to his face. Arga says: "Izinkan aku membalas kebaikanmu." Nara replies: "Tapi... kenapa harus aku?" He smiles warmly and says: "Karena aku tak pernah lupa." Finish on their emotional eye contact, romantic dramatic ending, no text.`,
+];
+const captions = [
+  [[0.5,4.2,'Nara: Permisi, saya antar pesanan.']],
+  [[0.4,4.8,'Kurir lewat belakang. Jangan kotori lobi!'],[5.1,9.5,'Nara: Saya cuma mencari nafkah, Bu.']],
+  [[4.0,8.8,'Arga: Cukup. Dia tamu saya.']],
+  [[1.4,5.0,'Arga: Gelang itu... dari mana?'],[5.2,9.6,'Nara: Dari anak yang dulu saya tolong.']],
+  [[1.2,5.3,'Arga: Anak itu aku, Nara.'],[5.4,9.6,'Sepuluh tahun aku mencarimu.']],
+  [[0.3,3.5,'Arga: Izinkan aku membalas kebaikanmu.'],[3.7,6.6,'Nara: Tapi... kenapa harus aku?'],[6.8,9.8,'Arga: Karena aku tak pernah lupa.']],
+];
+await fs.mkdir(dir, { recursive: true });
+const lockPath = path.join(dir, 'running.lock');
+const lock = await fs.open(lockPath, 'wx');
+const statePath = path.join(dir, 'state.json');
+let state;
+try { state = JSON.parse(await fs.readFile(statePath, 'utf8')); }
+catch (e) { if (e.code !== 'ENOENT') throw e; state = { scenes: [], botSaldoCharged: false }; }
+// Serialize writes even when two scene polls complete at once.
+let saving = Promise.resolve();
+function save() {
+  const snapshot = JSON.stringify(state, null, 2);
+  saving = saving.then(async () => {
+    await fs.writeFile(statePath + '.tmp', snapshot);
+    await fs.rename(statePath + '.tmp', statePath);
+  });
+  return saving;
+}
+async function probe(file) {
+  return JSON.parse((await exec('ffprobe', ['-v','error','-show_streams','-show_format','-of','json',file])).stdout);
+}
+function safeCode(r) {
+  const value = r?.detail?.error_code ?? r?.error_code;
+  return typeof value === 'string' && /^[A-Z0-9_]{1,80}$/.test(value) ? value : 'UNKNOWN';
+}
+async function scene(i) {
+  const s = state.scenes[i] ??= { prompt: characters + '\nSCENE: ' + scenes[i] };
+  const file = path.join(dir, `scene-${i+1}.mp4`);
+  if (s.downloaded) return file;
+  if (s.failed) throw Error(`SCENE_${i+1}_PREVIOUSLY_FAILED_${s.errorCode}`);
+  if (!s.uuid) {
+    if (s.attempted) throw Error(`SCENE_${i+1}_AMBIGUOUS_SUBMIT_NO_REPLAY`);
+    const body = new FormData();
+    body.set('prompt', s.prompt); body.set('model','muse-ai-video');
+    body.set('duration','10'); body.set('orientation','portrait');
+    if (i > 0) {
+      body.append('files', new Blob([await fs.readFile(path.join(dir,'cast-reference.jpg'))],
+        { type:'image/jpeg' }), 'cast-reference.jpg');
+    }
+    s.attempted = true;
+    await save();
+    const response = await fetch(base + '/video-gen/muse', {
+      method:'POST', headers, body, signal:AbortSignal.timeout(120000),
+    });
+    const r = await response.json().catch(() => null);
+    if (r?.uuid) { s.uuid = r.uuid; s.estimatedCredit = r.estimated_credit; await save(); }
+    if (!response.ok) {
+      s.errorCode = safeCode(r); s.failed = true; await save();
+      throw Error(`SCENE_${i+1}_SUBMIT_HTTP_${response.status}_${s.errorCode}`);
+    }
+    if (!s.uuid || r.model_name !== 'muse-ai-video') throw Error('MUSE_SUBMIT_METADATA_INVALID');
+    console.log(`SCENE_${i+1}_ACCEPTED estimated_credit=${s.estimatedCredit}`);
+  }
+  for (let n=0; n<150; n++) {
+    await pause(10000);
+    let response;
+    try { response = await fetch(base+'/history/'+encodeURIComponent(s.uuid), { headers, signal:AbortSignal.timeout(45000) }); }
+    catch { console.log(`SCENE_${i+1}_POLL_NETWORK_PAUSED`); continue; }
+    if (response.status === 429 || response.status >= 500) {
+      await pause(Math.min(120,Math.max(10,Number(response.headers.get('retry-after'))||30))*1000);
+      continue;
+    }
+    if (!response.ok) throw Error(`MUSE_POLL_HTTP_${response.status}`);
+    const r = await response.json();
+    if (r.model_name !== 'muse-ai-video') throw Error('MUSE_HISTORY_MODEL_MISMATCH');
+    const video = r.generated_video?.[0];
+    if (s.providerStatus !== r.status) {
+      s.providerStatus = r.status; await save();
+      console.log(`SCENE_${i+1}_STATUS ${r.status}`);
+    }
+    if (Number(r.status) === 3 || Number(video?.status) === 3) {
+      s.failed = true; s.errorCode = safeCode(r); s.usedCredit = r.used_credit; await save();
+      throw Error(`SCENE_${i+1}_FAILED_${s.errorCode}`);
+    }
+    if (Number(r.status) !== 2 && Number(video?.status) !== 2) continue;
+    const url = r.generated_video?.find(v => v.video_url)?.video_url;
+    if (typeof url !== 'string' || !url.startsWith('https://')) throw Error('MUSE_NO_OUTPUT_URL');
+    const media = await fetch(url, { signal:AbortSignal.timeout(180000) });
+    if (!media.ok || !media.body) throw Error('MUSE_DOWNLOAD_FAILED');
+    const parts = []; let size=0;
+    for await (const chunk of media.body) {
+      size += chunk.length;
+      if (size > 150*1024*1024) throw Error('MUSE_OUTPUT_TOO_LARGE');
+      parts.push(chunk);
+    }
+    await fs.writeFile(file, Buffer.concat(parts));
+    const p = await probe(file);
+    const v = p.streams.find(v => v.codec_type === 'video');
+    if (!v || Math.abs(Number(p.format.duration)-10)>1) throw Error('MUSE_DURATION_INVALID');
+    s.downloaded = true; s.usedCredit = r.used_credit;
+    s.media = { duration:Number(p.format.duration), width:v.width, height:v.height,
+      audio:p.streams.some(v => v.codec_type === 'audio') };
+    await save(); console.log(`SCENE_${i+1}_DOWNLOADED ${JSON.stringify(s.media)}`);
+    return file;
+  }
+  throw Error(`SCENE_${i+1}_POLL_PAUSED_RESUME_SAME_JOB`);
+}
+function time(s) {
+  return `${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor(s/60)%60).padStart(2,'0')}:${(s%60).toFixed(3).padStart(6,'0').replace('.',',')}`;
+}
+try {
+  if (state.completed) { console.log('ALREADY_COMPLETED'); }
+  else {
+    const accountResponse = await fetch(base+'/account', { headers, signal:AbortSignal.timeout(30000) });
+    if (!accountResponse.ok) throw Error(`MUSE_ACCOUNT_HTTP_${accountResponse.status}`);
+    const a = await accountResponse.json();
+    if (!a.is_active || a.plan_id !== 'PP0001') throw Error('MUSE_PREMIUM_REQUIRED');
+    if (Number(a.user_credit?.available_credit) < 6) throw Error('MUSE_INSUFFICIENT_CREDIT');
+    console.log('MUSE_ACCOUNT_READY');
+    await scene(0);
+    await exec('ffmpeg',['-v','error','-threads','2','-ss','2','-i',path.join(dir,'scene-1.mp4'),
+      '-frames:v','1','-threads','2','-y',path.join(dir,'cast-reference.jpg')]);
+    // Keep reference-based scene jobs sequential to stop spending on first failure.
+    for (let i=1; i<6; i++) await scene(i);
+    let srt = '', index = 0;
+    captions.forEach((rows,i) => rows.forEach(([start,end,text]) => {
+      srt += `${++index}\n${time(i*10+start)} --> ${time(i*10+end)}\n${text}\n\n`;
+    }));
+    await fs.writeFile(path.join(dir,'dialog-id.srt'),srt);
+    for (let i=0; i<6; i++) {
+      const input = ['-i',path.join(dir,`scene-${i+1}.mp4`)];
+      if (!state.scenes[i].media.audio) input.push('-f','lavfi','-i','anullsrc=r=48000:cl=stereo');
+      await exec('ffmpeg',['-v','error','-threads','2',...input,
+        '-map','0:v:0','-map',state.scenes[i].media.audio?'0:a:0':'1:a:0',
+        '-vf','scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=24,tpad=stop_mode=clone:stop_duration=1',
+        '-af','aresample=48000,apad','-t','10','-c:v','libx264','-threads','2',
+        '-preset','fast','-crf','19','-pix_fmt','yuv420p','-c:a','aac','-ar','48000','-ac','2',
+        '-y',path.join(dir,`part-${i+1}.mp4`)],{timeout:180000});
+    }
+    await fs.writeFile(path.join(dir,'concat.txt'),scenes.map((_,i)=>`file 'part-${i+1}.mp4'`).join('\n'));
+    await exec('ffmpeg',['-v','error','-f','concat','-safe','0','-i',path.join(dir,'concat.txt'),
+      '-c','copy','-movflags','+faststart','-y',path.join(dir,'ceo-itu-mengenalku-60s.mp4')],{timeout:180000});
+    state.finalMedia = (await probe(path.join(dir,'ceo-itu-mengenalku-60s.mp4'))).format;
+    state.completed = true; state.usedCredit = state.scenes.reduce((sum,s)=>sum+Number(s.usedCredit||0),0);
+    await save(); console.log('MICRODRAMA_COMPLETED',JSON.stringify({duration:state.finalMedia.duration,usedCredit:state.usedCredit}));
+  }
+} catch(e) {
+  const diagnostic = /^[A-Z0-9_]+$/.test(e.message) ? e.message : 'NETWORK_OR_PROCESS_FAILURE';
+  state.lastError = diagnostic; await save(); console.error(diagnostic); process.exitCode=1;
+} finally {
+  await saving; await lock.close(); await fs.unlink(lockPath);
+}
