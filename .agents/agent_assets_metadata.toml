@@ -978,3 +978,17 @@ mtime_ms = 1793971403213
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/b78d1b35-b163-489b-83ee-2e829bc3908f/bcdefb82-ecfe-42a7-96bb-6c88e850a7fb"
 storage_version_token = "1793971909110936"
 content_type = "text/plain"
+
+[[outputs]]
+id = "TKfoCB0NLxlWj3oHjkE71"
+uri = "file://generated-artifacts/muse-locked-character-references/karakter-referensi.jpg"
+type = "image"
+title = "Pratinjau Referensi Tetap Arga dan Nara"
+description = "Potongan langsung dari frame awal microdrama terakhir; profil samping asli, tanpa redraw. File karakter Arga dan Nara juga disimpan terpisah untuk digunakan sebagai gambar referensi MUSE."
+logical_id = "8dbe6ce5-e14f-41b8-aa31-c59d53d253ac"
+content_hash = "sha256:d8f903b6c02e79c0f240a1bc4f613c74dd4a656ca12d4f3eff4eda061b5cd41e"
+size = 24035
+mtime_ms = 1793972126774
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/8dbe6ce5-e14f-41b8-aa31-c59d53d253ac/0fd5f94e-6d44-4a62-8441-190adfe2b926"
+storage_version_token = "1793972330114825"
+content_type = "image/jpeg"
