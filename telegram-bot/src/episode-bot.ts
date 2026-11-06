@@ -62,7 +62,7 @@ export function episodeScript(p: EpisodeProject) {
       return `SHOT ${s.number} • ${(s.number - 1) * 10}–${s.number * 10}s • ADEGAN ${s.scene + 1}\nLokasi ${s.location} • ${s.cast.join(', ')} • ${s.continuation ? 'sambung shot sebelumnya' : 'referensi terkunci'}\n` +
         `Kamera: ${s.camera}\nAksi: ${s.action}\nAwal: ${s.startState}\nAkhir: ${s.endState}\n` +
         s.dialogue.map(d => `${d.speaker}: ${d.text}`).join('\n') +
-        `\nPrompt gambar:\n${s.imagePrompt}\nPrompt video:\n${s.videoPrompt}\n`;
+        `\nPrompt gambar:\n${s.imagePrompt}\nPrompt video:\n${s.videoPrompt}\nNegative prompt:\n${s.negativePrompt || '(proyek lama)'}\n`;
     }).join('\n');
 }
 

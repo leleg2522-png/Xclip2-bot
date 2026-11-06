@@ -29,15 +29,15 @@ export function validateBible(value: any, minutes: number): Bible {
       || new Set(b.cast).size !== b.cast.length || b.cast.some((c: any) => !ids.has(c))) throw new Error('DIRECTOR_FORMAT');
     return { objective: str(b.objective, 500), location: b.location, cast: b.cast };
   });
-  return { title: str(p.title, 90), synopsis: str(p.synopsis, 700), style: str(p.style, 500), cast, locations, beats };
+  return { title: str(p.title, 90), synopsis: str(p.synopsis, 1000), style: str(p.style, 500), cast, locations, beats };
 }
 
-export function validateScene(value: any, e: Episode, scene: number): Shot[] {
+export function validateScene(value: any, e: Episode, scene: number, allowChain = false): Shot[] {
   const beat = e.bible!.beats[scene];
   if (!Array.isArray(value?.shots) || value.shots.length !== 3) throw new Error('DIRECTOR_FORMAT');
   return value.shots.map((s: any, i: number) => {
     if (!s || !Array.isArray(s.dialogue) || s.dialogue.length > 2 || typeof s.continuation !== 'boolean'
-      || (s.continuation && i !== 1)) throw new Error('DIRECTOR_FORMAT');
+      || (s.continuation && i !== 1 && !allowChain)) throw new Error('DIRECTOR_FORMAT');
     const dialogue = s.dialogue.map((d: any) => {
       if (!d || !beat.cast.includes(d.speaker)) throw new Error('DIRECTOR_FORMAT');
       return { speaker: d.speaker, text: str(d.text, 90) };
@@ -48,6 +48,7 @@ export function validateScene(value: any, e: Episode, scene: number): Shot[] {
       // 900-character bound without truncating or rewriting model decisions.
       camera: str(s.camera, 300), action: str(s.action, 900), startState: str(s.startState, 400),
       endState: str(s.endState, 400), imagePrompt: str(s.imagePrompt, 1200), videoPrompt: str(s.videoPrompt, 1600),
+      negativePrompt: str(s.negativePrompt, 1000),
       dialogue, continuation: s.continuation };
   });
 }
@@ -61,7 +62,7 @@ export interface Director {
 /** Creative decisions only. No tools, provider credentials, budgets or executable instructions from the LLM. */
 export class EpisodeDirector implements Director {
   private llm: MicrodramaLlm;
-  constructor(key: string, request: typeof fetch = fetch) {
+  constructor(key: string, request: typeof fetch = fetch, private chainShots = false) {
     this.llm = new MicrodramaLlm(key, request);
   }
   private async ask(model: string, system: string, prompt: string, images: Buffer[] = [], tokens = 4500): Promise<any> {
@@ -83,7 +84,8 @@ Build a hook, motivated conflict, escalation, reveal and cliffhanger, not repeti
 Return ONLY these keys, no shot lists or dialogue yet: {"title":"","synopsis":"","style":"","cast":[{"id":"RAKA","name":"","age":30,"look":"stable facial traits, hair, exact wardrobe","voice":"stable timbre and delivery","personality":""}],
 "locations":[{"id":"HOUSE","description":"exact visual layout, props, lighting"}],
 "beats":[{"objective":"story development and emotional change","location":"HOUSE","cast":["RAKA"]}]}.
-Limits: look/style/location description<=500 chars; voice/personality<=200; each beat objective<=180; synopsis<=700.
+Limits: look/style/location description<=500 chars; voice/personality<=200; each beat objective<=180.
+Target synopsis<=500 chars; hard synopsis limit 1000 chars. Keep summaries concise.
 Beats are concise outlines ONLY. NEVER include nested shots, dialogue, camera directions or extra keys in the bible.
 Do not add characters or change clothing midway. No background extras.`, previous
       ? `Previous bible: ${JSON.stringify(previous)}\nRevision feedback: ${idea}` : idea, [], 6000);
@@ -94,18 +96,21 @@ Do not add characters or change clothing midway. No background extras.`, previou
     const p = await this.ask(model, `You are the episode's director, cinematographer and continuity supervisor.
 Write exactly THREE ten-second shots for the requested 30-second beat.
 Return {"shots":[{"camera":"","action":"","startState":"","endState":"","imagePrompt":"","videoPrompt":"",
-"continuation":false,"dialogue":[{"speaker":"CHAR_ID","text":"Short Indonesian spoken line"}]}]}.
-The first and third shots MUST use independent locked references (continuation=false).
-Only shot two may continue shot one's last frame. Never build long last-frame chains.
+"negativePrompt":"","continuation":false,"dialogue":[{"speaker":"CHAR_ID","text":"Short Indonesian spoken line"}]}]}.
+${this.chainShots
+    ? 'Every shot after the episode opening MUST continue directly from the previous shot final frame. Preserve the opening framing and screen positions. Set continuation=true except for the very first episode shot. Use gentle camera motion, no resets or cuts.'
+    : 'The first and third shots MUST use independent locked references (continuation=false). Only shot two may continue shot one last frame. Never build long last-frame chains.'}
 Use only the beat's cast and location. Keep locked faces, wardrobe, spatial screen directions, props and character knowledge.
 Use purposeful coverage/reaction shots, not repeated static conversations. Provide explicit framing, blocking, expression, camera movement, light and sound.
 imagePrompt describes the single first frame, no collage/text. videoPrompt directs action, not dialogue (dialogue is added by code).
-0-2 turns per shot, <=140 dialogue characters total, all speech finishes before 8.5 seconds. No overlapping speakers.
-Target action<=600 chars; hard action limit 900 chars. camera<=300, states<=400, imagePrompt<=1200, videoPrompt<=1600 chars.
+Prefer one speaking character and one brief line per shot; <=140 dialogue characters total, all speech finishes before 8.5 seconds. No overlapping speakers.
+Write a SPECIFIC negativePrompt for EACH shot, tailored to its framing, actor identities, visible hands, fixed props, motion and speaking character. Include relevant face drift, hand/body deformation, prop teleportation, extra actors and wrong-speaker/lip-sync failure risks. Do not blindly repeat one generic list. Negative constraints must not contradict the desired action or suppress the intended speaker.
+Be concise: target action<=400, imagePrompt<=600, videoPrompt<=700, negativePrompt<=700 chars.
+Hard limits: action<=900, camera<=300, states<=400, imagePrompt<=1200, videoPrompt<=1600, negativePrompt<=1000 chars.
 State changes must be motivated by the action; no teleportation or wardrobe changes.`, JSON.stringify({
       bible: e.bible, scene: scene + 1, beat: e.bible!.beats[scene], previousState: last?.endState || 'Opening shot',
     }));
-    return validateScene(p, e, scene);
+    return validateScene(p, e, scene, this.chainShots);
   }
   async review(model: string, instructions: string, images: Buffer[]): Promise<Quality> {
     const p = await this.ask(model, `You are a strict visual continuity reviewer. Actually inspect the supplied images.
@@ -132,6 +137,7 @@ export function lockedPrompt(e: Episode, s: Shot, video: boolean, repair = '') {
     video ? 'Exactly one ten-second shot. Native Indonesian audio. Only the named speaker speaks/moves lips; others listen silently. Finish all speech by 8.5 seconds.' : 'Single cinematic first frame, no contact sheet or collage.',
     ...(video ? s.dialogue.map(d => `${d.speaker} says ${JSON.stringify(d.text)}`) : []),
     'No on-screen writing, captions, logos or music. Stable anatomy and face. Quiet room ambience.',
+    s.negativePrompt ? `Shot-specific negative constraints from the director: ${s.negativePrompt}` : '',
     repair ? `Correct previous problems without changing locked identity or wardrobe: ${repair}` : '',
   ].filter(Boolean).join('\n');
 }

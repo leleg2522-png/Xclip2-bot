@@ -4,12 +4,15 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 if (!process.argv.includes('--approved')) throw Error('APPROVAL_REQUIRED');
 const require = createRequire(import.meta.url);
-const { EpisodeDirector, validateScene } = require('../dist/episode-director.js');
+const { EpisodeDirector, validateBible, validateScene } = require('../dist/episode-director.js');
 const { newEpisode } = require('../dist/episode-types.js');
 const { MICRODRAMA_LLM_DEFAULT, microdramaLlmKey } = require('../dist/microdrama-llm.js');
 const root = path.resolve(import.meta.dirname, '../..');
 const scriptTest = process.argv.includes('--script-test');
-const dir = path.join(root, scriptTest
+const museNegative = process.argv.includes('--muse-negative');
+const dir = path.join(root, museNegative
+  ? 'generated-artifacts/botelex-muse-negative-plan'
+  : scriptTest
   ? 'generated-artifacts/botelex-director-script-test'
   : 'generated-artifacts/botelex-director-verification');
 await fs.mkdir(dir, { recursive: true });
@@ -96,18 +99,20 @@ try {
     await save();
     return response;
   };
-  const d = new EpisodeDirector(key, request);
+  const d = new EpisodeDirector(key, request, museNegative);
   const episode = newEpisode(1);
   episode.bible = await once('bible', () => d.bible(
-    'Microdrama romantis Indonesia satu menit: Arga, CEO tampan dewasa, bertemu Nara, wanita dewasa yang hidup sederhana dan mengantar makanan. Mereka menyadari pernah saling menolong. Hanya dua pemeran, satu lobi kantor, gerakan sederhana, dialog singkat, tanpa kekerasan. Akhiri dengan pengungkapan emosional.',
-    1, state.model));
+    museNegative
+      ? 'Buat microdrama romantis Indonesia tepat satu menit: Arga CEO tampan dewasa dan Nara wanita dewasa sederhana yang mengantar makanan, ternyata pernah saling menolong dan baru saling mengenali. HANYA dua tokoh dewasa itu dari awal sampai akhir; lobi kantor kecil yang kosong, tanpa orang lewat, pegawai, manajer atau satpam. Semua tokoh berdiri tenang. Satu kalimat singkat dari satu pembicara per shot. Aksi sederhana: tatapan, senyum, anggukan. Satu kantong makanan tetap di tangan Nara sepanjang episode; tidak dijatuhkan atau dipindahkan. Tanpa peragaan kenangan, flashback, menyentuh wajah/tangan, gelang tambahan, merogoh kantong atau pergantian baju. Jadikan dialog pendek sebagai pengungkapan masa lalu. Semua shot akan disambung memakai frame terakhir shot sebelumnya. Akhiri dengan pengungkapan romantis, bukan aksi fisik.'
+      : 'Microdrama romantis Indonesia satu menit: Arga, CEO tampan dewasa, bertemu Nara, wanita dewasa yang hidup sederhana dan mengantar makanan. Mereka menyadari pernah saling menolong. Hanya dua pemeran, satu lobi kantor, gerakan sederhana, dialog singkat, tanpa kekerasan. Akhiri dengan pengungkapan emosional.',
+    1, state.model), value => validateBible(value, 1));
   for (let i=0; i<2; i++) {
     const shots = await once(`scene${i+1}`, () => d.scene(episode, i, state.model),
-      value => validateScene(value, episode, i));
+      value => validateScene(value, episode, i, museNegative));
     episode.shots.push(...shots.map(shot => ({ shot })));
   }
   let quality;
-  if (!scriptTest) {
+  if (!scriptTest && !museNegative) {
     const imageDir = path.join(root,'generated-artifacts/muse-ceo-microdrama-strict');
     const images = await Promise.all(['scene-1-check.jpg','sample-6.jpg'].map(n=>fs.readFile(path.join(imageDir,n))));
     quality = await once('vision', () => d.review(state.model,

@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { promises as fs } from 'node:fs';
 import { Telegraf } from 'telegraf';
 import { newEpisode, episodeProject, type Bible, type Episode, type EpisodeProject } from '../src/episode-types';
-import { validateBible, validateScene, type Director } from '../src/episode-director';
+import { validateBible, validateScene, lockedPrompt, type Director } from '../src/episode-director';
 import { EpisodeEngine, type EpisodeStore } from '../src/episode-engine';
 import { EpisodeMedia, parseTranscript, dialogueIssues, episodeSrt } from '../src/episode-media';
 import { DeapiEpisodeApi, type EpisodeRequest } from '../src/episode-api';
@@ -24,6 +24,7 @@ function scene(e: Episode, n: number) {
     action: 'Raka looks at the letter', startState: 'Raka stands beside the table', endState: 'Raka holds the letter',
     imagePrompt: 'Raka beside a wooden table, amber lamp, navy shirt',
     videoPrompt: 'Raka picks up the letter, restrained shock, stable camera',
+    negativePrompt: 'No changing Raka face, no extra fingers gripping the letter, no letter duplication or wrong-speaker mouth movement.',
     continuation: i === 1, dialogue: [{ speaker: 'RAKA', text: 'Aku tahu rahasianya.' }] })) }, e, n);
 }
 class Store implements EpisodeStore {
@@ -202,6 +203,12 @@ async function contracts() {
     const shots = scene(e, 0);
     const input = { shots: shots.map(s => ({ ...s, action: 'A'.repeat(734) })) };
     assert.equal(validateScene(input, e, 0)[0].action.length, 734, 'Preserve moderately verbose action without rewriting');
+    assert.match(validateScene(input, e, 0)[0].negativePrompt!, /letter duplication/);
+    assert.match(lockedPrompt(e, validateScene(input, e, 0)[0], true), /Shot-specific negative constraints/);
+    const missingNegative = { shots: input.shots.map(s => ({ ...s, negativePrompt: undefined })) };
+    assert.throws(() => validateScene(missingNegative, e, 0), /DIRECTOR_FORMAT/);
+    assert.equal(validateBible({ ...e.bible, synopsis: 'A'.repeat(771) }, 1).synopsis.length, 771);
+    assert.throws(() => validateBible({ ...e.bible, synopsis: 'A'.repeat(1001) }, 1), /DIRECTOR_FORMAT/);
     input.shots[0].action = 'A'.repeat(901);
     assert.throws(() => validateScene(input, e, 0), /DIRECTOR_FORMAT/, 'Still reject unbounded actions');
   }

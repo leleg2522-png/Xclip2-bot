@@ -16,6 +16,18 @@ Use a separate credential for this provider; never forward BUAT SIMPEL's key
 to the new domain. Preserve explicit failures rather than silently reverting
 to the old provider or another model.
 
+The director should author both the positive prompts and shot-specific negative
+constraints, not only dialogue or a shared generic blacklist.
+
+**Why:** The user asked whether Claude writes “prompt nya juga ... dan negative
+nya agar akurat”, then authorized a one-minute trial with that behavior.
+
+**How to apply:** Preserve each shot's original LLM-authored negative text and
+pass it to the renderer in a supported field. For MUSE, embed it in the main
+prompt because its documented API has no separate negative-prompt parameter.
+Generic system guards may supplement it but must not be presented as if Claude
+wrote bespoke constraints. Describe accuracy as an objective, not a guarantee.
+
 The microdrama workflow belongs in the existing XclipAI Telegram bot, not a standalone web app.
 
 **Why:** The user selected “Bot Telegram XclipAI” when asked where the workflow should run.

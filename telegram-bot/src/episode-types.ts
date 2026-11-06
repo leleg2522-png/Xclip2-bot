@@ -14,6 +14,8 @@ export interface Shot {
   number: number; scene: number; cast: string[]; location: string;
   camera: string; action: string; startState: string; endState: string;
   imagePrompt: string; videoPrompt: string; dialogue: Dialogue[]; continuation: boolean;
+  // Optional only for already-persisted projects; new director output requires it.
+  negativePrompt?: string;
 }
 export interface MediaJob extends DramaJob { asset?: string }
 export interface TranscriptSegment { start: number; end: number; text: string }

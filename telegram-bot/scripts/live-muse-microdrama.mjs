@@ -3,16 +3,20 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { createRequire } from 'node:module';
 import { qualityRules, strictScenes, strictCaptions } from './muse-microdrama-quality.mjs';
 const exec = promisify(execFile);
 const dryRun = process.argv.includes('--dry-run');
 if (!dryRun && !process.argv.includes('--approved')) throw Error('APPROVAL_REQUIRED');
 const gentleContinuation = process.argv.includes('--approved-gentle-continuation');
 const strictQuality = process.argv.includes('--strict-quality');
-const chainEndFrames = strictQuality || process.argv.includes('--chain-end-frames');
+const claudeDriven = process.argv.includes('--claude-plan');
+if (claudeDriven && strictQuality) throw Error('CHOOSE_ONE_EXPERIMENT');
+const chainEndFrames = claudeDriven || strictQuality || process.argv.includes('--chain-end-frames');
 if (chainEndFrames && gentleContinuation) throw Error('CHOOSE_ONE_EXPERIMENT');
 const originalDir = path.resolve(import.meta.dirname, '../../generated-artifacts/muse-ceo-microdrama');
-const dir = strictQuality ? originalDir + '-strict'
+const dir = claudeDriven ? originalDir + '-claude-negatives'
+  : strictQuality ? originalDir + '-strict'
   : chainEndFrames ? originalDir + '-chained' : originalDir;
 const base = 'https://api.snapgen.ai/uapi/v1';
 const key = process.env.SNAPGEN_API_KEY;
@@ -36,10 +40,30 @@ const captions = [
   [[1.2,5.3,'Arga: Anak itu aku, Nara.'],[5.4,9.6,'Sepuluh tahun aku mencarimu.']],
   [[0.3,3.5,'Arga: Izinkan aku membalas kebaikanmu.'],[3.7,6.6,'Nara: Tapi... kenapa harus aku?'],[6.8,9.8,'Arga: Karena aku tak pernah lupa.']],
 ];
+let claudeEpisode, claudeShots, directorPrompt;
+if (claudeDriven) {
+  const require = createRequire(import.meta.url);
+  const { lockedPrompt, validateBible, validateScene } = require('../dist/episode-director.js');
+  const { newEpisode } = require('../dist/episode-types.js');
+  const plan = JSON.parse(await fs.readFile(path.resolve(import.meta.dirname,
+    '../../generated-artifacts/botelex-muse-negative-plan/state.json'), 'utf8'));
+  if (!plan.completed || plan.model !== 'claude-fable-5.1') throw Error('CLAUDE_PLAN_NOT_READY');
+  claudeEpisode = newEpisode(1);
+  claudeEpisode.bible = validateBible(plan.results.bible, 1);
+  claudeShots = [0,1].flatMap(i => validateScene({ shots: plan.results[`scene${i+1}`] },claudeEpisode,i,true));
+  if (claudeShots.length !== 6 || claudeShots.some(s => !s.negativePrompt)) throw Error('CLAUDE_NEGATIVE_PROMPTS_MISSING');
+  directorPrompt = lockedPrompt;
+}
 function buildPrompt(i) {
   const continuity = chainEndFrames && i > 0
     ? '\nCONTINUITY: The attached image is the exact final frame of the preceding scene. Begin at this exact image composition: same camera angle, positions, poses, faces, clothing, props, lighting and background. Continue movement naturally from that instant. Do not restart the encounter or reset the actors. After the opening moment, develop the next story beat below. No establishing shot, no fade, no opening transition.\n'
     : '\n';
+  if (claudeDriven) {
+    const shot = claudeShots[i];
+    return directorPrompt(claudeEpisode, shot, true) + continuity
+      + (i === 0 ? `\nOpening-frame composition from the director: ${shot.imagePrompt}` : '')
+      + '\nUse only natural quiet room ambience. The named adult characters are the only people in view.';
+  }
   const cast = strictQuality
     ? characters.replace('and subtle dramatic instrumental music', 'only, without music')
     : characters;
@@ -80,7 +104,10 @@ function safeCode(r) {
   return typeof value === 'string' && /^[A-Z0-9_]{1,80}$/.test(value) ? value : 'UNKNOWN';
 }
 async function scene(i) {
-  const s = state.scenes[i] ??= { prompt: buildPrompt(i) };
+  const s = state.scenes[i] ??= {
+    prompt: buildPrompt(i),
+    ...(claudeDriven ? { directorModel: 'claude-fable-5.1', negativePrompt: claudeShots[i].negativePrompt } : {}),
+  };
   const file = path.join(dir, `scene-${i+1}.mp4`);
   if (s.downloaded) return file;
   if (s.failed) throw Error(`SCENE_${i+1}_PREVIOUSLY_FAILED_${s.errorCode}`);
@@ -168,13 +195,20 @@ function time(s) {
   return `${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor(s/60)%60).padStart(2,'0')}:${(s%60).toFixed(3).padStart(6,'0').replace('.',',')}`;
 }
 try {
+  if (claudeDriven && !state.claudeDriven) {
+    if (state.scenes.some(s => s?.attempted || s?.downloaded)) throw Error('CLAUDE_STATE_ALREADY_USED');
+    state.claudeDriven = true; state.chainEndFrames = true;
+    state.title = claudeEpisode.bible.title;
+    state.directorModel = 'claude-fable-5.1';
+    await save();
+  }
   if (strictQuality && !state.strictQuality) {
     if (state.scenes.some(s => s?.attempted || s?.downloaded)) throw Error('STRICT_STATE_ALREADY_USED');
     state.strictQuality = true;
     state.chainEndFrames = true;
     await save();
   }
-  if (chainEndFrames && !strictQuality && !state.chainEndFrames) {
+  if (chainEndFrames && !strictQuality && !claudeDriven && !state.chainEndFrames) {
     if (state.scenes.some(s => s?.attempted)) throw Error('CHAIN_STATE_ALREADY_HAS_SUBMISSIONS');
     const source = JSON.parse(await fs.readFile(path.join(originalDir,'state.json'),'utf8'));
     if (!source.scenes[0]?.downloaded) throw Error('ORIGINAL_FIRST_SCENE_MISSING');
@@ -220,7 +254,10 @@ try {
     // Keep reference-based scene jobs sequential to stop spending on first failure.
     for (let i=1; i<6; i++) await scene(i);
     let srt = '', index = 0;
-    (strictQuality ? strictCaptions : captions).forEach((rows,i) => rows.forEach(([start,end,text]) => {
+    const activeCaptions = claudeDriven ? claudeShots.map(s => s.dialogue.map((d,i,all) => [
+      1+i*6/all.length, 1+(i+1)*6/all.length, `${d.speaker}: ${d.text}`,
+    ])) : strictQuality ? strictCaptions : captions;
+    activeCaptions.forEach((rows,i) => rows.forEach(([start,end,text]) => {
       srt += `${++index}\n${time(i*10+start)} --> ${time(i*10+end)}\n${text}\n\n`;
     }));
     await fs.writeFile(path.join(dir,'dialog-id.srt'),srt);

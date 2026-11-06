@@ -950,3 +950,31 @@ mtime_ms = 1793970119250
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/306bba51-7048-4a5e-96d5-10aff97f6007/580b61b7-c380-4436-8e8f-9715f3e60541"
 storage_version_token = "1793970159741447"
 content_type = "text/plain"
+
+[[outputs]]
+id = "SmZ7osbeXI2BBmGMF2CLj"
+uri = "file://generated-artifacts/muse-ceo-microdrama-claude-negatives/ceo-itu-mengenalku-60s.mp4"
+type = "video"
+title = "Unduh Kantong Kedua — Microdrama 1 Menit"
+description = "Video MUSE AI 60 detik, vertikal 720×1280, dengan audio, sekitar 16 MB. Naskah, prompt dan enam negative prompt khusus shot dibuat claude-fable-5.1 melalui Botelexkey; adegan memakai frame akhir sebelumnya."
+logical_id = "1733c2e6-379a-4751-93ab-2c1521b4a948"
+content_hash = "sha256:1b37a00e69b9e4674b1c507e7a43ac3fd758ee8a08cc517a6f74c6dee2b8c6cf"
+size = 16289782
+mtime_ms = 1793971849274
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/1733c2e6-379a-4751-93ab-2c1521b4a948/c356a12f-a121-41cf-98ea-0ba900288578"
+storage_version_token = "1793971907782941"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "o0oUe1LCFaDTA3Yv1ZQDr"
+uri = "file://generated-artifacts/muse-ceo-microdrama-claude-negatives/naskah-dan-negative-prompt.txt"
+type = "text"
+title = "Naskah, Prompt & Negative Prompt Asli Claude"
+description = "Dokumen enam shot: aksi, kamera, dialog, prompt gambar/video dan negative prompt khusus tiap shot, sesuai hasil LLM yang dipakai untuk render."
+logical_id = "b78d1b35-b163-489b-83ee-2e829bc3908f"
+content_hash = "sha256:91db608f893398272b0bf1130e6fb442c09dd5f1f4e18047c929f274d7642c47"
+size = 15884
+mtime_ms = 1793971403213
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/b78d1b35-b163-489b-83ee-2e829bc3908f/bcdefb82-ecfe-42a7-96bb-6c88e850a7fb"
+storage_version_token = "1793971909110936"
+content_type = "text/plain"
