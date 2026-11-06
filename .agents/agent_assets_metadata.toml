@@ -1048,3 +1048,17 @@ mtime_ms = 1793974682089
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/59304df2-9a10-4e71-8c45-f4abc1633b74/c8efbf11-5bc1-4cec-9c22-d7ce82cf90ed"
 storage_version_token = "1793977397546053"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "ttqkv9tIxg6jaxoFfphqu"
+uri = "file://generated-artifacts/muse-korean-drama-remake-2/seoul-drama-stitched.mp4"
+type = "video"
+title = "Microdrama Korea — versi tanpa subtitle"
+description = "Cerita 60 detik yang sama, vertikal 720×1280 dengan audio Korea. Dibuat ulang memakai dua referensi karakter, prompt pengunci wajah dan pakaian, dan tanpa subtitle atau SRT."
+logical_id = "8a41b4e3-25b0-42ee-9581-c125c2430d2f"
+content_hash = "sha256:5a4dd7c316514b34c206cb2865ecae8bfc35a3730ce03872dc08ed234786fc1d"
+size = 18105759
+mtime_ms = 1793982480645
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/8a41b4e3-25b0-42ee-9581-c125c2430d2f/6bf4688f-1a84-4566-b065-35cd818f8e9e"
+storage_version_token = "1793982559704814"
+content_type = "video/mp4"

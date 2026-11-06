@@ -11,15 +11,23 @@ if (!dryRun && !process.argv.includes('--approved')) throw Error('APPROVAL_REQUI
 const gentleContinuation = process.argv.includes('--approved-gentle-continuation');
 const strictQuality = process.argv.includes('--strict-quality');
 const koreanDrama = process.argv.includes('--korean-drama');
+const noSubtitles = process.argv.includes('--no-subtitles');
 const claudeDriven = process.argv.includes('--claude-plan') || koreanDrama;
 if (claudeDriven && strictQuality) throw Error('CHOOSE_ONE_EXPERIMENT');
 const chainEndFrames = claudeDriven || strictQuality || process.argv.includes('--chain-end-frames');
 if (chainEndFrames && gentleContinuation) throw Error('CHOOSE_ONE_EXPERIMENT');
 const originalDir = path.resolve(import.meta.dirname, '../../generated-artifacts/muse-ceo-microdrama');
-const dir = koreanDrama ? path.resolve(import.meta.dirname, '../../generated-artifacts/muse-korean-drama')
+const generatedRoot = path.resolve(import.meta.dirname, '../../generated-artifacts');
+const outputArg = process.argv.find(arg => arg.startsWith('--output-dir='));
+const defaultDir = koreanDrama ? path.resolve(generatedRoot, 'muse-korean-drama')
   : claudeDriven ? originalDir + '-claude-negatives'
   : strictQuality ? originalDir + '-strict'
   : chainEndFrames ? originalDir + '-chained' : originalDir;
+const dir = outputArg ? path.resolve(generatedRoot, outputArg.slice('--output-dir='.length)) : defaultDir;
+if (outputArg) {
+  const relative = path.relative(generatedRoot, dir);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw Error('MUSE_OUTPUT_DIR_INVALID');
+}
 const base = 'https://api.snapgen.ai/uapi/v1';
 const key = process.env.SNAPGEN_API_KEY;
 if (!dryRun && !key) throw Error('SNAPGEN_KEY_MISSING');
@@ -82,10 +90,11 @@ function buildPrompt(i) {
   if (claudeDriven) {
     const shot = claudeShots[i];
     const fixedCharacters = koreanDrama
-      ? `\nFIXED CAST REFERENCES: Attached image 1 is the approved Korean male CEO, ${claudeEpisode.bible.cast[0].id} (${claudeEpisode.bible.cast[0].name}); preserve this exact face, hair and wardrobe. Image 2 is the approved Korean woman, ${claudeEpisode.bible.cast[1].id} (${claudeEpisode.bible.cast[1].name}); preserve her exact face, hair and wardrobe.${i > 0 ? ' Image 3 is the exact final decoded frame of the previous clip; continue from it without replacing either identity in images 1 and 2.' : ' Use both approved lead identities in the opening shot.'}\n`
+      ? `\nFIXED CAST REFERENCES AND WARDROBE LOCK: Attached image 1 is the approved Korean male CEO, ${claudeEpisode.bible.cast[0].id} (${claudeEpisode.bible.cast[0].name}). Keep his exact face, age, hairline, dark neat hair, clean-shaven appearance, navy suit, white shirt, and silver watch from image 1 in every frame. Attached image 2 is the approved Korean woman, ${claudeEpisode.bible.cast[1].id} (${claudeEpisode.bible.cast[1].name}). Keep her exact face, age, low ponytail, cream blouse, blue jeans, and dark-green crossbody bag from image 2 in every frame. Do not add a jacket, change any clothing color, swap outfits, alter hair, or replace either face. This lock applies continuously through the final second and exact last frame, including close-ups and camera movement. Image 1 and image 2 remain the identity and wardrobe source for every shot.${i > 0 ? ' Image 3 is only the exact final decoded frame of the previous clip for pose and scene continuity; it must not replace or modify either character identity, face, hair, or wardrobe from images 1 and 2.' : ' Use both approved lead identities in the opening shot.'}\n`
       : '';
     return directorPrompt(claudeEpisode, shot, true, '', koreanDrama ? 'ko' : 'id') + continuity
       + fixedCharacters
+      + (koreanDrama ? '\nFINAL-SECOND CHECK: The face, hair, and exact reference clothing must remain unchanged from the first frame through the final frame. In the last second, do not morph the face, change the blouse or suit, add/remove outerwear, or replace either character. No subtitles, captions, on-screen text, logos, or watermark.\n' : '')
       + (i === 0 ? `\nOpening-frame composition from the director: ${shot.imagePrompt}` : '')
       + '\nUse only natural quiet room ambience. The named adult characters are the only people in view.';
   }
@@ -99,6 +108,8 @@ if (dryRun) {
   // Inspect all prompts without filesystem writes, credentials or network calls.
   console.log(JSON.stringify({
     strictQuality, chainEndFrames, paidSubmissions: 0,
+    noSubtitles,
+    outputDir: outputArg?.slice('--output-dir='.length) || null,
     newScenes: koreanDrama ? 6 : strictQuality ? 6 : chainEndFrames ? 5 : 6,
     prompts: Array.from({length:6},(_,i) => buildPrompt(i)),
   }, null, 2));
@@ -286,18 +297,20 @@ try {
       '-frames:v','1','-threads','2','-y',path.join(dir,'cast-reference.jpg')]);
     // Keep reference-based scene jobs sequential to stop spending on first failure.
     for (let i=1; i<6; i++) await scene(i);
-    let srt = '', index = 0;
-    const activeCaptions = koreanDrama
-      ? claudeShots.map(s => s.dialogue.map((d,i,all) => [
-        1+i*6/all.length, 1+(i+1)*6/all.length, d.subtitleId,
-      ]))
-      : claudeDriven ? claudeShots.map(s => s.dialogue.map((d,i,all) => [
-        1+i*6/all.length, 1+(i+1)*6/all.length, `${d.speaker}: ${d.text}`,
-      ])) : strictQuality ? strictCaptions : captions;
-    activeCaptions.forEach((rows,i) => rows.forEach(([start,end,text]) => {
-      srt += `${++index}\n${time(i*10+start)} --> ${time(i*10+end)}\n${text}\n\n`;
-    }));
-    await fs.writeFile(path.join(dir,'dialog-id.srt'),srt);
+    if (!noSubtitles) {
+      let srt = '', index = 0;
+      const activeCaptions = koreanDrama
+        ? claudeShots.map(s => s.dialogue.map((d,i,all) => [
+          1+i*6/all.length, 1+(i+1)*6/all.length, d.subtitleId,
+        ]))
+        : claudeDriven ? claudeShots.map(s => s.dialogue.map((d,i,all) => [
+          1+i*6/all.length, 1+(i+1)*6/all.length, `${d.speaker}: ${d.text}`,
+        ])) : strictQuality ? strictCaptions : captions;
+      activeCaptions.forEach((rows,i) => rows.forEach(([start,end,text]) => {
+        srt += `${++index}\n${time(i*10+start)} --> ${time(i*10+end)}\n${text}\n\n`;
+      }));
+      await fs.writeFile(path.join(dir,'dialog-id.srt'),srt);
+    }
     for (let i=0; i<6; i++) {
       const input = ['-i',path.join(dir,`scene-${i+1}.mp4`)];
       if (!state.scenes[i].media.audio) input.push('-f','lavfi','-i','anullsrc=r=48000:cl=stereo');
@@ -313,7 +326,7 @@ try {
     await exec('ffmpeg',['-v','error','-f','concat','-safe','0','-i',path.join(dir,'concat.txt'),
       '-c','copy','-movflags','+faststart','-y',stitchedFile],{timeout:180000});
     let finalFile = stitchedFile;
-    if (koreanDrama) {
+    if (koreanDrama && !noSubtitles) {
       const subtitleFile = path.join(dir,'dialog-id.srt');
       finalFile = path.join(dir,'drama-korea-seoul-60s.mp4');
       const subtitleFilter = `subtitles=${subtitleFile}:force_style='FontName=DejaVu Sans,FontSize=26,Outline=2,Shadow=1,Alignment=2,MarginV=48'`;
