@@ -1076,3 +1076,17 @@ mtime_ms = 1794050184782
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/a91f1721-6d51-44a9-ac2b-ac64963f02c1/4f60a831-f491-4f5a-9dac-56358dc757ee"
 storage_version_token = "1794052106289848"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "sZWUtjkH8j02y-V3HEbSp"
+uri = "file://generated-artifacts/microdrama-china-muse-rerender/microdrama-china-muse-nosubs.mp4"
+type = "video"
+title = "Microdrama 《手环》 — render ulang tanpa subtitle"
+description = "Video 60 detik, 720×1280, dengan audio dan tanpa subtitle. Hasil render baru memakai 6 kredit MUSE."
+logical_id = "c21963d4-05fc-45f3-b025-f50c4906b4c5"
+content_hash = "sha256:3bc2879ec34af47b7454cc2a3eb1db83163dd0cfc5641d897a001d1195b84a1f"
+size = 20398279
+mtime_ms = 1794054060770
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/c21963d4-05fc-45f3-b025-f50c4906b4c5/82daddb2-2b72-4fbb-b6e9-134372871621"
+storage_version_token = "1794056170244043"
+content_type = "video/mp4"
