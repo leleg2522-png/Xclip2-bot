@@ -226,6 +226,24 @@ async function contracts() {
   }
   {
     const e = newEpisode(1); e.bible = bible();
+    const messages: any[] = [];
+    const client = new EpisodeDirector('offline-fixture-key', (async (url: any, init: any) => {
+      if (String(url).endsWith('/models')) return new Response(JSON.stringify({ data: [{ id: 'fixture-model' }] }));
+      const body = JSON.parse(init.body); messages.push(body.messages);
+      const output = messages.length === 1 ? bible()
+        : { shots: scene(e, 0).map(s => ({
+          ...s, dialogue: s.dialogue.map(d => ({ ...d, text: '我知道真正的答案。' })),
+        })) };
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(output) } }] }));
+    }) as any, false, 'zh');
+    await client.bible('new story', 1, 'fixture-model');
+    await client.scene(e, 0, 'fixture-model');
+    assert.match(messages[0][0].content, /contemporary Chinese short-form TV drama/);
+    assert.match(messages[1][0].content, /Simplified Chinese characters/);
+    assert.match(messages[1][0].content, /no subtitles or captions are wanted/);
+  }
+  {
+    const e = newEpisode(1); e.bible = bible();
     const shots = scene(e, 0);
     const input = { shots: shots.map(s => ({ ...s, action: 'A'.repeat(734) })) };
     assert.equal(validateScene(input, e, 0)[0].action.length, 734, 'Preserve moderately verbose action without rewriting');
@@ -238,6 +256,14 @@ async function contracts() {
       /Korean spoken dialogue in Hangul/);
     assert.throws(() => validateScene(input, e, 0, false, true), /DIRECTOR_FORMAT/,
       'Korean spoken lines require Indonesian subtitle text');
+    const chineseInput = { shots: input.shots.map(s => ({
+      ...s, dialogue: s.dialogue.map(d => ({ ...d, text: '我知道真正的答案。' })),
+    })) };
+    assert.doesNotThrow(() => validateScene(chineseInput, e, 0, false, 'zh'));
+    assert.match(lockedPrompt(e, validateScene(chineseInput, e, 0, false, 'zh')[0], true, '', 'zh'),
+      /Mandarin Chinese dialogue in Simplified Chinese\. No subtitles/);
+    assert.throws(() => validateScene(input, e, 0, false, 'zh'), /DIRECTOR_FORMAT/,
+      'Mandarin dialogue must contain Han characters');
     const missingNegative = { shots: input.shots.map(s => ({ ...s, negativePrompt: undefined })) };
     assert.throws(() => validateScene(missingNegative, e, 0), /DIRECTOR_FORMAT/);
     assert.equal(validateBible({ ...e.bible, synopsis: 'A'.repeat(771) }, 1).synopsis.length, 771);
@@ -260,6 +286,18 @@ async function contracts() {
   assert.equal(f.getAll('images[]').length, 3); assert.equal(f.get('model'), 'Flux_2_Klein_4B_BF16');
   await api.submit({ kind: 'video', prompt: 'native audio', images: [b], seed: 1 }, 9);
   assert.ok((seen.at(-1)!.init.body as FormData).get('first_frame_image'));
+  const ltxSettings = { model: 'Ltx2_5_22B_Dist_INT8', width: 768, height: 1344, frames: 241, fps: 24 };
+  const ltxApi = new DeapiEpisodeApi(source, (async (url: any, init: any) => {
+    seen.push({ url, init });
+    return new Response(JSON.stringify({ data: url.endsWith('/price') ? { price: 0.01, is_estimated: false } : { request_id: 'ltx-job' } }));
+  }) as typeof fetch, ltxSettings, 'zh');
+  await ltxApi.quote({ kind: 'video', prompt: 'Mandarin audio', images: [b], seed: 9 });
+  const ltxBody = seen.at(-1)!.init.body as FormData;
+  assert.equal(ltxBody.get('model'), 'Ltx2_5_22B_Dist_INT8');
+  assert.equal(ltxBody.get('width'), '768'); assert.equal(ltxBody.get('height'), '1344');
+  assert.equal(ltxBody.get('frames'), '241'); assert.equal(ltxBody.get('fps'), '24');
+  await ltxApi.quote({ kind: 'transcript', prompt: '', seed: 71 });
+  assert.equal((seen.at(-1)!.init.body as FormData).get('lang'), 'zh');
   priceOnly = true;
   await api.quote({ kind: 'transcript', prompt: '', seed: 1 });
   assert.equal((seen.at(-1)!.init.body as FormData).get('duration_seconds'), '10');

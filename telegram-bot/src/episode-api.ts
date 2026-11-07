@@ -15,14 +15,16 @@ export interface EpisodeApi {
 /** Immutable credential binding for every paid image, video and transcription job. */
 export class DeapiEpisodeApi implements EpisodeApi {
   private cooldowns = new Map<string, number>();
-  constructor(private pool: DeapiKeySource, private request: typeof fetch = fetch) {}
+  constructor(private pool: DeapiKeySource, private request: typeof fetch = fetch,
+    private videoSettings: { model: string; width: number; height: number; frames: number; fps: number } = MICRODRAMA_SETTINGS,
+    private transcriptionLanguage: 'id' | 'zh' = 'id') {}
   private bucket(r: EpisodeRequest, keyId: number): string {
     return `${keyId}:${this.scope(r)}`;
   }
   private scope(r: EpisodeRequest): string {
     if (r.kind === 'image') return `images/${r.images?.length ? 'edits' : 'generations'}:Flux_2_Klein_4B_BF16`;
     if (r.kind === 'transcript') return 'audio/transcriptions:WhisperLargeV3Ct2';
-    return `videos/animations:${MICRODRAMA_SETTINGS.model}`;
+    return `videos/animations:${this.videoSettings.model}`;
   }
   private body(r: EpisodeRequest, price: boolean) {
     const image = r.kind === 'image', transcript = r.kind === 'transcript';
@@ -30,8 +32,8 @@ export class DeapiEpisodeApi implements EpisodeApi {
     const endpoint = image ? `images/${edit ? 'edits' : 'generations'}` : transcript ? 'audio/transcriptions' : 'videos/animations';
     const fields: Record<string, string | number> = image
       ? { model: 'Flux_2_Klein_4B_BF16', prompt: r.prompt, width: 768, height: 1344, steps: 4, seed: r.seed }
-      : transcript ? { model: 'WhisperLargeV3Ct2', include_ts: '1', ts_level: 'segment', lang: 'id' }
-        : { ...MICRODRAMA_SETTINGS, prompt: r.prompt, seed: r.seed };
+      : transcript ? { model: 'WhisperLargeV3Ct2', include_ts: '1', ts_level: 'segment', lang: this.transcriptionLanguage }
+        : { ...this.videoSettings, prompt: r.prompt, seed: r.seed };
     if (image && !edit) return { endpoint, body: JSON.stringify(fields), json: true };
     const form = new FormData();
     Object.entries(fields).forEach(([k, v]) => form.append(k, String(v)));
