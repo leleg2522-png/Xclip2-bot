@@ -1118,3 +1118,17 @@ mtime_ms = 1794056631685
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/2acddfab-e529-4931-9abc-41eef07038ea/2449cfd8-89f2-4da7-aac0-2f58fc997981"
 storage_version_token = "1794056659438781"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "JRDp1Ac6HOVeyYpApfy1f"
+uri = "file://generated-artifacts/young-ceo-short-drama-muse/microdrama-china-muse-nosubs.mp4"
+type = "video"
+title = "《签字之前》 — MUSE AI"
+description = "Drama pendek 60 detik, Mandarin, vertikal 720×1280, dengan audio dan tanpa subtitle. Dirender dalam enam klip MUSE; total 6 kredit."
+logical_id = "0fe4da7a-f593-437f-b6f7-d4761b573a0c"
+content_hash = "sha256:a5234bda48a61bed90fe9a3cab3c3fecd8627483a8e9c07091efd4deaeb88ab4"
+size = 14184842
+mtime_ms = 1794061203838
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/0fe4da7a-f593-437f-b6f7-d4761b573a0c/580febe2-af26-4303-a096-8d35740716bf"
+storage_version_token = "1794061257847215"
+content_type = "video/mp4"
