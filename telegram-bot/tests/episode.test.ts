@@ -239,8 +239,8 @@ async function contracts() {
     await client.bible('new story', 1, 'fixture-model');
     await client.scene(e, 0, 'fixture-model');
     assert.match(messages[0][0].content, /contemporary Chinese short-form TV drama/);
-    assert.match(messages[1][0].content, /Simplified Chinese characters/);
-    assert.match(messages[1][0].content, /no subtitles or captions are wanted/);
+    assert.match(messages[1][0].content, /Simplified Chinese/);
+    assert.match(messages[1][0].content, /No subtitleId, subtitles, captions/);
   }
   {
     const e = newEpisode(1); e.bible = bible();

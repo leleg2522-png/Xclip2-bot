@@ -33,6 +33,7 @@ type State = {
   model: string; directorModel: string; budgetUsd: number; reservedUsd: number;
   planAttempted?: boolean; sceneAttempts?: Record<string, boolean>;
   planStage?: string; completedAt?: string; finishAuthorized?: boolean; renderComplete?: boolean;
+  sceneRetryAttempted?: boolean; sceneRetryStatus?: string;
   bible?: any; shots?: any[]; planComplete?: boolean;
   jobs: Record<string, Job>; quotedTotalUsd?: number; completed?: boolean; finalFile?: string; lastError?: string;
 };
@@ -89,11 +90,50 @@ function time(seconds: number) {
   const ms = Math.max(0, Math.round(seconds * 1000));
   return `${String(Math.floor(ms / 3600000)).padStart(2, '0')}:${String(Math.floor(ms / 60000) % 60).padStart(2, '0')}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')},${String(ms % 1000).padStart(3, '0')}`;
 }
+function captureAssistant(stage: string): typeof fetch {
+  return async (url, init) => {
+    const response = await fetch(url, init);
+    if (!String(url).endsWith('/chat/completions')) return response;
+    try {
+      const copy = response.clone();
+      const raw = await copy.text();
+      if (raw.length > 4 * 1024 * 1024) throw new Error('LLM_CAPTURE_TOO_LARGE');
+      let content = '';
+      const finishReasons: string[] = [];
+      if ((response.headers.get('content-type') || '').includes('text/event-stream')) {
+        for (const line of raw.split(/\r?\n/).filter(row => row.startsWith('data:'))) {
+          const data = line.slice(5).trim();
+          if (!data || data === '[DONE]') continue;
+          try {
+            const event = JSON.parse(data), choice = event?.choices?.[0];
+            if (typeof choice?.delta?.content === 'string') content += choice.delta.content;
+            if (typeof choice?.message?.content === 'string') content += choice.message.content;
+            if (choice?.finish_reason) finishReasons.push(choice.finish_reason);
+          } catch { /* Keep transport details separate from the assistant's fictional output. */ }
+        }
+      } else {
+        try {
+          const body = JSON.parse(raw), choice = body?.choices?.[0];
+          if (typeof choice?.message?.content === 'string') content = choice.message.content;
+          if (choice?.finish_reason) finishReasons.push(choice.finish_reason);
+        } catch { /* The LLM client will report the response format error. */ }
+      }
+      if (content) await fs.writeFile(path.join(root, `${stage}-assistant.txt`), content);
+      await atomic(path.join(root, `${stage}-transport.json`), {
+        httpStatus: response.status, contentType: response.headers.get('content-type'),
+        assistantChars: content.length, finishReasons,
+      });
+    } catch { /* Capture failure must not trigger another provider request. */ }
+    return response;
+  };
+}
 
 async function main() {
   const action = process.argv[2];
   if (!process.argv.includes('--approved')) throw new Error('APPROVAL_REQUIRED');
-  if (!['plan', 'quote-refs', 'refs', 'quote', 'render', 'finish'].includes(action)) throw new Error('STAGE_REQUIRED');
+  if (!['plan', 'retry-missing-scene', 'quote-refs', 'refs', 'quote', 'render', 'finish'].includes(action)) {
+    throw new Error('STAGE_REQUIRED');
+  }
   await fs.mkdir(root, { recursive: true });
   const lockPath = path.join(root, 'operation.lock');
   const lock = await fs.open(lockPath, 'wx');
@@ -205,6 +245,29 @@ async function main() {
       await save();
       console.log(JSON.stringify({ status: 'plan_ready', title: state.bible.title,
         cast: state.bible.cast.map((c: any) => c.name), shots: state.shots.length, language: 'zh-CN' }));
+      return;
+    }
+    if (action === 'retry-missing-scene') {
+      if (state.planComplete || !state.bible || state.shots?.length !== 3
+        || state.shots.some((s: any) => s.scene !== 0)) throw new Error('PARTIAL_PLAN_NOT_RETRYABLE');
+      if (state.sceneRetryAttempted) throw new Error('SCENE_RETRY_ALREADY_USED');
+      const key = microdramaLlmKey();
+      if (!key) throw new Error('LLM_KEY_MISSING');
+      state.sceneRetryAttempted = true; state.sceneRetryStatus = 'requesting';
+      state.planStage = 'scene_2_retry'; delete state.lastError; await save();
+      const director = new EpisodeDirector(key, captureAssistant('scene2-retry'), false, 'zh');
+      const work = newEpisode(1);
+      work.bible = state.bible;
+      work.shots = state.shots.map((shot: any) => ({ shot, takes: [] }));
+      const next = await director.scene(work, 1, state.directorModel);
+      if (next.some(s => s.dialogue.some(d => !/\p{Script=Han}/u.test(d.text)))) {
+        throw new Error('MANDARIN_DIALOGUE_REQUIRED');
+      }
+      state.shots.push(...next); state.planComplete = true;
+      state.planStage = 'validated'; state.sceneRetryStatus = 'completed';
+      state.completedAt = new Date().toISOString(); await save();
+      console.log(JSON.stringify({ status: 'plan_ready', title: state.bible.title,
+        shots: state.shots.length, addedShots: next.length, language: 'zh-CN' }));
       return;
     }
     episode();

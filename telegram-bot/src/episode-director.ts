@@ -113,6 +113,21 @@ Do not add characters or change clothing midway. No background extras.`, previou
     const dialogueSchema = this.language === 'zh'
       ? '{"speaker":"CHAR_ID","text":"Short spoken line in Simplified Chinese"}'
       : '{"speaker":"CHAR_ID","text":"Short spoken line","subtitleId":"Indonesian translation when requested"}';
+    if (this.language === 'zh') {
+      const instructions = `You are a professional Chinese short-drama director, cinematographer, and continuity editor.
+Write exactly THREE concise ten-second shots for the requested 30-second beat.
+Return only {"shots":[{"camera":"","action":"","startState":"","endState":"","imagePrompt":"","videoPrompt":"","negativePrompt":"","continuation":false,"dialogue":[${dialogueSchema}]}]}.
+Keep the response compact: camera<=120, action<=220, each state<=160, imagePrompt<=320, videoPrompt<=320, negativePrompt<=260 characters per shot; complete JSON below 6000 characters.
+Use only the beat's two adult leads and one location. Preserve exact faces, hair, wardrobe, voices, screen positions, props, and story knowledge.
+Use filmable coverage; one short dialogue turn per shot, in natural Simplified Chinese, completed before 8.5 seconds. No subtitleId, subtitles, captions, extra actors, text, music, complex hand action, or wardrobe changes.
+Shot 1 and shot 3 are independent reference frames; only shot 2 may continue shot 1's last frame. Keep start/end states consistent.
+Write a concise, shot-specific negativePrompt. Return valid JSON only.`;
+      const prompt = JSON.stringify({
+        bible: e.bible, scene: scene + 1, beat: e.bible!.beats[scene], previousState: last?.endState || 'Opening shot',
+      });
+      const p = await this.ask(model, instructions, prompt, [], 6000);
+      return validateScene(p, e, scene, this.chainShots, this.language);
+    }
     const p = await this.ask(model, `You are the episode's director, cinematographer and continuity supervisor.
 Write exactly THREE ten-second shots for the requested 30-second beat.
 Return {"shots":[{"camera":"","action":"","startState":"","endState":"","imagePrompt":"","videoPrompt":"",
@@ -123,11 +138,9 @@ ${this.chainShots
 Use only the beat's cast and location. Keep locked faces, wardrobe, spatial screen directions, props and character knowledge.
 Use purposeful coverage/reaction shots, not repeated static conversations. Provide explicit framing, blocking, expression, camera movement, light and sound.
 imagePrompt describes the single first frame, no collage/text. videoPrompt directs action, not dialogue (dialogue is added by code).
-${this.language === 'ko'
+ ${this.language === 'ko'
     ? 'Write dialogue naturally in Korean Hangul and include an accurate concise Indonesian subtitleId for every spoken line. Do not render subtitles in imagePrompt or videoPrompt.'
-    : this.language === 'zh'
-      ? 'Write natural spoken Mandarin Chinese using Simplified Chinese characters only. Do not include subtitleId; no subtitles or captions are wanted.'
-      : 'Write natural Indonesian dialogue; subtitleId may be omitted.'}
+    : 'Write natural Indonesian dialogue; subtitleId may be omitted.'}
 Prefer one speaking character and one brief line per shot; <=140 spoken dialogue characters total, all speech finishes before 8.5 seconds. No overlapping speakers.
 Write a SPECIFIC negativePrompt for EACH shot, tailored to its framing, actor identities, visible hands, fixed props, motion and speaking character. Include relevant face drift, hand/body deformation, prop teleportation, extra actors and wrong-speaker/lip-sync failure risks. Do not blindly repeat one generic list. Negative constraints must not contradict the desired action or suppress the intended speaker.
 Be concise: target action<=400, imagePrompt<=600, videoPrompt<=700, negativePrompt<=700 chars.
