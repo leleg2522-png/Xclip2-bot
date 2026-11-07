@@ -1132,3 +1132,17 @@ mtime_ms = 1794061203838
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/0fe4da7a-f593-437f-b6f7-d4761b573a0c/580febe2-af26-4303-a096-8d35740716bf"
 storage_version_token = "1794061257847215"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "62NPsHXpOjLwlW_iQyriO"
+uri = "file://generated-artifacts/botelex-cio-drama-15m-segments/cio-dracin-15-menit.html"
+type = "html"
+title = "Dua Mangkuk Jam Sembilan — naskah 15 menit"
+description = "Naskah lengkap dalam 15 bagian berurutan, masing-masing 6 shot. Hanya teks; tidak ada gambar atau video yang dibuat."
+logical_id = "25622572-e928-415b-b5cd-6d7537a5c35a"
+content_hash = "sha256:5d96426ca1cc920d5e1db4c5b8471f8e11b15b22cc78a62caa140dd3603bd914"
+size = 33749
+mtime_ms = 1794074858889
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/25622572-e928-415b-b5cd-6d7537a5c35a/3af7e16e-f8cf-402f-8864-f7fef4ac9873"
+storage_version_token = "1794074941134709"
+content_type = "text/html"

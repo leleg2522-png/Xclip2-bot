@@ -9,6 +9,7 @@
 - [Invite-panel two-DB architecture](invite-panel-db-architecture.md) — panel state in local Replit PG; configurable Railway target DB string stored encrypted in app_settings (UI-set), masked in responses, never in .replit
 - [Telegram bot session resets](telegram-bot-session-resets.md) — in-memory logins wiped on every process crash/redeploy; keep bot.catch + process guards; never put unescaped free-text in parse_mode:Markdown
 - [Telegram rate limits](telegram-rate-limits.md) — retry explicit 429s, not ambiguous sends; avoid a second error reply and never replay generation.
+- [Botelex stream interruptions](botelex-stream-interruption.md) — an HTTP 200 may still end without complete text; retries are new quota-consuming calls, not safe replays.
 - [XclipAI saldo billing & KlikQRIS](xclip-saldo-billing.md) — pay-per-generate: charge only if delivered, any failure=full refund, no saldo→cash; QRIS credit must accept status<>'PAID' so late payments recover
 - [Top-up promotion](october-topup-promo.md) — one paid Rp50k top-up since activation unlocks Rp1,500 on five models until the owner says stop; preserve existing eligibility.
 - [Flora AI API](flora-ai-api.md) — generate pakai params.image_url/video_url (bukan inputs[]); upload form_fields snake_case; "1 key 1 task" salah (paralel jalan); tak ada endpoint saldo credits
