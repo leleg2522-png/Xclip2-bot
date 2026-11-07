@@ -103,6 +103,19 @@ accepted job ID/status. Preserve the credential and temporarily skip the
 account across models; a short recheck delay does not promise unsuspension.
 Never infer that a key is unusable merely from a balance-endpoint permission error.
 
+A successful price quote does not guarantee that a media submit will be accepted;
+generic HTTP 403 responses can persist across separate pool keys.
+
+**Why:** On 2026-11-07, LTX episode reference-image pricing succeeded, but two
+different DeAPI keys both returned generic submit 403 responses with no request
+IDs. The available error code did not identify whether the cause was model,
+account, or endpoint access.
+
+**How to apply:** Do not keep rotating keys after a generic 403 or infer a
+suspension without explicit response evidence. Preserve the no-replay state,
+capture a safe provider error category when available, and ask before trying
+another paid route.
+
 The user confirmed that the DeAPI account used for the artwork-animation demonstration is Basic and has never been topped up.
 
 **Why:** The user explicitly selected “Basic, belum pernah top-up” when generation was blocked by repeated HTTP 429.

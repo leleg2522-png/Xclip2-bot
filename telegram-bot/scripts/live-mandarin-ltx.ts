@@ -28,12 +28,13 @@ Do not use the earlier biological/adopted-daughters, inheritance will, sealed le
 Keep the plot filmable with simple actions and a few stable props. Natural spoken Mandarin using Simplified Chinese; no other language, no subtitles, no minors, no extra visible actors.
 All six ten-second shots must maintain each lead's face, hair, exact wardrobe, screen position and voice. Visual descriptions and shot directions in English; all spoken dialogue in Simplified Chinese.`;
 
-type Job = { attempted?: boolean; id?: string; keyId?: number; quoteUsd?: number; priceUsd?: number; file?: string; status?: string; error?: string };
+type Job = { attempted?: boolean; id?: string; keyId?: number; quoteUsd?: number; priceUsd?: number; file?: string; status?: string; error?: string; alternateFor?: string };
 type State = {
   model: string; directorModel: string; budgetUsd: number; reservedUsd: number;
   planAttempted?: boolean; sceneAttempts?: Record<string, boolean>;
   planStage?: string; completedAt?: string; finishAuthorized?: boolean; renderComplete?: boolean;
   sceneRetryAttempted?: boolean; sceneRetryStatus?: string;
+  alternateRefAttemptUsed?: boolean;
   bible?: any; shots?: any[]; planComplete?: boolean;
   jobs: Record<string, Job>; quotedTotalUsd?: number; completed?: boolean; finalFile?: string; lastError?: string;
 };
@@ -131,7 +132,7 @@ function captureAssistant(stage: string): typeof fetch {
 async function main() {
   const action = process.argv[2];
   if (!process.argv.includes('--approved')) throw new Error('APPROVAL_REQUIRED');
-  if (!['plan', 'retry-missing-scene', 'quote-refs', 'refs', 'quote', 'render', 'finish'].includes(action)) {
+  if (!['plan', 'retry-missing-scene', 'retry403-reference', 'quote-refs', 'refs', 'quote', 'render', 'finish'].includes(action)) {
     throw new Error('STAGE_REQUIRED');
   }
   await fs.mkdir(root, { recursive: true });
@@ -268,6 +269,82 @@ async function main() {
       state.completedAt = new Date().toISOString(); await save();
       console.log(JSON.stringify({ status: 'plan_ready', title: state.bible.title,
         shots: state.shots.length, addedShots: next.length, language: 'zh-CN' }));
+      return;
+    }
+    if (action === 'retry403-reference') {
+      if (!state.planComplete || !state.bible || !state.quotedTotalUsd
+        || state.quotedTotalUsd > state.budgetUsd + 0.000001) throw new Error('APPROVED_PLAN_AND_QUOTE_REQUIRED');
+      const failed = Object.entries(state.jobs).filter(([name, job]) =>
+        name.startsWith('char_') && job.attempted && !job.id && !job.file && job.keyId
+        && job.quoteUsd && job.status === 'submitting');
+      if (failed.length !== 1) throw new Error('EXACTLY_ONE_REJECTED_REFERENCE_REQUIRED');
+      const [name, original] = failed[0];
+      const existing = state.jobs[`${name}_alternate`];
+      const fileName = `${name}.jpg`, target = imageFile(name);
+      if (state.alternateRefAttemptUsed) {
+        if (!existing?.id || existing.file || existing.status !== 'accepted') {
+          throw new Error('ALTERNATE_REFERENCE_ATTEMPT_ALREADY_USED');
+        }
+        const bytes = await api.result(existing.id, existing.keyId!);
+        await fs.writeFile(target + '.partial', bytes);
+        await fs.rename(target + '.partial', target);
+        await sharp(bytes).jpeg({ quality: 94 }).toFile(target + '.normalized.jpg');
+        await fs.rename(target + '.normalized.jpg', target);
+        existing.file = fileName; existing.status = 'downloaded';
+        original.file = fileName; original.status = 'downloaded_after_alternate';
+        delete state.lastError; await save();
+        console.log(`ALTERNATE_REFERENCE_DOWNLOADED ${name}`);
+        return;
+      }
+      if (state.lastError !== 'EPISODE_SUBMIT_403') throw new Error('REJECTED_REFERENCE_403_REQUIRED');
+      if (existing) throw new Error('ALTERNATE_REFERENCE_STATE_INVALID');
+      const cast = state.bible.cast.find((person: any) => `char_${person.id}` === name);
+      if (!cast) throw new Error('FAILED_REFERENCE_CAST_NOT_FOUND');
+      const request = imageRequest(
+        `Photorealistic casting reference for a contemporary Chinese short drama. One adult Chinese actor, age ${cast.age}. Character ${cast.name}: ${cast.look}. ${state.bible.style}. Head-to-hips portrait, exact wardrobe clearly visible, natural face, plain neutral background, no text and no extra people.`,
+        8101 + state.bible.cast.indexOf(cast));
+      const quote = await api.quote(request, [original.keyId!]);
+      if (quote.keyId === original.keyId) throw new Error('ALTERNATE_KEY_NOT_DIFFERENT');
+      if (quote.price > original.quoteUsd! + 0.000001) throw new Error('ALTERNATE_PRICE_EXCEEDS_APPROVED_QUOTE');
+      if (state.quotedTotalUsd + quote.price > state.budgetUsd + 0.000001
+        || state.reservedUsd + quote.price > state.budgetUsd + 0.000001) {
+        throw new Error('MEDIA_BUDGET_EXCEEDED');
+      }
+      state.alternateRefAttemptUsed = true;
+      state.quotedTotalUsd += quote.price;
+      state.jobs[`${name}_alternate`] = {
+        alternateFor: name, quoteUsd: quote.price, keyId: quote.keyId,
+        attempted: true, status: 'submitting', priceUsd: quote.price,
+      };
+      state.reservedUsd += quote.price;
+      await save();
+      const alternate = state.jobs[`${name}_alternate`];
+      try {
+        alternate.id = await api.submit(request, quote.keyId);
+        alternate.status = 'accepted'; await save();
+      } catch (error) {
+        const code = error instanceof Error && /^[A-Z0-9_:-]{1,100}$/.test(error.message)
+          ? error.message : 'ALTERNATE_SUBMIT_UNCERTAIN';
+        if (error instanceof DeapiRateLimitError && error.phase === 'SUBMIT') {
+          state.reservedUsd = Math.max(0, state.reservedUsd - quote.price);
+          alternate.status = 'rejected_429'; alternate.error = code;
+        } else {
+          alternate.status = error instanceof Error && error.message === 'EPISODE_SUBMIT_403'
+            ? 'rejected' : 'uncertain';
+          alternate.error = code;
+        }
+        state.lastError = code; await save();
+        throw error;
+      }
+      const bytes = await api.result(alternate.id!, alternate.keyId!);
+      await fs.writeFile(target + '.partial', bytes);
+      await fs.rename(target + '.partial', target);
+      await sharp(bytes).jpeg({ quality: 94 }).toFile(target + '.normalized.jpg');
+      await fs.rename(target + '.normalized.jpg', target);
+      alternate.file = fileName; alternate.status = 'downloaded';
+      original.file = fileName; original.status = 'downloaded_after_alternate';
+      delete state.lastError; await save();
+      console.log(`ALTERNATE_REFERENCE_DOWNLOADED ${name}`);
       return;
     }
     episode();
