@@ -56,7 +56,7 @@ export function validateScene(value: any, e: Episode, scene: number, allowChain 
     return { number: scene * 3 + i + 1, scene, cast: [...beat.cast], location: beat.location,
       // Internal verbosity cap, not a provider API limit. Match the prototype's
       // 900-character bound without truncating or rewriting model decisions.
-      camera: str(s.camera, 300), action: str(s.action, 900), startState: str(s.startState, 400),
+      camera: str(s.camera, 500), action: str(s.action, 900), startState: str(s.startState, 400),
       endState: str(s.endState, 400), imagePrompt: str(s.imagePrompt, 1200), videoPrompt: str(s.videoPrompt, 1600),
       negativePrompt: str(s.negativePrompt, 1000),
       dialogue, continuation: s.continuation };
@@ -117,12 +117,12 @@ Do not add characters or change clothing midway. No background extras.`, previou
       const instructions = `You are a professional Chinese short-drama director, cinematographer, and continuity editor.
 Write exactly THREE concise ten-second shots for the requested 30-second beat.
 Return only {"shots":[{"camera":"","action":"","startState":"","endState":"","imagePrompt":"","videoPrompt":"","negativePrompt":"","continuation":false,"dialogue":[${dialogueSchema}]}]}.
-Keep the response compact but complete: camera<=120, action<=220, each state<=160, imagePrompt<=320, videoPrompt<=320, negativePrompt<=850 characters per shot; complete JSON below 12000 characters.
+Keep the response compact but complete: camera<=300, action<=220, each state<=160, imagePrompt<=320, videoPrompt<=320, negativePrompt<=850 characters per shot; complete JSON below 12000 characters.
 Use only the beat's two adult leads and one location. Preserve exact faces, hair, wardrobe, voices, screen positions, props, and story knowledge.
 Use filmable coverage; one short dialogue turn per shot, in natural Simplified Chinese, completed before 8.5 seconds. No subtitleId, subtitles, captions, extra actors, text, music, complex hand action, or wardrobe changes.
 Shot 1 and shot 3 are independent reference frames; only shot 2 may continue shot 1's last frame. Keep start/end states consistent.
 Write production-ready prompts: one primary visible action, precise blocking and framing, physically achievable motion, stable prop state, motivated lighting/camera, and clear continuity. Avoid vague adjectives, overloaded action, and contradictory directions.
-Write a bespoke negativePrompt for each shot. Prioritize 5-8 likely or costly defects for that shot; consider identity/face/wardrobe drift, anatomy/hands only when visible, prop duplication or teleportation, background extras/text, camera/motion artifacts, and wrong-speaker/lip-sync errors when dialogue exists. Aim for 500-850 characters when the shot has enough real risks; do not pad with irrelevant bans or suppress the intended action, expression, prop use, or speaker. Return valid JSON only.`;
+Write a bespoke negativePrompt for each shot. Prioritize 5-12 likely or costly defects for that shot; consider identity/face/wardrobe drift, anatomy/hands only when visible, prop duplication or teleportation, background extras/text, camera/motion artifacts, and wrong-speaker/lip-sync errors when dialogue exists. Aim for 500-850 characters when the shot has enough real risks; do not pad with irrelevant bans or suppress the intended action, expression, prop use, or speaker. Return valid JSON only.`;
       const prompt = JSON.stringify({
         bible: e.bible, scene: scene + 1, beat: e.bible!.beats[scene], previousState: last?.endState || 'Opening shot',
       });
@@ -144,9 +144,9 @@ imagePrompt describes the single first frame, no collage/text. videoPrompt direc
     ? 'Write dialogue naturally in Korean Hangul and include an accurate concise Indonesian subtitleId for every spoken line. Do not render subtitles in imagePrompt or videoPrompt.'
     : 'Write natural Indonesian dialogue; subtitleId may be omitted.'}
 Prefer one speaking character and one brief line per shot; <=140 spoken dialogue characters total, all speech finishes before 8.5 seconds. No overlapping speakers.
-Write a SPECIFIC negativePrompt for EACH shot, tailored to its framing, actor identities, visible hands, fixed props, motion and speaking character. Prioritize 5-8 likely or costly visible defects: face/identity/wardrobe drift; malformed anatomy or hands when visible; duplicated, missing or teleporting props; unwanted extras or text; camera/flicker/ghosting artifacts; wrong speaker or lip-sync when dialogue exists. Aim for 500-850 characters when relevant; never pad with unrelated bans, copy one generic list, contradict the action, or suppress the intended speaker.
+Write a SPECIFIC negativePrompt for EACH shot, tailored to its framing, actor identities, visible hands, fixed props, motion and speaking character. Prioritize 5-12 likely or costly visible defects: face/identity/wardrobe drift; malformed anatomy or hands when visible; duplicated, missing or teleporting props; unwanted extras or text; camera/flicker/ghosting artifacts; wrong speaker or lip-sync when dialogue exists. Aim for 500-850 characters when relevant; never pad with unrelated bans, copy one generic list, contradict the action, or suppress the intended speaker.
 Be concise elsewhere: target action<=400, imagePrompt<=600, videoPrompt<=700 chars.
-Hard limits: action<=900, camera<=300, states<=400, imagePrompt<=1200, videoPrompt<=1600, negativePrompt<=1000 chars.
+Hard limits: action<=900, camera<=500, states<=400, imagePrompt<=1200, videoPrompt<=1600, negativePrompt<=1000 chars.
 State changes must be motivated by the action; no teleportation or wardrobe changes.`, JSON.stringify({
       bible: e.bible, scene: scene + 1, beat: e.bible!.beats[scene], previousState: last?.endState || 'Opening shot',
     }));

@@ -23,6 +23,7 @@ if (chainEndFrames && gentleContinuation) throw Error('CHOOSE_ONE_EXPERIMENT');
 const originalDir = path.resolve(import.meta.dirname, '../../generated-artifacts/muse-ceo-microdrama');
 const generatedRoot = path.resolve(import.meta.dirname, '../../generated-artifacts');
 const outputArg = process.argv.find(arg => arg.startsWith('--output-dir='));
+const planFileArg = process.argv.find(arg => arg.startsWith('--plan-file='));
 const defaultDir = mandarinDrama ? path.resolve(generatedRoot, 'microdrama-china-muse')
   : koreanDrama ? path.resolve(generatedRoot, 'muse-korean-drama')
   : claudeDriven ? originalDir + '-claude-negatives'
@@ -32,6 +33,12 @@ const dir = outputArg ? path.resolve(generatedRoot, outputArg.slice('--output-di
 if (outputArg) {
   const relative = path.relative(generatedRoot, dir);
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw Error('MUSE_OUTPUT_DIR_INVALID');
+}
+if (planFileArg) {
+  if (!claudeDriven) throw Error('PLAN_FILE_REQUIRES_CLAUDE_PLAN');
+  const selectedPlan = path.resolve(generatedRoot, planFileArg.slice('--plan-file='.length));
+  const relative = path.relative(generatedRoot, selectedPlan);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw Error('MUSE_PLAN_FILE_INVALID');
 }
 const base = 'https://api.snapgen.ai/uapi/v1';
 const key = process.env.SNAPGEN_API_KEY;
@@ -70,11 +77,12 @@ if (claudeDriven) {
       if (!size || size > 10 * 1024 * 1024) throw Error('KOREAN_CHARACTER_REFERENCE_INVALID_SIZE');
     }
   }
-  const planFile = mandarinDrama
-    ? '../../generated-artifacts/microdrama-china-muse/claude-plan.json'
-    : koreanDrama ? '../../generated-artifacts/botelex-korean-drama-plan/state.json'
-      : '../../generated-artifacts/botelex-muse-negative-plan/state.json';
-  const plan = JSON.parse(await fs.readFile(path.resolve(import.meta.dirname, planFile), 'utf8'));
+  const planFile = planFileArg
+    ? path.resolve(generatedRoot, planFileArg.slice('--plan-file='.length))
+    : mandarinDrama ? path.resolve(generatedRoot, 'microdrama-china-muse/claude-plan.json')
+      : koreanDrama ? path.resolve(generatedRoot, 'botelex-korean-drama-plan/state.json')
+        : path.resolve(generatedRoot, 'botelex-muse-negative-plan/state.json');
+  const plan = JSON.parse(await fs.readFile(planFile, 'utf8'));
   if (!plan.completed || plan.model !== 'claude-fable-5.1') throw Error('CLAUDE_PLAN_NOT_READY');
   claudeEpisode = newEpisode(1);
   claudeEpisode.bible = validateBible(plan.results.bible, 1);
@@ -104,7 +112,10 @@ function buildPrompt(i) {
     return directorPrompt(claudeEpisode, shot, true, '', mandarinDrama ? 'zh' : koreanDrama ? 'ko' : 'id') + continuity
       + fixedCharacters
       + (koreanDrama ? '\nFINAL-SECOND CHECK: The face, hair, and exact reference clothing must remain unchanged from the first frame through the final frame. In the last second, do not morph the face, change the blouse or suit, add/remove outerwear, or replace either character. No subtitles, captions, on-screen text, logos, or watermark.\n' : '')
-      + (mandarinDrama ? '\nSPEECH: Speak only the specified shot dialogue in natural Simplified Mandarin. No paraphrasing, extra speech, narration, or music. Do not render subtitles or on-screen text; accurate Indonesian subtitles are added in post from the recorded audio.\n' : '')
+      + (mandarinDrama ? noSubtitles
+        ? '\nSPEECH: Speak only the specified shot dialogue in natural Simplified Mandarin. No paraphrasing, extra speech, narration, or music. Do not render subtitles, captions or on-screen text; this video must remain subtitle-free.\n'
+        : '\nSPEECH: Speak only the specified shot dialogue in natural Simplified Mandarin. No paraphrasing, extra speech, narration, or music. Do not render subtitles or on-screen text; Indonesian subtitles are added separately from the recorded audio.\n'
+        : '')
       + (i === 0 ? `\nOpening-frame composition from the director: ${shot.imagePrompt}` : '')
       + '\nUse only natural quiet room ambience. The named adult characters are the only people in view.';
   }
