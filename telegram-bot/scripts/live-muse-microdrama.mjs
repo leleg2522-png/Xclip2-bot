@@ -11,15 +11,20 @@ if (!dryRun && !process.argv.includes('--approved')) throw Error('APPROVAL_REQUI
 const gentleContinuation = process.argv.includes('--approved-gentle-continuation');
 const strictQuality = process.argv.includes('--strict-quality');
 const koreanDrama = process.argv.includes('--korean-drama');
+const mandarinDrama = process.argv.includes('--mandarin-drama');
 const noSubtitles = process.argv.includes('--no-subtitles');
-const claudeDriven = process.argv.includes('--claude-plan') || koreanDrama;
+const deferSubtitles = process.argv.includes('--defer-subtitles');
+const claudeDriven = process.argv.includes('--claude-plan') || koreanDrama || mandarinDrama;
+if (koreanDrama && mandarinDrama) throw Error('CHOOSE_ONE_LANGUAGE');
+if (deferSubtitles && !mandarinDrama) throw Error('DEFERRED_SUBTITLES_REQUIRE_MANDARIN');
 if (claudeDriven && strictQuality) throw Error('CHOOSE_ONE_EXPERIMENT');
 const chainEndFrames = claudeDriven || strictQuality || process.argv.includes('--chain-end-frames');
 if (chainEndFrames && gentleContinuation) throw Error('CHOOSE_ONE_EXPERIMENT');
 const originalDir = path.resolve(import.meta.dirname, '../../generated-artifacts/muse-ceo-microdrama');
 const generatedRoot = path.resolve(import.meta.dirname, '../../generated-artifacts');
 const outputArg = process.argv.find(arg => arg.startsWith('--output-dir='));
-const defaultDir = koreanDrama ? path.resolve(generatedRoot, 'muse-korean-drama')
+const defaultDir = mandarinDrama ? path.resolve(generatedRoot, 'microdrama-china-muse')
+  : koreanDrama ? path.resolve(generatedRoot, 'muse-korean-drama')
   : claudeDriven ? originalDir + '-claude-negatives'
   : strictQuality ? originalDir + '-strict'
   : chainEndFrames ? originalDir + '-chained' : originalDir;
@@ -65,9 +70,10 @@ if (claudeDriven) {
       if (!size || size > 10 * 1024 * 1024) throw Error('KOREAN_CHARACTER_REFERENCE_INVALID_SIZE');
     }
   }
-  const planFile = koreanDrama
-    ? '../../generated-artifacts/botelex-korean-drama-plan/state.json'
-    : '../../generated-artifacts/botelex-muse-negative-plan/state.json';
+  const planFile = mandarinDrama
+    ? '../../generated-artifacts/microdrama-china-muse/claude-plan.json'
+    : koreanDrama ? '../../generated-artifacts/botelex-korean-drama-plan/state.json'
+      : '../../generated-artifacts/botelex-muse-negative-plan/state.json';
   const plan = JSON.parse(await fs.readFile(path.resolve(import.meta.dirname, planFile), 'utf8'));
   if (!plan.completed || plan.model !== 'claude-fable-5.1') throw Error('CLAUDE_PLAN_NOT_READY');
   claudeEpisode = newEpisode(1);
@@ -77,8 +83,9 @@ if (claudeDriven) {
       || claudeEpisode.bible.cast[1].id !== 'SEOYEON')) {
     throw Error('KDRAMA_CHARACTER_REFERENCE_ORDER_MISMATCH');
   }
+  const sceneLanguage = mandarinDrama ? 'zh' : koreanDrama ? 'ko' : 'id';
   claudeShots = [0,1].flatMap(i => validateScene(
-    { shots: plan.results[`scene${i+1}`] }, claudeEpisode, i, true, koreanDrama));
+    { shots: plan.results[`scene${i+1}`] }, claudeEpisode, i, true, sceneLanguage));
   if (claudeShots.length !== 6 || claudeShots.some(s => !s.negativePrompt
       || (koreanDrama && s.dialogue.some(d => !d.subtitleId)))) throw Error('CLAUDE_PROMPT_NEGATIVE_OR_SUBTITLE_MISSING');
   directorPrompt = lockedPrompt;
@@ -89,12 +96,15 @@ function buildPrompt(i) {
     : '\n';
   if (claudeDriven) {
     const shot = claudeShots[i];
-    const fixedCharacters = koreanDrama
+    const fixedCharacters = mandarinDrama
+      ? `\nFIXED CAST AND CONTINUITY: Use exactly these two fictional adults from the approved story bible, ${claudeEpisode.bible.cast.map(c => `${c.id} (${c.name}), ${c.look}`).join('; ')}. Keep each face, age, hair, wardrobe, voice and screen position stable. Scenes 2–6 must continue from the exact supplied final frame without resetting the room or replacing either lead.\n`
+      : koreanDrama
       ? `\nFIXED CAST REFERENCES AND WARDROBE LOCK: Attached image 1 is the approved Korean male CEO, ${claudeEpisode.bible.cast[0].id} (${claudeEpisode.bible.cast[0].name}). Keep his exact face, age, hairline, dark neat hair, clean-shaven appearance, navy suit, white shirt, and silver watch from image 1 in every frame. Attached image 2 is the approved Korean woman, ${claudeEpisode.bible.cast[1].id} (${claudeEpisode.bible.cast[1].name}). Keep her exact face, age, low ponytail, cream blouse, blue jeans, and dark-green crossbody bag from image 2 in every frame. Do not add a jacket, change any clothing color, swap outfits, alter hair, or replace either face. This lock applies continuously through the final second and exact last frame, including close-ups and camera movement. Image 1 and image 2 remain the identity and wardrobe source for every shot.${i > 0 ? ' Image 3 is only the exact final decoded frame of the previous clip for pose and scene continuity; it must not replace or modify either character identity, face, hair, or wardrobe from images 1 and 2.' : ' Use both approved lead identities in the opening shot.'}\n`
       : '';
-    return directorPrompt(claudeEpisode, shot, true, '', koreanDrama ? 'ko' : 'id') + continuity
+    return directorPrompt(claudeEpisode, shot, true, '', mandarinDrama ? 'zh' : koreanDrama ? 'ko' : 'id') + continuity
       + fixedCharacters
       + (koreanDrama ? '\nFINAL-SECOND CHECK: The face, hair, and exact reference clothing must remain unchanged from the first frame through the final frame. In the last second, do not morph the face, change the blouse or suit, add/remove outerwear, or replace either character. No subtitles, captions, on-screen text, logos, or watermark.\n' : '')
+      + (mandarinDrama ? '\nSPEECH: Speak only the specified shot dialogue in natural Simplified Mandarin. No paraphrasing, extra speech, narration, or music. Do not render subtitles or on-screen text; accurate Indonesian subtitles are added in post from the recorded audio.\n' : '')
       + (i === 0 ? `\nOpening-frame composition from the director: ${shot.imagePrompt}` : '')
       + '\nUse only natural quiet room ambience. The named adult characters are the only people in view.';
   }
@@ -110,7 +120,7 @@ if (dryRun) {
     strictQuality, chainEndFrames, paidSubmissions: 0,
     noSubtitles,
     outputDir: outputArg?.slice('--output-dir='.length) || null,
-    newScenes: koreanDrama ? 6 : strictQuality ? 6 : chainEndFrames ? 5 : 6,
+    newScenes: claudeDriven || koreanDrama || strictQuality ? 6 : chainEndFrames ? 5 : 6,
     prompts: Array.from({length:6},(_,i) => buildPrompt(i)),
   }, null, 2));
   process.exit(0);
@@ -149,8 +159,8 @@ async function scene(i) {
     } : {}),
   };
   const file = path.join(dir, `scene-${i+1}.mp4`);
-  if (s.downloaded) return file;
   if (s.failed) throw Error(`SCENE_${i+1}_PREVIOUSLY_FAILED_${s.errorCode}`);
+  if (s.downloaded) return file;
   if (!s.uuid) {
     if (s.attempted) throw Error(`SCENE_${i+1}_AMBIGUOUS_SUBMIT_NO_REPLAY`);
     const body = new FormData();
@@ -229,6 +239,10 @@ async function scene(i) {
     s.downloaded = true; s.usedCredit = r.used_credit;
     s.media = { duration:Number(p.format.duration), width:v.width, height:v.height,
       audio:p.streams.some(v => v.codec_type === 'audio') };
+    if (mandarinDrama && !s.media.audio) {
+      s.failed = true; s.errorCode = 'MUSE_MANDARIN_AUDIO_MISSING'; await save();
+      throw Error('MUSE_MANDARIN_AUDIO_MISSING');
+    }
     await save(); console.log(`SCENE_${i+1}_DOWNLOADED ${JSON.stringify(s.media)}`);
     return file;
   }
@@ -297,12 +311,16 @@ try {
       '-frames:v','1','-threads','2','-y',path.join(dir,'cast-reference.jpg')]);
     // Keep reference-based scene jobs sequential to stop spending on first failure.
     for (let i=1; i<6; i++) await scene(i);
-    if (!noSubtitles) {
+    if (!noSubtitles && !deferSubtitles) {
       let srt = '', index = 0;
       const activeCaptions = koreanDrama
         ? claudeShots.map(s => s.dialogue.map((d,i,all) => [
           1+i*6/all.length, 1+(i+1)*6/all.length, d.subtitleId,
         ]))
+        : mandarinDrama ? claudeShots.map(s => s.dialogue.map(d => {
+          if (!d.subtitleId) throw Error('MUSE_SUBTITLE_TRANSLATION_REQUIRED');
+          return [1, 9, d.subtitleId];
+        }))
         : claudeDriven ? claudeShots.map(s => s.dialogue.map((d,i,all) => [
           1+i*6/all.length, 1+(i+1)*6/all.length, `${d.speaker}: ${d.text}`,
         ])) : strictQuality ? strictCaptions : captions;
@@ -322,7 +340,8 @@ try {
         '-y',path.join(dir,`part-${i+1}.mp4`)],{timeout:180000});
     }
     await fs.writeFile(path.join(dir,'concat.txt'),scenes.map((_,i)=>`file 'part-${i+1}.mp4'`).join('\n'));
-    const stitchedFile = path.join(dir, koreanDrama ? 'seoul-drama-stitched.mp4' : 'ceo-itu-mengenalku-60s.mp4');
+    const stitchedFile = path.join(dir, mandarinDrama ? 'microdrama-china-muse-nosubs.mp4'
+      : koreanDrama ? 'seoul-drama-stitched.mp4' : 'ceo-itu-mengenalku-60s.mp4');
     await exec('ffmpeg',['-v','error','-f','concat','-safe','0','-i',path.join(dir,'concat.txt'),
       '-c','copy','-movflags','+faststart','-y',stitchedFile],{timeout:180000});
     let finalFile = stitchedFile;
@@ -330,6 +349,16 @@ try {
       const subtitleFile = path.join(dir,'dialog-id.srt');
       finalFile = path.join(dir,'drama-korea-seoul-60s.mp4');
       const subtitleFilter = `subtitles=${subtitleFile}:force_style='FontName=DejaVu Sans,FontSize=26,Outline=2,Shadow=1,Alignment=2,MarginV=48'`;
+      await exec('ffmpeg',['-v','error','-threads','2','-i',stitchedFile,'-vf',subtitleFilter,
+        '-c:v','libx264','-threads','2','-preset','fast','-crf','19','-pix_fmt','yuv420p',
+        '-c:a','copy','-movflags','+faststart','-y',finalFile],{timeout:300000});
+    }
+    if (mandarinDrama && !noSubtitles && !deferSubtitles) {
+      if (claudeShots.some(s => s.dialogue.some(d => !d.subtitleId))) {
+        throw Error('MUSE_SUBTITLE_TRANSLATION_REQUIRED');
+      }
+      finalFile = path.join(dir, 'microdrama-china-muse-60s.mp4');
+      const subtitleFilter = `subtitles=${path.join(dir,'dialog-id.srt')}:force_style='FontName=DejaVu Sans,FontSize=28,Outline=2,Shadow=1,Alignment=2,MarginV=48'`;
       await exec('ffmpeg',['-v','error','-threads','2','-i',stitchedFile,'-vf',subtitleFilter,
         '-c:v','libx264','-threads','2','-preset','fast','-crf','19','-pix_fmt','yuv420p',
         '-c:a','copy','-movflags','+faststart','-y',finalFile],{timeout:300000});

@@ -161,9 +161,6 @@ async function main() {
   const pool = new DeapiKeyPool(db);
   const secretForResume = state.preferredCredentialSource === 'workspace_secret'
     ? process.env.DEAPI_API_KEY : undefined;
-  if (state.preferredCredentialSource === 'workspace_secret' && !secretForResume) {
-    throw new Error('DEAPI_SECRET_MISSING');
-  }
   const api = new DeapiEpisodeApi(secretForResume
     ? singleSecretKeySource(secretForResume) : pool, fetch, videoSettings, 'zh');
   const episode = () => episodeFrom(state);
@@ -228,6 +225,9 @@ async function main() {
   }
 
   try {
+    if (state.preferredCredentialSource === 'workspace_secret' && !secretForResume) {
+      throw new Error('DEAPI_SECRET_MISSING');
+    }
     if (state.model !== model || state.directorModel !== MICRODRAMA_LLM_DEFAULT || state.budgetUsd !== budgetUsd) {
       throw new Error('PROJECT_SETTINGS_MISMATCH');
     }
