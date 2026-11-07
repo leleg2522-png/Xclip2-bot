@@ -9,7 +9,7 @@ import { promisify } from 'node:util';
 import { Pool } from 'pg';
 import sharp from 'sharp';
 import { DeapiEpisodeApi, type EpisodeRequest } from '../src/episode-api';
-import { DeapiKeyPool } from '../src/deapi-key-pool';
+import { DeapiKeyPool, type DeapiKeySource } from '../src/deapi-key-pool';
 import { DeapiRateLimitError } from '../src/deapi-rate-limit';
 import { EpisodeDirector, lockedPrompt } from '../src/episode-director';
 import { parseTranscript } from '../src/episode-media';
@@ -28,13 +28,15 @@ Do not use the earlier biological/adopted-daughters, inheritance will, sealed le
 Keep the plot filmable with simple actions and a few stable props. Natural spoken Mandarin using Simplified Chinese; no other language, no subtitles, no minors, no extra visible actors.
 All six ten-second shots must maintain each lead's face, hair, exact wardrobe, screen position and voice. Visual descriptions and shot directions in English; all spoken dialogue in Simplified Chinese.`;
 
-type Job = { attempted?: boolean; id?: string; keyId?: number; quoteUsd?: number; priceUsd?: number; file?: string; status?: string; error?: string; alternateFor?: string };
+type Job = { attempted?: boolean; id?: string; keyId?: number; quoteUsd?: number; priceUsd?: number; file?: string; status?: string; error?: string; alternateFor?: string; credentialSource?: string };
 type State = {
   model: string; directorModel: string; budgetUsd: number; reservedUsd: number;
   planAttempted?: boolean; sceneAttempts?: Record<string, boolean>;
   planStage?: string; completedAt?: string; finishAuthorized?: boolean; renderComplete?: boolean;
   sceneRetryAttempted?: boolean; sceneRetryStatus?: string;
   alternateRefAttemptUsed?: boolean;
+  directSecretAttemptUsed?: boolean;
+  preferredCredentialSource?: 'pool' | 'workspace_secret';
   bible?: any; shots?: any[]; planComplete?: boolean;
   jobs: Record<string, Job>; quotedTotalUsd?: number; completed?: boolean; finalFile?: string; lastError?: string;
 };
@@ -87,6 +89,15 @@ function imageRequest(prompt: string, seed: number, images?: Buffer[]): EpisodeR
 function dialogueRequest(bytes?: Buffer): EpisodeRequest {
   return { kind: 'transcript', prompt: '', ...(bytes ? { source: bytes } : {}), seed: 71 };
 }
+function singleSecretKeySource(apiKey: string): DeapiKeySource {
+  const key = { id: 1, apiKey };
+  return {
+    next: async (skipIds = []) => skipIds.includes(key.id) ? null : key,
+    get: async (id) => id === key.id ? key : null,
+    disable: async () => false,
+    markLimited: async () => {},
+  };
+}
 function time(seconds: number) {
   const ms = Math.max(0, Math.round(seconds * 1000));
   return `${String(Math.floor(ms / 3600000)).padStart(2, '0')}:${String(Math.floor(ms / 60000) % 60).padStart(2, '0')}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')},${String(ms % 1000).padStart(3, '0')}`;
@@ -132,7 +143,8 @@ function captureAssistant(stage: string): typeof fetch {
 async function main() {
   const action = process.argv[2];
   if (!process.argv.includes('--approved')) throw new Error('APPROVAL_REQUIRED');
-  if (!['plan', 'retry-missing-scene', 'retry403-reference', 'quote-refs', 'refs', 'quote', 'render', 'finish'].includes(action)) {
+  if (!['plan', 'retry-missing-scene', 'retry403-reference', 'retry403-reference-secret',
+    'quote-refs', 'refs', 'quote', 'render', 'finish'].includes(action)) {
     throw new Error('STAGE_REQUIRED');
   }
   await fs.mkdir(root, { recursive: true });
@@ -147,7 +159,13 @@ async function main() {
   };
   const save = () => atomic(statePath, state);
   const pool = new DeapiKeyPool(db);
-  const api = new DeapiEpisodeApi(pool, fetch, videoSettings, 'zh');
+  const secretForResume = state.preferredCredentialSource === 'workspace_secret'
+    ? process.env.DEAPI_API_KEY : undefined;
+  if (state.preferredCredentialSource === 'workspace_secret' && !secretForResume) {
+    throw new Error('DEAPI_SECRET_MISSING');
+  }
+  const api = new DeapiEpisodeApi(secretForResume
+    ? singleSecretKeySource(secretForResume) : pool, fetch, videoSettings, 'zh');
   const episode = () => episodeFrom(state);
   const imageFile = (name: string) => path.join(root, `${name}.jpg`);
   const refsFor = async (shot: any) => Promise.all([
@@ -345,6 +363,95 @@ async function main() {
       original.file = fileName; original.status = 'downloaded_after_alternate';
       delete state.lastError; await save();
       console.log(`ALTERNATE_REFERENCE_DOWNLOADED ${name}`);
+      return;
+    }
+    if (action === 'retry403-reference-secret') {
+      if (!state.planComplete || !state.bible || !state.quotedTotalUsd
+        || state.quotedTotalUsd > state.budgetUsd + 0.000001
+        || !state.alternateRefAttemptUsed) {
+        throw new Error('APPROVED_PLAN_AND_PRIOR_403_REQUIRED');
+      }
+      const failed = Object.entries(state.jobs).filter(([name, job]) =>
+        name.startsWith('char_') && job.attempted && !job.id && !job.file && job.keyId
+        && job.quoteUsd && job.status === 'submitting');
+      if (failed.length !== 1) throw new Error('EXACTLY_ONE_REJECTED_REFERENCE_REQUIRED');
+      const [name, original] = failed[0];
+      const existing = state.jobs[`${name}_workspace_secret`];
+      const fileName = `${name}.jpg`, target = imageFile(name);
+      const apiKey = process.env.DEAPI_API_KEY;
+      if (!apiKey) throw new Error('DEAPI_SECRET_MISSING');
+      const directApi = new DeapiEpisodeApi(singleSecretKeySource(apiKey), fetch, videoSettings, 'zh');
+      if (state.directSecretAttemptUsed) {
+        if (!existing?.id || existing.file || existing.status !== 'accepted') {
+          throw new Error('DIRECT_SECRET_ATTEMPT_ALREADY_USED');
+        }
+        const bytes = await directApi.result(existing.id, 1);
+        await fs.writeFile(target + '.partial', bytes);
+        await fs.rename(target + '.partial', target);
+        await sharp(bytes).jpeg({ quality: 94 }).toFile(target + '.normalized.jpg');
+        await fs.rename(target + '.normalized.jpg', target);
+        existing.file = fileName; existing.status = 'downloaded';
+        existing.keyId = undefined;
+        original.file = fileName; original.status = 'downloaded_after_direct_secret';
+        delete state.lastError; await save();
+        console.log(`WORKSPACE_SECRET_REFERENCE_DOWNLOADED ${name}`);
+        return;
+      }
+      if (state.lastError !== 'EPISODE_SUBMIT_403') throw new Error('REJECTED_REFERENCE_403_REQUIRED');
+      if (existing) throw new Error('DIRECT_SECRET_REFERENCE_STATE_INVALID');
+      if (state.jobs[`${name}_alternate`]?.status !== 'rejected') {
+        throw new Error('ALTERNATE_POOL_KEY_REJECTION_REQUIRED');
+      }
+      const triedKeys = await Promise.all([original.keyId, state.jobs[`${name}_alternate`].keyId]
+        .filter((id): id is number => Number.isSafeInteger(id))
+        .map(id => pool.get(id)));
+      if (triedKeys.some(key => key?.apiKey === apiKey)) throw new Error('DEAPI_SECRET_ALREADY_TRIED');
+      const cast = state.bible.cast.find((person: any) => `char_${person.id}` === name);
+      if (!cast) throw new Error('FAILED_REFERENCE_CAST_NOT_FOUND');
+      const request = imageRequest(
+        `Photorealistic casting reference for a contemporary Chinese short drama. One adult Chinese actor, age ${cast.age}. Character ${cast.name}: ${cast.look}. ${state.bible.style}. Head-to-hips portrait, exact wardrobe clearly visible, natural face, plain neutral background, no text and no extra people.`,
+        8101 + state.bible.cast.indexOf(cast));
+      const quote = await directApi.quote(request);
+      if (state.quotedTotalUsd + quote.price > state.budgetUsd + 0.000001
+        || state.reservedUsd + quote.price > state.budgetUsd + 0.000001) {
+        throw new Error('MEDIA_BUDGET_EXCEEDED');
+      }
+      state.directSecretAttemptUsed = true;
+      state.quotedTotalUsd += quote.price;
+      state.jobs[`${name}_workspace_secret`] = {
+        quoteUsd: quote.price, keyId: undefined, credentialSource: 'DEAPI_API_KEY',
+        attempted: true, status: 'submitting', priceUsd: quote.price,
+      };
+      state.reservedUsd += quote.price;
+      await save();
+      const directJob = state.jobs[`${name}_workspace_secret`];
+      try {
+        directJob.id = await directApi.submit(request, quote.keyId);
+        state.preferredCredentialSource = 'workspace_secret';
+        directJob.status = 'accepted'; await save();
+      } catch (error) {
+        const code = error instanceof Error && /^[A-Z0-9_:-]{1,100}$/.test(error.message)
+          ? error.message : 'DIRECT_SECRET_SUBMIT_UNCERTAIN';
+        if (error instanceof DeapiRateLimitError && error.phase === 'SUBMIT') {
+          state.reservedUsd = Math.max(0, state.reservedUsd - quote.price);
+          directJob.status = 'rejected_429'; directJob.error = code;
+        } else {
+          directJob.status = error instanceof Error && error.message === 'EPISODE_SUBMIT_403'
+            ? 'rejected' : 'uncertain';
+          directJob.error = code;
+        }
+        state.lastError = code; await save();
+        throw error;
+      }
+      const bytes = await directApi.result(directJob.id!, quote.keyId);
+      await fs.writeFile(target + '.partial', bytes);
+      await fs.rename(target + '.partial', target);
+      await sharp(bytes).jpeg({ quality: 94 }).toFile(target + '.normalized.jpg');
+      await fs.rename(target + '.normalized.jpg', target);
+      directJob.file = fileName; directJob.status = 'downloaded'; directJob.keyId = undefined;
+      original.file = fileName; original.status = 'downloaded_after_direct_secret';
+      delete state.lastError; await save();
+      console.log(`WORKSPACE_SECRET_REFERENCE_DOWNLOADED ${name}`);
       return;
     }
     episode();
