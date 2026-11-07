@@ -90,6 +90,16 @@ blocking still introduced an unrequested background man in later scenes.
 Do not claim that stronger negative wording alone fixes cast continuity or
 that still-frame inspection verifies speech or lip-sync.
 
+Even explicit no-text and no-logo instructions may produce visible brand-like
+text on clothing or props, and wardrobe can drift between cuts.
+
+**Why:** A six-clip Cio MUSE video displayed unsolicited lettering on the
+courier's helmet/jacket and visible wardrobe variation in extracted scene frames.
+
+**How to apply:** Inspect generated clips before delivery and report these as
+observed quality issues, not guaranteed prompt fixes. Do not spend credits on
+regeneration without explicit user approval.
+
 ## Vela image-to-video
 
 The official Vela UAPI is `POST /uapi/v1/video-gen/vela`, multipart with

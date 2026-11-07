@@ -1146,3 +1146,17 @@ mtime_ms = 1794074858889
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/25622572-e928-415b-b5cd-6d7537a5c35a/3af7e16e-f8cf-402f-8864-f7fef4ac9873"
 storage_version_token = "1794074941134709"
 content_type = "text/html"
+
+[[outputs]]
+id = "2lD-vxW6ptaFgSiLiBmYv"
+uri = "file://generated-artifacts/botelex-cio-muse-minute-1/cio-dracin-menit-01.mp4"
+type = "video"
+title = "Cio — menit 1 (MUSE)"
+description = "Video portrait 9:16, durasi 60 detik, enam klip MUSE dengan audio. Kredit provider terpakai: 6."
+logical_id = "af00352c-945b-4406-a197-8da445138ce1"
+content_hash = "sha256:3928c73e75bfbc73ea1ce939bdfaac24390ac354540a9e764f3b7c4b6ab8f87d"
+size = 38788795
+mtime_ms = 1794078570849
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/af00352c-945b-4406-a197-8da445138ce1/3a6f8127-15ca-4611-b501-1aec83191a5f"
+storage_version_token = "1794078670314865"
+content_type = "video/mp4"
