@@ -14,10 +14,12 @@ const statePath = path.join(dir, 'state.json');
 const lockPath = path.join(dir, 'running.lock');
 const lock = await fs.open(lockPath, 'wx');
 const model = MICRODRAMA_LLM_DEFAULT;
+const resumeSaved = process.argv.includes('--resume-saved');
 let state;
 try {
   state = JSON.parse(await fs.readFile(statePath, 'utf8'));
-  throw Error('PREVIOUS_ATTEMPT_EXISTS_NO_AUTOMATIC_REPLAY');
+  if (!resumeSaved) throw Error('PREVIOUS_ATTEMPT_EXISTS_NO_AUTOMATIC_REPLAY');
+  if (state.model !== model || state.durationMinutes !== 15) throw Error('STATE_MODEL_MISMATCH');
 } catch (error) {
   if (error.code !== 'ENOENT') {
     await lock.close();
@@ -36,8 +38,45 @@ function safeError(error) {
     ? message : 'LLM_REQUEST_OR_FORMAT_FAILURE';
 }
 function parseJson(raw) {
-  try { return JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')); }
-  catch { throw Error('LLM_DIRECTOR_INVALID_JSON'); }
+  const text = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  let value;
+  try { value = JSON.parse(text); }
+  catch {
+    // Permit only the unambiguous case where the provider output is otherwise
+    // balanced JSON and omitted the single final brace for the root object.
+    const stack = [];
+    let inString = false, escaped = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (c === '\\') escaped = true;
+        else if (c === '"') inString = false;
+        continue;
+      }
+      if (c === '"') inString = true;
+      else if (c === '{' || c === '[') stack.push({ c, i });
+      else if (c === '}' || c === ']') {
+        const open = stack.pop();
+        if (!open || (open.c === '{' && c !== '}') || (open.c === '[' && c !== ']')) {
+          throw Error('LLM_DIRECTOR_INVALID_JSON');
+        }
+      }
+    }
+    if (inString || stack.length !== 1 || stack[0].c !== '{' || stack[0].i !== 0) {
+      throw Error('LLM_DIRECTOR_INVALID_JSON');
+    }
+    try { value = JSON.parse(`${text}}`); }
+    catch { throw Error('LLM_DIRECTOR_INVALID_JSON'); }
+    console.log('DRAMA_JSON_ROOT_BRACE_RECOVERED');
+  }
+  // Normalize only the common schema-placement mistake; do not change story text.
+  if (!value.segment && value.series?.segment) {
+    value.segment = value.series.segment;
+    delete value.series.segment;
+    console.log('DRAMA_SEGMENT_FIELD_NORMALIZED');
+  }
+  return value;
 }
 function string(value, max) {
   if (typeof value !== 'string' || !value.trim() || value.length > max) throw Error('DIRECTOR_FORMAT');
@@ -48,14 +87,13 @@ function validateSegment(value, minute, series) {
       || !Array.isArray(value.segment.shots) || value.segment.shots.length !== 6) throw Error('DIRECTOR_FORMAT');
   const allowedSpeakers = new Set(series.cast.map(c => c.id));
   const shots = value.segment.shots.map(shot => {
-    if (!shot || !Array.isArray(shot.dialogue) || shot.dialogue.length > 2) throw Error('DIRECTOR_FORMAT');
-    return {
-      action: string(shot.action, 400),
-      dialogue: shot.dialogue.map(line => {
+    if (!shot || !Array.isArray(shot.dialogue) || shot.dialogue.length > 3) throw Error('DIRECTOR_FORMAT');
+    const dialogue = shot.dialogue.map(line => {
         if (!line || !allowedSpeakers.has(line.speaker)) throw Error('DIRECTOR_FORMAT');
         return { speaker: line.speaker, text: string(line.text, 120) };
-      }),
-    };
+      });
+    if (dialogue.reduce((sum, line) => sum + line.text.length, 0) > 140) throw Error('DIRECTOR_FORMAT');
+    return { action: string(shot.action, 400), dialogue };
   });
   return {
     minute,
@@ -129,17 +167,34 @@ try {
   const key = microdramaLlmKey();
   if (!key) throw Error('LLM_KEY_MISSING');
   const llm = new MicrodramaLlm(key);
-  let series;
-  let continuity = '';
-  const segments = [];
+  let series = state.series;
+  const segments = Object.values(state.segments).sort((a, b) => a.minute - b.minute);
+  let continuity = segments.at(-1)?.continuityOut || '';
   for (let minute = 1; minute <= 15; minute++) {
     const stage = `minute_${minute}`;
-    if (state.attempts[stage]) throw Error('PREVIOUS_ATTEMPT_EXISTS_NO_AUTOMATIC_REPLAY');
+    if (state.segments[stage]) continue;
+    if (state.attempts[stage]) {
+      if (!resumeSaved || typeof state.raw[stage] !== 'string') {
+        throw Error('PREVIOUS_ATTEMPT_EXISTS_NO_AUTOMATIC_REPLAY');
+      }
+      const parsed = parseJson(state.raw[stage]);
+      if (minute === 1) series = validateSeries(parsed);
+      if (!series) throw Error('DIRECTOR_FORMAT');
+      const segment = validateSegment(parsed, minute, series);
+      segments.push(segment);
+      continuity = segment.continuityOut;
+      state.series = series;
+      state.segments[stage] = segment;
+      delete state.errorCode;
+      await save();
+      console.log(`DRAMA_SEGMENT_REVALIDATED minute=${minute}`);
+      continue;
+    }
     const previous = segments.slice(-3).map(segment => `Menit ${segment.minute}: ${segment.summary}`).join('\n');
     const firstMinute = minute === 1;
     const finalMinute = minute === 15;
     const system = `You are a professional Indonesian short-drama writer and continuity editor.
-Create only the requested one-minute part of a single connected 15-minute drama. Each minute contains exactly six numbered 10-second shots, grouped into two causal 30-second beats. Return compact valid JSON only, no markdown or commentary. This is text screenplay content only: do not call tools or create any image, audio, or video. Use only the named adult cast and listed locations. Dialogue must be natural Indonesian and brief enough to speak within the shot. Keep actions filmable, continuity exact, and causality clear.`;
+Create only the requested one-minute part of a single connected 15-minute drama. Each minute contains exactly six numbered 10-second shots, grouped into two causal 30-second beats. Return compact valid JSON only, no markdown or commentary. This is text screenplay content only: do not call tools or create any image, audio, or video. Use only the named adult cast and listed locations. Dialogue must be natural Indonesian and brief enough to speak within the shot; use at most three quick turns and 140 total spoken characters per shot. Keep actions filmable, continuity exact, and causality clear.`;
     const schema = firstMinute
       ? `Return {"series":{"title":"","synopsis":"","cast":[{"id":"CIO","name":"Cio","age":30,"look":"","personality":""}],"locations":[{"id":"PLACE","description":""}],"globalArc":{"prologue":"","centralConflict":"","actTurns":["","","","",""],"climax":"","epilogue":""}},"segment":{"minute":1,"summary":"","shots":[{"action":"","dialogue":[{"speaker":"CIO","text":""}]}],"continuityOut":""}}. Exactly six shots. Cio must be an adult food courier; include at most one other main character.`
       : `Return {"segment":{"minute":${minute},"summary":"","shots":[{"action":"","dialogue":[{"speaker":"CIO","text":""}]}],"continuityOut":""}}. Exactly six shots.`;
