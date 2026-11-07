@@ -260,9 +260,11 @@ async function contracts() {
   {
     const e = newEpisode(1); e.bible = bible();
     const messages: any[] = [];
+    const requests: any[] = [];
     const client = new EpisodeDirector('offline-fixture-key', (async (url: any, init: any) => {
       if (String(url).endsWith('/models')) return new Response(JSON.stringify({ data: [{ id: 'fixture-model' }] }));
       const body = JSON.parse(init.body);
+      requests.push(body);
       messages.push(body.messages);
       const output = messages.length === 1 ? bible()
         : messages.length === 2 ? { shots: scene(e, 0).map(s => ({
@@ -290,6 +292,24 @@ async function contracts() {
     assert.equal(sceneContext.story.arc.prologue, 'Raka discovers a letter in his family home.');
     assert.equal(sceneContext.story.arc.epilogue, 'The secret is resolved and Raka chooses a new path.');
     assert.equal(sceneContext.beatNumber, 1);
+    assert.deepEqual(requests.map(r => r.max_tokens), [8192, 8192, 2048],
+      'Use stage-appropriate response budgets for bible, scene and review calls');
+  }
+  {
+    const e = newEpisode(15); e.bible = bible(15, false);
+    let requestBody: any;
+    const client = new EpisodeDirector('offline-fixture-key', (async (url: any, init: any) => {
+      if (String(url).endsWith('/models')) return new Response(JSON.stringify({ data: [{ id: 'fixture-model' }] }));
+      requestBody = JSON.parse(init.body);
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({
+        beats: Array.from({ length: 10 }, (_, i) => ({
+          objective: `Beat ${i + 1} advances the central conflict.`, location: 'HOUSE', cast: ['RAKA'],
+        })),
+      }) } }] }));
+    }) as any);
+    const beats = await client.beats(e, 0, 10, 'fixture-model');
+    assert.equal(beats.length, 10);
+    assert.equal(requestBody.max_tokens, 4200, 'A ten-beat batch has a larger bounded output budget');
   }
   {
     const e = newEpisode(1); e.bible = bible();

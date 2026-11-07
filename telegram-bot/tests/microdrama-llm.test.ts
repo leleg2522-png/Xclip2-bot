@@ -29,11 +29,11 @@ async function main() {
     return String(url).endsWith('/models') ? models() : sse(streamText);
   }) as any, value => diagnostics.push(value));
   assert.deepEqual(await client.models(), ['claude-fable-5.1']);
-  assert.equal(await client.complete(MICRODRAMA_LLM_DEFAULT, [{ role: 'user', content: 'Test' }], 100, 0.1), payload);
+  assert.equal(await client.complete(MICRODRAMA_LLM_DEFAULT, [{ role: 'user', content: 'Test' }], 100, 0.1, 'bible'), payload);
   assert.equal(calls.at(-1)!.body.stream, true);
   assert.equal(calls.at(-1)!.body.model, 'claude-fable-5.1');
   assert.deepEqual(diagnostics[0], {
-    stage: 'completion', model: 'claude-fable-5.1', maxTokens: 100, httpStatus: 200,
+    stage: 'bible', model: 'claude-fable-5.1', maxTokens: 100, httpStatus: 200,
     outputChars: payload.length, reasoningChars: 'Private reasoning is not output JSON.'.length,
     durationMs: diagnostics[0].durationMs, finishReason: 'stop',
     usage: { promptTokens: 321, completionTokens: 12, totalTokens: 333 }, outcome: 'ok',

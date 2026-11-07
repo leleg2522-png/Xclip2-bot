@@ -239,7 +239,8 @@ Prefer one speaking character and one brief line per shot; <=140 spoken dialogue
 Write a SPECIFIC negativePrompt for EACH shot, tailored to its framing, actor identities, visible hands, fixed props, motion and speaking character. Prioritize 5-12 likely or costly visible defects: face/identity/wardrobe drift; malformed anatomy or hands when visible; duplicated, missing or teleporting props; unwanted extras or text; camera/flicker/ghosting artifacts; wrong speaker or lip-sync when dialogue exists. Aim for 500-850 characters when relevant; never pad with unrelated bans, copy one generic list, contradict the action, or suppress the intended speaker.
 Be concise elsewhere: target action<=400, imagePrompt<=600, videoPrompt<=700 chars.
 Hard limits: action<=900, camera<=500, states<=400, imagePrompt<=1200, videoPrompt<=1600, negativePrompt<=1000 chars.
-State changes must be motivated by the action; no teleportation or wardrobe changes.`, JSON.stringify({ ...storyContext, scene: scene + 1 }));
+State changes must be motivated by the action; no teleportation or wardrobe changes.`,
+    JSON.stringify({ ...storyContext, scene: scene + 1 }), [], 8192, `scene_${scene + 1}`);
     return validateScene(p, e, scene, this.chainShots, this.language);
   }
   async review(model: string, instructions: string, images: Buffer[]): Promise<Quality> {
