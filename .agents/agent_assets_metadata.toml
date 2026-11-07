@@ -1090,3 +1090,31 @@ mtime_ms = 1794054060770
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/c21963d4-05fc-45f3-b025-f50c4906b4c5/82daddb2-2b72-4fbb-b6e9-134372871621"
 storage_version_token = "1794056170244043"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "K27wRiouy0doiZWV435N6"
+uri = "file://attached_assets/generated_images/young-ceo-woman-reference.jpg"
+type = "image"
+title = "Referensi CEO perempuan muda"
+description = "Tokoh fiktif untuk dracin CEO: modern, segar, profesional, dan hangat."
+logical_id = "4acdebc5-dad4-479f-a512-e3b59e6fb37c"
+content_hash = "sha256:9995c8ce0455040ccaa2840657e7bc299ec63cf083cf90edbfc2a2e6668b13c6"
+size = 96717
+mtime_ms = 1794056633141
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/4acdebc5-dad4-479f-a512-e3b59e6fb37c/8a951fbe-57a5-4b14-856a-27a4b15740f1"
+storage_version_token = "1794056658108319"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "HVtVcn_wyqHRLefE3ko8D"
+uri = "file://attached_assets/generated_images/young-ceo-man-reference.jpg"
+type = "image"
+title = "Referensi CEO laki-laki muda"
+description = "Tokoh fiktif untuk dracin CEO: modern, segar, profesional, dan approachable."
+logical_id = "2acddfab-e529-4931-9abc-41eef07038ea"
+content_hash = "sha256:c069d82a8269ff27ab61f812fc4912aba81ad68d31910676060515aad3f36b09"
+size = 94213
+mtime_ms = 1794056631685
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/2acddfab-e529-4931-9abc-41eef07038ea/2449cfd8-89f2-4da7-aac0-2f58fc997981"
+storage_version_token = "1794056659438781"
+content_type = "image/jpeg"
