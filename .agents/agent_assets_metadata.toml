@@ -1062,3 +1062,17 @@ mtime_ms = 1793982480645
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/8a41b4e3-25b0-42ee-9581-c125c2430d2f/6bf4688f-1a84-4566-b065-35cd818f8e9e"
 storage_version_token = "1793982559704814"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "5FE2ej5GVsbFOx5K12khH"
+uri = "file://generated-artifacts/microdrama-china-muse/microdrama-china-muse-nosubs.mp4"
+type = "video"
+title = "Dracin Mandarin 《手环》 — 60 detik"
+description = "Video MUSE vertikal 9:16 dengan audio. Belum ada subtitle."
+logical_id = "a91f1721-6d51-44a9-ac2b-ac64963f02c1"
+content_hash = "sha256:28de2c03a046b9b1254e87172f6c8ed24817d5f273cb3037ab7eb327bec2a264"
+size = 21568360
+mtime_ms = 1794050184782
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/a91f1721-6d51-44a9-ac2b-ac64963f02c1/4f60a831-f491-4f5a-9dac-56358dc757ee"
+storage_version_token = "1794052106289848"
+content_type = "video/mp4"
