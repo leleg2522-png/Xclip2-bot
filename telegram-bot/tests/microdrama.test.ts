@@ -141,6 +141,8 @@ async function providerTests() {
   assert.match(body.messages[0].content, /FILM DIRECTOR \/ SUTRADARA/);
   assert.match(body.messages[0].content, /SCREENWRITER \/ PENULIS NASKAH/);
   assert.match(body.messages[0].content, /PROMPT DESIGNER \/ PERANCANG PROMPT/);
+  assert.match(body.messages[0].content, /production-ready image and video prompts/);
+  assert.match(body.messages[0].content, /5-8 likely or costly defects/);
   assert.match(body.messages[0].content, /CINEMATOGRAPHER \/ KAMERAWAN/);
   assert.equal(body.response_format, undefined, 'Do not presume gateway supports structured-output extensions');
   await assert.rejects(writer.write('idea', 'off'), /UNAVAILABLE/);

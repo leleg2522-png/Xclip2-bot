@@ -223,6 +223,8 @@ async function contracts() {
     }
     assert.match(messages[0][0].content, /authentic contemporary Korean TV drama/);
     assert.match(messages[1][0].content, /subtitleId/);
+    assert.match(messages[1][0].content, /professional production brief/);
+    assert.match(messages[1][0].content, /5-8 likely or costly visible defects/);
   }
   {
     const e = newEpisode(1); e.bible = bible();
@@ -241,6 +243,8 @@ async function contracts() {
     assert.match(messages[0][0].content, /contemporary Chinese short-form TV drama/);
     assert.match(messages[1][0].content, /Simplified Chinese/);
     assert.match(messages[1][0].content, /No subtitleId, subtitles, captions/);
+    assert.match(messages[1][0].content, /negativePrompt<=850 characters per shot/);
+    assert.match(messages[1][0].content, /5-8 likely or costly defects for that shot/);
   }
   {
     const e = newEpisode(1); e.bible = bible();
@@ -248,7 +252,10 @@ async function contracts() {
     const input = { shots: shots.map(s => ({ ...s, action: 'A'.repeat(734) })) };
     assert.equal(validateScene(input, e, 0)[0].action.length, 734, 'Preserve moderately verbose action without rewriting');
     assert.match(validateScene(input, e, 0)[0].negativePrompt!, /letter duplication/);
-    assert.match(lockedPrompt(e, validateScene(input, e, 0)[0], true), /Shot-specific negative constraints/);
+    const videoPrompt = lockedPrompt(e, validateScene(input, e, 0)[0], true);
+    assert.match(videoPrompt, /Shot-specific negative constraints/);
+    assert.match(videoPrompt, /Application-added global visual-quality guard/);
+    assert.match(videoPrompt, /Keep the intended action, expression, dialogue, speaker and required prop use intact/);
     const koreanInput = { shots: input.shots.map(s => ({
       ...s, dialogue: s.dialogue.map(d => ({ ...d, subtitleId: 'Terjemahan Indonesia.' })),
     })) };
