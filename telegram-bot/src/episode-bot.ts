@@ -1,6 +1,9 @@
 import { Markup, type Telegraf } from 'telegraf';
 import type { PgDramaStore, DramaProject } from './microdrama-store';
-import { episodeProject, newEpisode, referenceNames, type EpisodeProject } from './episode-types';
+import {
+  EPISODE_MINUTES_MAX, SHOTS_PER_MINUTE, STORY_BEAT_BATCH_SIZE, STORY_BEATS_PER_MINUTE,
+  episodeProject, newEpisode, referenceNames, type EpisodeProject,
+} from './episode-types';
 import { EpisodeEngine, type EpisodeAction } from './episode-engine';
 import { EpisodeDirector } from './episode-director';
 import { microdramaLlmKey } from './microdrama-llm';
@@ -13,6 +16,7 @@ const usd = (n: number) => `US$${n.toFixed(4)}`;
 const durations = () => Markup.inlineKeyboard([
   [1, 3, 5].map(n => Markup.button.callback(`${n} menit`, `ep:new:${n}`)),
   [10, 15, 20].map(n => Markup.button.callback(`${n} menit`, `ep:new:${n}`)),
+  [30, 60, 100].map(n => Markup.button.callback(`${n} menit`, `ep:new:${n}`)),
 ]);
 export function episodeButtons(p: EpisodeProject) {
   const e = p.episode, rows: any[][] = [], button = (label: string, action: string) => Markup.button.callback(label, `ep:${action}:${p.id}`);
@@ -38,11 +42,18 @@ export function episodeSummary(p: EpisodeProject) {
   if (e.bible) text += `\n${e.bible.title}\n${e.bible.synopsis}\n\nGaya: ${e.bible.style}\n` +
     e.bible.cast.map(c => `${c.id} • ${c.name} (${c.age}): ${c.look}\nSuara: ${c.voice}`).join('\n') +
     '\n\nLokasi:\n' + e.bible.locations.map(l => `${l.id}: ${l.description}`).join('\n');
+  if (e.bible?.arc) text += `\n\nPROLOG\n${e.bible.arc.prologue}\n\nKonflik utama\n${e.bible.arc.centralConflict}\n\nPerkembangan cerita:\n` +
+    e.bible.arc.acts.map(a => `Babak ${a.number} • beat ${a.startBeat}–${a.endBeat}: ${a.purpose} Titik balik: ${a.turningPoint}`).join('\n') +
+    `\n\nKlimaks\n${e.bible.arc.climax}\n\nEPILOG\n${e.bible.arc.epilogue}\nAkhir cerita: ${e.bible.arc.endingType === 'closed' ? 'tuntas' : 'terbuka sesuai permintaan'}`;
   if (e.phase === 'idea') text += '\nKirim ide cerita (maks. 2.000 karakter). Ide/revisi/perencanaan memakai kuota LLM. Belum ada render media.';
   if (e.phase === 'refs_quote' && e.refQuote && e.bible) text += `\n\nReferensi: ${referenceNames(e.bible).length} gambar + cadangan maksimal 2 gambar ulang.\n` +
     `Batas persetujuan: ${usd(e.refQuote * (referenceNames(e.bible).length + 2))}. Cadangan yang tidak dipakai tidak dikirim.\n`;
-  if (e.phase === 'refs_review') text += `\n\nPeriksa gambar yang dikirim. Referensi belum dikunci. Ulangi maksimal dua gambar: /episoderef char_ID atau /episoderef loc_ID. Mengunci akan mulai ${e.minutes * 2} permintaan LLM untuk naskah.`;
-  if (e.shots.length) text += `\n\nStoryboard tertulis: ${e.shots.length}/${e.minutes * 6} shot. Video diterima: ${done}/${e.minutes * 6}.\nSetiap shot 10 detik. Kontinuitas wajah memakai referensi terkunci; sambungan last-frame dibatasi dua shot.`;
+  if (e.phase === 'refs_review') {
+    const beats = e.minutes * STORY_BEATS_PER_MINUTE;
+    const calls = beats + Math.ceil(beats / STORY_BEAT_BATCH_SIZE);
+    text += `\n\nPeriksa gambar yang dikirim. Referensi belum dikunci. Ulangi maksimal dua gambar: /episoderef char_ID atau /episoderef loc_ID. Mengunci akan mulai sekitar ${calls} permintaan LLM untuk alur beat dan storyboard; kuota LLM terpisah.`;
+  }
+  if (e.shots.length) text += `\n\nStoryboard tertulis: ${e.shots.length}/${e.minutes * SHOTS_PER_MINUTE} shot. Video diterima: ${done}/${e.minutes * SHOTS_PER_MINUTE}.\nSetiap shot 10 detik. Kontinuitas wajah memakai referensi terkunci; sambungan last-frame dibatasi dua shot.`;
   if (e.phase === 'production_quote' && e.quote) text += `\n\nBatas produksi: ${usd(e.quote.total)} termasuk gambar storyboard, ${e.shots.length} video, transkripsi, dan maksimal 2 retake otomatis total.\n` +
     `Per video: ${usd(e.quote.video)} • per gambar: ${usd(e.quote.image)} • per transkripsi: ${usd(e.quote.transcript)}.\n` +
     `Di luar anggaran media, pemeriksaan membutuhkan hingga ${e.shots.length * 2 + 4} permintaan LLM (storyboard + video + cadangan retake).\n` +
@@ -56,7 +67,11 @@ export function episodeSummary(p: EpisodeProject) {
   return text;
 }
 export function episodeScript(p: EpisodeProject) {
-  return `${p.episode.bible!.title}\n${p.episode.minutes} menit • ${p.episode.shots.length} shot\n\n` +
+  const b = p.episode.bible!;
+  const arc = b.arc ? `\nPROLOG\n${b.arc.prologue}\n\nKONFLIK UTAMA\n${b.arc.centralConflict}\n\n` +
+    `BABAK CERITA\n${b.arc.acts.map(a => `${a.number}. Beat ${a.startBeat}–${a.endBeat}: ${a.purpose} Titik balik: ${a.turningPoint}`).join('\n')}\n\n` +
+    `KLIMAKS\n${b.arc.climax}\n\nEPILOG\n${b.arc.epilogue}\n\n` : '';
+  return `${b.title}\n${p.episode.minutes} menit • ${p.episode.shots.length} shot\n${arc}\n` +
     p.episode.shots.map(w => {
       const s = w.shot;
       return `SHOT ${s.number} • ${(s.number - 1) * 10}–${s.number * 10}s • ADEGAN ${s.scene + 1}\nLokasi ${s.location} • ${s.cast.join(', ')} • ${s.continuation ? 'sambung shot sebelumnya' : 'referensi terkunci'}\n` +
@@ -105,7 +120,7 @@ export function registerEpisode(
     return p?.episode ? episodeProject(p) : undefined;
   }
   async function create(ctx: any, minutes: number) {
-    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 20) return ctx.reply('Durasi harus bilangan bulat 1–20 menit. Contoh: /microdrama 7');
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > EPISODE_MINUTES_MAX) return ctx.reply(`Durasi harus bilangan bulat 1–${EPISODE_MINUTES_MAX} menit. Contoh: /microdrama 30`);
     const last = await store.latest(ctx.from.id);
     if (last && !terminal(last)) return last.episode ? present(episodeProject(last)) : ctx.reply('Selesaikan/hentikan prototipe lama melalui /microdramatest.');
     try { await present(episodeProject(await store.create(ctx.from.id, ctx.chat.id, await store.model(ctx.from.id), newEpisode(minutes)))); }
@@ -121,7 +136,7 @@ export function registerEpisode(
     if (arg) return create(ctx, Number(arg));
     const p = await current(ctx);
     if (p && !terminal(p)) return present(p);
-    return ctx.reply('Sutradara AI • episode 1–20 menit, khusus admin.\n\nPilih durasi atau ketik /microdrama 7 untuk durasi lain. Default awal 1 menit.\nBible cerita → persetujuan biaya referensi → kunci wajah/lokasi → storyboard tertulis → persetujuan anggaran → storyboard gambar, video, pemeriksaan visual + transkripsi → penyuntingan.\nBiaya LLM terpisah; belum ada render media tanpa persetujuan.', durations());
+    return ctx.reply('Sutradara AI • cerita lengkap 1–100 menit, khusus admin.\n\nPilih durasi atau ketik /microdrama 30 untuk durasi lain. Default awal 1 menit. Setiap cerita dirancang dari prolog sampai klimaks dan epilog; durasi panjang memerlukan banyak permintaan LLM dan shot.\nAlur cerita → persetujuan biaya referensi → kunci wajah/lokasi → storyboard → persetujuan anggaran → produksi dan pemeriksaan → penyuntingan.\nBiaya LLM terpisah; belum ada render media tanpa persetujuan.', durations());
   });
   bot.command('episodescript', async (ctx: any) => {
     if (!await allowed(ctx)) return;
@@ -136,7 +151,7 @@ export function registerEpisode(
     if (!referenceNames(p.episode.bible!).includes(name)) return ctx.reply('Pilih: ' + referenceNames(p.episode.bible!).join(', '));
     run(ctx, engine.act(p.id, ctx.from.id, 'redo_ref', name));
   });
-  bot.action(/^ep:new:(\d{1,2})$/, async (ctx: any) => {
+  bot.action(/^ep:new:(\d{1,3})$/, async (ctx: any) => {
     await ctx.answerCbQuery().catch(() => {});
     if (await allowed(ctx)) return create(ctx, Number(ctx.match[1]));
   });

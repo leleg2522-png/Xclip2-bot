@@ -1,6 +1,10 @@
 import { MicrodramaLlm } from './microdrama-llm';
 import { FILM_DIRECTOR_ROLE } from './film-director-role';
-import type { Bible, Episode, Quality, Shot } from './episode-types';
+import {
+  EPISODE_MINUTES_MAX, EPISODE_MINUTES_MIN, SHOTS_PER_BEAT, STORY_BEAT_BATCH_SIZE,
+  STORY_BEATS_PER_MINUTE, storyActCount, storyActRanges,
+  type Bible, type Episode, type Quality, type Shot, type StoryBeat,
+} from './episode-types';
 
 const str = (v: any, max = 1000): string => {
   if (typeof v !== 'string' || !v.trim() || v.length > max) throw new Error('DIRECTOR_FORMAT');
@@ -14,9 +18,13 @@ const json = (s: string) => {
 
 export function validateBible(value: any, minutes: number): Bible {
   const p = value;
+  if (!Number.isInteger(minutes) || minutes < EPISODE_MINUTES_MIN || minutes > EPISODE_MINUTES_MAX) throw new Error('DIRECTOR_FORMAT');
   if (!p || !Array.isArray(p.cast) || p.cast.length < 1 || p.cast.length > 2
     || !Array.isArray(p.locations) || p.locations.length < 1 || p.locations.length > 3
-    || !Array.isArray(p.beats) || p.beats.length !== minutes * 2) throw new Error('DIRECTOR_FORMAT');
+    || (p.beats !== undefined && !Array.isArray(p.beats))) throw new Error('DIRECTOR_FORMAT');
+  const totalBeats = minutes * STORY_BEATS_PER_MINUTE;
+  const sourceBeats = p.beats || [];
+  if (sourceBeats.length !== 0 && sourceBeats.length !== totalBeats) throw new Error('DIRECTOR_FORMAT');
   const cast = p.cast.map((c: any) => {
     if (!c || !Number.isInteger(c.age) || c.age < 18 || c.age > 100) throw new Error('DIRECTOR_FORMAT');
     return { id: id(c.id), name: str(c.name, 40), age: c.age, look: str(c.look, 500),
@@ -25,12 +33,42 @@ export function validateBible(value: any, minutes: number): Bible {
   const locations = p.locations.map((l: any) => ({ id: id(l?.id), description: str(l?.description, 500) }));
   const ids = new Set(cast.map((c: any) => c.id)), places = new Set(locations.map((l: any) => l.id));
   if (ids.size !== cast.length || places.size !== locations.length) throw new Error('DIRECTOR_FORMAT');
-  const beats = p.beats.map((b: any) => {
+  if (!p.arc || !Array.isArray(p.arc.acts) || p.arc.acts.length !== storyActCount(minutes)
+    || !['closed', 'open'].includes(p.arc.endingType)) throw new Error('DIRECTOR_FORMAT');
+  const acts = storyActRanges(minutes).map((range, i) => ({
+    ...range,
+    purpose: str(p.arc.acts[i]?.purpose, 300),
+    turningPoint: str(p.arc.acts[i]?.turningPoint, 300),
+  }));
+  const beats = sourceBeats.map((b: any) => {
     if (!b || !places.has(b.location) || !Array.isArray(b.cast) || b.cast.length < 1 || b.cast.length > 2
       || new Set(b.cast).size !== b.cast.length || b.cast.some((c: any) => !ids.has(c))) throw new Error('DIRECTOR_FORMAT');
     return { objective: str(b.objective, 500), location: b.location, cast: b.cast };
   });
-  return { title: str(p.title, 90), synopsis: str(p.synopsis, 1000), style: str(p.style, 500), cast, locations, beats };
+  return {
+    title: str(p.title, 90), synopsis: str(p.synopsis, 1000), style: str(p.style, 500), cast, locations,
+    arc: {
+      prologue: str(p.arc.prologue, 500), centralConflict: str(p.arc.centralConflict, 500),
+      acts, climax: str(p.arc.climax, 500), epilogue: str(p.arc.epilogue, 500),
+      endingType: p.arc.endingType,
+    },
+    beats,
+  };
+}
+
+export function validateBeatBatch(value: any, episode: Episode, start: number, count: number): StoryBeat[] {
+  const bible = episode.bible, total = episode.minutes * STORY_BEATS_PER_MINUTE;
+  if (!bible || !Number.isInteger(start) || !Number.isInteger(count) || start < 0 || count < 1
+    || count > STORY_BEAT_BATCH_SIZE || start + count > total
+    || !Array.isArray(value?.beats) || value.beats.length !== count) {
+    throw new Error('DIRECTOR_FORMAT');
+  }
+  const ids = new Set(bible.cast.map(c => c.id)), places = new Set(bible.locations.map(l => l.id));
+  return value.beats.map((b: any) => {
+    if (!b || !places.has(b.location) || !Array.isArray(b.cast) || b.cast.length < 1 || b.cast.length > 2
+      || new Set(b.cast).size !== b.cast.length || b.cast.some((c: any) => !ids.has(c))) throw new Error('DIRECTOR_FORMAT');
+    return { objective: str(b.objective, 180), location: b.location, cast: b.cast };
+  });
 }
 
 export function validateScene(value: any, e: Episode, scene: number, allowChain = false,
@@ -65,6 +103,7 @@ export function validateScene(value: any, e: Episode, scene: number, allowChain 
 
 export interface Director {
   bible(idea: string, minutes: number, model: string, previous?: Bible): Promise<Bible>;
+  beats(episode: Episode, start: number, count: number, model: string): Promise<StoryBeat[]>;
   scene(episode: Episode, scene: number, model: string): Promise<Shot[]>;
   review(model: string, instructions: string, images: Buffer[]): Promise<Quality>;
 }
@@ -94,22 +133,74 @@ export class EpisodeDirector implements Director {
       : this.language === 'zh'
         ? 'Write an authentic contemporary Chinese short-form TV drama set in China. Cast are fictional adult Chinese people. Title, synopsis, character names, beat objectives, and dialogue are in natural Simplified Chinese. Visual descriptions and production style are in English. All spoken lines must use Simplified Chinese characters.'
         : 'Write an Indonesian drama with natural Indonesian dialogue; visual descriptions are in English.';
-    const p = await this.ask(model, `You are an experienced drama director and continuity supervisor.
-Design a complete ${minutes}-minute episode: exactly ${minutes * 2} story beats of 30 seconds each, 3 ten-second shots per beat.
-Build a hook, motivated conflict, escalation, reveal and cliffhanger, not repetitive filler.
+    const p = await this.ask(model, `You are an experienced drama director and story-structure editor.
+Design one complete, self-contained ${minutes}-minute story. It will contain exactly ${minutes * STORY_BEATS_PER_MINUTE} story beats of 30 seconds each, with ${SHOTS_PER_BEAT} ten-second shots per beat.
+Plan the whole story before any scenes are written. Include a clear prologue/opening, a central conflict, ${storyActCount(minutes)} chronological acts with meaningful turning points, a decisive climax, and an epilogue showing the changed outcome.
+Default to a closed ending: resolve the central conflict, pay off the prologue, and do not finish on a cliffhanger or sequel hook. Set endingType to "open" only when the user explicitly asks for a continuing story or cliffhanger.
 1-2 adult characters only; 1-3 stable locations. ${languageRules}
-Return ONLY these keys, no shot lists or dialogue yet: {"title":"","synopsis":"","style":"","cast":[{"id":"RAKA","name":"","age":30,"look":"stable facial traits, hair, exact wardrobe","voice":"stable timbre and delivery","personality":""}],
-"locations":[{"id":"HOUSE","description":"exact visual layout, props, lighting"}],
-"beats":[{"objective":"story development and emotional change","location":"HOUSE","cast":["RAKA"]}]}.
-Limits: look/style/location description<=500 chars; voice/personality<=200; each beat objective<=180.
+Return ONLY these keys; do not generate beat lists or shots yet:
+{"title":"","synopsis":"","style":"","arc":{"prologue":"","centralConflict":"","acts":[{"purpose":"","turningPoint":""}],"climax":"","epilogue":"","endingType":"closed"},
+"cast":[{"id":"RAKA","name":"","age":30,"look":"stable facial traits, hair, exact wardrobe","voice":"stable timbre and delivery","personality":""}],
+"locations":[{"id":"HOUSE","description":"exact visual layout, props, lighting"}],"beats":[]}.
+The acts array must contain exactly ${storyActCount(minutes)} concise entries in chronological order. Limits: look/style/location description<=500 chars; voice/personality<=200; each arc item<=500 chars; act purpose/turningPoint<=300 chars.
 Target synopsis<=500 chars; hard synopsis limit 1000 chars. Keep summaries concise.
-Beats are concise outlines ONLY. NEVER include nested shots, dialogue, camera directions or extra keys in the bible.
+The saved prologue and epilogue are binding story anchors for every later beat and scene. Do not leave the ending undecided.
 Do not add characters or change clothing midway. No background extras.`, previous
-      ? `Previous bible: ${JSON.stringify(previous)}\nRevision feedback: ${idea}` : idea, [], 6000);
+      ? `Previous story bible: ${JSON.stringify(previous)}\nRevision feedback: ${idea}\nPreserve the established story arc, character identities and ending unless the feedback explicitly changes them.` : idea, [], 6000);
     return validateBible(p, minutes);
+  }
+  async beats(e: Episode, start: number, count: number, model: string): Promise<StoryBeat[]> {
+    const b = e.bible, arc = b?.arc;
+    if (!b || !arc) throw new Error('DIRECTOR_STORY_ARC_MISSING');
+    const total = e.minutes * STORY_BEATS_PER_MINUTE, end = start + count;
+    const acts = arc.acts.filter(a => a.startBeat <= end && a.endBeat >= start + 1);
+    const firstPrevious = Math.max(0, start - 8);
+    const previousBeatSummaries = b.beats.slice(firstPrevious, start).map((beat, i) => ({
+      number: firstPrevious + i + 1, ...beat,
+    }));
+    const isFinalBatch = end === total;
+    const endingRule = arc.endingType === 'closed'
+      ? 'The final story beat must execute the planned climax and epilogue, resolve the central conflict and pay off the prologue. Do not end on a cliffhanger.'
+      : 'Only because the user asked for an open ending, leave one intentional forward question after completing the planned climax.';
+    const instructions = `You are the story editor for one complete ${e.minutes}-minute drama.
+Write exactly ${count} concise chronological beat objectives for story beats ${start + 1}–${end} of ${total}. Return only {"beats":[{"objective":"","location":"HOUSE","cast":["RAKA"]}]}.
+Use the supplied prologue, central conflict, act plan, climax and epilogue as binding anchors. Every beat must causally follow previous events, change the situation, and advance its assigned act; no filler, repeated conversations or unrelated subplots.
+The first story beat must start from the prologue and introduce the inciting situation. The final beat of the whole story must reach the planned ending. ${isFinalBatch ? endingRule : 'Do not prematurely resolve the central conflict before the final act.'}
+Use only the defined cast IDs and location IDs. Each objective is <=180 characters and contains one filmable story development. Return valid JSON only.`;
+    const p = await this.ask(model, instructions, JSON.stringify({
+      title: b.title, synopsis: b.synopsis, style: b.style, arc, cast: b.cast, locations: b.locations,
+      durationMinutes: e.minutes, totalBeats: total,
+      batch: { firstBeat: start + 1, lastBeat: end, count },
+      acts, previousBeatSummaries,
+    }), [], Math.min(5000, 1500 + count * 120));
+    return validateBeatBatch(p, e, start, count);
   }
   async scene(e: Episode, scene: number, model: string) {
     const last = e.shots.at(-1)?.shot;
+    const bible = e.bible!;
+    const totalBeats = e.minutes * STORY_BEATS_PER_MINUTE;
+    const beat = bible.beats[scene];
+    if (!beat) throw new Error('DIRECTOR_FORMAT');
+    const activeActs = bible.arc?.acts.filter(a => a.startBeat <= scene + 1 && a.endBeat >= scene + 1) || [];
+    const finalBeat = scene === totalBeats - 1;
+    const arcRule = bible.arc
+      ? `The supplied full-story arc is binding. ${scene === 0 ? 'This is the opening beat: stage the prologue and establish the starting situation.' : ''} ${
+        finalBeat
+          ? bible.arc.endingType === 'closed'
+            ? 'This is the final beat: deliver the planned climax, resolve the central conflict, pay off the prologue and show the epilogue. Do not leave a cliffhanger.'
+            : 'This is the intentionally open ending requested by the user; still deliver the planned climax before the forward-looking final question.'
+          : 'Do not resolve the central conflict before the final beat.'}`
+      : '';
+    const storyContext = {
+      story: {
+        title: bible.title, synopsis: bible.synopsis, style: bible.style, arc: bible.arc || null,
+        cast: bible.cast, locations: bible.locations,
+      },
+      beatNumber: scene + 1, totalBeats, activeActs, beat,
+      previousBeat: bible.beats[scene - 1]?.objective || null,
+      nextBeat: bible.beats[scene + 1]?.objective || null,
+      previousState: last?.endState || 'Opening shot',
+    };
     const dialogueSchema = this.language === 'zh'
       ? '{"speaker":"CHAR_ID","text":"Short spoken line in Simplified Chinese"}'
       : '{"speaker":"CHAR_ID","text":"Short spoken line","subtitleId":"Indonesian translation when requested"}';
@@ -118,14 +209,13 @@ Do not add characters or change clothing midway. No background extras.`, previou
 Write exactly THREE concise ten-second shots for the requested 30-second beat.
 Return only {"shots":[{"camera":"","action":"","startState":"","endState":"","imagePrompt":"","videoPrompt":"","negativePrompt":"","continuation":false,"dialogue":[${dialogueSchema}]}]}.
 Keep the response compact but complete: camera<=300, action<=220, each state<=160, imagePrompt<=320, videoPrompt<=320, negativePrompt<=850 characters per shot; complete JSON below 12000 characters.
-Use only the beat's two adult leads and one location. Preserve exact faces, hair, wardrobe, voices, screen positions, props, and story knowledge.
+Use the supplied full-story context, current act and neighboring beat objectives to keep this scene causally connected. ${arcRule}
+Use only the beat's adult leads and one location. Preserve exact faces, hair, wardrobe, voices, screen positions, props, and story knowledge.
 Use filmable coverage; one short dialogue turn per shot, in natural Simplified Chinese, completed before 8.5 seconds. No subtitleId, subtitles, captions, extra actors, text, music, complex hand action, or wardrobe changes.
 Shot 1 and shot 3 are independent reference frames; only shot 2 may continue shot 1's last frame. Keep start/end states consistent.
 Write production-ready prompts: one primary visible action, precise blocking and framing, physically achievable motion, stable prop state, motivated lighting/camera, and clear continuity. Avoid vague adjectives, overloaded action, and contradictory directions.
 Write a bespoke negativePrompt for each shot. Prioritize 5-12 likely or costly defects for that shot; consider identity/face/wardrobe drift, anatomy/hands only when visible, prop duplication or teleportation, background extras/text, camera/motion artifacts, and wrong-speaker/lip-sync errors when dialogue exists. Aim for 500-850 characters when the shot has enough real risks; do not pad with irrelevant bans or suppress the intended action, expression, prop use, or speaker. Return valid JSON only.`;
-      const prompt = JSON.stringify({
-        bible: e.bible, scene: scene + 1, beat: e.bible!.beats[scene], previousState: last?.endState || 'Opening shot',
-      });
+      const prompt = JSON.stringify({ ...storyContext, scene: scene + 1 });
       const p = await this.ask(model, instructions, prompt, [], 6000);
       return validateScene(p, e, scene, this.chainShots, this.language);
     }
@@ -136,6 +226,7 @@ Return {"shots":[{"camera":"","action":"","startState":"","endState":"","imagePr
 ${this.chainShots
     ? 'Every shot after the episode opening MUST continue directly from the previous shot final frame. Preserve the opening framing and screen positions. Set continuation=true except for the very first episode shot. Use gentle camera motion, no resets or cuts.'
     : 'The first and third shots MUST use independent locked references (continuation=false). Only shot two may continue shot one last frame. Never build long last-frame chains.'}
+Use the supplied full-story context, current act and neighboring beat objectives to keep this scene causally connected. ${arcRule}
 Use only the beat's cast and location. Keep locked faces, wardrobe, spatial screen directions, props and character knowledge.
 Write each shot as a professional production brief: one primary visible action, explicit subject blocking and framing, motivated camera/light choices, physically achievable movement, clear start/end continuity, and only sound that supports the scene. Avoid vague adjectives, overloaded choreography, and contradictory directions.
 Use purposeful coverage/reaction shots, not repeated static conversations. Provide explicit framing, blocking, expression, camera movement, light and sound.
@@ -147,9 +238,7 @@ Prefer one speaking character and one brief line per shot; <=140 spoken dialogue
 Write a SPECIFIC negativePrompt for EACH shot, tailored to its framing, actor identities, visible hands, fixed props, motion and speaking character. Prioritize 5-12 likely or costly visible defects: face/identity/wardrobe drift; malformed anatomy or hands when visible; duplicated, missing or teleporting props; unwanted extras or text; camera/flicker/ghosting artifacts; wrong speaker or lip-sync when dialogue exists. Aim for 500-850 characters when relevant; never pad with unrelated bans, copy one generic list, contradict the action, or suppress the intended speaker.
 Be concise elsewhere: target action<=400, imagePrompt<=600, videoPrompt<=700 chars.
 Hard limits: action<=900, camera<=500, states<=400, imagePrompt<=1200, videoPrompt<=1600, negativePrompt<=1000 chars.
-State changes must be motivated by the action; no teleportation or wardrobe changes.`, JSON.stringify({
-      bible: e.bible, scene: scene + 1, beat: e.bible!.beats[scene], previousState: last?.endState || 'Opening shot',
-    }));
+State changes must be motivated by the action; no teleportation or wardrobe changes.`, JSON.stringify({ ...storyContext, scene: scene + 1 }));
     return validateScene(p, e, scene, this.chainShots, this.language);
   }
   async review(model: string, instructions: string, images: Buffer[]): Promise<Quality> {
@@ -168,11 +257,19 @@ Do not claim to verify voices, dialogue audio or frame-perfect lip-sync from sti
 
 export function lockedPrompt(e: Episode, s: Shot, video: boolean, repair = '', language: 'id' | 'ko' | 'zh' = 'id') {
   const b = e.bible!;
+  const totalBeats = e.minutes * STORY_BEATS_PER_MINUTE;
+  const arcPrompt = b.arc ? [
+    `Story throughline: ${b.arc.centralConflict}`,
+    ...(s.scene === 0 ? [`Story opening: establish the prologue and starting situation. ${b.arc.prologue}`] : []),
+    ...(s.scene === totalBeats - 1 ? [b.arc.endingType === 'closed'
+      ? `Story finale: deliver the planned climax and epilogue, resolve the central conflict and pay off the prologue. No cliffhanger. Climax: ${b.arc.climax} Epilogue: ${b.arc.epilogue}`
+      : `Intentionally open finale requested by the user. Deliver the planned climax, then leave the requested forward question. Climax: ${b.arc.climax} Epilogue: ${b.arc.epilogue}`] : []),
+  ] : [];
   return [
     `Photorealistic ${language === 'ko' ? 'Korean television drama set in Seoul with fictional adult Korean characters'
       : language === 'zh' ? 'Chinese short-form television drama set in China with fictional adult Chinese characters'
         : 'Indonesian drama'}, vertical 9:16. Preserve the exact identities from the approved individual character-reference images. No extra actors.`,
-    b.style, ...b.cast.filter(c => s.cast.includes(c.id)).map(c => `${c.id}, adult ${c.age}: ${c.look}. Voice: ${c.voice}`),
+    b.style, ...arcPrompt, ...b.cast.filter(c => s.cast.includes(c.id)).map(c => `${c.id}, adult ${c.age}: ${c.look}. Voice: ${c.voice}`),
     `Location: ${b.locations.find(l => l.id === s.location)!.description}`,
     `Start continuity: ${s.startState}`, `Camera: ${s.camera}`,
     video ? `${s.videoPrompt}\nAction: ${s.action}\nEnd continuity: ${s.endState}` : s.imagePrompt,

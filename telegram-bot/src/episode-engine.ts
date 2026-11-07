@@ -1,7 +1,10 @@
 import { DeapiRateLimitError } from './deapi-rate-limit';
 import { createHash } from 'node:crypto';
 import type { DramaProject, DramaStore } from './microdrama-store';
-import { episodeProject, referenceNames, selectedRefs, type EpisodeProject, type MediaJob, type ShotWork, type Take } from './episode-types';
+import {
+  SHOTS_PER_BEAT, SHOTS_PER_MINUTE, STORY_BEAT_BATCH_SIZE, STORY_BEATS_PER_MINUTE,
+  episodeProject, referenceNames, selectedRefs, type EpisodeProject, type MediaJob, type ShotWork, type Take,
+} from './episode-types';
 import { lockedPrompt, type Director } from './episode-director';
 import type { EpisodeApi, EpisodeRequest } from './episode-api';
 import { EpisodeMedia, dialogueIssues, parseTranscript } from './episode-media';
@@ -216,10 +219,25 @@ export class EpisodeEngine {
   }
   private async plan(p: EpisodeProject, save: () => Promise<void>) {
     const e = p.episode;
-    while (e.shots.length < e.minutes * 6) {
-      const scene = e.shots.length / 3;
-      await this.d.notify(p, `Sutradara menyusun adegan ${scene + 1}/${e.bible!.beats.length}, termasuk kamera, blocking dan kontinuitas.`);
+    const bible = e.bible!;
+    bible.beats ||= [];
+    const totalBeats = e.minutes * STORY_BEATS_PER_MINUTE;
+    while (bible.beats.length < totalBeats) {
+      const start = bible.beats.length;
+      const count = Math.min(STORY_BEAT_BATCH_SIZE, totalBeats - start);
+      await this.d.notify(p, `Sutradara menyusun alur cerita beat ${start + 1}–${start + count}/${totalBeats}, dari prolog hingga epilog.`);
+      const beats = await this.llm(p, save, `beats_${start + 1}`, () =>
+        this.d.director.beats(e, start, count, p.model));
+      if (beats.length !== count) throw new Error('DIRECTOR_FORMAT');
+      bible.beats.push(...beats);
+      await save();
+    }
+    while (e.shots.length < e.minutes * SHOTS_PER_MINUTE) {
+      if (e.shots.length % SHOTS_PER_BEAT !== 0) throw new Error('EPISODE_SHOT_ALIGNMENT');
+      const scene = e.shots.length / SHOTS_PER_BEAT;
+      await this.d.notify(p, `Sutradara menyusun adegan ${scene + 1}/${totalBeats}, termasuk kamera, blocking dan kontinuitas.`);
       const shots = await this.llm(p, save, `scene_${scene}`, () => this.d.director.scene(e, scene, p.model));
+      if (shots.length !== SHOTS_PER_BEAT) throw new Error('DIRECTOR_FORMAT');
       e.shots.push(...shots.map(shot => ({ shot, takes: [] }))); await save();
     }
     e.phase = 'script'; p.status = 'draft'; await save();

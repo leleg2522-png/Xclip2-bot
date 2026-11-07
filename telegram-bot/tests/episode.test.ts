@@ -4,8 +4,11 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { promises as fs } from 'node:fs';
 import { Telegraf } from 'telegraf';
-import { newEpisode, episodeProject, type Bible, type Episode, type EpisodeProject } from '../src/episode-types';
-import { validateBible, validateScene, lockedPrompt, EpisodeDirector, type Director } from '../src/episode-director';
+import {
+  EPISODE_MINUTES_MAX, SHOTS_PER_MINUTE, STORY_BEAT_BATCH_SIZE, STORY_BEATS_PER_MINUTE, storyActRanges,
+  newEpisode, episodeProject, type Bible, type Episode, type EpisodeProject, type StoryBeat,
+} from '../src/episode-types';
+import { validateBible, validateBeatBatch, validateScene, lockedPrompt, EpisodeDirector, type Director } from '../src/episode-director';
 import { FILM_DIRECTOR_ROLE } from '../src/film-director-role';
 import { EpisodeEngine, type EpisodeStore } from '../src/episode-engine';
 import { EpisodeMedia, parseTranscript, dialogueIssues, episodeSrt } from '../src/episode-media';
@@ -14,11 +17,20 @@ import { registerEpisode, episodeButtons, episodeSummary } from '../src/episode-
 import type { DramaProject } from '../src/microdrama-store';
 
 const clone = <T>(v: T): T => v === undefined ? v : JSON.parse(JSON.stringify(v));
-function bible(minutes = 1): Bible {
+function bible(minutes = 1, includeBeats = true): Bible {
   return validateBible({ title: 'Rahasia Rumah', synopsis: 'Raka mengetahui rahasia keluarganya.', style: 'Warm cinematic realism',
+    arc: {
+      prologue: 'Raka discovers a letter in his family home.',
+      centralConflict: 'Raka must decide whether to expose the family secret.',
+      acts: storyActRanges(minutes).map(a => ({ purpose: `Develop act ${a.number}`, turningPoint: `Turn ${a.number}` })),
+      climax: 'Raka confronts the person who hid the truth.',
+      epilogue: 'The secret is resolved and Raka chooses a new path.',
+      endingType: 'closed',
+    },
     cast: [{ id: 'RAKA', name: 'Raka', age: 30, look: 'Short black hair, navy shirt, square face', voice: 'Low calm male voice', personality: 'Protective' }],
     locations: [{ id: 'HOUSE', description: 'Small living room, wooden table, amber lamp on the left' }],
-    beats: Array.from({ length: minutes * 2 }, (_, i) => ({ objective: `Emotional development ${i}`, location: 'HOUSE', cast: ['RAKA'] })) }, minutes);
+    beats: includeBeats ? Array.from({ length: minutes * STORY_BEATS_PER_MINUTE }, (_, i) =>
+      ({ objective: `Emotional development ${i}`, location: 'HOUSE', cast: ['RAKA'] })) : [] }, minutes);
 }
 function scene(e: Episode, n: number) {
   return validateScene({ shots: [0, 1, 2].map(i => ({ camera: 'Medium close-up, static camera',
@@ -56,6 +68,13 @@ function fixture() {
   const jobs = new Map<string, EpisodeRequest>();
   const director: Director = {
     async bible(idea, minutes) { seen.writes++; return bible(minutes); },
+    async beats(e, start, count) {
+      const b = e.bible!;
+      return Array.from({ length: count }, (_, i) => b.beats[start + i] || {
+        objective: `Beat ${start + i + 1} advances the conflict.`,
+        location: b.locations[0].id, cast: [b.cast[0].id],
+      });
+    },
     async scene(e, n) { return scene(e, n); },
     async review(model, instructions) {
       const bad = instructions.startsWith('Storyboard') ? seen.badStory-- > 0 : seen.badVideo-- > 0;
@@ -81,7 +100,7 @@ function fixture() {
       const key = `${id}_${shot}_${take}`; if (bytes) cache.set(key, key); return cache.get(key);
     },
     async frame() { return Buffer.from('lastframe'); }, async audio() { return Buffer.from('audio'); }, async probe() {},
-    async assemble(p: EpisodeProject, files: string[]) { assert.equal(files.length, p.episode.minutes * 6); return { video: 'episode.mp4', subtitles: 'episode.srt' }; },
+    async assemble(p: EpisodeProject, files: string[]) { assert.equal(files.length, p.episode.minutes * SHOTS_PER_MINUTE); return { video: 'episode.mp4', subtitles: 'episode.srt' }; },
     async cleanup() {},
   };
   const deps = { store, api, director, media: media as any as EpisodeMedia, authorized: async () => seen.authorized,
@@ -99,14 +118,42 @@ async function prepared(f: ReturnType<typeof fixture>, minutes = 1) {
   return f.store.get(p.id);
 }
 async function workflow() {
-  for (const n of [1, 2, 7, 20]) {
+  for (const n of [1, 2, 7, 15, 20, 30, 100]) {
     const e = newEpisode(n); e.bible = bible(n);
     assert.equal(e.bible.beats.length, n * 2);
+    assert.equal(e.bible.arc!.acts.length, n < 3 ? 2 : Math.min(5, Math.max(2, Math.ceil(n / 3))));
+    assert.ok(e.bible.arc!.prologue && e.bible.arc!.epilogue);
     for (let s = 0; s < n * 2; s++) e.shots.push(...scene(e, s).map(shot => ({ shot, takes: [] })));
-    assert.equal(e.shots.length, n * 6);
-    assert.equal(e.shots.filter(w => w.shot.continuation).length, n * 2);
+    assert.equal(e.shots.length, n * SHOTS_PER_MINUTE);
+    assert.equal(e.shots.filter(w => w.shot.continuation).length, n * STORY_BEATS_PER_MINUTE);
   }
-  for (const n of [0, 21, 1.5, NaN]) assert.throws(() => newEpisode(n));
+  for (const n of [0, EPISODE_MINUTES_MAX + 1, 1.5, NaN]) assert.throws(() => newEpisode(n));
+  {
+    const f = fixture(), p = await f.store.create(42, 42, 'gpt-6-luna', newEpisode(100));
+    p.episode.bible = bible(100, false); p.episode.refsLocked = true; p.episode.phase = 'planning';
+    f.store.rows.set(p.id, clone(p));
+    const starts: number[] = []; let interrupted = false;
+    f.director.beats = async (e, start, count) => {
+      starts.push(start);
+      if (start === 10 && !interrupted) { interrupted = true; throw new Error('fixture interruption'); }
+      const b = e.bible!;
+      return Array.from({ length: count }, (_, i) => ({
+        objective: `Beat ${start + i + 1} advances the conflict.`,
+        location: b.locations[0].id, cast: [b.cast[0].id],
+      }));
+    };
+    await f.engine.act(p.id, 42, 'plan');
+    assert.equal(f.store.get(p.id).episode.bible!.beats.length, 10, 'Completed story-outline batches persist before the next request');
+    assert.equal(f.store.get(p.id).episode.shots.length, 0, 'Storyboard generation waits until the complete beat map exists');
+    await f.engine.act(p.id, 42, 'recover');
+    await f.engine.act(p.id, 42, 'resume');
+    const done = f.store.get(p.id).episode;
+    assert.equal(done.bible!.beats.length, 200);
+    assert.equal(done.shots.length, 600);
+    assert.equal(starts[0], 0);
+    assert.equal(starts.filter(x => x === 0).length, 1, 'Resume must not regenerate a saved beat batch');
+    assert.equal(starts.filter(x => x === 10).length, 2, 'Only the ambiguous batch is explicitly resumed');
+  }
   {
     const f = fixture(), p = await prepared(f);
     await f.engine.act(p.id, 42, 'render');
@@ -196,9 +243,20 @@ async function workflow() {
     f.director.bible = async () => bible(1); await f.engine.act(p.id, 42, 'write', 'story');
     assert.equal(f.store.get(p.id).episode.phase, 'bible');
   }
-  console.log('PASS 1–20 minute planning, approvals, reference locking, replay safety, budgets, pause/resume, QA, retakes, delivery and roles');
+  console.log('PASS 1–100 minute story planning, approvals, reference locking, replay safety, budgets, pause/resume, QA, retakes, delivery and roles');
 }
 async function contracts() {
+  {
+    const e = newEpisode(100); e.bible = bible(100, false);
+    const batch = Array.from({ length: STORY_BEAT_BATCH_SIZE }, (_, i) => ({
+      objective: `Beat ${i + 1} advances the central conflict.`,
+      location: 'HOUSE', cast: ['RAKA'],
+    }));
+    assert.equal(validateBeatBatch({ beats: batch }, e, 0, STORY_BEAT_BATCH_SIZE).length, STORY_BEAT_BATCH_SIZE);
+    assert.throws(() => validateBeatBatch({ beats: batch.slice(0, -1) }, e, 0, STORY_BEAT_BATCH_SIZE));
+    assert.throws(() => validateBeatBatch({ beats: batch }, e, 191, STORY_BEAT_BATCH_SIZE));
+    assert.throws(() => validateBeatBatch({ beats: batch.map(b => ({ ...b, cast: ['UNKNOWN'] })) }, e, 0, STORY_BEAT_BATCH_SIZE));
+  }
   {
     const e = newEpisode(1); e.bible = bible();
     const messages: any[] = [];
@@ -222,9 +280,16 @@ async function contracts() {
       assert.match(m[0].content, /CURRENT TASK:/);
     }
     assert.match(messages[0][0].content, /authentic contemporary Korean TV drama/);
+    assert.match(messages[0][0].content, /prologue\/opening/);
+    assert.match(messages[0][0].content, /epilogue showing the changed outcome/);
+    assert.match(messages[0][0].content, /do not finish on a cliffhanger/);
     assert.match(messages[1][0].content, /subtitleId/);
     assert.match(messages[1][0].content, /professional production brief/);
     assert.match(messages[1][0].content, /5-12 likely or costly visible defects/);
+    const sceneContext = JSON.parse(messages[1][1].content);
+    assert.equal(sceneContext.story.arc.prologue, 'Raka discovers a letter in his family home.');
+    assert.equal(sceneContext.story.arc.epilogue, 'The secret is resolved and Raka chooses a new path.');
+    assert.equal(sceneContext.beatNumber, 1);
   }
   {
     const e = newEpisode(1); e.bible = bible();
@@ -245,6 +310,9 @@ async function contracts() {
     assert.match(messages[1][0].content, /No subtitleId, subtitles, captions/);
     assert.match(messages[1][0].content, /negativePrompt<=850 characters per shot/);
     assert.match(messages[1][0].content, /5-12 likely or costly defects for that shot/);
+    assert.match(messages[1][0].content, /supplied full-story context/);
+    assert.match(messages[1][0].content, /opening beat: stage the prologue/);
+    assert.ok(JSON.parse(messages[1][1].content).story.arc.epilogue);
   }
   {
     const e = newEpisode(1); e.bible = bible();
@@ -342,9 +410,13 @@ async function telegram() {
     }
     await message('/microdrama 7'); assert.equal((await f.store.latest(42))?.episode?.minutes, 7);
     await message('Rahasia surat di ruang tamu.'); assert.equal((await f.store.latest(42))?.episode?.phase, 'bible');
-    await message('/microdrama 21', 43); assert.equal(await f.store.latest(43), undefined);
+    await message('/microdrama 101', 43); assert.equal(await f.store.latest(43), undefined);
     await message('/microdrama 1', 44, 'group'); assert.equal(await f.store.latest(44), undefined);
     admin = false; await message('/microdrama 1', 45); assert.equal(await f.store.latest(45), undefined);
+    admin = true; await message('/microdrama', 47);
+    assert.ok(JSON.stringify(sent).includes('ep:new:100'), 'Duration menu exposes the 100-minute option');
+    await message('/microdrama 100', 46);
+    assert.equal((await f.store.latest(46))?.episode?.minutes, 100, 'The Telegram command accepts 100 minutes');
     const p = f.store.get((await f.store.latest(42))!.id);
     assert.ok(JSON.stringify(episodeButtons(p)).includes('quote_refs')); assert.ok(episodeSummary(p).includes('7 menit'));
     assert.ok(!JSON.stringify(sent).includes('parse_mode'), 'Model text must remain plain Telegram text');

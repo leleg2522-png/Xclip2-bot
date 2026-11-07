@@ -3,24 +3,29 @@
 This feature is part of the existing XclipAI bot. It does not expose a public
 menu or call any customer saldo deduction/refund functions.
 
-## Episode 1–20 menit
+## Episode 1–100 menit
 
 `/microdrama` atau `/episode` membuka sutradara episode. Pilih tombol durasi
-atau ketik `/microdrama 7`; semua bilangan bulat 1–20 didukung. Pilihan awal
+atau ketik `/microdrama 30`; semua bilangan bulat 1–100 didukung. Pilihan awal
 yang disarankan 1 menit. Status: `/microdramastatus`.
 
-1. Kirim ide. Botelexkey (`claude-fable-5.1`) menyusun bible (alur, wajah/pakaian/suara karakter,
-   lokasi, gaya visual). Revisi bible tersedia sebelum membuat referensi.
+1. Kirim ide. Botelexkey (`claude-fable-5.1`) menyusun bible (alur lengkap,
+   wajah/pakaian/suara karakter, lokasi, gaya visual). Revisi bible tersedia
+   sebelum membuat referensi.
 2. Minta estimasi dan setujui **biaya referensi**. Gambar menggunakan FLUX.2
    Klein; maksimal dua karakter dewasa dan tiga lokasi. Ada cadangan dua
    gambar ulang yang hanya dikirim bila diminta.
 3. Periksa gambar di Telegram. `/episoderef char_ID` atau
    `/episoderef loc_ID` mengulang gambar dalam cadangan tersebut. Kunci
    referensi untuk memulai penulisan storyboard.
-4. Sutradara menulis dua adegan per menit, tiga shot per adegan, sepuluh
-   detik per shot: **6–120 shot**. Kamera, blocking, kondisi awal/akhir,
-   dialog dan kedua prompt disimpan per shot. Unduh melalui
-   `/episodescript`. Ini storyboard **tertulis**, bukan gambar hasil render.
+4. Sutradara merancang prolog, konflik, babak, klimaks, dan epilog terlebih
+   dahulu. Secara default konflik terselesaikan dan cerita berakhir tuntas;
+   akhir terbuka hanya jika diminta pengguna. Beat cerita disusun per batch
+   sepuluh dan disimpan sebelum storyboard dibuat. Dua beat per menit, tiga
+   shot per beat, sepuluh detik per shot menghasilkan **6–600 shot**.
+   Kamera, blocking, kondisi awal/akhir, dialog dan kedua prompt disimpan per
+   shot. Unduh melalui `/episodescript`. Ini storyboard **tertulis**, bukan
+   gambar hasil render.
 5. Minta estimasi **produksi** dan setujui batas USD. Estimasi mencakup
    gambar storyboard, video MiniMax, transkripsi, dan maksimal dua retake
    total. Harga actual dicek lagi sebelum tiap submit. Quote gambar memakai
@@ -46,6 +51,9 @@ yang disarankan 1 menit. Status: `/microdramastatus`.
 **Biaya:** persetujuan quote berlaku sepuluh menit. Batas USD hanya untuk
 media, bukan tagihan LLM. Bible, revisi, naskah, dan pemeriksaan vision memakai
 kuota LLM terpisah; jumlah permintaan ditampilkan. Saldo bot tidak dipotong.
+Untuk 100 menit, outline berisi 200 beat dan storyboard 600 shot; penyusunan
+outline dan storyboard saja memerlukan sekitar 220 permintaan LLM, belum
+termasuk bible, revisi, atau pemeriksaan kualitas.
 Reservasi biaya konservatif tidak dibatalkan hanya karena respons submit
 hilang; biaya provider yang sudah terpakai tidak otomatis kembali.
 
@@ -80,7 +88,7 @@ ditimpa menjadi episode. Satu admin hanya boleh mempunyai satu proyek aktif.
 ### Verifikasi lokal
 
 - `pnpm --dir telegram-bot run test:episode`: perjalanan Telegram offline,
-  rentang durasi, budget, locking referensi, paid-submit safety, retake/QA,
+  durasi 1–100 menit, penyimpanan/resume batch cerita, budget, locking referensi, paid-submit safety, retake/QA,
   pemulihan, dan penyuntingan FFmpeg **60 detik** memakai media sintetis.
 - `pnpm --dir telegram-bot run test:microdrama`: regresi prototipe lama.
 - `pnpm --dir telegram-bot run test:microdrama-pg`: schema sementara di
