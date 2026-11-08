@@ -62,8 +62,10 @@ for (const ratio of ['9:16', '16:9'] as const) {
 assert.equal(FLORA_480_VIDEO_MODELS.seedance_2_480.autoUpscale, true);
 assert.equal(FLORA_480_VIDEO_MODELS.seedance_2_480.label, 'Seedance 2 Uncensored');
 assert.equal(FLORA_480_VIDEO_MODELS.seedance_2_480.deliveryResolution, '1080p');
-assert.equal(FLORA_480_VIDEO_MODELS.seedance_2_5_480.autoUpscale, false);
-assert.equal(FLORA_480_VIDEO_MODELS.seedance_2_5_480.deliveryResolution, '480p');
+assert.equal(FLORA_480_VIDEO_MODELS.seedance_2_5_480.label, 'Seedance 2.5 Uncensored');
+assert.equal(FLORA_480_VIDEO_MODELS.seedance_2_5_480.autoUpscale, true);
+assert.equal(FLORA_480_VIDEO_MODELS.seedance_2_5_480.mandatoryUpscale, true);
+assert.equal(FLORA_480_VIDEO_MODELS.seedance_2_5_480.deliveryResolution, '1K');
 for (const duration of [10, 15, 30]) {
   assert.deepEqual(buildFlora480VideoParams('seedance_2_5_480', imageUrl, '9:16', duration), {
     image_url: imageUrl,

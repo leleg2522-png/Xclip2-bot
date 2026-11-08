@@ -48,6 +48,8 @@ assert.match(autoUpscale, /resolution: '1080p'/);
 assert.match(autoUpscale, /normalize: normalizeFlora1080/);
 assert.match(autoUpscale, /pollForResult\(taskId, userId, key, pollUrl, 120\)/);
 assert.doesNotMatch(autoUpscale, /getNextFloraKey|floraUploadVideo|floraGenerate|floraPollRun|generateFlora1080/);
+assert.match(source, /Seedance 2\.5 Uncensored/);
+assert.match(source, /if \(config\.mandatoryUpscale && !finalVideo\.upscaled\)/);
 assert.match(source, /if \(!delivered && finalVideo\.upscaled\)/);
 
 console.log('ByteDance Upscaler 1K Renderful pool contract checks passed.');

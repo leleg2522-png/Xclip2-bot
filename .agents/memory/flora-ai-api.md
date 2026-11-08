@@ -172,3 +172,17 @@ catalog capabilities do not establish input-duration limits.
 **How to apply:** Resolve the video URL field and its scalar/array type from the
 account's live model catalog. If the field is absent, skip before submit rather
 than guessing. Validate the documented minimum without inventing a maximum.
+
+## Flora Seedance 2.5 Uncensored delivery
+
+The Flora Seedance 2.5 product is publicly named **Seedance 2.5 Uncensored**.
+Its native 480p result must pass through Renderful's ByteDance upscaler to the
+public 1K tier (Renderful's API value is 1080p). Do not deliver the native 480p
+video if upscaling or delivery fails; refund the full generation charge.
+
+**Why:** The user explicitly requested the Uncensored product name and mandatory
+1K finishing through Renderful for this Flora route.
+
+**How to apply:** Keep the existing per-second tariff and Flora generation inputs.
+Reuse the Renderful key pool and accepted-job safety rules; never resubmit a
+Flora or Renderful job after an ambiguous/accepted submit.

@@ -8,6 +8,7 @@ type Flora480VideoConfig = {
   durationOptionsSeconds?: readonly number[];
   resolution: '480P' | '480p';
   autoUpscale: boolean;
+  mandatoryUpscale?: boolean;
   deliveryResolution: '1K' | '1080p' | '480p';
 };
 
@@ -34,11 +35,12 @@ export const FLORA_480_VIDEO_MODELS: Record<Flora480VideoModelKey, Flora480Video
     deliveryResolution: '1080p',
   },
   seedance_2_5_480: {
-    label: 'Seedance 2.5 Draft',
+    label: 'Seedance 2.5 Uncensored',
     durationOptionsSeconds: [10, 15, 30],
     resolution: '480p',
-    autoUpscale: false,
-    deliveryResolution: '480p',
+    autoUpscale: true,
+    mandatoryUpscale: true,
+    deliveryResolution: '1K',
   },
 };
 

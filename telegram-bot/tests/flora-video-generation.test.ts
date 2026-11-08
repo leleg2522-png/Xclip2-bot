@@ -17,13 +17,15 @@ const end = source.indexOf('// ─── Background: Flora image generation', st
 assert.ok(start > 0 && end > start);
 const runnerSource = source.slice(start, end);
 assert.match(runnerSource, /await upscaleGeneratedVideo\(resultUrl, userId, chatId, statusMsgId\)/);
-assert.match(runnerSource, /if \(!delivered && finalVideo\.upscaled\)/);
+assert.match(runnerSource, /if \(!delivered && finalVideo\.upscaled && !config\.mandatoryUpscale\)/);
 assert.match(source, /flora_minimax_h3_480:\s*10000/);
 assert.match(source, /flora_wan_v3_480:\s*15000/);
 assert.match(source, /flora_seedance_2_480:\s*15000/);
 assert.match(source, /flora_seedance_2_5_480_per_second:\s*1500/);
-assert.match(source, /Seedance 2\.5 Draft • 480p • 10\/15\/30 detik/);
-assert.match(source, /Seedance 2\.5 Draft \(480p · 10\/15\/30 detik\)/);
+assert.match(source, /Seedance 2\.5 Uncensored • 480p → 1K • 10\/15\/30 detik/);
+assert.match(source, /Seedance 2\.5 Uncensored \(480p → 1K · 10\/15\/30 detik\)/);
+assert.match(source, /if \(config\.mandatoryUpscale && !finalVideo\.upscaled\)/);
+assert.match(source, /if \(config\.mandatoryUpscale && !delivered\)/);
 assert.match(source, /Seedance 2 Uncensored • 15 detik • 1080p/);
 assert.match(source, /Seedance 2 Uncensored \(15 detik · 1080p\)/);
 assert.doesNotMatch(source, /Seedance 2\.0 480p/);
@@ -456,10 +458,10 @@ async function main() {
       resolution: '480p',
       aspect_ratio: '9:16',
     });
-    assert.deepEqual(draft.events.order, ['poll', 'deliver'], 'Draft must deliver native 480p without upscaling');
-    assert.equal(draft.events.upscales.length, 0);
-    assert.equal(draft.events.deliveries[0].url, 'https://provider.example.test/run-draft prompt.mp4');
-    assert.match(draft.events.deliveries[0].caption, new RegExp(`Seedance 2\\.5 Draft.*${duration} detik.*480p`));
+    assert.deepEqual(draft.events.order, ['poll', 'upscale', 'deliver']);
+    assert.equal(draft.events.upscales.length, 1);
+    assert.equal(draft.events.deliveries[0].url, 'https://provider.example.test/run-draft prompt-1k.mp4');
+    assert.match(draft.events.deliveries[0].caption, new RegExp(`Seedance 2\\.5 Uncensored.*${duration} detik.*1K`));
     assert.deepEqual(draft.events.refunds, []);
     assert.deepEqual(draft.events.successes, [1]);
     assert.deepEqual(draft.events.releases, [1]);
@@ -470,14 +472,31 @@ async function main() {
   );
   assert.deepEqual(withReferenceVideo.events.charges, [22500]);
   assert.deepEqual(withReferenceVideo.events.videoUploads, [{ key: 'key-a', mime: 'video/mp4' }]);
-  assert.deepEqual(withReferenceVideo.events.order, ['poll', 'deliver']);
-  assert.equal(withReferenceVideo.events.upscales.length, 0);
+  assert.deepEqual(withReferenceVideo.events.order, ['poll', 'upscale', 'deliver']);
+  assert.equal(withReferenceVideo.events.upscales.length, 1);
+  assert.equal(withReferenceVideo.events.deliveries[0].url, 'https://provider.example.test/run-follow video motion-1k.mp4');
+  assert.match(withReferenceVideo.events.deliveries[0].caption, /Seedance 2\.5 Uncensored.*1K/);
   assert.equal(withReferenceVideo.events.submissions.length, 1);
   assert.equal(withReferenceVideo.events.submissions[0].params.video_urls[0],
     'https://provider.example.test/video-reference.mp4');
   assert.equal(withReferenceVideo.events.submissions[0].params.duration, '15');
   assert.deepEqual(withReferenceVideo.events.refunds, []);
   assert.deepEqual(withReferenceVideo.events.releases, [3]);
+
+  const requiredUpscaleFailed = harness({ upscale: false });
+  await requiredUpscaleFailed.run('seedance_2_5_480', 5, 'uncensored upscale failure', '9:16', 10);
+  assert.deepEqual(requiredUpscaleFailed.events.order, ['poll', 'upscale']);
+  assert.equal(requiredUpscaleFailed.events.deliveries.length, 0, 'never send native 480p as fallback');
+  assert.deepEqual(requiredUpscaleFailed.events.refunds, [15000]);
+  assert.deepEqual(requiredUpscaleFailed.events.successes, []);
+
+  const requiredDeliveryFailed = harness({ deliver: false });
+  await requiredDeliveryFailed.run('seedance_2_5_480', 6, 'uncensored delivery failure', '9:16', 10);
+  assert.deepEqual(requiredDeliveryFailed.events.deliveries.map(d => d.url), [
+    'https://provider.example.test/run-uncensored delivery failure-1k.mp4',
+  ], 'do not send native 480p when 1K delivery fails');
+  assert.deepEqual(requiredDeliveryFailed.events.refunds, [15000]);
+  assert.deepEqual(requiredDeliveryFailed.events.successes, []);
 
   const referenceParamUnavailable = harness({
     catalog: () => ({
