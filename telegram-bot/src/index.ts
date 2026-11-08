@@ -2731,7 +2731,7 @@ function videoModelRows() {
     [Markup.button.callback('MiniMax H3 Uncensored • 15 detik • hingga 1K', 'mode_flora_minimax_h3_480')],
     [Markup.button.callback('Wan 3.0 Uncensored • 30 detik • hingga 1K', 'mode_flora_wan_v3_480')],
     [Markup.button.callback('Seedance 2 Uncensored • 15 detik • 1080p', 'mode_flora_seedance_2_480')],
-    [Markup.button.callback('Seedance 2.5 Uncensored • 480p → 1K • 10/15/30 detik', 'mode_flora_seedance_2_5_480')],
+    [Markup.button.callback('Seedance 2.5 Uncensored • 1K • 10/15/30 detik', 'mode_flora_seedance_2_5_480')],
     [Markup.button.callback('🎬 Kling 2.1 Pro (10 detik)', 'mode_kling21')],
     [Markup.button.callback('🎬 Kling 2.1 P2 (10 detik)', 'mode_kling21p2')],
     [Markup.button.callback('✨ Gemini Omni Flash 1.1 • 10 detik • 1080p', 'mode_gomni11_flora')],
@@ -3336,7 +3336,7 @@ function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false 
     `• MiniMax H3 Uncensored (15 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.flora_minimax_h3_480)}\n` +
     `• Wan 3.0 Uncensored (30 detik · hingga 1K) — ${formatRupiah(MODEL_PRICES.flora_wan_v3_480)}\n` +
     `• Seedance 2 Uncensored (15 detik · 1080p) — ${formatRupiah(MODEL_PRICES.flora_seedance_2_480)}\n` +
-    `• Seedance 2.5 Uncensored (480p → 1K · 10/15/30 detik) — ${formatRupiah(MODEL_PRICES.flora_seedance_2_5_480_per_second)}/detik\n` +
+    `• Seedance 2.5 Uncensored (1K · 10/15/30 detik) — ${formatRupiah(MODEL_PRICES.flora_seedance_2_5_480_per_second)}/detik\n` +
     Object.entries(CHINA_VIDEO_MODELS).filter(([key]) => !isRetiredVideoCallback(`mode_china_${key}`)).map(([, config]) =>
       `• ${config.label} (${config.duration} detik · ${config.resolution}) — ${formatRupiah(config.price)}`
     ).join('\n') + '\n' +
@@ -4922,8 +4922,8 @@ bot.on('callback_query', async (ctx) => {
       floraSeedance25480VideoPending: false,
     });
     return ctx.editMessageText(
-      `🎬 *Seedance 2.5 Uncensored • 480p → 1K*\n\n` +
-      `Image to Video · *native 480p, wajib upscale ke 1K*\n` +
+      `🎬 *Seedance 2.5 Uncensored • 1K*\n\n` +
+      `Image to Video · *hasil 1K*\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.flora_seedance_2_5_480_per_second)} per detik* ` +
       `(10 detik ${formatRupiah(10 * MODEL_PRICES.flora_seedance_2_5_480_per_second)}, ` +
       `15 detik ${formatRupiah(15 * MODEL_PRICES.flora_seedance_2_5_480_per_second)}, ` +
@@ -4954,7 +4954,7 @@ bot.on('callback_query', async (ctx) => {
       floraSeedance25480VideoDuration: undefined,
     });
     return ctx.editMessageText(
-      `🎬 *Seedance 2.5 Uncensored • 480p → 1K*\n\nRasio: *${ratio}* · hasil 1K\n\n` +
+      `🎬 *Seedance 2.5 Uncensored • 1K*\n\nRasio: *${ratio}* · hasil 1K\n\n` +
       '*Langkah 2:* Kirim *foto acuan* untuk video kamu.',
       { parse_mode: 'Markdown' }
     );
