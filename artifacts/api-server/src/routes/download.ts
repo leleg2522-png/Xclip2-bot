@@ -10,6 +10,7 @@ const ALLOWED = new Set([
   "picsart-local-runner.zip",
   "proof-login.js",
   "run.bat",
+  "cio-dracin-menit-01.mp4",
 ]);
 
 router.get("/download/:name", (req, res) => {
@@ -23,7 +24,9 @@ router.get("/download/:name", (req, res) => {
     res.status(404).json({ error: "missing" });
     return;
   }
-  const type = name.endsWith(".zip")
+  const type = name.endsWith(".mp4")
+    ? "video/mp4"
+    : name.endsWith(".zip")
     ? "application/zip"
     : name.endsWith(".js")
       ? "application/javascript"
