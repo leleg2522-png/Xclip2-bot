@@ -11,6 +11,7 @@ const ALLOWED = new Set([
   "proof-login.js",
   "run.bat",
   "cio-dracin-menit-01.mp4",
+  "cio-dracin-menit-02.mp4",
 ]);
 
 router.get("/download/:name", (req, res) => {

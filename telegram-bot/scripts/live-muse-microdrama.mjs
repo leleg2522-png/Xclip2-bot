@@ -24,12 +24,15 @@ const originalDir = path.resolve(import.meta.dirname, '../../generated-artifacts
 const generatedRoot = path.resolve(import.meta.dirname, '../../generated-artifacts');
 const outputArg = process.argv.find(arg => arg.startsWith('--output-dir='));
 const planFileArg = process.argv.find(arg => arg.startsWith('--plan-file='));
+const startFrameArg = process.argv.find(arg => arg.startsWith('--start-frame='));
 const defaultDir = mandarinDrama ? path.resolve(generatedRoot, 'microdrama-china-muse')
   : koreanDrama ? path.resolve(generatedRoot, 'muse-korean-drama')
   : claudeDriven ? originalDir + '-claude-negatives'
   : strictQuality ? originalDir + '-strict'
   : chainEndFrames ? originalDir + '-chained' : originalDir;
 const dir = outputArg ? path.resolve(generatedRoot, outputArg.slice('--output-dir='.length)) : defaultDir;
+const startFrame = startFrameArg
+  ? path.resolve(generatedRoot, startFrameArg.slice('--start-frame='.length)) : null;
 if (outputArg) {
   const relative = path.relative(generatedRoot, dir);
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw Error('MUSE_OUTPUT_DIR_INVALID');
@@ -39,6 +42,15 @@ if (planFileArg) {
   const selectedPlan = path.resolve(generatedRoot, planFileArg.slice('--plan-file='.length));
   const relative = path.relative(generatedRoot, selectedPlan);
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw Error('MUSE_PLAN_FILE_INVALID');
+}
+if (startFrame) {
+  const relative = path.relative(generatedRoot, startFrame);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw Error('MUSE_START_FRAME_INVALID');
+  if (!['.png', '.jpg', '.jpeg', '.webp'].includes(path.extname(startFrame).toLowerCase())) {
+    throw Error('MUSE_START_FRAME_EXTENSION_INVALID');
+  }
+  const stat = await fs.stat(startFrame).catch(() => null);
+  if (!stat?.isFile() || !stat.size || stat.size > 10 * 1024 * 1024) throw Error('MUSE_START_FRAME_INVALID');
 }
 const base = 'https://api.snapgen.ai/uapi/v1';
 const key = process.env.SNAPGEN_API_KEY;
@@ -99,7 +111,9 @@ if (claudeDriven) {
   directorPrompt = lockedPrompt;
 }
 function buildPrompt(i) {
-  const continuity = chainEndFrames && i > 0
+  const continuity = i === 0 && startFrame
+    ? '\nMINUTE CONTINUITY: The attached image is the exact final frame of the previous minute and is for continuity only. Start from this exact composition; preserve both faces, clothing, props, lighting and setting. Continue the next story beat naturally. Do not add an opening, reset, fade, new location, or change either actor.\n'
+    : chainEndFrames && i > 0
     ? '\nCONTINUITY: The attached image is the exact final frame of the preceding scene. Begin at this exact image composition: same camera angle, positions, poses, faces, clothing, props, lighting and background. Continue movement naturally from that instant. Do not restart the encounter or reset the actors. After the opening moment, develop the next story beat below. No establishing shot, no fade, no opening transition.\n'
     : '\n';
   if (claudeDriven) {
@@ -116,7 +130,7 @@ function buildPrompt(i) {
         ? '\nSPEECH: Speak only the specified shot dialogue in natural Simplified Mandarin. No paraphrasing, extra speech, narration, or music. Do not render subtitles, captions or on-screen text; this video must remain subtitle-free.\n'
         : '\nSPEECH: Speak only the specified shot dialogue in natural Simplified Mandarin. No paraphrasing, extra speech, narration, or music. Do not render subtitles or on-screen text; Indonesian subtitles are added separately from the recorded audio.\n'
         : '')
-      + (i === 0 ? `\nOpening-frame composition from the director: ${shot.imagePrompt}` : '')
+      + (i === 0 ? `\n${startFrame ? 'Continuation-frame' : 'Opening-frame'} composition from the director: ${shot.imagePrompt}` : '')
       + '\nUse only natural quiet room ambience. The named adult characters are the only people in view.';
   }
   const cast = strictQuality
@@ -131,6 +145,7 @@ if (dryRun) {
     strictQuality, chainEndFrames, paidSubmissions: 0,
     noSubtitles,
     outputDir: outputArg?.slice('--output-dir='.length) || null,
+    startFrameReference: startFrame ? path.basename(startFrame) : null,
     newScenes: claudeDriven || koreanDrama || strictQuality ? 6 : chainEndFrames ? 5 : 6,
     prompts: Array.from({length:6},(_,i) => buildPrompt(i)),
   }, null, 2));
@@ -168,6 +183,7 @@ async function scene(i) {
       negativePrompt: claudeShots[i].negativePrompt,
       ...(koreanDrama ? { approvedCharacterReferences: characterRefs.map(f => path.basename(f)) } : {}),
     } : {}),
+      ...(i === 0 && startFrame ? { referenceFile: path.basename(startFrame) } : {}),
   };
   const file = path.join(dir, `scene-${i+1}.mp4`);
   if (s.failed) throw Error(`SCENE_${i+1}_PREVIOUSLY_FAILED_${s.errorCode}`);
@@ -179,6 +195,11 @@ async function scene(i) {
     body.set('duration','10'); body.set('orientation','portrait');
     for (const reference of characterRefs) {
       body.append('files', new Blob([await fs.readFile(reference)], { type:'image/jpeg' }), path.basename(reference));
+    }
+    if (i === 0 && startFrame) {
+      const ext = path.extname(startFrame).toLowerCase();
+      const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+      body.append('files', new Blob([await fs.readFile(startFrame)], { type:mime }), path.basename(startFrame));
     }
     if (i > 0) {
       let reference = 'cast-reference.jpg';

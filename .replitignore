@@ -4,4 +4,5 @@
 # No need to store the pnpm store twice.
 .local
 /generated-artifacts/
+/artifacts/api-server/downloads/cio-dracin-menit-02.mp4
 /artifacts/api-server/downloads/cio-dracin-menit-01.mp4

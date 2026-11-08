@@ -100,6 +100,12 @@ courier's helmet/jacket and visible wardrobe variation in extracted scene frames
 observed quality issues, not guaranteed prompt fixes. Do not spend credits on
 regeneration without explicit user approval.
 
+An uploaded MUSE reference image may guide a clip without preserving its exact composition as the first frame.
+
+**Why:** In a minute-to-minute drama continuation, the first MUSE clip received the prior minute's final frame as an image reference, but its first decoded frame reversed the two leads' screen positions while keeping the same terrace and cast.
+
+**How to apply:** Treat references as guidance, not guaranteed start-frame locks. Inspect the opening frame against the source before delivery, and do not regenerate a paid clip without the user's approval.
+
 ## Vela image-to-video
 
 The official Vela UAPI is `POST /uapi/v1/video-gen/vela`, multipart with
