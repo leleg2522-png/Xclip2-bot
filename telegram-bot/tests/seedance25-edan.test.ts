@@ -106,7 +106,7 @@ function uiHarness() {
     vm.runInContext(fn(name), context);
   }
   const ui = createSeedance25P2Bot({
-    getSession: context.getSession, setSession: context.setSession, price: () => 4500, cooldown: () => 0,
+    getSession: context.getSession, setSession: context.setSession, price: () => 7500, cooldown: () => 0,
     download: async (_id, max) => { downloads.push(max); await gate; if (badFile) throw Error('private URL'); return bytes; },
     inspect: async (_bytes, kind) => kind === 'video' ? { duration } : {},
     run: async job => { jobs.push(job); },
@@ -151,7 +151,7 @@ function uiHarness() {
 
 async function uiTests() {
   const h = uiHarness(); await h.start();
-  assert.match(h.replies.join(' '), /4\.500/);
+  assert.match(h.replies.join(' '), /7\.500/);
   const draftId = h.token();
   await h.callback('mode_oneover_seedance25'); // Actual shared reservation blocks switching mid-draft.
   assert.equal(h.token(), draftId);
@@ -204,7 +204,7 @@ async function billingTests() {
   let linkFailure = false;
   const context = vm.createContext({
     SEEDANCE25_P2, validateP2References, validateSeedance25Prompt,
-    MODEL_PRICES: { seedance25_p2: 4500 },
+    MODEL_PRICES: { seedance25_p2: 7500 },
     retryTelegramFileRead: async (read: () => Promise<any>) => read(),
     runPicsartSeedance25: async (...args: any[]) => { calls.push(args); },
     bot: { telegram: {
@@ -231,7 +231,7 @@ async function billingTests() {
     url: 'https://telegram.example.test/video', mime: 'video/mp4', duration: 15.104,
   }]);
   assert.deepEqual(JSON.parse(JSON.stringify(args[8])), []);
-  assert.equal(args[9], 4500, 'P2 keeps its existing charge on the P1 provider route');
+  assert.equal(args[9], 7500, 'P2 uses its updated charge on the P1 provider route');
   assert.equal(args[10], 'Seedance 2.5 P2');
 
   await context.runSeedance25P2({
@@ -249,7 +249,7 @@ async function billingTests() {
   const runner = fn('runSeedance25P2');
   assert.match(runner, /runPicsartSeedance25/);
   assert.doesNotMatch(runner, /generateSeedance25P2|edanbot|720p|upscaleGeneratedVideo/);
-  assert.ok(source.includes('seedance25_p2: 4500'));
+  assert.ok(source.includes('seedance25_p2: 7500'));
   assert.ok(source.includes("mode_oneover_seedance25: 'oneover'"));
 }
 
@@ -320,6 +320,6 @@ async function adapterTests() {
 
 async function main() {
   await providerTests(); await uiTests(); await tenPlusTenTests(); await billingTests(); await adapterTests();
-  console.log('PASS Seedance 2.5 P2: mixed references/TXT, Picsart P1 route, Rp4500/30s, mandatory 1080p finishing and full refunds.');
+  console.log('PASS Seedance 2.5 P2: mixed references/TXT, Picsart P1 route, Rp7500/30s, mandatory 1080p finishing and full refunds.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

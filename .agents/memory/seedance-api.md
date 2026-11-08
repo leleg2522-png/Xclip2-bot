@@ -99,10 +99,10 @@ Verify finishing separately before claiming delivered 1080p.
 
 Keep **Seedance 2.5 P2** as a separate menu product, but route it through the
 same Picsart Seedance 2.5 generation and mandatory 1080p finishing path as P1.
-Keep P2 at **30 seconds and Rp4,500**; its final output is 1080p via upscale.
+Keep P2 at **30 seconds and Rp7,500**; its final output is 1080p via upscale.
 
 **Why:** The user explicitly changed P2 to use P1's provider route while keeping
-P2's Rp4,500 price, and accepted the resulting 1080p delivery.
+it separate, then updated its price to Rp7,500; the accepted delivery is 1080p.
 
 **How to apply:** Keep P2's separate reference-only wizard and tariff, but call
 the shared Picsart route with P2's price override. Preserve mandatory finishing

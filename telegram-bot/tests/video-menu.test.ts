@@ -19,15 +19,16 @@ const functions = ast.statements.filter(s => ts.isFunctionDeclaration(s)
 assert.equal(functions.match(/function /g)?.length, functionNames.length);
 const context = vm.createContext({
   Markup, CHINA_VIDEO_MODELS, buildVideoMenuScreen, isRetiredVideoCallback, BUDGET_VIDEO_MODELS, isBudgetVideoModel,
-  MODEL_PRICES: { seedance25_p2: 6000 },
+  MODEL_PRICES: { seedance25_p2: 7500 },
   KLING_V3_PRO: { label: 'Kling v3 Pro' },
-  formatRupiah: (value: number) => `Rp${value}`,
+  formatRupiah: (value: number) => `Rp${Math.round(value).toLocaleString('id-ID')}`,
   getPicsartI2vPrice: () => 5000,
 });
 vm.runInContext(ts.transpileModule(functions, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText, context);
 const modelRows = JSON.parse(JSON.stringify(vm.runInContext('videoModelRows()', context)));
+assert.match(modelRows.flat().find((b: any) => b.callback_data === 'mode_seedance25_p2').text, /Rp7\.500/);
 const main = JSON.parse(JSON.stringify(vm.runInContext('mainMenuKeyboard().reply_markup.inline_keyboard', context)));
 const expected = [
   'mode_bvideo_vela', 'mode_bvideo_muse', 'mode_bvideo_deapi_ltx', 'mode_bvideo_deapi_h3',
