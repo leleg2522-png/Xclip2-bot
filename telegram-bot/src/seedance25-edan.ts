@@ -1,11 +1,14 @@
 import { validateSeedance25Prompt } from './seedance25-prompt';
 
 export const SEEDANCE25_P2 = {
-  label: 'Seedance 2.5 P2', model: 'seedance-2.5', duration: 30, resolution: '720p',
-  ratios: ['16:9', '9:16', '1:1'], maxImages: 10, maxVideos: 10,
+  label: 'Seedance 2.5 P2', duration: 30,
+  ratios: ['16:9', '9:16'], maxImages: 10, maxVideos: 10,
   maxBytes: 19 * 1024 * 1024, maxTotalBytes: 100 * 1024 * 1024,
   maxVideoSeconds: 30,
 } as const;
+// Retained only for the legacy Edanbot request helper below. Public P2 jobs
+// now use the shared Picsart Seedance 2.5 route and its 1080p finishing step.
+const LEGACY_EDANBOT_SEEDANCE25 = { model: 'seedance-2.5', resolution: '720p' } as const;
 export type P2Ratio = typeof SEEDANCE25_P2.ratios[number];
 export type P2Reference = {
   kind: 'image' | 'video'; fileId: string; size: number; duration?: number; order: number;
@@ -47,10 +50,10 @@ export function seedance25P2Request(prompt: string, ratio: P2Ratio, assets: P2As
       || url.username || url.password) throw Error('SEEDANCE25_P2_INVALID_ASSET');
   }
   return {
-    model: SEEDANCE25_P2.model,
+    model: LEGACY_EDANBOT_SEEDANCE25.model,
     fields: {
       prompt: text, aspect_ratio: ratio, duration: SEEDANCE25_P2.duration,
-      resolution: SEEDANCE25_P2.resolution,
+      resolution: LEGACY_EDANBOT_SEEDANCE25.resolution,
       reference_images: assets.filter(a => a.kind === 'image').map(a => a.url),
       reference_videos: assets.filter(a => a.kind === 'video').map(a => a.url),
     },

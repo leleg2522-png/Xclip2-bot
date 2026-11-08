@@ -43,7 +43,7 @@ export function createSeedance25P2Bot(deps: Dependencies) {
         mode: 's25p2_wait_ratio', seedance25P2: { id, refs: [], pending: [] },
       });
       return ctx.editMessageText(
-        `${SEEDANCE25_P2.label} · 30 detik · 720p langsung\n` +
+        `${SEEDANCE25_P2.label} · 30 detik · 1080p melalui upscale\n` +
         `Harga Rp${deps.price().toLocaleString('id-ID')} per video. Pilih rasio:`,
         Markup.inlineKeyboard(SEEDANCE25_P2.ratios.map(r =>
           [Markup.button.callback(r, `s25p2_ratio_${r.replace(':', '')}:${id}`)])),
@@ -57,7 +57,7 @@ export function createSeedance25P2Bot(deps: Dependencies) {
         return ctx.reply('Pilihan sudah tidak aktif. Mulai lagi dari /menu.');
       }
       deps.setSession(userId, { mode: 's25p2_wait_media', seedance25P2: { ...draft, ratio } });
-      return ctx.editMessageText(`${SEEDANCE25_P2.label} · ${ratio} · 30 detik · 720p\n\n${instructions}`, inputsKeyboard(draft.id));
+      return ctx.editMessageText(`${SEEDANCE25_P2.label} · ${ratio} · 30 detik · 1080p melalui upscale\n\n${instructions}`, inputsKeyboard(draft.id));
     }
     if (data.startsWith('s25p2_done')) {
       if (state.mode !== 's25p2_wait_media' || !draft || data !== `s25p2_done:${draft.id}`) return ctx.reply('Pilihan sudah tidak aktif.');
@@ -134,7 +134,7 @@ export function createSeedance25P2Bot(deps: Dependencies) {
     const ratio = current.ratio, refs = current.refs.map(r => ({ ...r }));
     // Both plain text and TXT claim this draft once, before any status await.
     deps.setSession(userId, { mode: 'idle', seedance25P2: undefined });
-    const status = await ctx.reply(`${SEEDANCE25_P2.label} sedang diproses · 30 detik · 720p.\nHasil dikirim otomatis.`);
+    const status = await ctx.reply(`${SEEDANCE25_P2.label} sedang diproses · 30 detik · 1080p melalui upscale.\nHasil dikirim otomatis.`);
     void deps.run({ userId, dbUserId, chatId: ctx.chat.id, statusMsgId: status.message_id, prompt, ratio, refs })
       .catch(() => ctx.reply('Proses tidak dapat diselesaikan. Periksa saldo dan mulai lagi dari /menu.').catch(() => {}));
   }

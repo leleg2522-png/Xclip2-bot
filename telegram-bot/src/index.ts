@@ -36,8 +36,7 @@ import {
   type Seedance25Settings, type Seedance25Media, type Seedance25ResolvedMedia,
 } from './seedance25-picsart';
 import { inspectFloraSeedance25Video, inspectSeedance25Media } from './seedance25-media';
-import { SEEDANCE25_P2, generateSeedance25P2, validateP2References } from './seedance25-edan';
-import { seedance25P2Diagnostic } from './seedance25-p2-diagnostic';
+import { SEEDANCE25_P2, validateP2References } from './seedance25-edan';
 import { KLING4_REFERENCE_VIDEO_MAX_BYTES } from './kling4-reference-video';
 import { createSeedance25P2Bot, type P2Draft, type P2Job, type P2Mode } from './seedance25-edan-bot';
 import {
@@ -235,7 +234,7 @@ const MODEL_PRICES = {
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
   kling_p3: 4000,      // Kling MC V3.0 PRO P3 (Edanbot)
   kling_p2: 4000,      // Kling MC V3 PRO P2 (Edanbot)
-  seedance25_p2: 4500, // Separate Seedance 2.5 P2: fixed 30s, native 720p.
+  seedance25_p2: 4500, // Seedance 2.5 P2: Picsart P1 route with mandatory 1080p finishing.
   kling_p4: 2500,      // Kling MC V3 Pro P4 (Alriz native)
   kling_v3_standard: 2500, // Kling MC V3 Pro P5 (Alriz native)
   heygen: 2500,
@@ -2711,7 +2710,7 @@ function videoModelRows() {
     [Markup.button.callback('🌊 Seedance 2.0 Fast 1080p', 'mode_pi2v_seedance_2_fast')],
     [Markup.button.callback('🌊 Seedance 2.0 1080p', 'mode_pi2v_seedance_2')],
     [Markup.button.callback('🌊 Seedance 2.5 • Teks / Gambar / Video / Audio', 'mode_oneover_seedance25')],
-    [Markup.button.callback(`Seedance 2.5 P2 · Gambar / Video referensi · 30s · 720p · ${formatRupiah(MODEL_PRICES.seedance25_p2)}`, 'mode_seedance25_p2')],
+    [Markup.button.callback(`Seedance 2.5 P2 · Gambar / Video referensi · 30s · 1080p · ${formatRupiah(MODEL_PRICES.seedance25_p2)}`, 'mode_seedance25_p2')],
     [Markup.button.callback('🌌 Grok Imagine Video', 'mode_pi2v_grok_imagine')],
     [Markup.button.callback('🎬 Creatify Boreal • 20 detik • 1080p', 'mode_pi2v_creatify_boreal')],
     [Markup.button.callback('🎬 LTX 2.5 PRO • 10 detik • 1080p', 'mode_pi2v_ltx_pro')],
@@ -3317,7 +3316,7 @@ function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false 
     `• Seedance 2.0 Fast 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_fast'))}\n` +
     `• Seedance 2.0 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
     `• Seedance 2.5 Teks / Gambar / Video / Audio (30s, 1080p) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25)}\n` +
-    `• Seedance 2.5 P2 Gambar / Video referensi (30s, 720p langsung) — ${formatRupiah(MODEL_PRICES.seedance25_p2)}\n` +
+    `• Seedance 2.5 P2 Gambar / Video referensi (30s, 1080p melalui upscale) — ${formatRupiah(MODEL_PRICES.seedance25_p2)}\n` +
     `• Grok Imagine Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Creatify Boreal (20 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_creatify_boreal)}\n` +
     `• LTX 2.5 PRO (10 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_ltx_pro)}\n` +
@@ -10009,108 +10008,57 @@ async function runKlingP3(
 // ─── Background: Picsart Image-to-Video ───────────────────────────────────────
 
 async function runSeedance25P2(job: P2Job) {
+  // Keep P2's reference-only wizard and Rp4.500 tariff, but reuse P1's
+  // Picsart generation, mandatory upscale, delivery, and refund path.
   const { chatId, userId, dbUserId, statusMsgId, prompt, ratio, refs } = job;
   const PRICE = MODEL_PRICES.seedance25_p2;
-  // Validate snapshots before touching the customer's balance.
+  const imageUrls: string[] = [];
+  const videoRefs: Seedance25ResolvedMedia[] = [];
   try {
     validateP2References(refs);
     validateSeedance25Prompt(prompt);
     if (!SEEDANCE25_P2.ratios.includes(ratio)) throw Error('INVALID_RATIO');
+    for (const reference of refs) {
+      const link = await retryTelegramFileRead<{ href: string }>(
+        () => bot.telegram.getFileLink(reference.fileId)
+      );
+      if (reference.kind === 'image') {
+        imageUrls.push(link.href);
+      } else {
+        videoRefs.push({
+          url: link.href,
+          mime: 'video/mp4',
+          duration: reference.duration ?? 0,
+        });
+      }
+    }
   }
   catch {
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, 'Referensi tidak valid. Saldo tidak dipotong. /menu untuk mulai ulang.').catch(() => {});
+    await bot.telegram.editMessageText(
+      chatId, statusMsgId, undefined,
+      'Referensi tidak valid atau tidak bisa dibaca. Saldo tidak dipotong. /menu untuk mulai ulang.'
+    ).catch(() => {});
     return;
   }
-  const charge = await beginCharge(dbUserId, PRICE, 3);
-  if (!charge.ok) {
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
-    return;
-  }
-  let refund = true;
-  let stage = 'account';
-  let acceptedJobId: string | undefined;
-  let referenceIndex = 0;
-  try {
-    const result = await generateSeedance25P2(prompt, ratio, refs, {
-      cookies: getAvailableEdanbotCookies, markDead: markEdanbotCookieDead,
-      upload: async (cookie, reference) => {
-        referenceIndex = refs.indexOf(reference) + 1;
-        stage = 'telegram-link';
-        const url = await bot.telegram.getFileLink(reference.fileId);
-        stage = 'telegram-download';
-        const response = await telegramHttp.get(url.href, {
-          responseType: 'arraybuffer', timeout: 60000, maxContentLength: SEEDANCE25_P2.maxBytes,
-        });
-        const bytes = Buffer.from(response.data);
-        stage = 'reference-validation';
-        if (bytes.length !== reference.size) throw Error('SEEDANCE25_P2_REFERENCE_CHANGED');
-        if (reference.kind === 'image') {
-          const metadata = await sharp(bytes, { limitInputPixels: 40000000 }).metadata();
-          if (!['jpeg', 'png'].includes(metadata.format ?? '')) throw Error('INVALID_IMAGE');
-          const mime = metadata.format === 'png' ? 'image/png' : 'image/jpeg';
-          stage = 'reference-upload';
-          const asset = await uploadToEdanbot(cookie, bytes, `reference.${metadata.format === 'png' ? 'png' : 'jpg'}`, mime);
-          if (asset.type !== 'image') throw Error('SEEDANCE25_P2_INVALID_ASSET');
-          return { kind: 'image', url: asset.url };
-        }
-        const form = new FormData();
-        form.append('file', bytes, { filename: 'reference.mp4', contentType: 'video/mp4' });
-        form.append('model', SEEDANCE25_P2.model);
-        form.append('duration', String(SEEDANCE25_P2.duration));
-        stage = 'reference-upload';
-        const uploaded = await edanbotHttp.post('https://edanbot.digital/api/reference-uploads/media', form, {
-          headers: { ...form.getHeaders(), cookie, origin: 'https://edanbot.digital', referer: 'https://edanbot.digital/dashboard' },
-        });
-        if (uploaded.data?.kind !== 'video' || !uploaded.data?.url) throw Error('SEEDANCE25_P2_INVALID_ASSET');
-        return { kind: 'video', url: uploaded.data.url };
-      },
-      submit: async (cookie, body) => {
-        stage = 'submit';
-        const response = await edanbotHttp.post('https://edanbot.digital/api/generate', body, {
-          headers: { cookie, origin: 'https://edanbot.digital', referer: 'https://edanbot.digital/dashboard' },
-        });
-        return response.data?.job_id;
-      },
-      accepted: jobId => {
-        acceptedJobId = jobId;
-        stage = 'poll';
-        console.log(`[seedance25-p2] accepted=${jobId}`);
-      },
-      poll: (cookie, jobId) => pollEdanbotJob(cookie, jobId, 30 * 60000),
-    });
-    // Native delivery, no Renderful or provider fallback. sendResult uploads
-    // bytes/self-hosts large files; never expose the upstream result URL.
-    acceptedJobId = result.jobId;
-    stage = 'delivery';
-    if (!await sendResult(chatId, result.url,
-      `${SEEDANCE25_P2.label} · 30 detik · 720p · ${ratio}\n\n/menu untuk buat lagi`, true)) {
-      throw Error('SEEDANCE25_P2_DELIVERY_FAILED');
-    }
-    refund = false;
-    markGenSuccess(userId);
-    await incrementKlingUsage(dbUserId).catch(() => {});
-    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-  } catch (error) {
-    console.error('[seedance25-p2] generation_or_delivery_failed', JSON.stringify({
-      dbUserId, statusMsgId, stage, jobId: acceptedJobId ?? null,
-      referenceIndex, referenceCount: refs.length,
-      ...seedance25P2Diagnostic(error),
-    }));
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${SEEDANCE25_P2.label} tidak berhasil diproses atau dikirim. Saldo akan dikembalikan.\n/menu untuk mulai ulang.`).catch(() => {});
-  } finally {
-    try {
-      if (refund) {
-        try {
-          await addSaldo(dbUserId, PRICE);
-          await bot.telegram.sendMessage(chatId, `Saldo ${formatRupiah(PRICE)} dikembalikan penuh.`).catch(() => {});
-        } catch {
-          console.error('[seedance25-p2] refund_pending', dbUserId);
-          await bot.telegram.sendMessage(chatId, 'Pengembalian saldo tertunda karena gangguan. Hubungi admin.').catch(() => {});
-        }
-      }
-    } finally { releaseGenerating(dbUserId); }
-  }
+  return runPicsartSeedance25(
+    chatId,
+    userId,
+    dbUserId,
+    statusMsgId,
+    prompt,
+    imageUrls,
+    {
+      provider: 'picsart',
+      mode: 'reference',
+      resolution: 1080,
+      audio: true,
+      ratio,
+    },
+    videoRefs,
+    [],
+    PRICE,
+    SEEDANCE25_P2.label,
+  );
 }
 
 async function runKlingV3Pro(
@@ -10362,10 +10310,12 @@ async function runPicsartSeedance25(
   settings: Seedance25Settings,
   videoRefs: Seedance25ResolvedMedia[] = [],
   audioRefs: Seedance25ResolvedMedia[] = [],
+  priceOverride: number = MODEL_PRICES.picsart_seedance_25,
+  displayLabel: string = 'Seedance 2.5',
 ) {
-  const label = 'Seedance 2.5';
+  const label = displayLabel;
   validateSeedance25Request(settings, prompt, imageUrls.length, videoRefs.length, audioRefs.length);
-  const PRICE = MODEL_PRICES.picsart_seedance_25;
+  const PRICE = priceOverride;
   let stage = 'charge';
   const charge = await beginCharge(dbUserId, PRICE, MAX_PARALLEL_GENERATIONS_PER_USER);
   if (!charge.ok) {
@@ -10426,9 +10376,9 @@ async function runPicsartSeedance25(
       generateAudio: settings.audio,
       onStatus: providerStage => {
         stage = providerStage;
-        const text = providerStage === 'upload' ? '⏳ Mengunggah gambar referensi...'
-          : providerStage === 'submit' ? '⏳ Mengirim permintaan video...'
-            : '⏳ Seedance 2.5 sedang membuat video. Hasil dikirim setelah proses 1080p selesai.';
+        const text = providerStage === 'upload' ? `⏳ ${label}: mengunggah media referensi...`
+          : providerStage === 'submit' ? `⏳ ${label}: mengirim permintaan video...`
+            : `⏳ ${label} sedang membuat video. Hasil dikirim setelah proses 1080p selesai.`;
         bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).catch(() => {});
       },
     });

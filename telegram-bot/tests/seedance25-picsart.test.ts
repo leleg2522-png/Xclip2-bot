@@ -86,10 +86,12 @@ function harness(options: Options = {}) {
   vm.runInContext(runner, context);
   return {
     events,
-    run: (draft = settings, count = draft.mode === 't2v' ? 0 : 1, id = 1, videos = 0, audios = 0) =>
+    run: (draft = settings, count = draft.mode === 't2v' ? 0 : 1, id = 1, videos = 0, audios = 0,
+      priceOverride?: number, displayLabel?: string) =>
       context.runPicsartSeedance25(id, id, id, 10, 'Epic action', Array(count).fill('https://example.test/ref.jpg'), draft,
         Array.from({ length: videos }, () => ({ url: 'https://example.test/v.mp4', mime: 'video/mp4', duration: 3 })),
-        Array.from({ length: audios }, () => ({ url: 'https://example.test/a.mp3', mime: 'audio/mpeg', duration: 3 }))),
+        Array.from({ length: audios }, () => ({ url: 'https://example.test/a.mp3', mime: 'audio/mpeg', duration: 3 })),
+        priceOverride, displayLabel),
   };
 }
 
@@ -253,6 +255,19 @@ async function main() {
     assert.equal(h.events.inputs[0].audios.length, audios);
     assert.deepEqual(h.events.order, ['generate', 'finish', 'deliver']);
   }
+  const p2 = harness();
+  await p2.run(settings, 1, 9, 1, 0, 4500, 'Seedance 2.5 P2');
+  assert.deepEqual(p2.events.charges, [4500]);
+  assert.deepEqual(p2.events.refunds, []);
+  assert.equal(p2.events.inputs[0].resolution, '480p');
+  assert.equal(p2.events.inputs[0].generateAudio, true);
+  assert.match(p2.events.deliveries[0].caption, /Seedance 2\.5 P2.*1080p/);
+  assert.equal(p2.events.deliveries[0].url, 'https://example.test/9-1080.mp4');
+  const p2FinishFailure = harness({ finishingFails: true });
+  await p2FinishFailure.run(settings, 1, 10, 1, 0, 4500, 'Seedance 2.5 P2');
+  assert.deepEqual(p2FinishFailure.events.charges, [4500]);
+  assert.deepEqual(p2FinishFailure.events.refunds, [4500]);
+  assert.equal(p2FinishFailure.events.deliveries.length, 0);
   for (const options of [{ mediaInvalid: true }, { mediaSeconds: 16 }]) {
     const h = harness(options); await h.run(settings, 0, 1, 2, 0);
     assert.deepEqual(h.events.refunds, [15000]); assert.equal(h.events.inputs.length, 0);

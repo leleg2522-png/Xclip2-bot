@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { Telegraf } from 'telegraf';
-import FormData from 'form-data';
 import sharp from 'sharp';
 import { execFileSync } from 'node:child_process';
 import { inspectSeedance25Media } from '../src/seedance25-media';
@@ -13,7 +12,6 @@ import {
   type P2ProviderDeps, type P2Reference,
 } from '../src/seedance25-edan';
 import { validateSeedance25Prompt } from '../src/seedance25-prompt';
-import { seedance25P2Diagnostic } from '../src/seedance25-p2-diagnostic';
 
 const source = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true);
@@ -202,55 +200,55 @@ async function uiTests() {
 }
 
 async function billingTests() {
-  for (const failure of ['none', 'invalid', 'charge', 'generate', 'deliver-false', 'deliver-throw', 'refund-db']) {
-    const events = { charge: 0, provider: 0, refund: 0, released: 0, usage: 0, deliveries: 0 };
-    const replies: string[] = [];
-    const context = vm.createContext({
-      SEEDANCE25_P2, validateP2References, validateSeedance25Prompt, seedance25P2Diagnostic,
-      MODEL_PRICES: { seedance25_p2: 4500 },
-      beginCharge: async (_id: number, price: number, max: number) => {
-        events.charge++; assert.equal(price, 4500); assert.equal(max, 3);
-        return { ok: failure !== 'charge', reason: 'insufficient' };
+  const calls: any[][] = [], replies: string[] = [];
+  let linkFailure = false;
+  const context = vm.createContext({
+    SEEDANCE25_P2, validateP2References, validateSeedance25Prompt,
+    MODEL_PRICES: { seedance25_p2: 4500 },
+    retryTelegramFileRead: async (read: () => Promise<any>) => read(),
+    runPicsartSeedance25: async (...args: any[]) => { calls.push(args); },
+    bot: { telegram: {
+      getFileLink: async (fileId: string) => {
+        if (linkFailure) throw Error('Telegram file link unavailable');
+        return { href: `https://telegram.example.test/${fileId}` };
       },
-      chargeFailMsg: () => 'Saldo tidak cukup',
-      generateSeedance25P2: async (_p: string, _r: string, _refs: any, _deps: any) => {
-        events.provider++; if (['generate', 'refund-db'].includes(failure)) throw auth();
-        return { url: 'https://example.test/native.mp4', jobId: 'accepted' };
-      },
-      getAvailableEdanbotCookies() {}, markEdanbotCookieDead() {}, uploadToEdanbot() {}, telegramHttp: {}, edanbotHttp: {}, pollEdanbotJob() {},
-      bot: { telegram: {
-        editMessageText: async (...args: any[]) => { replies.push(args[3]); },
-        sendMessage: async (_id: number, text: string) => { replies.push(text); },
-        deleteMessage: async () => {},
-      } },
-      sendResult: async (_id: number, url: string, caption: string) => {
-        events.deliveries++; assert.equal(url, 'https://example.test/native.mp4');
-        assert.match(caption, /30 detik · 720p/);
-        assert.doesNotMatch(caption, /edanbot|\bEdan Bot\b|renderful|1080p/i);
-        if (failure === 'deliver-throw') throw Error('Telegram failed');
-        return failure !== 'deliver-false';
-      },
-      addSaldo: async (_id: number, price: number) => {
-        events.refund++; assert.equal(price, 4500); if (failure === 'refund-db') throw Error('db failed');
-      },
-      releaseGenerating: () => { events.released++; }, markGenSuccess() {},
-      incrementKlingUsage: async () => { events.usage++; }, formatRupiah: (n: number) => String(n),
-      console: { log() {}, error() {} },
-    });
-    vm.runInContext(fn('runSeedance25P2'), context);
-    await context.runSeedance25P2({ chatId: 1, userId: 1, dbUserId: 77, statusMsgId: 9,
-      prompt: 'move', ratio: '16:9', refs: failure === 'invalid' ? [] : refs });
-    assert.equal(events.charge, failure === 'invalid' ? 0 : 1, failure);
-    assert.equal(events.refund, ['none', 'charge', 'invalid'].includes(failure) ? 0 : 1, failure);
-    assert.equal(events.released, ['charge', 'invalid'].includes(failure) ? 0 : 1, failure);
-    assert.equal(events.usage, failure === 'none' ? 1 : 0, failure);
-    if (failure === 'refund-db') {
-      assert.match(replies.join(' '), /tertunda/);
-      assert.doesNotMatch(replies.join(' '), /dikembalikan penuh/);
-    }
-  }
+      editMessageText: async (...args: any[]) => { replies.push(args[3]); },
+    } },
+  });
+  vm.runInContext(fn('runSeedance25P2'), context);
+  await context.runSeedance25P2({
+    chatId: 1, userId: 1, dbUserId: 77, statusMsgId: 9,
+    prompt: 'move', ratio: '16:9', refs,
+  });
+  assert.equal(calls.length, 1);
+  const args = calls[0];
+  assert.deepEqual(args.slice(0, 5), [1, 1, 77, 9, 'move']);
+  assert.deepEqual(JSON.parse(JSON.stringify(args[5])), ['https://telegram.example.test/image']);
+  assert.deepEqual(JSON.parse(JSON.stringify(args[6])), {
+    provider: 'picsart', mode: 'reference', resolution: 1080, audio: true, ratio: '16:9',
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(args[7])), [{
+    url: 'https://telegram.example.test/video', mime: 'video/mp4', duration: 15.104,
+  }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(args[8])), []);
+  assert.equal(args[9], 4500, 'P2 keeps its existing charge on the P1 provider route');
+  assert.equal(args[10], 'Seedance 2.5 P2');
+
+  await context.runSeedance25P2({
+    chatId: 1, userId: 1, dbUserId: 77, statusMsgId: 9,
+    prompt: 'move', ratio: '16:9', refs: [],
+  });
+  assert.equal(calls.length, 1, 'invalid references must not reach the paid P1 runner');
+  assert.match(replies.join(' '), /Saldo tidak dipotong/);
+  linkFailure = true;
+  await context.runSeedance25P2({
+    chatId: 1, userId: 1, dbUserId: 77, statusMsgId: 9,
+    prompt: 'move', ratio: '16:9', refs,
+  });
+  assert.equal(calls.length, 1, 'Telegram download-link failures must happen before charge');
   const runner = fn('runSeedance25P2');
-  assert.ok(!/upscale|finishRenderful|runPicsart/.test(runner.replace(/\/\/[^\n]*/g, '')));
+  assert.match(runner, /runPicsartSeedance25/);
+  assert.doesNotMatch(runner, /generateSeedance25P2|edanbot|720p|upscaleGeneratedVideo/);
   assert.ok(source.includes('seedance25_p2: 4500'));
   assert.ok(source.includes("mode_oneover_seedance25: 'oneover'"));
 }
@@ -291,63 +289,28 @@ async function adapterTests() {
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', 'frag_keyframe+empty_moov',
     '-f', 'mp4', 'pipe:1',
   ], { maxBuffer: 1024 * 1024 });
-  const snapshots = [{ ...refs[0], size: image.length }, { ...refs[1], size: video.length, duration: 2 }];
-  const calls: string[] = [], charges: number[] = [], refunds: number[] = [];
+  let captured: any;
   const context = vm.createContext({
-    Buffer, FormData, sharp, inspectSeedance25Media, generateSeedance25P2, validateP2References, seedance25P2Diagnostic,
-    validateSeedance25Prompt, SEEDANCE25_P2, MODEL_PRICES: { seedance25_p2: 4500 },
+    Buffer, sharp, inspectSeedance25Media, SEEDANCE25_P2,
+    createSeedance25P2Bot: (deps: any) => { captured = deps; return {}; },
     getSession() {}, setSession() {}, getCooldownRemainingMs: () => 0,
-    beginCharge: async (_id: number, price: number) => { charges.push(price); return { ok: true }; },
-    getAvailableEdanbotCookies: async () => [{ id: 1, cookie: 'test-session' }],
-    markEdanbotCookieDead: async () => {},
-    telegramHttp: { get: async (url: string, opts: any) => {
-      assert.equal(opts.maxContentLength, SEEDANCE25_P2.maxBytes);
-      return { data: url.endsWith('image') ? image : video };
-    } },
-    edanbotHttp: { post: async (url: string, body: any, opts: any) => {
-      assert.equal(opts.headers.cookie, 'test-session'); calls.push(new URL(url).pathname);
-      if (url.endsWith('/api/uploads')) {
-        assert.ok(body instanceof FormData);
-        const raw = body.getBuffer().toString('latin1');
-        assert.match(raw, /name="file"; filename="reference\.png"/);
-        assert.match(raw, /Content-Type: image\/png/);
-        return { data: { url: assets[0].url, asset: { name: 'reference.png', size: image.length, type: 'image' } } };
-      }
-      if (url.endsWith('/api/reference-uploads/media')) {
-        const raw = body.getBuffer().toString('latin1');
-        assert.match(raw, /name="file"; filename="reference\.mp4"/);
-        assert.match(raw, /name="model"\r\n\r\nseedance-2\.5/);
-        assert.match(raw, /name="duration"\r\n\r\n30/);
-        return { data: { kind: 'video', url: assets[1].url } };
-      }
-      assert.equal(url, 'https://edanbot.digital/api/generate');
-      assert.deepEqual(JSON.parse(JSON.stringify(body)), seedance25P2Request('Actual adapter prompt', '16:9', assets));
-      return { data: { ok: true, job_id: 'accepted-adapter' } };
-    } },
-    pollEdanbotJob: async (cookie: string, id: string, timeout: number) => {
-      assert.equal(cookie, 'test-session'); assert.equal(id, 'accepted-adapter'); assert.equal(timeout, 1800000);
-      return 'https://example.test/native.mp4';
-    },
     bot: { telegram: {
       getFileLink: async (fileId: string) => new URL(`https://example.test/${fileId}`),
-      editMessageText: async () => {}, sendMessage: async () => {}, deleteMessage: async () => {},
     } },
-    sendResult: async (_chat: number, url: string) => { assert.equal(url, 'https://example.test/native.mp4'); return true; },
-    addSaldo: async (_id: number, price: number) => { refunds.push(price); },
-    incrementKlingUsage: async () => {}, markGenSuccess() {}, releaseGenerating() {},
-    formatRupiah: (n: number) => String(n), console: { log() {}, error() {} },
+    telegramHttp: { get: async (url: string, options: any) => {
+      assert.equal(options.maxContentLength, SEEDANCE25_P2.maxBytes);
+      return { data: url.endsWith('/image') ? image : video };
+    } },
+    runSeedance25P2: async () => {},
   });
-  vm.runInContext(fn('uploadToEdanbot') + fn('runSeedance25P2'), context);
-  await context.runSeedance25P2({ chatId: 1, userId: 1, dbUserId: 77, statusMsgId: 9,
-    prompt: 'Actual adapter prompt', ratio: '16:9', refs: snapshots });
-  assert.deepEqual(calls, ['/api/uploads', '/api/reference-uploads/media', '/api/generate']);
-  assert.deepEqual(charges, [4500]); assert.deepEqual(refunds, []);
-  let captured: any;
-  context.createSeedance25P2Bot = (deps: any) => { captured = deps; return {}; };
   const initialization = ast.statements.find(n => ts.isVariableStatement(n)
     && n.declarationList.declarations.some(d => d.name.getText(ast) === 'seedance25P2Bot'));
   assert.ok(initialization);
   vm.runInContext(compile(initialization.getText(ast)), context);
+  const downloadedImage = await captured.download('image', SEEDANCE25_P2.maxBytes);
+  const downloadedVideo = await captured.download('video', SEEDANCE25_P2.maxBytes);
+  assert.equal(downloadedImage.length, image.length);
+  assert.equal(downloadedVideo.length, video.length);
   assert.equal(Object.keys(await captured.inspect(image, 'image')).length, 0);
   const metadata = await captured.inspect(video, 'video');
   assert.equal(metadata.duration, 2);
@@ -357,6 +320,6 @@ async function adapterTests() {
 
 async function main() {
   await providerTests(); await uiTests(); await tenPlusTenTests(); await billingTests(); await adapterTests();
-  console.log('PASS Seedance 2.5 P2: HAR mixed references, real Telegram callbacks/media/TXT route, Rp4500/30s/native720, isolated drafts, paid-submit safety, delivery and refunds.');
+  console.log('PASS Seedance 2.5 P2: mixed references/TXT, Picsart P1 route, Rp4500/30s, mandatory 1080p finishing and full refunds.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

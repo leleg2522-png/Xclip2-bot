@@ -93,21 +93,21 @@ duplicate inside Drive metadata, and validate serialized attributes before
 paid submission. Do not silently truncate prompts or replay accepted jobs.
 Verify finishing separately before claiming delivered 1080p.
 
-## Separate Edan Bot reference evidence
+## P2 route and historical Edan evidence
 
-### Approved public product
+### Active public P2 route
 
-Keep the original Picsart Seedance 2.5 product unchanged and offer the Edan
-route as a separate **Seedance 2.5 P2** product: **30 seconds, Rp4,500,
-native 720p delivery without Renderful finishing**. Do not expose the provider
-name to customers or introduce 10/20-second tariffs without approval.
+Keep **Seedance 2.5 P2** as a separate menu product, but route it through the
+same Picsart Seedance 2.5 generation and mandatory 1080p finishing path as P1.
+Keep P2 at **30 seconds and Rp4,500**; its final output is 1080p via upscale.
 
-**Why:** The user selected “Tambahkan opsi Edan Bot” rather than replacing
-Picsart, then specified “30 detik 4,5k” and “720p langsung”.
+**Why:** The user explicitly changed P2 to use P1's provider route while keeping
+P2's Rp4,500 price, and accepted the resulting 1080p delivery.
 
-**How to apply:** Keep provider selection, tariffs and delivery policies
-separate. The original Picsart route still requires 1080p finishing and retains
-its existing price; P2 must not inherit that finishing or change the old route.
+**How to apply:** Keep P2's separate reference-only wizard and tariff, but call
+the shared Picsart route with P2's price override. Preserve mandatory finishing
+and full refunds on generation, finishing, or delivery failure. Do not send
+public P2 jobs to the legacy Edan endpoint.
 
 For P2, “dua jalur” means two prompt-input methods after reference uploads:
 an ordinary text message or a UTF-8 TXT file. Both still require references;
@@ -129,12 +129,12 @@ not a change to the original Picsart limits.
 combined. Preserve the separately enforced duration/size budgets; do not imply
 that permission for ten videos also raises their total duration allowance.
 
-### Captured evidence and limits
+### Historical Edan capture and limits
 
-A separate Edan Bot capture shows a completed Seedance 2.5 job submitted with
-one uploaded image and one uploaded video reference. The request selected
-30 seconds, 720p and 16:9. This is evidence for Edan's contract, not a direct
-Picsart Playground submit or proof of the output file's measured resolution.
+A separate Edan Bot capture shows a completed legacy Seedance 2.5 job submitted
+with one uploaded image and one uploaded video reference. The request selected
+30 seconds, 720p and 16:9. This documents the retired P2 provider contract, not
+the active public route or proof of the output file's measured resolution.
 
 Edan uses `/api/uploads` for images, `/api/reference-uploads/media` for videos
 (multipart `file`, `model`, `duration`), then `/api/generate` with
