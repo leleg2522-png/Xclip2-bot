@@ -270,7 +270,7 @@ export function lockedPrompt(e: Episode, s: Shot, video: boolean, repair = '', l
   return [
     `Photorealistic ${language === 'ko' ? 'Korean television drama set in Seoul with fictional adult Korean characters'
       : language === 'zh' ? 'Chinese short-form television drama set in China with fictional adult Chinese characters'
-        : 'Indonesian drama'}, vertical 9:16. Preserve the exact identities from the approved individual character-reference images. No extra actors.`,
+        : 'Indonesian drama'}, vertical 9:16. Preserve identities from attached character references when provided; otherwise follow the written cast descriptions and keep faces and wardrobes consistent across every shot. No extra actors.`,
     b.style, ...arcPrompt, ...b.cast.filter(c => s.cast.includes(c.id)).map(c => `${c.id}, adult ${c.age}: ${c.look}. Voice: ${c.voice}`),
     `Location: ${b.locations.find(l => l.id === s.location)!.description}`,
     `Start continuity: ${s.startState}`, `Camera: ${s.camera}`,
