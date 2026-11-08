@@ -8,7 +8,7 @@ import { promisify } from 'node:util';
 import vm from 'node:vm';
 import ts from 'typescript';
 import * as limits from '../src/seedance25-picsart';
-import { inspectSeedance25Media } from '../src/seedance25-media';
+import { inspectFloraSeedance25Video, inspectSeedance25Media } from '../src/seedance25-media';
 
 const exec = promisify(execFile);
 const source = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
@@ -125,13 +125,20 @@ async function checkBotIntake() {
 async function checkActualBytes() {
   const dir = await mkdtemp(join(tmpdir(), 'seedance25-test-'));
   try {
-    const video = join(dir, 'clip.mp4'), audio = join(dir, 'audio.wav'), long = join(dir, 'long.wav');
+    const video = join(dir, 'clip.mp4'), videoReference = join(dir, 'reference-2s.mp4');
+    const audio = join(dir, 'audio.wav'), long = join(dir, 'long.wav');
     await exec('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=black:s=64x64:r=5', '-t', '1', '-c:v', 'libx264', video]);
+    await exec('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=black:s=64x64:r=5', '-t', '2', '-c:v', 'libx264', videoReference]);
     await exec('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=8000', '-t', '1', audio]);
     await exec('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=8000', '-t', '31', long]);
-    const vb = await readFile(video), ab = await readFile(audio);
+    const vb = await readFile(video), videoReferenceBuffer = await readFile(videoReference), ab = await readFile(audio);
     assert.ok(await inspectSeedance25Media(vb, 'video') <= 1.1);
     assert.ok(await inspectSeedance25Media(ab, 'audio') <= 1.1);
+    assert.ok(await inspectFloraSeedance25Video(videoReferenceBuffer) >= 1.8);
+    await assert.rejects(() => inspectFloraSeedance25Video(vb));
+    await assert.rejects(() => inspectFloraSeedance25Video(ab));
+    await assert.rejects(() => inspectFloraSeedance25Video(Buffer.from('broken')));
+    await assert.rejects(() => inspectFloraSeedance25Video(Buffer.alloc(limits.SEEDANCE25_MAX_MEDIA_BYTES + 1)));
     await assert.rejects(() => inspectSeedance25Media(ab, 'video'));
     await assert.rejects(() => inspectSeedance25Media(vb, 'audio'));
     await assert.rejects(() => inspectSeedance25Media(Buffer.from('broken'), 'video'));

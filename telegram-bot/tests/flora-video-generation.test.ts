@@ -6,6 +6,7 @@ import { isFloraWorkspaceSetupError } from '../src/kling-p4-flora';
 import {
   FLORA_480_VIDEO_MODELS,
   resolveFlora480VideoModel,
+  resolveFlora480VideoModelContract,
   buildFlora480VideoParams,
   type Flora480VideoModelKey,
 } from '../src/flora-video-models';
@@ -33,7 +34,7 @@ assert.match(source, /Wan 3\.0 Uncensored • 30 detik • hingga 1K/);
 assert.doesNotMatch(source, /MiniMax H3 P2|Wan 3\.0 P2|Video selesai dibuat\. Menyiapkan hasil akhir/);
 for (const route of ['flora_minimax_h3_480', 'flora_wan_v3_480', 'flora_seedance_2_480', 'flora_seedance_2_5_480']) {
   const modes = route === 'flora_seedance_2_5_480'
-    ? ['wait_ratio', 'wait_image', 'wait_duration', 'wait_prompt']
+    ? ['wait_ratio', 'wait_image', 'wait_video_choice', 'wait_video', 'wait_duration', 'wait_prompt']
     : ['wait_ratio', 'wait_image', 'wait_prompt'];
   for (const mode of modes) {
     assert.match(source, new RegExp(`'${route}_${mode}'`));
@@ -44,7 +45,7 @@ assert.match(source, /data\.startsWith\('flora480_minimax_'\).*return 'flora_min
 assert.match(source, /data\.startsWith\('flora480_wan_'\).*return 'flora_wan_v3_480'/);
 assert.match(source, /data\.startsWith\('flora480_seedance_'\).*return 'flora_seedance_2_480'/);
 assert.match(source, /data\.startsWith\('flora480_seedance25_'\).*return 'flora_seedance_2_5_480'/);
-assert.match(source, /runFlora480Video\(ctx\.chat\.id, userId, dbUserId, statusMsg\.message_id, modelKey, imageUrl, prompt, ratio, durationSeconds\)/);
+assert.match(source, /referenceVideoFileId, referenceVideoMime/);
 
 const executable = ts.transpileModule(runnerSource, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
@@ -66,9 +67,12 @@ function catalog() {
             ? 'Seedance 2.5'
             : 'WAN 3.0',
       type: 'video',
-      capabilities: [singleImageInput ? 'image-to-video' : 'audio-image-to-video'],
+      capabilities: [key === 'seedance_2_5_480'
+        ? 'reference-to-video'
+        : singleImageInput ? 'image-to-video' : 'audio-image-to-video'],
       params: [
         { name: singleImageInput ? 'image_url' : 'image_urls', type: singleImageInput ? 'string' : 'string[]' },
+        ...(key === 'seedance_2_5_480' ? [{ name: 'video_urls', type: 'string[]' }] : []),
         { name: 'duration', options: durations.map(value => ({ value: String(value) })) },
         { name: 'resolution', options: [{ value: config.resolution }] },
         { name: 'aspect_ratio', options: [{ value: '9:16' }, { value: '16:9' }] },
@@ -97,6 +101,7 @@ function harness(options: Options = {}) {
     releases: [] as number[],
     dead: [] as string[],
     submissions: [] as Array<{ key: string; model: string; params: any; prompt: string }>,
+    videoUploads: [] as Array<{ key: string; mime: string }>,
     deliveries: [] as Array<{ chatId: number; url: string; caption: string }>,
     messages: [] as string[],
     successes: [] as number[],
@@ -109,9 +114,11 @@ function harness(options: Options = {}) {
   };
   const keys = options.keys ?? ['key-a', 'key-b'];
   const context = vm.createContext({
+    Buffer,
     FLORA_480_VIDEO_MODELS,
     buildFlora480VideoParams,
     resolveFlora480VideoModel,
+    resolveFlora480VideoModelContract,
     isFloraWorkspaceSetupError,
     MODEL_PRICES: {
       flora_minimax_h3_480: 10000,
@@ -130,7 +137,14 @@ function harness(options: Options = {}) {
       return { ok: options.chargeOk !== false, reason: 'saldo' };
     },
     chargeFailMsg: () => 'Saldo tidak cukup',
-    downloadBuffer: async () => ({ buf: Buffer.from('fixture'), ext: 'jpg', mime: 'image/jpeg' }),
+    downloadBuffer: async (url: string) => url.includes('video-reference')
+      ? { buf: Buffer.from('video fixture'), ext: 'mp4', mime: 'video/mp4' }
+      : { buf: Buffer.from('fixture'), ext: 'jpg', mime: 'image/jpeg' },
+    retryTelegramFileRead: async (read: () => Promise<any>) => read(),
+    floraUploadAsset: async (key: string, _workspace: string, _buf: Buffer, _name: string, mime: string) => {
+      events.videoUploads.push({ key, mime });
+      return 'https://provider.example.test/video-reference.mp4';
+    },
     getNextFloraKey: async (skipped: Set<string>) => keys.find(key => !skipped.has(key)) ?? null,
     markFloraKeyDead: async (key: string) => { events.dead.push(key); },
     floraHttp: {
@@ -148,6 +162,11 @@ function harness(options: Options = {}) {
       events.uploads.push(key);
       return 'https://provider.example.test/image.jpg';
     },
+    telegramHttp: { get: async () => ({ data: Buffer.from('video fixture') }) },
+    inspectFloraSeedance25Video: async () => 2,
+    SEEDANCE25_MAX_MEDIA_BYTES: 19 * 1024 * 1024,
+    floraSeedance25DurationKeyboard: () => ({}),
+    crypto: { randomUUID: () => 'draft-uuid' },
     floraGenerate: async (key: string, _: any, model: string, params: any, prompt: string, type: string) => {
       assert.equal(type, 'video');
       events.submissions.push({ key, model, params, prompt });
@@ -182,6 +201,7 @@ function harness(options: Options = {}) {
     formatRupiah: (value: number) => `Rp${value}`,
     bot: {
       telegram: {
+        getFileLink: async (fileId: string) => ({ href: `https://telegram.example.test/video-reference/${fileId}` }),
         editMessageText: async (_: number, __: number, ___: unknown, text: string) => { events.messages.push(text); },
         sendMessage: async (_: number, text: string) => { events.messages.push(text); },
         deleteMessage: async () => {},
@@ -195,9 +215,12 @@ function harness(options: Options = {}) {
     prompt = 'fixture',
     ratio: '16:9' | '9:16' = '16:9',
     durationSeconds = FLORA_480_VIDEO_MODELS[key].durationSeconds ?? 10,
+    referenceVideoFileId?: string,
+    referenceVideoMime?: string,
   ) =>
     context.runFlora480Video(chatId, chatId, chatId, chatId * 10, key,
-      'https://example.test/reference.jpg', prompt, ratio, durationSeconds) as Promise<void>;
+      'https://example.test/reference.jpg', prompt, ratio, durationSeconds,
+      referenceVideoFileId, referenceVideoMime) as Promise<void>;
   return { events, run };
 }
 
@@ -249,7 +272,10 @@ async function verifySeedanceWizard() {
     await context.prompt(ctx, 9);
     await context.prompt(ctx, 9);
     assert.equal(jobs.length, 1, 'duplicate prompt must not submit twice');
-    assert.deepEqual(jobs[0], [9, 9, 7, 88, 'seedance_2_480', 'https://example.test/ref.jpg', 'Animate this image', ratio, 15]);
+    assert.deepEqual(jobs[0], [
+      9, 9, 7, 88, 'seedance_2_480', 'https://example.test/ref.jpg',
+      'Animate this image', ratio, 15, undefined, undefined,
+    ]);
     assert.equal(state.mode, 'idle');
     assert.equal(state.floraSeedance2480ImageUrl, undefined);
     assert.equal(state.floraSeedance2480Ratio, undefined);
@@ -266,10 +292,15 @@ async function verifySeedance25Wizard() {
   const callbacks = source.slice(source.indexOf("  if (data === 'mode_flora_seedance_2_480')"), source.indexOf("  if (data === 'mode_flora_minimax_h3_480'"));
   const photo = source.slice(source.indexOf("  if (session.mode === 'flora_seedance_2_480_wait_image')"), source.indexOf("  if (session.mode === 'flora_minimax_h3_480_wait_image')"));
   const prompt = source.slice(source.indexOf("  if (\n    session.mode === 'flora_minimax_h3_480_wait_prompt'"), source.indexOf('  // ── Runway Gen-4.5 prompt'));
+  const videoHandler = source.slice(
+    source.indexOf('async function handleFloraSeedance25VideoReference('),
+    source.indexOf('// Label model gambar'),
+  );
   let state: any = { mode: 'idle', dbUserId: 7 };
   const messages: string[] = [];
   const jobs: any[][] = [];
   const context = vm.createContext({
+    Buffer,
     FLORA_480_VIDEO_MODELS,
     MODEL_PRICES: { flora_seedance_2_480: 15000, flora_seedance_2_5_480_per_second: 1500 },
     Markup: { inlineKeyboard: (buttons: any) => ({ buttons }), button: { callback: (text: string, data: string) => ({ text, data }) } },
@@ -279,17 +310,26 @@ async function verifySeedance25Wizard() {
     requireLogin: async () => true,
     getCooldownRemainingMs: () => 0,
     runFlora480Video: async (...args: any[]) => { jobs.push(args); },
+    crypto: { randomUUID: () => 'draft-uuid' },
+    SEEDANCE25_MAX_MEDIA_BYTES: 19 * 1024 * 1024,
+    retryTelegramFileRead: async (read: () => Promise<any>) => read(),
+    telegramHttp: { get: async () => ({ data: Buffer.from('video fixture') }) },
+    inspectFloraSeedance25Video: async () => 2.4,
+    floraSeedance25VideoChoiceKeyboard: () => ({}),
+    floraSeedance25DurationKeyboard: () => ({}),
     console: { error() {} },
   });
   const wizardCode = ts.transpileModule(
     `async function callback(data, ctx, userId) { ${callbacks} }
      async function photo(ctx, userId, fileUrl) { const session = getSession(userId); ${photo} }
+     ${videoHandler}
      async function prompt(ctx, userId) { const session = getSession(userId); ${prompt} }`,
     { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }
   ).outputText;
   vm.runInContext(wizardCode, context);
   const ctx = {
-    chat: { id: 9 }, message: { text: 'Animate this image' },
+    from: { id: 9 }, chat: { id: 9 }, message: { text: 'Animate this image' },
+    telegram: { getFileLink: async (fileId: string) => ({ href: `https://telegram.example.test/${fileId}` }) },
     editMessageText: async (text: string) => { messages.push(text); },
     reply: async (text: string) => { messages.push(text); return { message_id: 88 }; },
   };
@@ -300,7 +340,15 @@ async function verifySeedance25Wizard() {
   assert.equal(state.mode, 'flora_seedance_2_5_480_wait_image');
   assert.equal(state.floraSeedance25480Ratio, '16:9');
   await context.photo(ctx, 9, 'https://example.test/ref.jpg');
+  assert.equal(state.mode, 'flora_seedance_2_5_480_wait_video_choice');
+  await context.callback('flora480_seedance25_video_add', ctx, 9);
+  assert.equal(state.mode, 'flora_seedance_2_5_480_wait_video');
+  await context.handleFloraSeedance25VideoReference(ctx, {
+    file_id: 'video-ref-1', file_size: 1024, mime_type: 'video/mp4',
+  });
   assert.equal(state.mode, 'flora_seedance_2_5_480_wait_duration');
+  assert.equal(state.floraSeedance25480VideoFileId, 'video-ref-1');
+  assert.equal(state.floraSeedance25480VideoDuration, 2.4);
   await context.callback('flora480_seedance25_duration_11', ctx, 9);
   assert.equal(state.mode, 'flora_seedance_2_5_480_wait_duration');
   assert.match(messages.at(-1)!, /tidak valid/);
@@ -311,11 +359,29 @@ async function verifySeedance25Wizard() {
   await context.prompt(ctx, 9);
   await context.prompt(ctx, 9);
   assert.equal(jobs.length, 1, 'duplicate prompt must not submit twice');
-  assert.deepEqual(jobs[0], [9, 9, 7, 88, 'seedance_2_5_480', 'https://example.test/ref.jpg', 'Animate this image', '16:9', 15]);
+  assert.deepEqual(jobs[0], [
+    9, 9, 7, 88, 'seedance_2_5_480', 'https://example.test/ref.jpg',
+    'Animate this image', '16:9', 15, 'video-ref-1', 'video/mp4',
+  ]);
   assert.equal(state.mode, 'idle');
   assert.equal(state.floraSeedance25480ImageUrl, undefined);
   assert.equal(state.floraSeedance25480Ratio, undefined);
   assert.equal(state.floraSeedance25480Duration, undefined);
+  assert.equal(state.floraSeedance25480VideoFileId, undefined);
+
+  state = { mode: 'idle', dbUserId: 7 };
+  await context.callback('mode_flora_seedance_2_5_480', ctx, 9);
+  await context.callback('flora480_seedance25_ratio_916', ctx, 9);
+  await context.photo(ctx, 9, 'https://example.test/ref.jpg');
+  assert.equal(state.mode, 'flora_seedance_2_5_480_wait_video_choice');
+  await context.callback('flora480_seedance25_video_skip', ctx, 9);
+  assert.equal(state.mode, 'flora_seedance_2_5_480_wait_duration');
+  await context.callback('flora480_seedance25_duration_10', ctx, 9);
+  await context.prompt(ctx, 9);
+  assert.deepEqual(jobs[1], [
+    9, 9, 7, 88, 'seedance_2_5_480', 'https://example.test/ref.jpg',
+    'Animate this image', '9:16', 10, undefined, undefined,
+  ]);
 }
 
 async function main() {
@@ -398,6 +464,36 @@ async function main() {
     assert.deepEqual(draft.events.successes, [1]);
     assert.deepEqual(draft.events.releases, [1]);
   }
+  const withReferenceVideo = harness();
+  await withReferenceVideo.run(
+    'seedance_2_5_480', 3, 'follow video motion', '16:9', 15, 'telegram-video-id', 'video/mp4'
+  );
+  assert.deepEqual(withReferenceVideo.events.charges, [22500]);
+  assert.deepEqual(withReferenceVideo.events.videoUploads, [{ key: 'key-a', mime: 'video/mp4' }]);
+  assert.deepEqual(withReferenceVideo.events.order, ['poll', 'deliver']);
+  assert.equal(withReferenceVideo.events.upscales.length, 0);
+  assert.equal(withReferenceVideo.events.submissions.length, 1);
+  assert.equal(withReferenceVideo.events.submissions[0].params.video_urls[0],
+    'https://provider.example.test/video-reference.mp4');
+  assert.equal(withReferenceVideo.events.submissions[0].params.duration, '15');
+  assert.deepEqual(withReferenceVideo.events.refunds, []);
+  assert.deepEqual(withReferenceVideo.events.releases, [3]);
+
+  const referenceParamUnavailable = harness({
+    catalog: () => ({
+      models: catalog().models.map((model: any) => model.name === 'Seedance 2.5'
+        ? { ...model, params: model.params.filter((param: any) => param.name !== 'video_urls') }
+        : model),
+    }),
+  });
+  await referenceParamUnavailable.run(
+    'seedance_2_5_480', 4, 'follow video motion', '16:9', 15, 'telegram-video-id', 'video/mp4'
+  );
+  assert.equal(referenceParamUnavailable.events.submissions.length, 0);
+  assert.equal(referenceParamUnavailable.events.videoUploads.length, 0);
+  assert.deepEqual(referenceParamUnavailable.events.refunds, [22500]);
+  assert.deepEqual(referenceParamUnavailable.events.releases, [4]);
+
   for (const options of [
     { deliver: false },
     { poll: () => { throw new Error('FLORA_RUN_TIMEOUT'); } },

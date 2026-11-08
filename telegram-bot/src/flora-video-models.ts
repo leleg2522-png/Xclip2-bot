@@ -45,6 +45,7 @@ export const FLORA_480_VIDEO_MODELS: Record<Flora480VideoModelKey, Flora480Video
 type CatalogParam = {
   name?: string;
   type?: string;
+  items?: { type?: string };
   options?: Array<{ value?: unknown }>;
   required?: boolean;
   default?: unknown;
@@ -63,7 +64,12 @@ const modelNames: Record<Flora480VideoModelKey, readonly string[]> = {
   minimax_h3_480: ['minimaxh3max', 'minimaxh3'],
   wan_v3_480: ['wan30'],
   seedance_2_480: ['seedance20'],
-  seedance_2_5_480: ['seedance25', 'seedance25draft', 'seedancebytedance25'],
+  seedance_2_5_480: [
+    'seedance25',
+    'seedance25draft',
+    'seedance25bybytedance',
+    'seedance25referencetovideo',
+  ],
 };
 
 function catalogRows(raw: unknown): CatalogModel[] {
@@ -78,15 +84,44 @@ function supportsOption(param: CatalogParam | undefined, value: string): boolean
   return !!param?.options?.some((option) => String(option.value) === value);
 }
 
+export type Flora480VideoReferenceParam = {
+  name: string;
+  type: 'string' | 'string[]';
+};
+
+const VIDEO_REFERENCE_PARAM_NAMES = [
+  'video_urls',
+  'reference_video_urls',
+  'video_url',
+  'reference_video_url',
+] as const;
+
+function videoReferenceParam(params: CatalogParam[]): Flora480VideoReferenceParam | undefined {
+  for (const name of VIDEO_REFERENCE_PARAM_NAMES) {
+    const param = params.find((row) => row.name === name);
+    if (param?.type === 'string') return { name, type: 'string' };
+    if (param?.type === 'string[]' || (param?.type === 'array' && param.items?.type === 'string')) {
+      return { name, type: 'string[]' };
+    }
+  }
+  return undefined;
+}
+
+export type Flora480VideoReference = {
+  url: string;
+  parameter: Flora480VideoReferenceParam;
+};
+
 /**
  * Resolve the account's live endpoint rather than deriving an ID from its name.
  * Reject unsupported duration/resolution before uploading or charging upstream.
  */
-export function resolveFlora480VideoModel(
+export function resolveFlora480VideoModelContract(
   key: Flora480VideoModelKey,
   rawModels: unknown,
   durationSeconds?: number,
-): string {
+  includeVideoReference = false,
+): { modelId: string; videoReferenceParam?: Flora480VideoReferenceParam } {
   const config = FLORA_480_VIDEO_MODELS[key];
   const selectedDuration = durationSeconds ?? config.durationSeconds;
   const allowedDurations = config.durationOptionsSeconds ?? (config.durationSeconds ? [config.durationSeconds] : []);
@@ -99,12 +134,21 @@ export function resolveFlora480VideoModel(
     return modelNames[key].includes(name)
       && row.type === 'video'
       && row.capabilities?.some((capability) =>
-        capability === 'audio-image-to-video' || capability === 'image-to-video');
+        capability === 'audio-image-to-video'
+        || capability === 'image-to-video'
+        || (key === 'seedance_2_5_480' && capability === 'reference-to-video'));
   });
   for (const row of candidates) {
     if (typeof row.model_id !== 'string' || !row.model_id.trim() || !Array.isArray(row.params)) continue;
     const params = new Map(row.params.map((param) => [param.name, param]));
+    const referenceParam = includeVideoReference ? videoReferenceParam(row.params) : undefined;
+    if (includeVideoReference && !referenceParam) continue;
     const expectedParams = buildFlora480VideoParams(key, 'https://example.test/image.jpg', '9:16', selectedDuration);
+    if (referenceParam) {
+      expectedParams[referenceParam.name] = referenceParam.type === 'string'
+        ? 'https://example.test/reference.mp4'
+        : ['https://example.test/reference.mp4'];
+    }
     const unknownRequired = row.params.some((param) =>
       param.required && param.default == null && !(param.name! in expectedParams));
     const singleImageInput = key === 'seedance_2_480' || key === 'seedance_2_5_480';
@@ -117,9 +161,17 @@ export function resolveFlora480VideoModel(
       && supportsOption(params.get('resolution'), config.resolution)
       && supportsOption(params.get('aspect_ratio'), '9:16')
       && supportsOption(params.get('aspect_ratio'), '16:9')
-    ) return row.model_id;
+    ) return { modelId: row.model_id, videoReferenceParam: referenceParam };
   }
   throw new Error(candidates.length ? 'FLORA_MODEL_UNSUPPORTED_PARAMETERS' : 'FLORA_MODEL_UNAVAILABLE');
+}
+
+export function resolveFlora480VideoModel(
+  key: Flora480VideoModelKey,
+  rawModels: unknown,
+  durationSeconds?: number,
+): string {
+  return resolveFlora480VideoModelContract(key, rawModels, durationSeconds).modelId;
 }
 
 export function buildFlora480VideoParams(
@@ -127,6 +179,7 @@ export function buildFlora480VideoParams(
   imageUrl: string,
   ratio: Flora480AspectRatio,
   durationSeconds?: number,
+  videoReference?: Flora480VideoReference,
 ): Record<string, unknown> {
   if (!imageUrl.trim()) throw new Error('FLORA_REFERENCE_IMAGE_REQUIRED');
   if (ratio !== '9:16' && ratio !== '16:9') throw new Error('FLORA_INVALID_ASPECT_RATIO');
@@ -146,13 +199,21 @@ export function buildFlora480VideoParams(
     };
   }
   if (key === 'seedance_2_5_480') {
-    return {
+    const params: Record<string, unknown> = {
       image_url: imageUrl,
       duration: String(selectedDuration),
       resolution: config.resolution,
       aspect_ratio: ratio,
     };
+    if (videoReference) {
+      if (!videoReference.url.trim()) throw new Error('FLORA_REFERENCE_VIDEO_REQUIRED');
+      params[videoReference.parameter.name] = videoReference.parameter.type === 'string'
+        ? videoReference.url
+        : [videoReference.url];
+    }
+    return params;
   }
+  if (videoReference) throw new Error('FLORA_VIDEO_REFERENCE_UNSUPPORTED');
   return {
     image_urls: [imageUrl],
     duration: String(selectedDuration),

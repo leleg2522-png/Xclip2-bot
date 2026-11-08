@@ -159,3 +159,16 @@ equivalent to dedicated Kling Motion Control or promise exact identity/music.
 - Flora kadang membungkus gangguan upstream sebagai HTTP 400 `input_validation_error` dengan pesan generik `Server Error`. Jika belum ada `run_id`, retry setelah jeda tanpa mematikan/mengecualikan key (pool bisa hanya punya satu key); setelah ada `run_id`, jangan pernah resubmit.
 - Bot XclipAI pakai pool `flora_key_pool` (clone pola leonardo_key_pool) dengan rotasi round-robin; **why:** user pakai banyak akun free sekali pakai, key mati dideteksi dari error submit, bukan cek saldo.
 - **How to apply:** klasifikasi error key-dead harus ketat — hanya FLORA_AUTH/SUBMIT/UPLOAD failure dengan sinyal 401/402/403/quota; FLORA_RUN_FAILED = error konten, jangan matikan key.
+
+## Seedance 2.5 video reference
+
+Flora's Seedance 2.5 documentation confirms reference-to-video and a 1.8-second
+minimum clip length, but does not specify the API parameter name or a maximum
+reference duration. Do not inherit Wan 3.0's 15-second cap.
+
+**Why:** Guessing an undocumented field can make a paid generation fail, and
+catalog capabilities do not establish input-duration limits.
+
+**How to apply:** Resolve the video URL field and its scalar/array type from the
+account's live model catalog. If the field is absent, skip before submit rather
+than guessing. Validate the documented minimum without inventing a maximum.
