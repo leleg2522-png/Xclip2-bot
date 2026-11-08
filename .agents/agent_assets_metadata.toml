@@ -1160,3 +1160,17 @@ mtime_ms = 1794078570849
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/af00352c-945b-4406-a197-8da445138ce1/23e85633-fda7-445b-a23a-b8d36bc4650e"
 storage_version_token = "1794118042390347"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "3xEOCtQSXfizVRSFO-sTB"
+uri = "file://generated-artifacts/botelex-cio-muse-minute-2/ceo-itu-mengenalku-60s.mp4"
+type = "video"
+title = "Dua Mangkuk Jam Sembilan — menit kedua"
+description = "Video microdrama 60 detik, 720×1280 dengan audio. File juga tersedia melalui endpoint unduhan langsung."
+logical_id = "ff12d0b0-e680-473a-bc84-b2bcfab8f643"
+content_hash = "sha256:29f98b22be327d2ca4e0f8c92acb51288b30b9b505fabb0c3b2ae52f9af5a5b7"
+size = 31737052
+mtime_ms = 1794144353112
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/ff12d0b0-e680-473a-bc84-b2bcfab8f643/b049dd2a-e27c-44b0-a09e-e7c5affe637c"
+storage_version_token = "1794145284101448"
+content_type = "video/mp4"

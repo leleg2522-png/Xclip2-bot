@@ -20,6 +20,9 @@ assert.match(runnerSource, /if \(!delivered && finalVideo\.upscaled\)/);
 assert.match(source, /flora_minimax_h3_480:\s*10000/);
 assert.match(source, /flora_wan_v3_480:\s*15000/);
 assert.match(source, /flora_seedance_2_480:\s*15000/);
+assert.match(source, /flora_seedance_2_5_480_per_second:\s*1500/);
+assert.match(source, /Seedance 2\.5 Draft • 480p • 10\/15\/30 detik/);
+assert.match(source, /Seedance 2\.5 Draft \(480p · 10\/15\/30 detik\)/);
 assert.match(source, /Seedance 2 Uncensored • 15 detik • 1080p/);
 assert.match(source, /Seedance 2 Uncensored \(15 detik · 1080p\)/);
 assert.doesNotMatch(source, /Seedance 2\.0 480p/);
@@ -28,8 +31,11 @@ assert.equal(FLORA_480_VIDEO_MODELS.wan_v3_480.label, 'Wan 3.0 Uncensored');
 assert.match(source, /MiniMax H3 Uncensored • 15 detik • hingga 1K/);
 assert.match(source, /Wan 3\.0 Uncensored • 30 detik • hingga 1K/);
 assert.doesNotMatch(source, /MiniMax H3 P2|Wan 3\.0 P2|Video selesai dibuat\. Menyiapkan hasil akhir/);
-for (const route of ['flora_minimax_h3_480', 'flora_wan_v3_480', 'flora_seedance_2_480']) {
-  for (const mode of ['wait_ratio', 'wait_image', 'wait_prompt']) {
+for (const route of ['flora_minimax_h3_480', 'flora_wan_v3_480', 'flora_seedance_2_480', 'flora_seedance_2_5_480']) {
+  const modes = route === 'flora_seedance_2_5_480'
+    ? ['wait_ratio', 'wait_image', 'wait_duration', 'wait_prompt']
+    : ['wait_ratio', 'wait_image', 'wait_prompt'];
+  for (const mode of modes) {
     assert.match(source, new RegExp(`'${route}_${mode}'`));
   }
   assert.match(source, new RegExp(`mode_${route}: '${route}'`));
@@ -37,7 +43,8 @@ for (const route of ['flora_minimax_h3_480', 'flora_wan_v3_480', 'flora_seedance
 assert.match(source, /data\.startsWith\('flora480_minimax_'\).*return 'flora_minimax_h3_480'/);
 assert.match(source, /data\.startsWith\('flora480_wan_'\).*return 'flora_wan_v3_480'/);
 assert.match(source, /data\.startsWith\('flora480_seedance_'\).*return 'flora_seedance_2_480'/);
-assert.match(source, /runFlora480Video\(ctx\.chat\.id, userId, dbUserId, statusMsg\.message_id, modelKey, imageUrl, prompt, ratio\)/);
+assert.match(source, /data\.startsWith\('flora480_seedance25_'\).*return 'flora_seedance_2_5_480'/);
+assert.match(source, /runFlora480Video\(ctx\.chat\.id, userId, dbUserId, statusMsg\.message_id, modelKey, imageUrl, prompt, ratio, durationSeconds\)/);
 
 const executable = ts.transpileModule(runnerSource, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
@@ -45,18 +52,28 @@ const executable = ts.transpileModule(runnerSource, {
 
 function catalog() {
   return {
-    models: (['minimax_h3_480', 'wan_v3_480', 'seedance_2_480'] as const).map(key => ({
+    models: (['minimax_h3_480', 'wan_v3_480', 'seedance_2_480', 'seedance_2_5_480'] as const).map(key => {
+      const singleImageInput = key === 'seedance_2_480' || key === 'seedance_2_5_480';
+      const config = FLORA_480_VIDEO_MODELS[key];
+      const durations = config.durationOptionsSeconds ?? [config.durationSeconds!];
+      return ({
       model_id: `live-${key}`,
-      name: key === 'minimax_h3_480' ? 'MiniMax H3 Max' : key === 'seedance_2_480' ? 'Seedance 2.0' : 'WAN 3.0',
+      name: key === 'minimax_h3_480'
+        ? 'MiniMax H3 Max'
+        : key === 'seedance_2_480'
+          ? 'Seedance 2.0'
+          : key === 'seedance_2_5_480'
+            ? 'Seedance 2.5'
+            : 'WAN 3.0',
       type: 'video',
-      capabilities: [key === 'seedance_2_480' ? 'image-to-video' : 'audio-image-to-video'],
+      capabilities: [singleImageInput ? 'image-to-video' : 'audio-image-to-video'],
       params: [
-        { name: key === 'seedance_2_480' ? 'image_url' : 'image_urls', type: key === 'seedance_2_480' ? 'string' : 'string[]' },
-        { name: 'duration', options: [{ value: String(FLORA_480_VIDEO_MODELS[key].durationSeconds) }] },
-        { name: 'resolution', options: [{ value: FLORA_480_VIDEO_MODELS[key].resolution }] },
+        { name: singleImageInput ? 'image_url' : 'image_urls', type: singleImageInput ? 'string' : 'string[]' },
+        { name: 'duration', options: durations.map(value => ({ value: String(value) })) },
+        { name: 'resolution', options: [{ value: config.resolution }] },
         { name: 'aspect_ratio', options: [{ value: '9:16' }, { value: '16:9' }] },
       ],
-    })),
+    }); }),
   };
 }
 
@@ -96,7 +113,12 @@ function harness(options: Options = {}) {
     buildFlora480VideoParams,
     resolveFlora480VideoModel,
     isFloraWorkspaceSetupError,
-    MODEL_PRICES: { flora_minimax_h3_480: 10000, flora_wan_v3_480: 15000, flora_seedance_2_480: 15000 },
+    MODEL_PRICES: {
+      flora_minimax_h3_480: 10000,
+      flora_wan_v3_480: 15000,
+      flora_seedance_2_480: 15000,
+      flora_seedance_2_5_480_per_second: 1500,
+    },
     FLORA_BASE: 'https://provider.example.test',
     console: { log() {}, warn() {}, error() {} },
     setTimeout: (callback: () => void) => callback(),
@@ -167,9 +189,15 @@ function harness(options: Options = {}) {
     },
   });
   vm.runInContext(executable, context);
-  const run = (key: Flora480VideoModelKey, chatId = 1, prompt = 'fixture', ratio: '16:9' | '9:16' = '16:9') =>
+  const run = (
+    key: Flora480VideoModelKey,
+    chatId = 1,
+    prompt = 'fixture',
+    ratio: '16:9' | '9:16' = '16:9',
+    durationSeconds = FLORA_480_VIDEO_MODELS[key].durationSeconds ?? 10,
+  ) =>
     context.runFlora480Video(chatId, chatId, chatId, chatId * 10, key,
-      'https://example.test/reference.jpg', prompt, ratio) as Promise<void>;
+      'https://example.test/reference.jpg', prompt, ratio, durationSeconds) as Promise<void>;
   return { events, run };
 }
 
@@ -188,7 +216,7 @@ async function verifySeedanceWizard() {
     const jobs: any[][] = [];
     const context = vm.createContext({
       FLORA_480_VIDEO_MODELS,
-      MODEL_PRICES: { flora_seedance_2_480: 15000 },
+    MODEL_PRICES: { flora_seedance_2_480: 15000, flora_seedance_2_5_480_per_second: 1500 },
       Markup: { inlineKeyboard: (buttons: any) => ({ buttons }), button: { callback: (text: string, data: string) => ({ text, data }) } },
       getSession: () => state,
       setSession: (_: number, update: any) => { state = { ...state, ...update }; },
@@ -221,7 +249,7 @@ async function verifySeedanceWizard() {
     await context.prompt(ctx, 9);
     await context.prompt(ctx, 9);
     assert.equal(jobs.length, 1, 'duplicate prompt must not submit twice');
-    assert.deepEqual(jobs[0], [9, 9, 7, 88, 'seedance_2_480', 'https://example.test/ref.jpg', 'Animate this image', ratio]);
+    assert.deepEqual(jobs[0], [9, 9, 7, 88, 'seedance_2_480', 'https://example.test/ref.jpg', 'Animate this image', ratio, 15]);
     assert.equal(state.mode, 'idle');
     assert.equal(state.floraSeedance2480ImageUrl, undefined);
     assert.equal(state.floraSeedance2480Ratio, undefined);
@@ -234,9 +262,66 @@ async function verifySeedanceWizard() {
   }
 }
 
+async function verifySeedance25Wizard() {
+  const callbacks = source.slice(source.indexOf("  if (data === 'mode_flora_seedance_2_480')"), source.indexOf("  if (data === 'mode_flora_minimax_h3_480'"));
+  const photo = source.slice(source.indexOf("  if (session.mode === 'flora_seedance_2_480_wait_image')"), source.indexOf("  if (session.mode === 'flora_minimax_h3_480_wait_image')"));
+  const prompt = source.slice(source.indexOf("  if (\n    session.mode === 'flora_minimax_h3_480_wait_prompt'"), source.indexOf('  // ── Runway Gen-4.5 prompt'));
+  let state: any = { mode: 'idle', dbUserId: 7 };
+  const messages: string[] = [];
+  const jobs: any[][] = [];
+  const context = vm.createContext({
+    FLORA_480_VIDEO_MODELS,
+    MODEL_PRICES: { flora_seedance_2_480: 15000, flora_seedance_2_5_480_per_second: 1500 },
+    Markup: { inlineKeyboard: (buttons: any) => ({ buttons }), button: { callback: (text: string, data: string) => ({ text, data }) } },
+    getSession: () => state,
+    setSession: (_: number, update: any) => { state = { ...state, ...update }; },
+    formatRupiah: (amount: number) => `Rp${amount}`,
+    requireLogin: async () => true,
+    getCooldownRemainingMs: () => 0,
+    runFlora480Video: async (...args: any[]) => { jobs.push(args); },
+    console: { error() {} },
+  });
+  const wizardCode = ts.transpileModule(
+    `async function callback(data, ctx, userId) { ${callbacks} }
+     async function photo(ctx, userId, fileUrl) { const session = getSession(userId); ${photo} }
+     async function prompt(ctx, userId) { const session = getSession(userId); ${prompt} }`,
+    { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }
+  ).outputText;
+  vm.runInContext(wizardCode, context);
+  const ctx = {
+    chat: { id: 9 }, message: { text: 'Animate this image' },
+    editMessageText: async (text: string) => { messages.push(text); },
+    reply: async (text: string) => { messages.push(text); return { message_id: 88 }; },
+  };
+  await context.callback('mode_flora_seedance_2_5_480', ctx, 9);
+  assert.equal(state.mode, 'flora_seedance_2_5_480_wait_ratio');
+  assert.match(messages.at(-1)!, /Rp1500 per detik/);
+  await context.callback('flora480_seedance25_ratio_169', ctx, 9);
+  assert.equal(state.mode, 'flora_seedance_2_5_480_wait_image');
+  assert.equal(state.floraSeedance25480Ratio, '16:9');
+  await context.photo(ctx, 9, 'https://example.test/ref.jpg');
+  assert.equal(state.mode, 'flora_seedance_2_5_480_wait_duration');
+  await context.callback('flora480_seedance25_duration_11', ctx, 9);
+  assert.equal(state.mode, 'flora_seedance_2_5_480_wait_duration');
+  assert.match(messages.at(-1)!, /tidak valid/);
+  await context.callback('flora480_seedance25_duration_15', ctx, 9);
+  assert.equal(state.mode, 'flora_seedance_2_5_480_wait_prompt');
+  assert.equal(state.floraSeedance25480Duration, 15);
+  assert.match(messages.at(-1)!, /Rp22500/);
+  await context.prompt(ctx, 9);
+  await context.prompt(ctx, 9);
+  assert.equal(jobs.length, 1, 'duplicate prompt must not submit twice');
+  assert.deepEqual(jobs[0], [9, 9, 7, 88, 'seedance_2_5_480', 'https://example.test/ref.jpg', 'Animate this image', '16:9', 15]);
+  assert.equal(state.mode, 'idle');
+  assert.equal(state.floraSeedance25480ImageUrl, undefined);
+  assert.equal(state.floraSeedance25480Ratio, undefined);
+  assert.equal(state.floraSeedance25480Duration, undefined);
+}
+
 async function main() {
   await verifySeedanceWizard();
-  for (const model of ['wan_v3_480', 'minimax_h3_480', 'seedance_2_480'] as const) {
+  await verifySeedance25Wizard();
+  for (const model of ['wan_v3_480', 'minimax_h3_480', 'seedance_2_480', 'seedance_2_5_480'] as const) {
     for (const code of ['FLORA_NO_PROJECT', 'FLORA_NO_WORKSPACE']) {
       const fallback = harness({ workspace: key => {
         if (key === 'key-a') throw new Error(`${code}: missing setup`);
@@ -292,6 +377,26 @@ async function main() {
     assert.doesNotMatch(native.events.messages.join(' ') + native.events.deliveries[0].caption, /1K|480p|Flora|upscal|Renderful/i);
     assert.deepEqual(native.events.refunds, []);
     assert.deepEqual(native.events.releases, [1]);
+  }
+  for (const duration of [10, 15, 30] as const) {
+    const draft = harness();
+    await draft.run('seedance_2_5_480', 1, 'draft prompt', '9:16', duration);
+    assert.deepEqual(draft.events.charges, [duration * 1500]);
+    assert.equal(draft.events.submissions.length, 1);
+    assert.equal(draft.events.submissions[0].model, 'live-seedance_2_5_480');
+    assert.deepEqual(draft.events.submissions[0].params, {
+      image_url: 'https://provider.example.test/image.jpg',
+      duration: String(duration),
+      resolution: '480p',
+      aspect_ratio: '9:16',
+    });
+    assert.deepEqual(draft.events.order, ['poll', 'deliver'], 'Draft must deliver native 480p without upscaling');
+    assert.equal(draft.events.upscales.length, 0);
+    assert.equal(draft.events.deliveries[0].url, 'https://provider.example.test/run-draft prompt.mp4');
+    assert.match(draft.events.deliveries[0].caption, new RegExp(`Seedance 2\\.5 Draft.*${duration} detik.*480p`));
+    assert.deepEqual(draft.events.refunds, []);
+    assert.deepEqual(draft.events.successes, [1]);
+    assert.deepEqual(draft.events.releases, [1]);
   }
   for (const options of [
     { deliver: false },

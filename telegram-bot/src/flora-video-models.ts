@@ -1,8 +1,17 @@
 /** Native 480p contracts with per-route finishing policies. */
-export type Flora480VideoModelKey = 'minimax_h3_480' | 'wan_v3_480' | 'seedance_2_480';
+export type Flora480VideoModelKey = 'minimax_h3_480' | 'wan_v3_480' | 'seedance_2_480' | 'seedance_2_5_480';
 export type Flora480AspectRatio = '9:16' | '16:9';
 
-export const FLORA_480_VIDEO_MODELS = {
+type Flora480VideoConfig = {
+  label: string;
+  durationSeconds?: number;
+  durationOptionsSeconds?: readonly number[];
+  resolution: '480P' | '480p';
+  autoUpscale: boolean;
+  deliveryResolution: '1K' | '1080p' | '480p';
+};
+
+export const FLORA_480_VIDEO_MODELS: Record<Flora480VideoModelKey, Flora480VideoConfig> = {
   minimax_h3_480: {
     label: 'MiniMax H3 Uncensored',
     durationSeconds: 15,
@@ -24,7 +33,14 @@ export const FLORA_480_VIDEO_MODELS = {
     autoUpscale: true,
     deliveryResolution: '1080p',
   },
-} as const;
+  seedance_2_5_480: {
+    label: 'Seedance 2.5 Draft',
+    durationOptionsSeconds: [10, 15, 30],
+    resolution: '480p',
+    autoUpscale: false,
+    deliveryResolution: '480p',
+  },
+};
 
 type CatalogParam = {
   name?: string;
@@ -47,6 +63,7 @@ const modelNames: Record<Flora480VideoModelKey, readonly string[]> = {
   minimax_h3_480: ['minimaxh3max', 'minimaxh3'],
   wan_v3_480: ['wan30'],
   seedance_2_480: ['seedance20'],
+  seedance_2_5_480: ['seedance25', 'seedance25draft', 'seedancebytedance25'],
 };
 
 function catalogRows(raw: unknown): CatalogModel[] {
@@ -68,8 +85,14 @@ function supportsOption(param: CatalogParam | undefined, value: string): boolean
 export function resolveFlora480VideoModel(
   key: Flora480VideoModelKey,
   rawModels: unknown,
+  durationSeconds?: number,
 ): string {
   const config = FLORA_480_VIDEO_MODELS[key];
+  const selectedDuration = durationSeconds ?? config.durationSeconds;
+  const allowedDurations = config.durationOptionsSeconds ?? (config.durationSeconds ? [config.durationSeconds] : []);
+  if (selectedDuration == null || !allowedDurations.includes(selectedDuration)) {
+    throw new Error('FLORA_INVALID_DURATION');
+  }
   const candidates = catalogRows(rawModels).filter((row) => {
     const name = String(row?.name ?? row?.display_name ?? '')
       .toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -81,15 +104,16 @@ export function resolveFlora480VideoModel(
   for (const row of candidates) {
     if (typeof row.model_id !== 'string' || !row.model_id.trim() || !Array.isArray(row.params)) continue;
     const params = new Map(row.params.map((param) => [param.name, param]));
-    const expectedParams = buildFlora480VideoParams(key, 'https://example.test/image.jpg', '9:16');
+    const expectedParams = buildFlora480VideoParams(key, 'https://example.test/image.jpg', '9:16', selectedDuration);
     const unknownRequired = row.params.some((param) =>
       param.required && param.default == null && !(param.name! in expectedParams));
+    const singleImageInput = key === 'seedance_2_480' || key === 'seedance_2_5_480';
     if (
       !unknownRequired
-      && (key === 'seedance_2_480'
+      && (singleImageInput
         ? params.get('image_url')?.type === 'string'
         : params.get('image_urls')?.type === 'string[]')
-      && supportsOption(params.get('duration'), String(config.durationSeconds))
+      && supportsOption(params.get('duration'), String(selectedDuration))
       && supportsOption(params.get('resolution'), config.resolution)
       && supportsOption(params.get('aspect_ratio'), '9:16')
       && supportsOption(params.get('aspect_ratio'), '16:9')
@@ -102,22 +126,36 @@ export function buildFlora480VideoParams(
   key: Flora480VideoModelKey,
   imageUrl: string,
   ratio: Flora480AspectRatio,
+  durationSeconds?: number,
 ): Record<string, unknown> {
   if (!imageUrl.trim()) throw new Error('FLORA_REFERENCE_IMAGE_REQUIRED');
   if (ratio !== '9:16' && ratio !== '16:9') throw new Error('FLORA_INVALID_ASPECT_RATIO');
   const config = FLORA_480_VIDEO_MODELS[key];
+  const selectedDuration = durationSeconds ?? config.durationSeconds;
+  const allowedDurations = config.durationOptionsSeconds ?? (config.durationSeconds ? [config.durationSeconds] : []);
+  if (selectedDuration == null || !allowedDurations.includes(selectedDuration)) {
+    throw new Error('FLORA_INVALID_DURATION');
+  }
   if (key === 'seedance_2_480') {
     return {
       image_url: imageUrl,
-      duration: String(config.durationSeconds),
+      duration: String(selectedDuration),
       resolution: config.resolution,
       aspect_ratio: ratio,
       bitrate_mode: 'standard',
     };
   }
+  if (key === 'seedance_2_5_480') {
+    return {
+      image_url: imageUrl,
+      duration: String(selectedDuration),
+      resolution: config.resolution,
+      aspect_ratio: ratio,
+    };
+  }
   return {
     image_urls: [imageUrl],
-    duration: String(config.durationSeconds),
+    duration: String(selectedDuration),
     resolution: config.resolution,
     aspect_ratio: ratio,
     ...(key === 'minimax_h3_480'

@@ -9,14 +9,22 @@ import {
 // Relevant schema fields captured from the authenticated live Flora catalog.
 function fixture(key: Flora480VideoModelKey, id: string) {
   const cfg = FLORA_480_VIDEO_MODELS[key];
+  const singleImageInput = key === 'seedance_2_480' || key === 'seedance_2_5_480';
+  const durations = cfg.durationOptionsSeconds ?? [cfg.durationSeconds!];
   return {
     model_id: id,
-    name: key === 'minimax_h3_480' ? 'MiniMax H3 Max' : key === 'seedance_2_480' ? 'Seedance 2.0' : 'WAN 3.0',
+    name: key === 'minimax_h3_480'
+      ? 'MiniMax H3 Max'
+      : key === 'seedance_2_480'
+        ? 'Seedance 2.0'
+        : key === 'seedance_2_5_480'
+          ? 'Seedance 2.5'
+          : 'WAN 3.0',
     type: 'video',
-    capabilities: [key === 'seedance_2_480' ? 'image-to-video' : 'audio-image-to-video'],
+    capabilities: [singleImageInput ? 'image-to-video' : 'audio-image-to-video'],
     params: [
-      { name: key === 'seedance_2_480' ? 'image_url' : 'image_urls', type: key === 'seedance_2_480' ? 'string' : 'string[]', required: false },
-      { name: 'duration', type: 'string', options: [{ value: String(cfg.durationSeconds) }] },
+      { name: singleImageInput ? 'image_url' : 'image_urls', type: singleImageInput ? 'string' : 'string[]', required: false },
+      { name: 'duration', type: 'string', options: durations.map((value) => ({ value: String(value) })) },
       { name: 'resolution', type: 'string', options: [{ value: cfg.resolution }] },
       { name: 'aspect_ratio', type: 'string', options: [{ value: '9:16' }, { value: '16:9' }] },
     ],
@@ -50,28 +58,50 @@ for (const ratio of ['9:16', '16:9'] as const) {
 assert.equal(FLORA_480_VIDEO_MODELS.seedance_2_480.autoUpscale, true);
 assert.equal(FLORA_480_VIDEO_MODELS.seedance_2_480.label, 'Seedance 2 Uncensored');
 assert.equal(FLORA_480_VIDEO_MODELS.seedance_2_480.deliveryResolution, '1080p');
+assert.equal(FLORA_480_VIDEO_MODELS.seedance_2_5_480.autoUpscale, false);
+assert.equal(FLORA_480_VIDEO_MODELS.seedance_2_5_480.deliveryResolution, '480p');
+for (const duration of [10, 15, 30]) {
+  assert.deepEqual(buildFlora480VideoParams('seedance_2_5_480', imageUrl, '9:16', duration), {
+    image_url: imageUrl,
+    duration: String(duration),
+    resolution: '480p',
+    aspect_ratio: '9:16',
+  });
+}
+assert.throws(() => buildFlora480VideoParams('seedance_2_5_480', imageUrl, '9:16', 20), /INVALID_DURATION/);
 
-for (const key of ['minimax_h3_480', 'wan_v3_480', 'seedance_2_480'] as const) {
+for (const key of ['minimax_h3_480', 'wan_v3_480', 'seedance_2_480', 'seedance_2_5_480'] as const) {
   const endpoint = fixture(key, `account-specific-${key}`);
   const audioOnly = { ...endpoint, model_id: 'wrong-audio-only', capabilities: ['audio-to-video'] };
-  assert.equal(resolveFlora480VideoModel(key, { models: [audioOnly, endpoint] }), endpoint.model_id);
-  assert.equal(resolveFlora480VideoModel(key, [endpoint]), endpoint.model_id);
-  assert.throws(() => resolveFlora480VideoModel(key, [audioOnly]), /MODEL_UNAVAILABLE/);
-  assert.throws(() => resolveFlora480VideoModel(key, []), /MODEL_UNAVAILABLE/);
+  const selectedDuration = key === 'seedance_2_5_480' ? 10 : undefined;
+  assert.equal(resolveFlora480VideoModel(key, { models: [audioOnly, endpoint] }, selectedDuration), endpoint.model_id);
+  assert.equal(resolveFlora480VideoModel(key, [endpoint], selectedDuration), endpoint.model_id);
+  assert.throws(() => resolveFlora480VideoModel(key, [audioOnly], selectedDuration), /MODEL_UNAVAILABLE/);
+  assert.throws(() => resolveFlora480VideoModel(key, [], selectedDuration), /MODEL_UNAVAILABLE/);
   assert.throws(() => resolveFlora480VideoModel(key, {
     models: [{ ...endpoint, params: endpoint.params.filter(p => p.name !== 'duration') }],
-  }), /UNSUPPORTED_PARAMETERS/);
+  }, selectedDuration), /UNSUPPORTED_PARAMETERS/);
   assert.throws(() => resolveFlora480VideoModel(key, [{
     ...endpoint,
     params: endpoint.params.map(p => p.name === 'duration' ? { ...p, options: [{ value: '5' }] } : p),
-  }]), /UNSUPPORTED_PARAMETERS/);
+  }], selectedDuration), /UNSUPPORTED_PARAMETERS/);
   assert.throws(() => resolveFlora480VideoModel(key, [{
     ...endpoint,
     params: endpoint.params.map(p => p.name === 'resolution' ? { ...p, options: [{ value: '720p' }] } : p),
-  }]), /UNSUPPORTED_PARAMETERS/);
+  }], selectedDuration), /UNSUPPORTED_PARAMETERS/);
   assert.throws(() => resolveFlora480VideoModel(key, [{
     ...endpoint, params: [...endpoint.params, { name: 'audio_url', type: 'string', required: true }],
-  }]), /UNSUPPORTED_PARAMETERS/);
+  }], selectedDuration), /UNSUPPORTED_PARAMETERS/);
+  if (key === 'seedance_2_5_480') {
+    for (const duration of [10, 15, 30]) {
+      assert.equal(resolveFlora480VideoModel(key, [endpoint], duration), endpoint.model_id);
+    }
+    assert.throws(() => resolveFlora480VideoModel(key, [endpoint], 20), /INVALID_DURATION/);
+    assert.throws(() => resolveFlora480VideoModel(key, [{
+      ...endpoint,
+      params: endpoint.params.map(p => p.name === 'duration' ? { ...p, options: [{ value: '10' }] } : p),
+    }], 30), /UNSUPPORTED_PARAMETERS/);
+  }
 }
 
 console.log('Flora native 480p model catalog and payload checks passed.');

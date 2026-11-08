@@ -31,7 +31,7 @@ export function videoFamilyForCallback(data: string): VideoFamilyId | undefined 
     || ['mode_kling21', 'mode_kling21p2'].includes(data)) return 'kling';
   if (data.startsWith('mode_pi2v_seedance_')
     || ['mode_oneover_seedance25', 'mode_seedance25_p2', 'mode_china_seedance2',
-      'mode_flora_seedance_2_480'].includes(data)) return 'seedance';
+      'mode_flora_seedance_2_480', 'mode_flora_seedance_2_5_480'].includes(data)) return 'seedance';
   if (['mode_veofast', 'mode_veolite', 'mode_veo31'].includes(data)) return 'veo';
   if (data.startsWith('mode_pi2v_wan_')
     || ['mode_china_wan3', 'mode_flora_wan_v3_480'].includes(data)) return 'wan';
