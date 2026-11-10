@@ -107,6 +107,7 @@ function harness(options: Options = {}) {
     videoUploads: [] as Array<{ key: string; mime: string }>,
     deliveries: [] as Array<{ chatId: number; url: string; caption: string }>,
     messages: [] as string[],
+    diagnostics: [] as string[],
     successes: [] as number[],
     polls: [] as string[],
     upscales: [] as Array<{ sourceUrl: string; userId: number; chatId: number; statusMsgId: number }>,
@@ -130,7 +131,11 @@ function harness(options: Options = {}) {
       flora_seedance_2_5_480_per_second: 1500,
     },
     FLORA_BASE: 'https://provider.example.test',
-    console: { log() {}, warn() {}, error() {} },
+    console: {
+      log() {},
+      warn() {},
+      error(...args: any[]) { events.diagnostics.push(args.map(String).join(' ')); },
+    },
     setTimeout: (callback: () => void) => callback(),
     describeError: (error: any) => String(error.message ?? ''),
     isFloraRetryablePreSubmitError: (desc: string) => desc.includes('Server Error'),
@@ -490,6 +495,7 @@ async function main() {
   assert.equal(requiredUpscaleFailed.events.deliveries.length, 0, 'never send native 480p as fallback');
   assert.deepEqual(requiredUpscaleFailed.events.refunds, [15000]);
   assert.deepEqual(requiredUpscaleFailed.events.successes, []);
+  assert.match(requiredUpscaleFailed.events.diagnostics.join('\n'), /stage=upscale .*code=FLORA_REQUIRED_UPSCALE_FAILED/);
 
   const requiredDeliveryFailed = harness({ deliver: false });
   await requiredDeliveryFailed.run('seedance_2_5_480', 6, 'uncensored delivery failure', '9:16', 10);
@@ -498,6 +504,19 @@ async function main() {
   ], 'do not send native 480p when 1K delivery fails');
   assert.deepEqual(requiredDeliveryFailed.events.refunds, [15000]);
   assert.deepEqual(requiredDeliveryFailed.events.successes, []);
+  assert.match(requiredDeliveryFailed.events.diagnostics.join('\n'), /stage=deliver .*code=FLORA_REQUIRED_UPSCALE_DELIVERY_FAILED/);
+
+  const acceptedPollFailed = harness({
+    submit: () => 'flora-run-abc123',
+    poll: () => { throw new Error('FLORA_RUN_FAILED: private provider detail https://private.example.test/result'); },
+  });
+  await acceptedPollFailed.run('seedance_2_5_480', 7, 'uncensored poll failure', '9:16', 10);
+  assert.equal(acceptedPollFailed.events.submissions.length, 1);
+  assert.deepEqual(acceptedPollFailed.events.refunds, [15000]);
+  assert.deepEqual(acceptedPollFailed.events.releases, [7]);
+  const pollDiagnostic = acceptedPollFailed.events.diagnostics.join('\n');
+  assert.match(pollDiagnostic, /stage=poll run=flora-run-abc123 code=FLORA_RUN_FAILED/);
+  assert.doesNotMatch(pollDiagnostic, /private provider detail|private\.example\.test/);
 
   const referenceParamUnavailable = harness({
     catalog: () => ({
