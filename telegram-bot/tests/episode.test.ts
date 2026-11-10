@@ -282,12 +282,19 @@ async function contracts() {
       assert.match(m[0].content, /CURRENT TASK:/);
     }
     assert.match(messages[0][0].content, /authentic contemporary Korean TV drama/);
+    assert.match(messages[0][0].content, /high-retention Chinese vertical short-drama format/);
+    assert.match(messages[0][0].content, /first 3 seconds/);
+    assert.match(messages[0][0].content, /exactly 2 beats and 6 ten-second shots/);
+    assert.match(messages[0][0].content, /Beat 1 \(0–30s, shots 1–3\)/);
+    assert.match(messages[0][0].content, /Beat 2 \(30–60s, shots 4–6\)/);
     assert.match(messages[0][0].content, /prologue\/opening/);
     assert.match(messages[0][0].content, /epilogue showing the changed outcome/);
     assert.match(messages[0][0].content, /do not finish on a cliffhanger/);
     assert.match(messages[1][0].content, /subtitleId/);
     assert.match(messages[1][0].content, /professional production brief/);
     assert.match(messages[1][0].content, /5-12 likely or costly visible defects/);
+    assert.match(messages[1][0].content, /shots 1–3 of a one-minute story/);
+    assert.match(messages[1][0].content, /shot 1 begins with the hook inside its first 3 seconds/);
     const sceneContext = JSON.parse(messages[1][1].content);
     assert.equal(sceneContext.story.arc.prologue, 'Raka discovers a letter in his family home.');
     assert.equal(sceneContext.story.arc.epilogue, 'The secret is resolved and Raka chooses a new path.');

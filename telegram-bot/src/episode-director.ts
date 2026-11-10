@@ -15,6 +15,7 @@ const json = (s: string) => {
   try { return JSON.parse(s.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')); }
   catch { throw new Error('LLM_DIRECTOR_INVALID_JSON'); }
 };
+const VERTICAL_DRAMA_STYLE = `Use an original, high-retention Chinese vertical short-drama format (dracin), without copying any specific Melolo title, characters, or plot. Open in the middle of a striking action, accusation, or impossible choice; make the emotional stakes clear in the first 3 seconds. Use one familiar melodrama engine (betrayal, family secret, hidden identity, or unequal power), escalating reversals, sharp concise dialogue, and visual reveals instead of exposition. Every beat must change the relationship or power balance. Follow the selected dialogue language.`;
 
 export function validateBible(value: any, minutes: number): Bible {
   const p = value;
@@ -133,9 +134,14 @@ export class EpisodeDirector implements Director {
       ? 'Write an authentic contemporary Korean TV drama set in Seoul. Cast are fictional adult South Koreans. Dialogue is natural Korean in Hangul. Synopsis and visual descriptions are in English.'
       : this.language === 'zh'
         ? 'Write an authentic contemporary Chinese short-form TV drama set in China. Cast are fictional adult Chinese people. Title, synopsis, character names, beat objectives, and dialogue are in natural Simplified Chinese. Visual descriptions and production style are in English. All spoken lines must use Simplified Chinese characters.'
-        : 'Write an Indonesian drama with natural Indonesian dialogue; visual descriptions are in English.';
+        : 'Write an Indonesian-language adaptation of an original contemporary Chinese vertical short drama, set in China with fictional adult Chinese characters. Use natural Indonesian dialogue; visual descriptions are in English.';
+    const oneMinuteMap = minutes === 1
+      ? 'One-minute pacing map: exactly 2 beats and 6 ten-second shots. Beat 1 (0–30s, shots 1–3) establishes the relationship and conflict through an immediate hook, then ends on a meaningful reversal. Beat 2 (30–60s, shots 4–6) escalates the consequence, forces a decisive choice, and delivers the climax plus a satisfying closed payoff by shot 6.'
+      : 'Keep the same vertical short-drama rhythm at the requested length: each minute must advance the conflict and include a meaningful emotional or plot turn; the final minute must deliver the planned ending.';
     const p = await this.ask(model, `You are an experienced drama director and story-structure editor.
 Design one complete, self-contained ${minutes}-minute story. It will contain exactly ${minutes * STORY_BEATS_PER_MINUTE} story beats of 30 seconds each, with ${SHOTS_PER_BEAT} ten-second shots per beat.
+${VERTICAL_DRAMA_STYLE}
+${oneMinuteMap}
 Plan the whole story before any scenes are written. Include a clear prologue/opening, a central conflict, ${storyActCount(minutes)} chronological acts with meaningful turning points, a decisive climax, and an epilogue showing the changed outcome.
 Default to a closed ending: resolve the central conflict, pay off the prologue, and do not finish on a cliffhanger or sequel hook. Set endingType to "open" only when the user explicitly asks for a continuing story or cliffhanger.
 1-2 adult characters only; 1-3 stable locations. ${languageRules}
@@ -163,8 +169,13 @@ Do not add characters or change clothing midway. No background extras.`, previou
     const endingRule = arc.endingType === 'closed'
       ? 'The final story beat must execute the planned climax and epilogue, resolve the central conflict and pay off the prologue. Do not end on a cliffhanger.'
       : 'Only because the user asked for an open ending, leave one intentional forward question after completing the planned climax.';
+    const verticalBeatMap = e.minutes === 1
+      ? `For this one-minute story, beat 1 (0–30s) must hook the viewer immediately and end with a reversal; beat 2 (30–60s) must escalate, force a choice, and resolve the conflict with a satisfying payoff.`
+      : 'Use vertical short-drama pacing: each beat adds a consequence, reveal, or reversal; do not use filler.';
     const instructions = `You are the story editor for one complete ${e.minutes}-minute drama.
 Write exactly ${count} concise chronological beat objectives for story beats ${start + 1}–${end} of ${total}. Return only {"beats":[{"objective":"","location":"HOUSE","cast":["RAKA"]}]}.
+${VERTICAL_DRAMA_STYLE}
+${verticalBeatMap}
 Use the supplied prologue, central conflict, act plan, climax and epilogue as binding anchors. Every beat must causally follow previous events, change the situation, and advance its assigned act; no filler, repeated conversations or unrelated subplots.
 The first story beat must start from the prologue and introduce the inciting situation. The final beat of the whole story must reach the planned ending. ${isFinalBatch ? endingRule : 'Do not prematurely resolve the central conflict before the final act.'}
 Use only the defined cast IDs and location IDs. Each objective is <=180 characters and contains one filmable story development. Return valid JSON only.`;
@@ -205,9 +216,16 @@ Use only the defined cast IDs and location IDs. Each objective is <=180 characte
     const dialogueSchema = this.language === 'zh'
       ? '{"speaker":"CHAR_ID","text":"Short spoken line in Simplified Chinese"}'
       : '{"speaker":"CHAR_ID","text":"Short spoken line","subtitleId":"Indonesian translation when requested"}';
+    const oneMinuteShotMap = e.minutes === 1
+      ? scene === 0
+        ? 'This is shots 1–3 of a one-minute story (0–30s): shot 1 begins with the hook inside its first 3 seconds; shot 2 makes the relationship and stakes legible; shot 3 lands a clear reversal that propels the second half.'
+        : 'This is shots 4–6 of a one-minute story (30–60s): escalate the reversal, make the lead choose, then use shot 6 for the climax and a visually clear, emotionally satisfying closed resolution. Do not end on a sequel cliffhanger.'
+      : '';
     if (this.language === 'zh') {
       const instructions = `You are a professional Chinese short-drama director, cinematographer, and continuity editor.
 Write exactly THREE concise ten-second shots for the requested 30-second beat.
+${VERTICAL_DRAMA_STYLE}
+${oneMinuteShotMap}
 Return only {"shots":[{"camera":"","action":"","startState":"","endState":"","imagePrompt":"","videoPrompt":"","negativePrompt":"","continuation":false,"dialogue":[${dialogueSchema}]}]}.
 Keep the response compact but complete: camera<=300, action<=220, each state<=160, imagePrompt<=320, videoPrompt<=320, negativePrompt<=850 characters per shot; complete JSON below 12000 characters.
 Use the supplied full-story context, current act and neighboring beat objectives to keep this scene causally connected. ${arcRule}
@@ -222,6 +240,8 @@ Write a bespoke negativePrompt for each shot. Prioritize 5-12 likely or costly d
     }
     const p = await this.ask(model, `You are the episode's director, cinematographer and continuity supervisor.
 Write exactly THREE ten-second shots for the requested 30-second beat.
+${VERTICAL_DRAMA_STYLE}
+${oneMinuteShotMap}
 Return {"shots":[{"camera":"","action":"","startState":"","endState":"","imagePrompt":"","videoPrompt":"",
  "negativePrompt":"","continuation":false,"dialogue":[${dialogueSchema}]}.
 ${this.chainShots

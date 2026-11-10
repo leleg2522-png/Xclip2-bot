@@ -40,7 +40,7 @@
 - [Aiveed API](aiveed-api.md) — image test succeeded; Banana 2.1 requested 1K delivered 768px; honor polling rate limits without resubmitting.
 - [DeAPI model access and keys](deapi-account-catalog.md) — catalogue is account-scoped; Seedance is plan-blocked; user wants bot credentials pooled in the Railway DB.
 - [Microdrama LLM provider](microdrama-llm-provider.md) — user selected BUAT SIMPEL as the microdrama brain; specific model remains undecided.
-- [Microdrama complete-story planning](microdrama-complete-story.md) — establish a closed story arc first, then persist small beat batches before creating scenes.
+- [Microdrama complete-story planning](microdrama-complete-story.md) — establish a closed story arc first; one-minute dracin uses a fast hook, reversals, and a closed payoff.
 - [Rekalume image HAR](rekalume-image-har.md) — Banana Pro edit completed at real 1K/4K; sanitized capture lacks auth, so it cannot independently replay generation.
 - [SnapGen MUSE](snapgen-muse.md) — image and video Rp500 each; verify api.snapgen.ai-specific contracts, not similarly named docs.
 - [Video menu organization](video-menu-organization.md) — user prefers grouping by model family, not by use case; menu cleanup must preserve existing models and pricing.

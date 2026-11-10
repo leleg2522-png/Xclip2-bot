@@ -136,7 +136,7 @@ export function registerEpisode(
     if (arg) return create(ctx, Number(arg));
     const p = await current(ctx);
     if (p && !terminal(p)) return present(p);
-    return ctx.reply('Sutradara AI • cerita lengkap 1–100 menit, khusus admin.\n\nPilih durasi atau ketik /microdrama 30 untuk durasi lain. Default awal 1 menit. Setiap cerita dirancang dari prolog sampai klimaks dan epilog; durasi panjang memerlukan banyak permintaan LLM dan shot.\nAlur cerita → persetujuan biaya referensi → kunci wajah/lokasi → storyboard → persetujuan anggaran → produksi dan pemeriksaan → penyuntingan.\nBiaya LLM terpisah; belum ada render media tanpa persetujuan.', durations());
+    return ctx.reply('Sutradara AI • dracin vertikal 1–100 menit, khusus admin.\n\nPilih durasi atau ketik /microdrama 30 untuk durasi lain. Default awal 1 menit = 6 shot × 10 detik. Claude menyusun hook cepat, konflik emosional, pembalikan, klimaks, dan akhir tuntas untuk cerita mandiri; durasi panjang memerlukan banyak permintaan LLM dan shot.\nAlur cerita → persetujuan biaya referensi → kunci wajah/lokasi → storyboard → persetujuan anggaran → produksi dan pemeriksaan → penyuntingan.\nBiaya LLM terpisah; belum ada render media tanpa persetujuan.', durations());
   });
   bot.command('episodescript', async (ctx: any) => {
     if (!await allowed(ctx)) return;
