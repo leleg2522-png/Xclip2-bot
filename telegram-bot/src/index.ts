@@ -12326,6 +12326,29 @@ function isExplicitFlora480KeyRejection(err: any): boolean {
   return /\b(unauthorized|invalid api key|invalid_credentials|quota exhausted|quota exceeded|quota_exceeded|limit exceeded|insufficient credits|insufficient_credits|billing_not_enough_credits|payment required|forbidden)\b/.test(raw);
 }
 
+const FLORA480_POST_ACCEPT_ERROR_CODES = new Set([
+  'FLORA_RUN_FAILED',
+  'FLORA_RUN_TIMEOUT',
+  'FLORA_RUN_COMPLETED_NO_OUTPUT',
+  'FLORA_RUN_COMPLETED_NO_URL',
+  'FLORA_REQUIRED_UPSCALE_FAILED',
+  'FLORA_REQUIRED_UPSCALE_DELIVERY_FAILED',
+]);
+
+function flora480PostAcceptDiagnostic(err: any, stage: string, runId: string): string {
+  // Provider IDs are useful for correlating their run-status logs, but never
+  // echo arbitrary response text, URLs, prompts, or credential material.
+  const safeRunId = /^[A-Za-z0-9._:-]{1,100}$/.test(runId) ? runId : '[redacted]';
+  const rawCode = String(err?.message ?? '').match(/^([A-Z][A-Z0-9_]{2,63})(?=:|$)/)?.[1];
+  const code = isExplicitFlora480KeyRejection(err)
+    ? 'POST_ACCEPT_CREDENTIAL_REJECTION'
+    : rawCode && FLORA480_POST_ACCEPT_ERROR_CODES.has(rawCode) ? rawCode : 'UNCLASSIFIED';
+  const status = Number(err?.response?.status);
+  const httpStatus = Number.isInteger(status) && status >= 100 && status <= 599
+    ? ` httpStatus=${status}` : '';
+  return `stage=${stage} run=${safeRunId} code=${code}${httpStatus}`;
+}
+
 async function runFlora480Video(
   chatId: number,
   userId: number,
@@ -12445,13 +12468,14 @@ async function runFlora480Video(
           ).catch(() => {});
           stage = 'poll';
           const resultUrl = await floraPollRun(apiKey, acceptedRunId, 20 * 60 * 1000);
-          stage = 'delivery';
+          stage = 'upscale';
           const finalVideo = config.autoUpscale
             ? await upscaleGeneratedVideo(resultUrl, userId, chatId, statusMsgId)
             : { url: resultUrl, upscaled: false };
           if (config.mandatoryUpscale && !finalVideo.upscaled) {
             throw new Error('FLORA_REQUIRED_UPSCALE_FAILED');
           }
+          stage = 'deliver';
           let delivered = await sendResult(
             chatId,
             finalVideo.url,
@@ -12479,7 +12503,8 @@ async function runFlora480Video(
         } catch (err: any) {
           if (acceptedRunId) {
             if (isExplicitFlora480KeyRejection(err)) await markFloraKeyDead(apiKey).catch(() => {});
-            console.error(`[${userId}] ${LABEL} failed after an accepted run; no resubmission will be attempted`);
+            const diagnostic = flora480PostAcceptDiagnostic(err, stage, acceptedRunId);
+            console.error(`[${userId}] ${LABEL} failed after an accepted run ${diagnostic}; no resubmission will be attempted`);
             const contentRejected = /MODERATED|content policy|PROMPT_MODERATED/i.test(describeError(err));
             const message = contentRejected
               ? '❌ Input tidak dapat diproses karena melanggar kebijakan konten.'
