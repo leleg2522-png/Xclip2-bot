@@ -160,6 +160,21 @@ equivalent to dedicated Kling Motion Control or promise exact identity/music.
 - Bot XclipAI pakai pool `flora_key_pool` (clone pola leonardo_key_pool) dengan rotasi round-robin; **why:** user pakai banyak akun free sekali pakai, key mati dideteksi dari error submit, bukan cek saldo.
 - **How to apply:** klasifikasi error key-dead harus ketat — hanya FLORA_AUTH/SUBMIT/UPLOAD failure dengan sinyal 401/402/403/quota; FLORA_RUN_FAILED = error konten, jangan matikan key.
 
+## Seedance 2.0 video input documentation
+
+FLORA's [Seedance Academy page](https://flora.ai/academy/seedance) advertises
+Seedance 2.0 Video → Video with `video_urls` and a prompt. This is not proof that
+the existing image-to-video API endpoint accepts video, or that an account
+exposes a compatible video endpoint at the bot's requested duration/resolution.
+
+**Why:** The public model documentation is less specific than the Academy page,
+and public duration descriptions differ from previously observed API contracts.
+No successful live Seedance 2.0 video-input generation was established here.
+
+**How to apply:** Resolve the account's live video-capable model schema before
+paid submit. Never silently route a video-only request through the image model,
+invent a video parameter, or inherit Seedance 2.5's 1.8-second minimum.
+
 ## Seedance 2.5 video reference
 
 Flora's Seedance 2.5 documentation confirms reference-to-video and a 1.8-second

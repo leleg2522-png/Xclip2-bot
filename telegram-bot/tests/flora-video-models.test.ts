@@ -140,4 +140,44 @@ for (const key of ['minimax_h3_480', 'wan_v3_480', 'seedance_2_480', 'seedance_2
   }
 }
 
+// Synthetic video-mode contracts: field names must come from the live catalog,
+// never from the public documentation alone.
+for (const name of ['video_url', 'video_urls', 'reference_video_url', 'reference_video_urls']) {
+  for (const type of ['string', 'string[]'] as const) {
+    const videoModel = {
+      ...fixture('seedance_2_480', 'account-video-endpoint'),
+      capabilities: ['video-to-video'],
+      params: [
+        ...fixture('seedance_2_480', 'unused').params.filter(p => p.name !== 'image_url'),
+        { name, type, required: true },
+      ],
+    };
+    const photoModel = fixture('seedance_2_480', 'account-photo-endpoint');
+    const contract = resolveFlora480VideoModelContract('seedance_2_480', [photoModel, videoModel], 15, true);
+    assert.equal(contract.modelId, 'account-video-endpoint');
+    assert.deepEqual(contract.videoReferenceParam, { name, type });
+    assert.deepEqual(buildFlora480VideoParams('seedance_2_480', '', '9:16', 15, {
+      url: videoUrl, parameter: contract.videoReferenceParam!,
+    }), {
+      [name]: type === 'string' ? videoUrl : [videoUrl],
+      duration: '15', resolution: '480p', aspect_ratio: '9:16',
+    });
+    assert.equal(resolveFlora480VideoModel('seedance_2_480', [videoModel, photoModel]), photoModel.model_id);
+    assert.throws(() => resolveFlora480VideoModelContract('seedance_2_480', [photoModel], 15, true), /MODEL_UNAVAILABLE/);
+    assert.throws(() => resolveFlora480VideoModelContract('seedance_2_480', [{
+      ...videoModel, params: [...videoModel.params, { name: 'image_url', type: 'string', required: true }],
+    }], 15, true), /UNSUPPORTED_PARAMETERS/);
+    assert.throws(() => resolveFlora480VideoModelContract('seedance_2_480', [{
+      ...videoModel, params: videoModel.params.filter(p => p.name !== name),
+    }], 15, true), /UNSUPPORTED_PARAMETERS/);
+    assert.throws(() => resolveFlora480VideoModelContract('seedance_2_480', [{
+      ...videoModel, params: videoModel.params.map(p => p.name === 'duration'
+        ? { ...p, options: [{ value: '10' }] } : p),
+    }], 15, true), /UNSUPPORTED_PARAMETERS/);
+  }
+}
+assert.throws(() => buildFlora480VideoParams('seedance_2_480', '', '9:16', 15, {
+  url: '', parameter: videoParam,
+}), /REFERENCE_VIDEO_REQUIRED/);
+
 console.log('Flora native 480p model catalog and payload checks passed.');

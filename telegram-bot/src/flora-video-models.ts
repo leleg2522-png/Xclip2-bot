@@ -125,6 +125,7 @@ export function resolveFlora480VideoModelContract(
   includeVideoReference = false,
 ): { modelId: string; videoReferenceParam?: Flora480VideoReferenceParam } {
   const config = FLORA_480_VIDEO_MODELS[key];
+  const videoOnly = key === 'seedance_2_480' && includeVideoReference;
   const selectedDuration = durationSeconds ?? config.durationSeconds;
   const allowedDurations = config.durationOptionsSeconds ?? (config.durationSeconds ? [config.durationSeconds] : []);
   if (selectedDuration == null || !allowedDurations.includes(selectedDuration)) {
@@ -135,8 +136,9 @@ export function resolveFlora480VideoModelContract(
       .toLowerCase().replace(/[^a-z0-9]+/g, '');
     return modelNames[key].includes(name)
       && row.type === 'video'
-      && row.capabilities?.some((capability) =>
-        capability === 'audio-image-to-video'
+      && row.capabilities?.some((capability) => videoOnly
+        ? ['video-to-video', 'reference-to-video', 'mixed-to-video'].includes(capability)
+        : capability === 'audio-image-to-video'
         || capability === 'image-to-video'
         || (key === 'seedance_2_5_480' && capability === 'reference-to-video'));
   });
@@ -145,7 +147,10 @@ export function resolveFlora480VideoModelContract(
     const params = new Map(row.params.map((param) => [param.name, param]));
     const referenceParam = includeVideoReference ? videoReferenceParam(row.params) : undefined;
     if (includeVideoReference && !referenceParam) continue;
-    const expectedParams = buildFlora480VideoParams(key, 'https://example.test/image.jpg', '9:16', selectedDuration);
+    const expectedParams = buildFlora480VideoParams(
+      key, videoOnly ? '' : 'https://example.test/image.jpg', '9:16', selectedDuration,
+      referenceParam ? { url: 'https://example.test/reference.mp4', parameter: referenceParam } : undefined,
+    );
     if (referenceParam) {
       expectedParams[referenceParam.name] = referenceParam.type === 'string'
         ? 'https://example.test/reference.mp4'
@@ -156,7 +161,7 @@ export function resolveFlora480VideoModelContract(
     const singleImageInput = key === 'seedance_2_480' || key === 'seedance_2_5_480';
     if (
       !unknownRequired
-      && (singleImageInput
+      && (videoOnly ? Boolean(referenceParam) : singleImageInput
         ? params.get('image_url')?.type === 'string'
         : params.get('image_urls')?.type === 'string[]')
       && supportsOption(params.get('duration'), String(selectedDuration))
@@ -183,7 +188,8 @@ export function buildFlora480VideoParams(
   durationSeconds?: number,
   videoReference?: Flora480VideoReference,
 ): Record<string, unknown> {
-  if (!imageUrl.trim()) throw new Error('FLORA_REFERENCE_IMAGE_REQUIRED');
+  const videoOnly = key === 'seedance_2_480' && Boolean(videoReference);
+  if (!videoOnly && !imageUrl.trim()) throw new Error('FLORA_REFERENCE_IMAGE_REQUIRED');
   if (ratio !== '9:16' && ratio !== '16:9') throw new Error('FLORA_INVALID_ASPECT_RATIO');
   const config = FLORA_480_VIDEO_MODELS[key];
   const selectedDuration = durationSeconds ?? config.durationSeconds;
@@ -192,6 +198,16 @@ export function buildFlora480VideoParams(
     throw new Error('FLORA_INVALID_DURATION');
   }
   if (key === 'seedance_2_480') {
+    if (videoReference) {
+      if (!videoReference.url.trim()) throw new Error('FLORA_REFERENCE_VIDEO_REQUIRED');
+      return {
+        [videoReference.parameter.name]: videoReference.parameter.type === 'string'
+          ? videoReference.url : [videoReference.url],
+        duration: String(selectedDuration),
+        resolution: config.resolution,
+        aspect_ratio: ratio,
+      };
+    }
     return {
       image_url: imageUrl,
       duration: String(selectedDuration),

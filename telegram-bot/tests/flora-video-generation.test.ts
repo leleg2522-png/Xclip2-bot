@@ -227,7 +227,7 @@ function harness(options: Options = {}) {
     referenceVideoMime?: string,
   ) =>
     context.runFlora480Video(chatId, chatId, chatId, chatId * 10, key,
-      'https://example.test/reference.jpg', prompt, ratio, durationSeconds,
+      key === 'seedance_2_480' && referenceVideoFileId ? '' : 'https://example.test/reference.jpg', prompt, ratio, durationSeconds,
       referenceVideoFileId, referenceVideoMime) as Promise<void>;
   return { events, run };
 }
@@ -247,6 +247,7 @@ async function verifySeedanceWizard() {
     const jobs: any[][] = [];
     const context = vm.createContext({
       FLORA_480_VIDEO_MODELS,
+      crypto: { randomUUID: () => 'draft-uuid' },
     MODEL_PRICES: { flora_seedance_2_480: 15000, flora_seedance_2_5_480_per_second: 1500 },
       Markup: { inlineKeyboard: (buttons: any) => ({ buttons }), button: { callback: (text: string, data: string) => ({ text, data }) } },
       getSession: () => state,
@@ -395,6 +396,52 @@ async function verifySeedance25Wizard() {
 async function main() {
   await verifySeedanceWizard();
   await verifySeedance25Wizard();
+  const videoCatalog = () => ({
+    models: [...catalog().models, {
+      model_id: 'live-seedance-video', name: 'Seedance 2.0', type: 'video',
+      capabilities: ['video-to-video'],
+      params: [
+        { name: 'video_urls', type: 'string[]', required: true },
+        { name: 'duration', options: [{ value: '15' }] },
+        { name: 'resolution', options: [{ value: '480p' }] },
+        { name: 'aspect_ratio', options: [{ value: '9:16' }, { value: '16:9' }] },
+      ],
+    }],
+  });
+  for (const ratio of ['9:16', '16:9'] as const) {
+    const video = harness({ catalog: videoCatalog });
+    await video.run('seedance_2_480', 9, 'edit footage', ratio, 15, 'video-file', 'video/mp4');
+    assert.deepEqual(video.events.charges, [15000]);
+    assert.equal(video.events.uploads.length, 0, 'video-only must not upload a photo');
+    assert.equal(video.events.videoUploads.length, 1);
+    assert.equal(video.events.submissions.length, 1);
+    assert.equal(video.events.submissions[0].model, 'live-seedance-video');
+    assert.deepEqual(video.events.submissions[0].params, {
+      video_urls: ['https://provider.example.test/video-reference.mp4'],
+      duration: '15', resolution: '480p', aspect_ratio: ratio,
+    });
+    assert.deepEqual(video.events.order, ['poll', 'upscale', 'deliver']);
+    assert.deepEqual(video.events.refunds, []);
+  }
+  const unsupportedVideo = harness();
+  await unsupportedVideo.run('seedance_2_480', 9, 'no endpoint', '9:16', 15, 'video-file', 'video/mp4');
+  assert.equal(unsupportedVideo.events.submissions.length, 0, 'never submit video to photo-only model');
+  assert.equal(unsupportedVideo.events.videoUploads.length, 0);
+  assert.deepEqual(unsupportedVideo.events.refunds, [15000]);
+  assert.deepEqual(unsupportedVideo.events.dead, [], 'incompatible model is not a dead credential');
+  assert.match(unsupportedVideo.events.messages.join(' '), /Mode video input.*belum tersedia/);
+  for (const failure of ['accepted-poll', 'ambiguous-submit', 'delivery'] as const) {
+    const video = harness({
+      catalog: videoCatalog,
+      ...(failure === 'accepted-poll' ? { poll: () => { throw httpError(403, 'Forbidden'); } } : {}),
+      ...(failure === 'ambiguous-submit' ? { submit: () => { throw new Error('network timeout'); } } : {}),
+      ...(failure === 'delivery' ? { deliver: false } : {}),
+    });
+    await video.run('seedance_2_480', 9, failure, '9:16', 15, 'video-file', 'video/mp4');
+    assert.equal(video.events.submissions.length, 1, `${failure}: never replay paid video input`);
+    assert.deepEqual(video.events.refunds, [15000]);
+    assert.deepEqual(video.events.releases, [9]);
+  }
   for (const model of ['wan_v3_480', 'minimax_h3_480', 'seedance_2_480', 'seedance_2_5_480'] as const) {
     for (const code of ['FLORA_NO_PROJECT', 'FLORA_NO_WORKSPACE']) {
       const fallback = harness({ workspace: key => {
