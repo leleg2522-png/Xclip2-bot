@@ -167,6 +167,11 @@ Seedance 2.0 Video → Video with `video_urls` and a prompt. This is not proof t
 the existing image-to-video API endpoint accepts video, or that an account
 exposes a compatible video endpoint at the bot's requested duration/resolution.
 
+ByteDance's [official Seedance 2.0 launch](https://seed.bytedance.com/en/blog/seedance-2-0-official-launch)
+explicitly supports simultaneous image, video and audio references. FLORA's
+public documentation does not establish the corresponding combined-image/video
+API contract for Seedance 2.0; native model capability is not wrapper API evidence.
+
 **Why:** The public model documentation is less specific than the Academy page,
 and public duration descriptions differ from previously observed API contracts.
 No successful live Seedance 2.0 video-input generation was established here.
