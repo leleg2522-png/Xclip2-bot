@@ -160,25 +160,28 @@ equivalent to dedicated Kling Motion Control or promise exact identity/music.
 - Bot XclipAI pakai pool `flora_key_pool` (clone pola leonardo_key_pool) dengan rotasi round-robin; **why:** user pakai banyak akun free sekali pakai, key mati dideteksi dari error submit, bukan cek saldo.
 - **How to apply:** klasifikasi error key-dead harus ketat — hanya FLORA_AUTH/SUBMIT/UPLOAD failure dengan sinyal 401/402/403/quota; FLORA_RUN_FAILED = error konten, jangan matikan key.
 
-## Seedance 2.0 video input documentation
+## Seedance 2.0 combined photo/video inputs
 
-FLORA's [Seedance Academy page](https://flora.ai/academy/seedance) advertises
-Seedance 2.0 Video → Video with `video_urls` and a prompt. This is not proof that
-the existing image-to-video API endpoint accepts video, or that an account
-exposes a compatible video endpoint at the bot's requested duration/resolution.
+A read-only authenticated `/models?type=video` check with an available bot-pool
+key returned HTTP 200 and confirmed **Seedance 2.0 Reference** with capability
+`mixed-to-video`. The observed ID was `m2v-seedance-2.0-enhancor`; its schema
+contains `image_urls`, `video_urls`, and `audio_urls` as optional string arrays.
+Output duration options include 4–15 seconds and resolution options include
+480p, 720p, 1080p, and 4k. This confirms the advertised API contract, not a
+successful paid generation or exact identity/motion transfer.
 
-ByteDance's [official Seedance 2.0 launch](https://seed.bytedance.com/en/blog/seedance-2-0-official-launch)
-explicitly supports simultaneous image, video and audio references. FLORA's
-public documentation does not establish the corresponding combined-image/video
-API contract for Seedance 2.0; native model capability is not wrapper API evidence.
+The ordinary **Seedance 2.0** I2V endpoint instead accepts singular `image_url`.
+Video and mixed-input variants can be named **Seedance 2.0 Reference** rather
+than the ordinary display name.
 
-**Why:** The public model documentation is less specific than the Academy page,
-and public duration descriptions differ from previously observed API contracts.
-No successful live Seedance 2.0 video-input generation was established here.
+**Why:** Public documentation did not clearly establish combined inputs; the
+authenticated catalog exposed a separate Reference schema. Matching only the
+ordinary model name would exclude the real video/mixed endpoints.
 
-**How to apply:** Resolve the account's live video-capable model schema before
-paid submit. Never silently route a video-only request through the image model,
-invent a video parameter, or inherit Seedance 2.5's 1.8-second minimum.
+**How to apply:** Resolve the account's current Reference model and accepted
+media fields before paid submit; do not hardcode the observed ID or silently
+send video to the ordinary image model. Do not inherit Seedance 2.5's 1.8-second
+minimum or claim exact motion/identity preservation without inspecting output.
 
 ## Seedance 2.5 video reference
 
