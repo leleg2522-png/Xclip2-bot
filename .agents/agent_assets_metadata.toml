@@ -1230,3 +1230,17 @@ mtime_ms = 1794446197877
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/31330b05-cf74-407b-b940-d7de039bbf11/02dc4bac-7997-4211-9a21-64b7bc5e0063"
 storage_version_token = "1794446261486967"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "gCFVtiyVnN3CdLzlXdHI8"
+uri = "file://generated-artifacts/vivareel-wan30-battle-test-20261112/vivareel-wan30-battle-30s-480p.mp4"
+type = "video"
+title = "Wan 3.0 — pertempuran dua ksatria"
+description = "Hasil tes Vivareel: pertempuran fantasi di kastil dengan efek sihir biru dan emas. Video 30 detik, 854×480, 30 fps, audio AAC, sekitar 8,3 MB. Biaya API 120 poin. Watermark VR terlihat."
+logical_id = "e94faf51-4b27-4894-b155-1a475f512a13"
+content_hash = "sha256:8ec69ed9b0b7d9d6105c29399bf461699dd4b0b1b26f3c39ff95aed25188da01"
+size = 8272088
+mtime_ms = 1794447279072
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/e94faf51-4b27-4894-b155-1a475f512a13/8c9f028a-80b8-408f-a389-5439cd7c3d74"
+storage_version_token = "1794447314702798"
+content_type = "video/mp4"
