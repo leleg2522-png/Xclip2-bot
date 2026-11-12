@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { isFloraWorkspaceSetupError } from '../src/kling-p4-flora';
+import { FLORA_SEEDANCE2_MAX_IMAGES, validateFloraSeedance2Mentions } from '../src/flora-seedance2-references';
 import {
   FLORA_480_VIDEO_MODELS,
   resolveFlora480VideoModel,
@@ -86,6 +87,7 @@ function catalog() {
 }
 
 type Options = {
+  indexedImages?: boolean;
   invalidAudio?: boolean;
   keys?: string[];
   chargeOk?: boolean;
@@ -121,7 +123,7 @@ function harness(options: Options = {}) {
   const keys = options.keys ?? ['key-a', 'key-b'];
   const context = vm.createContext({
     Buffer,
-    FLORA_480_VIDEO_MODELS,
+    FLORA_480_VIDEO_MODELS, FLORA_SEEDANCE2_MAX_IMAGES,
     buildFlora480VideoParams,
     resolveFlora480VideoModel,
     resolveFlora480VideoModelContract,
@@ -176,7 +178,7 @@ function harness(options: Options = {}) {
     },
     floraUploadImage: async (key: string) => {
       events.uploads.push(key);
-      return 'https://provider.example.test/image.jpg';
+      return options.indexedImages ? `https://provider.example.test/image-${events.uploads.length}.jpg` : 'https://provider.example.test/image.jpg';
     },
     telegramHttp: { get: async () => ({ data: Buffer.from('video fixture') }) },
     inspectFloraSeedance25Video: async () => 2,
@@ -235,10 +237,11 @@ function harness(options: Options = {}) {
     referenceVideoMime?: string,
     inputImageUrl = key === 'seedance_2_480' && referenceVideoFileId ? '' : 'https://example.test/reference.jpg',
     referenceAudios: any[] = [],
+    referenceImageFileIds: string[] = [],
   ) =>
     context.runFlora480Video(chatId, chatId, chatId, chatId * 10, key,
       inputImageUrl, prompt, ratio, durationSeconds,
-      referenceVideoFileId, referenceVideoMime, referenceAudios) as Promise<void>;
+      referenceVideoFileId, referenceVideoMime, referenceAudios, referenceImageFileIds) as Promise<void>;
   return { events, run };
 }
 
@@ -256,7 +259,7 @@ async function verifySeedanceWizard() {
     const messages: string[] = [];
     const jobs: any[][] = [];
     const context = vm.createContext({
-      FLORA_480_VIDEO_MODELS,
+      FLORA_480_VIDEO_MODELS, FLORA_SEEDANCE2_MAX_IMAGES, validateFloraSeedance2Mentions,
       crypto: { randomUUID: () => 'draft-uuid' },
     MODEL_PRICES: { flora_seedance_2_480: 15000, flora_seedance_2_5_480_per_second: 1500 },
       Markup: { inlineKeyboard: (buttons: any) => ({ buttons }), button: { callback: (text: string, data: string) => ({ text, data }) } },
@@ -270,7 +273,7 @@ async function verifySeedanceWizard() {
     });
     const wizardCode = ts.transpileModule(
       `async function callback(data, ctx, userId) { ${callbacks} }
-       async function photo(ctx, userId, fileUrl) { const session = getSession(userId); ${photo} }
+       async function photo(ctx, userId, fileUrl, fileId = 'photo') { const session = getSession(userId); ${photo} }
        async function prompt(ctx, userId) { const session = getSession(userId); ${prompt} }`,
       { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }
     ).outputText;
@@ -292,10 +295,11 @@ async function verifySeedanceWizard() {
     await context.prompt(ctx, 9);
     assert.equal(jobs.length, 1, 'duplicate prompt must not submit twice');
     assert.deepEqual(jobs[0].slice(0, 11), [
-      9, 9, 7, 88, 'seedance_2_480', 'https://example.test/ref.jpg',
+      9, 9, 7, 88, 'seedance_2_480', '',
       'Animate this image', ratio, 15, undefined, undefined,
     ]);
     assert.equal(jobs[0][11].length, 0);
+    assert.deepEqual(Array.from(jobs[0][12]), ['photo']);
     assert.equal(state.mode, 'idle');
     assert.equal(state.floraSeedance2480ImageUrl, undefined);
     assert.equal(state.floraSeedance2480Ratio, undefined);
@@ -415,6 +419,29 @@ async function main() {
     ],
   }] });
   const audioRefs = [{ fileId: 'voice', mime: 'audio/ogg', duration: 2 }];
+  for (const video of [false, true]) {
+    for (const refs of [[], audioRefs]) {
+      const images = harness({ catalog: audioCatalog, indexedImages: true });
+      await images.run('seedance_2_480', 1, '@2 left; @1 right', '9:16', 15,
+        video ? 'video-reference' : undefined, video ? 'video/mp4' : undefined,
+        '', refs, ['first-image', 'second-image']);
+      assert.equal(images.events.submissions.length, 1);
+      assert.deepEqual(Array.from(images.events.submissions[0].params.image_urls), [
+        'https://provider.example.test/image-1.jpg', 'https://provider.example.test/image-2.jpg',
+      ]);
+      assert.equal(images.events.submissions[0].prompt, '@2 left; @1 right');
+      assert.equal(Boolean(images.events.submissions[0].params.audio_urls), Boolean(refs.length));
+      assert.equal(Boolean(images.events.submissions[0].params.video_urls), video);
+      assert.ok(images.events.uploads.every(key => key === images.events.submissions[0].key));
+      assert.deepEqual(images.events.refunds, []);
+      assert.deepEqual(images.events.charges, [15000]);
+    }
+  }
+  const incompatibleImages = harness({ indexedImages: true });
+  await incompatibleImages.run('seedance_2_480', 1, '@1 @2', '9:16', 15, undefined, undefined, '', [], ['first', 'second']);
+  assert.equal(incompatibleImages.events.submissions.length, 0);
+  assert.deepEqual(incompatibleImages.events.refunds, [15000]);
+  assert.deepEqual(incompatibleImages.events.dead, []);
   for (const [image, video] of [[true, false], [false, true], [true, true]]) {
     const h = harness({ catalog: audioCatalog });
     await h.run('seedance_2_480', 1, 'audio-reference', '9:16', 15, video ? 'video-reference' : undefined,

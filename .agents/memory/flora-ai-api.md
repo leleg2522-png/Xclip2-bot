@@ -33,6 +33,15 @@ audio-only restriction; listing it is not proof of a completed paid generation.
 
 ## Seedance 2 numbered image mentions
 
+The requested user experience is Dreamina-style: “image 1 @1 image 2 @2”.
+The numbers must address the actual uploaded images, not just decorate names.
+
+**Why:** The user explicitly clarified that they mean prompt-level references,
+not merely numbered upload acknowledgements.
+
+**How to apply:** Preserve the association between displayed numbers, prompt
+tokens and the image array sent upstream; never silently reorder or drop images.
+
 Literal `@1` and `@2` successfully addressed the first and second uploaded
 images in a controlled live test of Seedance 2 Reference's mixed-to-video
 endpoint. No bot-side mention rewriting was applied.

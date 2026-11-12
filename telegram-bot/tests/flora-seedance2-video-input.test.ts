@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { FLORA_480_VIDEO_MODELS } from '../src/flora-video-models';
+import { FLORA_SEEDANCE2_MAX_IMAGES, validateFloraSeedance2Mentions } from '../src/flora-seedance2-references';
 
 const source = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 function fragment(start: string, end: string) {
@@ -24,7 +25,7 @@ for (const route of [videoRoute, documentRoute]) {
 const executable = ts.transpileModule(`
   async function callback(data, ctx, userId) { ${callbacks} }
   ${handler}
-  async function photo(ctx, userId, fileUrl) { const session = getSession(userId); ${photo} }
+  async function photo(ctx, userId, fileUrl, fileId = 'photo') { const session = getSession(userId); ${photo} }
   async function prompt(ctx, userId) { const session = getSession(userId); ${prompt} }
 `, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
 
@@ -34,7 +35,8 @@ function harness() {
   let inspectHook: undefined | (() => Promise<void>);
   const messages: string[] = [], jobs: any[][] = [], reads: string[] = [];
   const context = vm.createContext({
-    Buffer, FLORA_480_VIDEO_MODELS, SEEDANCE25_MAX_MEDIA_BYTES: 19 * 1024 * 1024,
+    Buffer, FLORA_480_VIDEO_MODELS, FLORA_SEEDANCE2_MAX_IMAGES, validateFloraSeedance2Mentions,
+    SEEDANCE25_MAX_MEDIA_BYTES: 19 * 1024 * 1024,
     MODEL_PRICES: { flora_seedance_2_480: 15000, flora_seedance_2_5_480_per_second: 1500 },
     crypto: { randomUUID: () => `draft-${++sequence}` },
     Markup: { inlineKeyboard: (rows: any) => ({ rows }), button: { callback: (text: string, data: string) => ({ text, data }) } },
@@ -70,9 +72,9 @@ function harness() {
     invalid: () => { invalid = true; },
     onInspect: (hook: () => Promise<void>) => { inspectHook = hook; },
     callback: (data: string) => context.callback(data, ctx, 9),
-    photo: () => context.photo(ctx, 9, 'https://example.test/photo.jpg'),
+    photo: (fileId = 'photo') => context.photo(ctx, 9, '', fileId),
     video: (file: any = { file_id: 'clip', mime_type: 'video/mp4' }) => context.handleFloraSeedance2VideoInput(ctx, file),
-    prompt: () => context.prompt(ctx, 9),
+    prompt: (text = 'Restyle this footage') => { ctx.message.text = text; return context.prompt(ctx, 9); },
   };
 }
 
@@ -82,6 +84,26 @@ async function start(h: ReturnType<typeof harness>, ratio = '916') {
 }
 
 async function main() {
+  const multiple = harness();
+  await start(multiple);
+  await multiple.photo('first');
+  await multiple.photo('second');
+  assert.match(multiple.messages.at(-1)!, /@2/);
+  await multiple.photo('first');
+  assert.equal(multiple.state().floraSeedance2480ImageFileIds.length, 2);
+  await multiple.prompt('Use @3');
+  assert.equal(multiple.jobs.length, 0);
+  assert.equal(multiple.state().mode, 'flora_seedance_2_480_wait_prompt');
+  await multiple.prompt('@2 left, @1 right');
+  assert.equal(multiple.jobs[0][6], '@2 left, @1 right');
+  assert.deepEqual(Array.from(multiple.jobs[0][12]), ['first', 'second']);
+  assert.equal(multiple.state().floraSeedance2480ImageFileIds, undefined);
+  await start(multiple);
+  for (let i = 0; i < FLORA_SEEDANCE2_MAX_IMAGES + 1; i++) await multiple.photo(`image-${i}`);
+  assert.equal(multiple.state().floraSeedance2480ImageFileIds.length, FLORA_SEEDANCE2_MAX_IMAGES);
+  assert.match(multiple.messages.at(-1)!, /Maksimal 9/);
+  await start(multiple);
+  assert.equal(multiple.state().floraSeedance2480ImageFileIds.length, 0);
   const audio = harness();
   await start(audio);
   await audio.photo();
@@ -115,7 +137,8 @@ async function main() {
     await start(h, ratio);
     await h.photo();
     await h.prompt();
-    assert.equal(h.jobs[1][5], 'https://example.test/photo.jpg');
+    assert.equal(h.jobs[1][5], '');
+    assert.deepEqual(Array.from(h.jobs[1][12]), ['photo']);
     assert.equal(h.jobs[1][9], undefined, 'new photo job must not reuse a previous video');
   }
   for (const file of [
@@ -157,7 +180,8 @@ async function main() {
     await combined.prompt();
     await combined.prompt();
     assert.equal(combined.jobs.length, 1);
-    assert.equal(combined.jobs[0][5], 'https://example.test/photo.jpg');
+    assert.equal(combined.jobs[0][5], '');
+    assert.deepEqual(Array.from(combined.jobs[0][12]), ['photo']);
     assert.equal(combined.jobs[0][9], 'clip');
     assert.equal(combined.state().floraSeedance2480VideoFileId, undefined);
     assert.equal(combined.state().floraSeedance2480ImageUrl, undefined);
@@ -171,7 +195,8 @@ async function main() {
   await direct.photo();
   await direct.video();
   await direct.prompt();
-  assert.equal(direct.jobs[0][5], 'https://example.test/photo.jpg');
+  assert.equal(direct.jobs[0][5], '');
+  assert.deepEqual(Array.from(direct.jobs[0][12]), ['photo']);
   assert.equal(direct.jobs[0][9], 'clip', 'direct video attachment after photo must work without pressing button');
   const skip = harness();
   await start(skip);
