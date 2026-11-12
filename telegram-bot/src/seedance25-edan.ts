@@ -2,26 +2,27 @@ import { validateSeedance25Prompt } from './seedance25-prompt';
 
 export const SEEDANCE25_P2 = {
   label: 'Seedance 2.5 P2', duration: 30,
-  ratios: ['16:9', '9:16'], maxImages: 10, maxVideos: 10,
+  ratios: ['16:9', '9:16'], maxImages: 10, maxVideos: 10, maxAudios: 10,
   maxBytes: 19 * 1024 * 1024, maxTotalBytes: 100 * 1024 * 1024,
-  maxVideoSeconds: 30,
+  maxVideoSeconds: 30, maxAudioSeconds: 30,
 } as const;
 // Retained only for the legacy Edanbot request helper below. Public P2 jobs
 // now use the shared Picsart Seedance 2.5 route and its 1080p finishing step.
 const LEGACY_EDANBOT_SEEDANCE25 = { model: 'seedance-2.5', resolution: '720p' } as const;
 export type P2Ratio = typeof SEEDANCE25_P2.ratios[number];
 export type P2Reference = {
-  kind: 'image' | 'video'; fileId: string; size: number; duration?: number; order: number;
+  kind: 'image' | 'video' | 'audio'; fileId: string; size: number; duration?: number; order: number; mime?: string;
 };
 export type P2Asset = { kind: 'image' | 'video'; url: string };
 
 export function validateP2References(refs: P2Reference[]) {
-  if (!refs.length) throw Error('Kirim setidaknya satu gambar atau video referensi.');
+  if (!refs.length) throw Error('Kirim setidaknya satu gambar, video, atau audio referensi.');
   if (refs.filter(r => r.kind === 'image').length > SEEDANCE25_P2.maxImages
-    || refs.filter(r => r.kind === 'video').length > SEEDANCE25_P2.maxVideos) {
-    throw Error('Maksimal 10 gambar dan 10 video referensi.');
+    || refs.filter(r => r.kind === 'video').length > SEEDANCE25_P2.maxVideos
+    || refs.filter(r => r.kind === 'audio').length > SEEDANCE25_P2.maxAudios) {
+    throw Error('Maksimal 10 gambar, 10 video, dan 10 audio referensi.');
   }
-  if (refs.some(r => !['image', 'video'].includes(r.kind) || !r.fileId
+  if (refs.some(r => !['image', 'video', 'audio'].includes(r.kind) || !r.fileId
     || !Number.isSafeInteger(r.size) || r.size <= 0 || r.size > SEEDANCE25_P2.maxBytes)) {
     throw Error('Referensi tidak valid atau melebihi 19MB per file.');
   }
@@ -33,6 +34,11 @@ export function validateP2References(refs: P2Reference[]) {
   if (videos.some(r => !Number.isFinite(r.duration) || r.duration! < 2)
     || videos.reduce((n, r) => n + r.duration!, 0) > SEEDANCE25_P2.maxVideoSeconds) {
     throw Error('Video minimal 2 detik per file; total durasi video maksimal 30 detik.');
+  }
+  const audios = refs.filter(r => r.kind === 'audio');
+  if (audios.some(r => !Number.isFinite(r.duration) || r.duration! <= 0)
+    || audios.reduce((total, r) => total + r.duration!, 0) > SEEDANCE25_P2.maxAudioSeconds) {
+    throw Error('Total durasi audio referensi maksimal 30 detik.');
   }
 }
 
@@ -73,6 +79,8 @@ export async function generateSeedance25P2(
   prompt: string, ratio: P2Ratio, refs: P2Reference[], deps: P2ProviderDeps,
 ) {
   validateP2References(refs);
+  // Legacy-only transport cannot send audio; never silently discard it.
+  if (refs.some(ref => ref.kind === 'audio')) throw Error('LEGACY_SEEDANCE25_AUDIO_UNSUPPORTED');
   validateSeedance25Prompt(prompt);
   if (!SEEDANCE25_P2.ratios.includes(ratio)) throw Error('SEEDANCE25_P2_INVALID_RATIO');
   const cookies = await deps.cookies();

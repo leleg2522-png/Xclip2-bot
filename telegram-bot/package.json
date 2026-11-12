@@ -7,6 +7,7 @@
     "test:generation-errors": "tsx tests/generation-errors.test.ts",
     "test:vivareel": "tsx tests/vivareel-wan.test.ts && tsx tests/vivareel-wan-media.test.ts && tsx tests/vivareel-wan-reference.test.ts",
     "test:vivareel-pool": "tsx tests/vivareel-pool.test.ts",
+    "test:seedance-audio": "tsx tests/seedance-reference-audio.test.ts",
     "setup:vivareel-pool": "tsx scripts/setup-vivareel-pool.ts",
     "test:topup": "tsx tests/klikqris-mypg.test.ts",
     "test:video-menu": "tsx tests/video-menu.test.ts && tsx tests/retired-video-models.test.ts",

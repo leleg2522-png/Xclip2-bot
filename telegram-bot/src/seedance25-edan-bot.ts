@@ -1,3 +1,4 @@
+import { seedanceAudioMime } from './seedance-reference-audio';
 import { randomUUID } from 'node:crypto';
 import { Markup } from 'telegraf';
 import { SEEDANCE25_P2, validateP2References, type P2Ratio, type P2Reference } from './seedance25-edan';
@@ -9,7 +10,7 @@ import {
 export type P2Mode = 's25p2_wait_ratio' | 's25p2_wait_media' | 's25p2_wait_prompt';
 export type P2Draft = {
   id: string; ratio?: P2Ratio; refs: P2Reference[];
-  pending: { fileId: string; kind: 'image' | 'video' }[];
+  pending: { fileId: string; kind: 'image' | 'video' | 'audio' }[];
 };
 export type P2Job = {
   chatId: number; userId: number; dbUserId: number; statusMsgId: number;
@@ -22,15 +23,16 @@ type Dependencies = {
   price(): number;
   cooldown(id: number): number;
   download(fileId: string, maxBytes: number): Promise<Buffer>;
-  inspect(bytes: Buffer, kind: 'image' | 'video'): Promise<{ duration?: number }>;
+  inspect(bytes: Buffer, kind: 'image' | 'video' | 'audio'): Promise<{ duration?: number }>;
   run(job: P2Job): Promise<void>;
 };
 const inputsKeyboard = (id: string) => Markup.inlineKeyboard([
+  [Markup.button.callback('Tambah audio / voice note', `s25p2_audio:${id}`)],
   [Markup.button.callback('Selesai upload · Lanjut ke prompt', `s25p2_done:${id}`)],
 ]);
 const instructions =
-  'Kirim gambar JPG/PNG dan/atau video MP4 sebagai referensi (boleh dicampur). ' +
-  'Batas bot: 10 gambar dan 10 video sekaligus; total video 30 detik, minimal 2 detik per video. ' +
+  'Kirim gambar JPG/PNG, video MP4, dan/atau audio MP3/M4A/WAV/OGG atau voice note (boleh dicampur atau audio saja). ' +
+  'Batas bot: 10 gambar, 10 video, dan 10 audio; total video 30 detik, total audio 30 detik, minimal 2 detik per video. ' +
   'Maksimal 19MB per file dan 100MB gabungan. Ini referensi, bukan start/end frame.\n' +
   'Tunggu semua file diterima, lalu tekan selesai upload.';
 
@@ -50,6 +52,10 @@ export function createSeedance25P2Bot(deps: Dependencies) {
       );
     }
     const state = deps.getSession(userId), draft = state.seedance25P2;
+    if (data.startsWith('s25p2_audio')) {
+      if (state.mode !== 's25p2_wait_media' || !draft || data !== `s25p2_audio:${draft.id}`) return ctx.reply('Pilihan sudah tidak aktif.');
+      return ctx.reply(instructions, inputsKeyboard(draft.id));
+    }
     if (data.startsWith('s25p2_ratio_')) {
       const [key, id] = data.slice('s25p2_ratio_'.length).split(':');
       const ratio = SEEDANCE25_P2.ratios.find(r => r.replace(':', '') === key);
@@ -67,7 +73,7 @@ export function createSeedance25P2Bot(deps: Dependencies) {
       deps.setSession(userId, { mode: 's25p2_wait_prompt', seedance25P2: draft });
       return ctx.editMessageText(
         `Referensi diterima: ${draft.refs.filter(r => r.kind === 'image').length} gambar, ` +
-        `${draft.refs.filter(r => r.kind === 'video').length} video.\n\n` +
+        `${draft.refs.filter(r => r.kind === 'video').length} video, ${draft.refs.filter(r => r.kind === 'audio').length} audio.\n\n` +
         'Kirim prompt sebagai pesan teks atau file .txt UTF-8 (batas bot 20.000 karakter). /menu untuk batal.',
       );
     }
@@ -78,14 +84,14 @@ export function createSeedance25P2Bot(deps: Dependencies) {
     return state.mode === mode && state.seedance25P2?.id === id ? state.seedance25P2 : undefined;
   }
 
-  async function media(ctx: any, kind: 'image' | 'video', file: any, draft: P2Draft) {
+  async function media(ctx: any, kind: 'image' | 'video' | 'audio', file: any, draft: P2Draft) {
     const userId = ctx.from.id, id = file.file_id;
     if (!id || draft.refs.some(r => r.fileId === id) || draft.pending.some(r => r.fileId === id)) {
       return ctx.reply('File ini sudah diterima atau sedang diperiksa.');
     }
-    const max = kind === 'image' ? SEEDANCE25_P2.maxImages : SEEDANCE25_P2.maxVideos;
+    const max = kind === 'image' ? SEEDANCE25_P2.maxImages : kind === 'video' ? SEEDANCE25_P2.maxVideos : SEEDANCE25_P2.maxAudios;
     if (draft.refs.filter(r => r.kind === kind).length + draft.pending.filter(r => r.kind === kind).length >= max) {
-      return ctx.reply(`Maksimal ${max} referensi ${kind === 'image' ? 'gambar' : 'video'}.`);
+      return ctx.reply(`Maksimal ${max} referensi ${kind === 'image' ? 'gambar' : kind}.`);
     }
     if (file.file_size > SEEDANCE25_P2.maxBytes) return ctx.reply('Maksimal 19MB per file referensi.');
     // Reserve before awaits; concurrent files cannot bypass count limits.
@@ -103,13 +109,14 @@ export function createSeedance25P2Bot(deps: Dependencies) {
       deps.setSession(userId, {
         mode: 's25p2_wait_media', seedance25P2: { ...current, pending: current.pending.filter(p => p.fileId !== id) },
       });
-      return ctx.reply('File tidak bisa dibaca. Gunakan gambar JPG/PNG atau video MP4 2–30 detik, maksimal 19MB per file.');
+      return ctx.reply('File tidak bisa dibaca. Gunakan gambar JPG/PNG, video MP4 2–30 detik, atau audio maksimal 30 detik; maksimal 19MB per file.');
     }
     const current = active(userId, draft.id, 's25p2_wait_media');
     if (!current) return;
     const pending = current.pending.filter(p => p.fileId !== id);
     const refs = [...current.refs, {
       kind, fileId: id, size: bytes.length, duration: metadata.duration, order: ctx.message.message_id,
+      ...(kind === 'audio' ? { mime: seedanceAudioMime(file) } : {}),
     }].sort((a, b) => a.order - b.order);
     try { validateP2References(refs); }
     catch (error: any) {
@@ -118,7 +125,7 @@ export function createSeedance25P2Bot(deps: Dependencies) {
     }
     deps.setSession(userId, { mode: 's25p2_wait_media', seedance25P2: { ...current, refs, pending } });
     return ctx.reply(`Referensi diterima: ${refs.filter(r => r.kind === 'image').length} gambar, ` +
-      `${refs.filter(r => r.kind === 'video').length} video.`, inputsKeyboard(draft.id));
+      `${refs.filter(r => r.kind === 'video').length} video, ${refs.filter(r => r.kind === 'audio').length} audio.`, inputsKeyboard(draft.id));
   }
 
   async function submit(ctx: any, text: string, draft: P2Draft) {
@@ -162,10 +169,13 @@ export function createSeedance25P2Bot(deps: Dependencies) {
     if (state.mode !== 's25p2_wait_media') return ctx.reply('Pilih rasio dari tombol terlebih dahulu.');
     if (msg.photo?.length) return media(ctx, 'image', msg.photo[msg.photo.length - 1], draft);
     if (msg.video) return media(ctx, 'video', msg.video, draft);
+    if (msg.audio) return media(ctx, 'audio', msg.audio, draft);
+    if (msg.voice) return media(ctx, 'audio', { ...msg.voice, mime_type: 'audio/ogg' }, draft);
     if (msg.document) {
       const doc = msg.document;
       if (doc.mime_type?.startsWith('image/') || /\.(jpe?g|png)$/i.test(doc.file_name ?? '')) return media(ctx, 'image', doc, draft);
       if (doc.mime_type?.startsWith('video/') || /\.mp4$/i.test(doc.file_name ?? '')) return media(ctx, 'video', doc, draft);
+      if (doc.mime_type?.startsWith('audio/') || /\.(mp3|m4a|wav|ogg|flac|aac)$/i.test(doc.file_name ?? '')) return media(ctx, 'audio', doc, draft);
     }
     return ctx.reply(instructions, inputsKeyboard(draft.id));
   }

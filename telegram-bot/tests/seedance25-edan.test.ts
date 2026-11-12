@@ -53,7 +53,7 @@ async function providerTests() {
   assert.equal(mixed.fields.reference_images.length, 10);
   assert.equal(mixed.fields.reference_videos.length, 10);
   for (const extra of [{ ...refs[0], fileId: 'image-eleven' }, { ...refs[1], fileId: 'video-eleven', duration: 2 }]) {
-    assert.throws(() => validateP2References([...tenImages, ...tenVideos, extra]), /10 gambar dan 10 video/);
+    assert.throws(() => validateP2References([...tenImages, ...tenVideos, extra]), /10 gambar, 10 video, dan 10 audio/);
     assert.throws(() => seedance25P2Request('Too many', '16:9', [
       ...twentyAssets, { kind: extra.kind, url: 'https://example.test/extra' },
     ]));
@@ -256,7 +256,7 @@ async function billingTests() {
 async function tenPlusTenTests() {
   for (const input of ['text', 'txt']) {
     const h = uiHarness(); await h.start(); h.duration(3);
-    assert.match(h.replies.join(' '), /10 gambar dan 10 video sekaligus/);
+    assert.match(h.replies.join(' '), /10 gambar, 10 video, dan 10 audio/);
     await Promise.all(Array.from({ length: 10 }, (_, i) =>
       h.message({ photo: [{ file_id: `photo-${i}`, file_unique_id: `p-${i}`, width: 1, height: 1 }] })));
     await Promise.all(Array.from({ length: 10 }, (_, i) =>

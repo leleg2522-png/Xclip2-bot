@@ -9,6 +9,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import * as limits from '../src/seedance25-picsart';
 import { inspectFloraSeedance25Video, inspectSeedance25Media } from '../src/seedance25-media';
+import { seedanceAudioMime } from '../src/seedance-reference-audio';
 
 const exec = promisify(execFile);
 const source = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
@@ -37,7 +38,7 @@ function harness() {
   let duration = 3, invalid = false, reads = 0;
   let gate: Promise<void> = Promise.resolve();
   const context = vm.createContext({
-    Buffer, ...limits,
+    Buffer, ...limits, seedanceAudioMime,
     getSession: () => session,
     setSession: (_: number, data: any) => { session = { ...session, ...data }; },
     telegramHttp: { get: async () => { reads++; await gate; return { data: Buffer.from('media') }; } },

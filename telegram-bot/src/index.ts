@@ -2,6 +2,8 @@ import { generateVivareelWan as generateVivareelWanFromPool, wanOutputDuration, 
 import { VivareelKeyPool } from './vivareel-key-pool';
 import { registerVivareelAdmin } from './vivareel-admin';
 import { generationErrorMessage } from './generation-errors';
+import { createSeedanceAudioHandler, supportsSeedance2Audio, SEEDANCE2_AUDIO_HELP,
+  loadSeedanceReferenceAudios, seedanceAudioMime, type SeedanceAudioDraft } from './seedance-reference-audio';
 import { prepareWanDelivery, inspectWanReferenceVideo } from './vivareel-wan-media';
 import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
@@ -1664,6 +1666,9 @@ async function incrementKlingUsage(dbUserId: number): Promise<number> {
 }
 
 const bot = new Telegraf(BOT_TOKEN);
+const handleSeedance2Audio = createSeedanceAudioHandler({
+  getSession, setSession, download: downloadTelegramFileBuffer,
+});
 registerChinaApiAdmin(bot, chinaKeyPool, requireAdmin);
 registerAlrizAdmin(bot, alrizKeyPool, requireAdmin);
 registerVivareelAdmin(bot, vivareelKeyPool, requireAdmin);
@@ -1895,6 +1900,7 @@ type GenerationDraftKind =
   | 'budget_video';
 
 interface Session {
+  seedanceAudioDraft?: SeedanceAudioDraft;
   mode: Mode;
   budgetVideo?: BudgetVideoDraft;
   seedance25P2?: P2Draft;
@@ -2736,7 +2742,7 @@ function videoModelRows() {
     [Markup.button.callback('🌊 Seedance 2.0 Fast 1080p', 'mode_pi2v_seedance_2_fast')],
     [Markup.button.callback('🌊 Seedance 2.0 1080p', 'mode_pi2v_seedance_2')],
     [Markup.button.callback('🌊 Seedance 2.5 • Teks / Gambar / Video / Audio', 'mode_oneover_seedance25')],
-    [Markup.button.callback(`Seedance 2.5 P2 · Gambar / Video referensi · 30s · 1080p · ${formatRupiah(MODEL_PRICES.seedance25_p2)}`, 'mode_seedance25_p2')],
+    [Markup.button.callback(`Seedance 2.5 P2 · Gambar / Video / Audio · 30s · 1080p · ${formatRupiah(MODEL_PRICES.seedance25_p2)}`, 'mode_seedance25_p2')],
     [Markup.button.callback('🌌 Grok Imagine Video', 'mode_pi2v_grok_imagine')],
     [Markup.button.callback('🎬 Creatify Boreal • 20 detik • 1080p', 'mode_pi2v_creatify_boreal')],
     [Markup.button.callback('🎬 LTX 2.5 PRO • 10 detik • 1080p', 'mode_pi2v_ltx_pro')],
@@ -2866,12 +2872,14 @@ function seedanceMiniEditRatioKeyboard() {
 
 function seedanceMiniEditOptionalImageKeyboard() {
   return Markup.inlineKeyboard([
+    [Markup.button.callback('Tambah audio (opsional)', 'seedance_reference_audio')],
     [Markup.button.callback('⏭️ Lewati Foto Acuan', 'seedance_edit_skip_image')],
   ]);
 }
 
 function seedanceMiniEditImageKeyboard(count: number) {
   return Markup.inlineKeyboard([
+    [Markup.button.callback('Tambah audio (opsional)', 'seedance_reference_audio')],
     [Markup.button.callback(`➕ Tambah Foto (${count}/5)`, 'seedance_edit_add_image')],
     [Markup.button.callback('✅ Lanjut ke Prompt', 'seedance_edit_done_image')],
   ]);
@@ -2889,12 +2897,14 @@ function seedanceFastEditRatioKeyboard() {
 
 function seedanceFastEditOptionalImageKeyboard() {
   return Markup.inlineKeyboard([
+    [Markup.button.callback('Tambah audio (opsional)', 'seedance_reference_audio')],
     [Markup.button.callback('⏭️ Lewati Foto Acuan', 'seedance_fast_edit_skip_image')],
   ]);
 }
 
 function seedanceFastEditImageKeyboard(count: number) {
   return Markup.inlineKeyboard([
+    [Markup.button.callback('Tambah audio (opsional)', 'seedance_reference_audio')],
     [Markup.button.callback(`➕ Tambah Foto (${count}/5)`, 'seedance_fast_edit_add_image')],
     [Markup.button.callback('✅ Lanjut ke Prompt', 'seedance_fast_edit_done_image')],
   ]);
@@ -2912,12 +2922,14 @@ function seedance2EditRatioKeyboard() {
 
 function seedance2EditOptionalImageKeyboard() {
   return Markup.inlineKeyboard([
+    [Markup.button.callback('Tambah audio (opsional)', 'seedance_reference_audio')],
     [Markup.button.callback('⏭️ Lewati Foto Acuan', 'seedance_2_edit_skip_image')],
   ]);
 }
 
 function seedance2EditImageKeyboard(count: number) {
   return Markup.inlineKeyboard([
+    [Markup.button.callback('Tambah audio (opsional)', 'seedance_reference_audio')],
     [Markup.button.callback(`➕ Tambah Foto (${count}/5)`, 'seedance_2_edit_add_image')],
     [Markup.button.callback('✅ Lanjut ke Prompt', 'seedance_2_edit_done_image')],
   ]);
@@ -3626,6 +3638,7 @@ const seedance25P2Bot = createSeedance25P2Bot({
     return Buffer.from(response.data);
   },
   inspect: async (bytes, kind) => {
+    if (kind === 'audio') return { duration: await inspectSeedance25Media(bytes, 'audio') };
     if (kind === 'video') {
       if (bytes.subarray(4, 8).toString('ascii') !== 'ftyp') throw Error('INVALID_MP4');
       return { duration: await inspectSeedance25Media(bytes, 'video') };
@@ -3661,7 +3674,7 @@ bot.use(retiredVideoModelsGuard({
   session: userId => getSession(userId),
   reset: userId => setSession(userId, {
     mode: 'idle', generationDraft: false, generationDraftKind: undefined,
-    picsartI2vModel: undefined, picsartI2vImageUrl: undefined,
+    picsartI2vModel: undefined, picsartI2vImageUrl: undefined, seedanceAudioDraft: undefined,
     chinaVideoModel: undefined, chinaVideoImageUrl: undefined, chinaVideoRatio: undefined,
   }),
 }));
@@ -5121,6 +5134,7 @@ bot.on('callback_query', async (ctx) => {
   if (data === 'mode_seedance_mini_edit') {
     setSession(userId, {
       mode: 'seedance_mini_edit_wait_ratio',
+      seedanceAudioDraft: undefined,
       seedanceMiniEditRatio: undefined,
       seedanceMiniEditVideoFileId: undefined,
       seedanceMiniEditVideoMime: undefined,
@@ -5140,6 +5154,7 @@ bot.on('callback_query', async (ctx) => {
   if (data === 'mode_seedance_fast_edit') {
     setSession(userId, {
       mode: 'seedance_fast_edit_wait_ratio',
+      seedanceAudioDraft: undefined,
       seedanceFastEditRatio: undefined,
       seedanceFastEditVideoFileId: undefined,
       seedanceFastEditVideoMime: undefined,
@@ -5159,6 +5174,7 @@ bot.on('callback_query', async (ctx) => {
   if (data === 'mode_seedance_2_edit') {
     setSession(userId, {
       mode: 'seedance_2_edit_wait_ratio',
+      seedanceAudioDraft: undefined,
       seedance2EditRatio: undefined,
       seedance2EditVideoFileId: undefined,
       seedance2EditVideoMime: undefined,
@@ -5530,8 +5546,18 @@ bot.on('callback_query', async (ctx) => {
     return ctx.reply(videoMode === 'base' ? 'Mode video: bahan edit (base).' : 'Mode video: referensi gerakan (feature).');
   }
 
+  if (data === 'seedance_reference_audio') {
+    if (!supportsSeedance2Audio(getSession(userId))) return ctx.reply('Pilihan audio sudah tidak aktif. Mulai lagi dari /menu.');
+    return ctx.reply(SEEDANCE2_AUDIO_HELP);
+  }
+  if (data === 'seedance25_add_audio') {
+    const draft = getSession(userId);
+    if (draft.mode !== 'oneover_wait_image' || draft.seedance25Settings?.mode !== 'reference') return ctx.reply('Mulai lagi dari /menu untuk menambahkan referensi.');
+    return ctx.reply('Kirim file audio MP3/M4A/WAV/OGG atau voice note. Maksimal 10 audio, total 30 detik dan 19MB per file. Boleh audio saja atau dicampur gambar/video. Tunggu semua diterima lalu tekan selesai upload.', seedance25InputKeyboard());
+  }
   if (data === 'picsart_i2v_photos_done') {
     const session = getSession(userId);
+    if (session.seedanceAudioDraft?.pending.length) return ctx.reply('Audio masih diperiksa. Tunggu semua diterima.');
     if (session.picsartI2vPendingImages) return ctx.answerCbQuery('Tunggu semua gambar selesai diterima.').catch(() => {});
     if (session.wanReferencePending) return ctx.answerCbQuery('Tunggu video selesai diperiksa.').catch(() => {});
     const imageCount = session.picsartI2vImageUrls?.length ?? 0;
@@ -5581,6 +5607,7 @@ bot.on('callback_query', async (ctx) => {
       setSession(userId, {
         mode: model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_regular' || model === 'kling_v4_frames' ? 'picsart_i2v_wait_duration' : 'picsart_i2v_wait_ratio',
         picsartI2vModel: model,
+        seedanceAudioDraft: undefined,
         picsartI2vDuration: undefined,
         picsartI2vRatio: undefined,
         picsartI2vDisplayLabel: model === 'wan_v3' ? 'Wan 3.0' : undefined,
@@ -5593,6 +5620,7 @@ bot.on('callback_query', async (ctx) => {
       return ctx.editMessageText(
         `🌀 *${model === 'wan_v3' ? 'Wan 3.0' : cfg.label}*\n\n` +
         `${picsartI2vPublicSettings(model, cfg.settingsLabel)}\n\n` +
+        (isSeedance2I2vModel(model) ? `${SEEDANCE2_AUDIO_HELP}\n\n` : '') +
         (model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_regular' || model === 'kling_v4_frames' ? '*Langkah 1:* Pilih durasi video:' : '*Langkah 1:* Pilih rasio video:'),
         { parse_mode: 'Markdown', ...(model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_regular' || model === 'kling_v4_frames'
           ? Markup.inlineKeyboard([
@@ -5606,6 +5634,7 @@ bot.on('callback_query', async (ctx) => {
       mode: 'picsart_i2v_wait_image',
       picsartI2vModel: model,
       picsartI2vRatio: undefined,
+      seedanceAudioDraft: undefined,
       picsartI2vDisplayLabel: undefined,
       picsartI2vImageUrl: undefined,
       picsartI2vImageUrls: undefined,
@@ -6666,6 +6695,7 @@ function picsartI2vAddPhotoKeyboard(count: number, model?: picsart.PicsartI2vMod
     ]);
   }
   return Markup.inlineKeyboard([
+    ...(model && isSeedance2I2vModel(model) ? [[Markup.button.callback('Tambah audio (opsional)', 'seedance_reference_audio')]] : []),
     [Markup.button.callback(model === 'kling_v3' ? '➕ Tambah Frame Akhir' : `➕ Tambah Foto (${count}/${picsart.PICSART_I2V_MAX_IMAGES})`, 'picsart_i2v_add_photo')],
     [Markup.button.callback('✅ Lanjut ke Prompt', 'picsart_i2v_photos_done')],
   ]);
@@ -6752,6 +6782,7 @@ async function handleKling4ReferencePhoto(ctx: any, fileId: string) {
 
 function seedance25InputKeyboard() {
   return Markup.inlineKeyboard([
+    [Markup.button.callback('Tambah audio / voice note', 'seedance25_add_audio')],
     [Markup.button.callback('✅ Selesai Upload • Lanjut ke Prompt', 'seedance25_inputs_done')],
   ]);
 }
@@ -6883,7 +6914,7 @@ async function handleSeedance25Txt(ctx: any) {
 
 async function handleSeedance25Reference(
   ctx: any, kind: 'video' | 'audio',
-  file: { file_id: string; file_size?: number; mime_type?: string; duration?: number },
+  file: { file_id: string; file_size?: number; mime_type?: string; duration?: number; file_name?: string },
 ) {
   const userId = ctx.from.id;
   const draft = getSession(userId);
@@ -6916,7 +6947,7 @@ async function handleSeedance25Reference(
     if (items.reduce((sum, item) => sum + item.duration, 0) + duration > SEEDANCE25_MAX_REFERENCE_SECONDS) {
       return ctx.reply(`Total durasi referensi ${kind} maksimal 30 detik. File terakhir tidak ditambahkan.`);
     }
-    const media = { fileId: file.file_id, mime: file.mime_type ?? (kind === 'video' ? 'video/mp4' : 'audio/mpeg'), duration };
+    const media = { fileId: file.file_id, mime: kind === 'audio' ? seedanceAudioMime(file) : file.mime_type ?? 'video/mp4', duration };
     setSession(userId, { [key]: [...items, media] });
     return ctx.reply(`✅ ${kind === 'video' ? 'Video' : 'Audio'} referensi ke-${items.length + 1} diterima.\nKirim referensi berikutnya atau tekan lanjut.`, seedance25InputKeyboard());
   } catch {
@@ -7065,6 +7096,8 @@ async function submitPicsartI2vPrompt(ctx: any, rawPrompt: string, expectedDraft
   if (!draft.dbUserId && !await requireLogin(ctx)) return;
   const activeDraft = getSession(userId);
   if (activeDraft.mode !== 'picsart_i2v_wait_prompt' || (expectedDraft && activeDraft !== expectedDraft)) return;
+  if (activeDraft.seedanceAudioDraft?.pending.length) return ctx.reply('Audio masih diperiksa. Tunggu semua diterima.');
+  const audioRefs = isSeedance2I2vModel(activeDraft.picsartI2vModel!) ? activeDraft.seedanceAudioDraft?.refs ?? [] : [];
   if (activeDraft.wanReferencePending || (activeDraft.picsartI2vModel === 'wan_v3' && activeDraft.picsartI2vPendingImages)) {
     return ctx.reply('Tunggu semua referensi selesai diperiksa.');
   }
@@ -7119,6 +7152,7 @@ async function submitPicsartI2vPrompt(ctx: any, rawPrompt: string, expectedDraft
   // Text and TXT claim the same draft synchronously before any status awaits.
   setSession(userId, {
     mode: 'idle', picsartI2vImageUrl: undefined, picsartI2vImageUrls: undefined,
+    seedanceAudioDraft: undefined,
     picsartI2vFrameMessageIds: undefined, picsartI2vRatio: undefined,
     picsartI2vVideoFileId: undefined, picsartI2vVideoMode: undefined,
     wanReferencePending: false, wanReferenceDuration: undefined, wanReferenceMime: undefined, wanDurationSeconds: undefined,
@@ -7130,7 +7164,7 @@ async function submitPicsartI2vPrompt(ctx: any, rawPrompt: string, expectedDraft
     { parse_mode: 'Markdown' }
   );
   runPicsartI2v(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, {
-    model, imageUrls, ratio, duration, displayLabel, priceKey, videoFileId, referType, wanDurationSeconds, wanReferenceMime,
+    model, imageUrls, ratio, duration, displayLabel, priceKey, videoFileId, referType, wanDurationSeconds, wanReferenceMime, audioRefs,
   }).catch(e => console.error(`[${userId}] ${publicLabel} error:`, e.message));
 }
 
@@ -8114,6 +8148,7 @@ async function handleAudioTranscriptionFile(ctx: any, fileId: string, mimeType?:
 bot.on('audio', async (ctx) => {
   if (!await requireLogin(ctx)) return;
   const session = getSession(ctx.from.id);
+  if (supportsSeedance2Audio(session)) return handleSeedance2Audio(ctx, ctx.message.audio);
   if (session.mode === 'oneover_wait_image') return handleSeedance25Reference(ctx, 'audio', ctx.message.audio);
   if (session.mode === 'lipsync_wait_audio') {
     return handleLipsyncAudio(ctx, ctx.message.audio.file_id, ctx.message.audio.mime_type);
@@ -8124,6 +8159,7 @@ bot.on('audio', async (ctx) => {
 bot.on('voice', async (ctx) => {
   if (!await requireLogin(ctx)) return;
   const session = getSession(ctx.from.id);
+  if (supportsSeedance2Audio(session)) return handleSeedance2Audio(ctx, { ...ctx.message.voice, mime_type: 'audio/ogg' });
   if (session.mode === 'oneover_wait_image') return handleSeedance25Reference(ctx, 'audio', {
     ...ctx.message.voice, mime_type: ctx.message.voice.mime_type ?? 'audio/ogg',
   });
@@ -8298,6 +8334,8 @@ bot.on('text', async (ctx) => {
 
   // ── Seedance 2 Mini Video Edit prompt ──
   if (session.mode === 'seedance_mini_edit_wait_prompt') {
+    if (session.seedanceAudioDraft?.pending.length) return ctx.reply('Audio masih diperiksa. Tunggu semua diterima.');
+    const audioRefs = session.seedanceAudioDraft?.refs ?? [];
     const prompt = ctx.message.text.trim();
     if (!prompt) {
       return ctx.reply('⚠️ Prompt tidak boleh kosong. Jelaskan perubahan yang diinginkan pada video.');
@@ -8332,6 +8370,7 @@ bot.on('text', async (ctx) => {
       seedanceMiniEditVideoMime: undefined,
       seedanceMiniEditImageFileId: undefined,
       seedanceMiniEditImageFileIds: undefined,
+      seedanceAudioDraft: undefined,
     });
 
     let videoUrl: string;
@@ -8355,13 +8394,15 @@ bot.on('text', async (ctx) => {
       dbUserId,
       statusMsg.message_id,
       prompt,
-      { videoUrl, videoMime, imageUrls, ratio }
+      { videoUrl, videoMime, imageUrls, ratio, audioRefs }
     ).catch((e) => console.error(`[${userId}] Seedance 2 Mini Video Edit error:`, e.message));
     return;
   }
 
   // ── Seedance 2 Fast Video Edit prompt ──
   if (session.mode === 'seedance_fast_edit_wait_prompt') {
+    if (session.seedanceAudioDraft?.pending.length) return ctx.reply('Audio masih diperiksa. Tunggu semua diterima.');
+    const audioRefs = session.seedanceAudioDraft?.refs ?? [];
     const prompt = ctx.message.text.trim();
     if (!prompt) {
       return ctx.reply('⚠️ Prompt tidak boleh kosong. Jelaskan perubahan yang diinginkan pada video.');
@@ -8394,6 +8435,7 @@ bot.on('text', async (ctx) => {
       seedanceFastEditVideoMime: undefined,
       seedanceFastEditImageFileId: undefined,
       seedanceFastEditImageFileIds: undefined,
+      seedanceAudioDraft: undefined,
     });
 
     let videoUrl: string;
@@ -8417,13 +8459,15 @@ bot.on('text', async (ctx) => {
       dbUserId,
       statusMsg.message_id,
       prompt,
-      { videoUrl, videoMime, imageUrls, ratio }
+      { videoUrl, videoMime, imageUrls, ratio, audioRefs }
     ).catch((e) => console.error(`[${userId}] Seedance 2 Fast Video Edit error:`, e.message));
     return;
   }
 
   // ── Seedance 2 Video Edit prompt ──
   if (session.mode === 'seedance_2_edit_wait_prompt') {
+    if (session.seedanceAudioDraft?.pending.length) return ctx.reply('Audio masih diperiksa. Tunggu semua diterima.');
+    const audioRefs = session.seedanceAudioDraft?.refs ?? [];
     const prompt = ctx.message.text.trim();
     if (!prompt) {
       return ctx.reply('⚠️ Prompt tidak boleh kosong. Jelaskan perubahan yang diinginkan pada video.');
@@ -8456,6 +8500,7 @@ bot.on('text', async (ctx) => {
       seedance2EditVideoMime: undefined,
       seedance2EditImageFileId: undefined,
       seedance2EditImageFileIds: undefined,
+      seedanceAudioDraft: undefined,
     });
 
     let videoUrl: string;
@@ -8479,7 +8524,7 @@ bot.on('text', async (ctx) => {
       dbUserId,
       statusMsg.message_id,
       prompt,
-      { videoUrl, videoMime, imageUrls, ratio }
+      { videoUrl, videoMime, imageUrls, ratio, audioRefs }
     ).catch((e) => console.error(`[${userId}] Seedance 2 Video Edit error:`, e.message));
     return;
   }
@@ -9321,9 +9366,13 @@ bot.on('document', async (ctx) => {
   if (session.mode === 'oneover_wait_prompt') return handleSeedance25Txt(ctx);
   if (session.mode === 'picsart_i2v_wait_prompt'
     && ['kling_v4_regular', 'kling_v4_frames'].includes(session.picsartI2vModel ?? '')) return handleKling4ProTxt(ctx);
+  if (supportsSeedance2Audio(session)
+    && (doc.mime_type?.startsWith('audio/') || /\.(mp3|m4a|wav|ogg|flac|aac)$/i.test(doc.file_name ?? ''))) {
+    return handleSeedance2Audio(ctx, doc);
+  }
   if (session.mode === 'oneover_wait_image') {
     if (doc.mime_type?.startsWith('video/')) return handleSeedance25Reference(ctx, 'video', doc);
-    if (doc.mime_type?.startsWith('audio/')) return handleSeedance25Reference(ctx, 'audio', doc);
+    if (doc.mime_type?.startsWith('audio/') || /\.(mp3|m4a|wav|ogg|flac|aac)$/i.test(doc.file_name ?? '')) return handleSeedance25Reference(ctx, 'audio', doc);
     if (!doc.mime_type?.startsWith('image/')) return ctx.reply('Kirim gambar JPG/PNG, video MP4, atau audio MP3/M4A/WAV/OGG.');
     if (doc.file_size && doc.file_size > SEEDANCE25_MAX_MEDIA_BYTES) return ctx.reply('Maksimal 19MB per file referensi.');
     return handleImageInput(ctx, '', doc.file_id);
@@ -10188,6 +10237,7 @@ async function runSeedance25P2(job: P2Job) {
   const PRICE = MODEL_PRICES.seedance25_p2;
   const imageUrls: string[] = [];
   const videoRefs: Seedance25ResolvedMedia[] = [];
+  const audioRefs: Seedance25ResolvedMedia[] = [];
   try {
     validateP2References(refs);
     validateSeedance25Prompt(prompt);
@@ -10198,6 +10248,8 @@ async function runSeedance25P2(job: P2Job) {
       );
       if (reference.kind === 'image') {
         imageUrls.push(link.href);
+      } else if (reference.kind === 'audio') {
+        audioRefs.push({ url: link.href, mime: reference.mime ?? 'audio/mpeg', duration: reference.duration ?? 0 });
       } else {
         videoRefs.push({
           url: link.href,
@@ -10229,7 +10281,7 @@ async function runSeedance25P2(job: P2Job) {
       ratio,
     },
     videoRefs,
-    [],
+    audioRefs,
     PRICE,
     SEEDANCE25_P2.label,
   );
@@ -10307,6 +10359,7 @@ async function runPicsartI2v(
   opts: {
     model: picsart.PicsartI2vModelKey;
     imageUrls: string[];
+    audioRefs?: Seedance25Media[];
     videoFileId?: string;
     referType?: 'feature' | 'base';
     ratio?: picsart.WanV3AspectRatio;
@@ -10378,11 +10431,13 @@ async function runPicsartI2v(
         throw Error('WAN_REFERENCE_DURATION_CHANGED');
       }
     }
+    const audios = opts.audioRefs?.length ? await loadSeedanceReferenceAudios(opts.audioRefs, downloadTelegramFileBuffer) : [];
     const result = await (opts.model === 'wan_v3' ? generateVivareelWan : picsart.generatePicsartI2v)({
       userId: dbUserId,
       model: opts.model,
       prompt,
       images,
+      audios,
       video, referType: opts.referType,
       ratio: opts.ratio,
       duration: opts.duration,
@@ -10600,6 +10655,7 @@ type SeedanceVideoEditRunOptions = {
   videoUrl: string;
   videoMime: string;
   imageUrls: string[];
+  audioRefs?: Seedance25Media[];
   ratio: picsart.WanV3AspectRatio;
   variant: 'mini' | 'fast' | 'standard';
 };
@@ -10647,6 +10703,7 @@ async function runSeedanceVideoEdit(
       throw new Error('PICSART_REFERENCE_VIDEO_TOO_LARGE');
     }
     const images = await Promise.all(opts.imageUrls.slice(0, 5).map((url) => downloadBuffer(url)));
+    const audios = opts.audioRefs?.length ? await loadSeedanceReferenceAudios(opts.audioRefs, downloadTelegramFileBuffer) : [];
     console.log(
       `[${logPrefix}] user=${userId} stage=download-complete ` +
       `videoBytes=${video.buf.length} images=${images.length} ratio=${opts.ratio}`
@@ -10662,6 +10719,7 @@ async function runSeedanceVideoEdit(
       userId: dbUserId,
       prompt,
       ratio: opts.ratio,
+      audios,
       video: {
         buffer: video.buf,
         name: `reference-video.${video.ext || 'mp4'}`,

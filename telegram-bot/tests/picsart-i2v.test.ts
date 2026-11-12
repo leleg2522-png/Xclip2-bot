@@ -375,7 +375,7 @@ assert.equal(botSource.includes('menu_picsart_i2v'), false);
 assert.equal(botSource.includes('Picsart I2V (8 Model)'), false);
 assert.equal(botSource.includes("Markup.button.callback('🧩 Picsart"), false);
 assert.equal(botSource.includes('`🧩 *Picsart'), false);
-for (const model of expectedModels.filter(model => model !== 'kling_v21_pro' && model !== 'kling_v4_omni')) {
+for (const model of expectedModels.filter(model => model !== 'kling_v21_pro' && model !== 'kling_v4_omni' && model !== 'wan_v2')) {
   assert.equal(botSource.includes(`mode_pi2v_${model}`), true);
 }
 
@@ -812,7 +812,7 @@ assert.match(botSource, /go12_res_4k/);
 assert.match(botSource, /gomniResolution/);
 assert.match(botSource, /GEMINI_OMNI_12_MAX_IMAGES/);
 assert.doesNotMatch(botSource, /menyiapkan video akhir \$\{opts\.exportResolution\}/);
-assert.match(botSource, /Wan 3\.0 • 30 detik • 1080p/);
+assert.match(botSource, /Wan 3\.0 • hingga 30 detik • 1080p/);
 assert.match(botSource, /Seedance 2\.0 Mini 1080p/);
 assert.match(botSource, /Seedance 2 Mini Video Edit 480p/);
 assert.match(botSource, /mode_seedance_mini_edit/);

@@ -1,3 +1,4 @@
+import { seedanceAudioContent, validateSeedanceAudioBuffers, type SeedanceAudioBuffer } from './seedance-reference-audio';
 // ─────────────────────────────────────────────────────────────────────────────
 // Picsart AI Playground backend client
 //
@@ -2352,7 +2353,7 @@ export function buildPicsartI2vParams(
   model: PicsartI2vModelKey,
   prompt: string,
   imageUrl: string,
-  options?: { ratio?: WanV3AspectRatio; outputName?: string; imageUrls?: string[]; duration?: Kling4Duration; videoUrl?: string; referType?: 'feature' | 'base' }
+  options?: { ratio?: WanV3AspectRatio; outputName?: string; imageUrls?: string[]; audioUrls?: string[]; duration?: Kling4Duration; videoUrl?: string; referType?: 'feature' | 'base' }
 ): Record<string, unknown> {
   switch (model) {
     case 'kling_v4_regular':
@@ -2490,6 +2491,7 @@ export function buildPicsartI2vParams(
             image_url: { url },
             role: 'reference_image',
           })),
+          ...seedanceAudioContent(options?.audioUrls),
           { type: 'text', text: prompt },
         ],
         ratio: options?.ratio ?? '9:16',
@@ -2509,6 +2511,7 @@ export function buildPicsartI2vParams(
             image_url: { url },
             role: 'reference_image',
           })),
+          ...seedanceAudioContent(options?.audioUrls),
           { type: 'text', text: prompt },
         ],
         ratio: options?.ratio ?? '9:16',
@@ -2528,6 +2531,7 @@ export function buildPicsartI2vParams(
             image_url: { url },
             role: 'reference_image',
           })),
+          ...seedanceAudioContent(options?.audioUrls),
           { type: 'text', text: prompt },
         ],
         ratio: options?.ratio ?? '9:16',
@@ -2696,6 +2700,7 @@ function buildSeedanceVideoEditParams(
   videoUrl: string;
   imageUrl?: string;
   imageUrls?: string[];
+  audioUrls?: string[];
   ratio: WanV3AspectRatio;
   outputName?: string;
   },
@@ -2725,6 +2730,7 @@ function buildSeedanceVideoEditParams(
       role: 'reference_image',
     });
   }
+  content.push(...seedanceAudioContent(input.audioUrls));
 
   return {
     model: config.model,
@@ -2747,6 +2753,7 @@ function buildSeedanceVideoEditParams(
             returnLastFrame: false,
             videoUrl,
             ...(referenceImageUrls.length ? { imageUrls: referenceImageUrls } : {}),
+            ...(input.audioUrls?.length ? { audioUrls: input.audioUrls } : {}),
           }),
           appId: 'com.picsart.ai-playground',
           appType: 'miniapp',
@@ -2762,6 +2769,7 @@ export function buildSeedanceMiniVideoEditParams(input: {
   videoUrl: string;
   imageUrl?: string;
   imageUrls?: string[];
+  audioUrls?: string[];
   ratio: WanV3AspectRatio;
   outputName?: string;
 }): Record<string, unknown> {
@@ -2773,6 +2781,7 @@ export function buildSeedanceFastVideoEditParams(input: {
   videoUrl: string;
   imageUrl?: string;
   imageUrls?: string[];
+  audioUrls?: string[];
   ratio: WanV3AspectRatio;
   outputName?: string;
 }): Record<string, unknown> {
@@ -2784,6 +2793,7 @@ export function buildSeedance2VideoEditParams(input: {
   videoUrl: string;
   imageUrl?: string;
   imageUrls?: string[];
+  audioUrls?: string[];
   ratio: WanV3AspectRatio;
   outputName?: string;
 }): Record<string, unknown> {
@@ -2795,7 +2805,7 @@ async function submitPicsartI2v(
   model: PicsartI2vModelKey,
   prompt: string,
   imageUrl: string,
-  options?: { ratio?: WanV3AspectRatio; outputName?: string; imageUrls?: string[]; duration?: Kling4Duration; videoUrl?: string; referType?: 'feature' | 'base' }
+  options?: { ratio?: WanV3AspectRatio; outputName?: string; imageUrls?: string[]; audioUrls?: string[]; duration?: Kling4Duration; videoUrl?: string; referType?: 'feature' | 'base' }
 ): Promise<string> {
   const cfg = PICSART_I2V_MODELS[model];
   const access = await getAccessToken(credId);
@@ -3077,6 +3087,7 @@ async function submitSeedanceVideoEdit(
     videoUrl: string;
     imageUrl?: string;
     imageUrls?: string[];
+    audioUrls?: string[];
     ratio: WanV3AspectRatio;
   },
   config: SeedanceVideoEditConfig,
@@ -3157,12 +3168,14 @@ async function generateSeedanceVideoEdit(input: {
   video: { buffer: Buffer; name?: string; mime?: string };
   image?: { buffer: Buffer; name?: string; mime?: string };
   images?: Array<{ buffer: Buffer; name?: string; mime?: string }>;
+  audios?: SeedanceAudioBuffer[];
   ratio: WanV3AspectRatio;
   config: SeedanceVideoEditConfig;
   maxVideoBytes: number;
   onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
+  validateSeedanceAudioBuffers(input.audios);
   return runWithAccount(input.userId, 'p500', async (credId) => {
     input.onStatus?.('upload');
     if (input.video.buffer.length > input.maxVideoBytes) {
@@ -3185,11 +3198,16 @@ async function generateSeedanceVideoEdit(input: {
       ));
     }
 
+    const audioUrls: string[] = [];
+    for (const audio of input.audios ?? []) {
+      audioUrls.push(await uploadFile(credId, audio.buffer, audio.name || 'reference.mp3', audio.mime || 'audio/mpeg'));
+    }
     input.onStatus?.('submit');
     const id = await submitSeedanceVideoEdit(credId, {
       prompt: input.prompt,
       videoUrl,
       imageUrls,
+      audioUrls,
       ratio: input.ratio,
     }, input.config);
     input.onStatus?.('poll');
@@ -3222,6 +3240,7 @@ export async function generateSeedanceMiniVideoEdit(input: {
   video: { buffer: Buffer; name?: string; mime?: string };
   image?: { buffer: Buffer; name?: string; mime?: string };
   images?: Array<{ buffer: Buffer; name?: string; mime?: string }>;
+  audios?: SeedanceAudioBuffer[];
   ratio: WanV3AspectRatio;
   onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
   onPoll?: (elapsedSec: number) => void;
@@ -3239,6 +3258,7 @@ export async function generateSeedanceFastVideoEdit(input: {
   video: { buffer: Buffer; name?: string; mime?: string };
   image?: { buffer: Buffer; name?: string; mime?: string };
   images?: Array<{ buffer: Buffer; name?: string; mime?: string }>;
+  audios?: SeedanceAudioBuffer[];
   ratio: WanV3AspectRatio;
   onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
   onPoll?: (elapsedSec: number) => void;
@@ -3256,6 +3276,7 @@ export async function generateSeedance2VideoEdit(input: {
   video: { buffer: Buffer; name?: string; mime?: string };
   image?: { buffer: Buffer; name?: string; mime?: string };
   images?: Array<{ buffer: Buffer; name?: string; mime?: string }>;
+  audios?: SeedanceAudioBuffer[];
   ratio: WanV3AspectRatio;
   onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
   onPoll?: (elapsedSec: number) => void;
@@ -3272,6 +3293,7 @@ export async function generatePicsartI2v(input: {
   model: PicsartI2vModelKey;
   prompt: string;
   images?: Array<{ buffer: Buffer; name?: string; mime?: string }>;
+  audios?: SeedanceAudioBuffer[];
   video?: { buffer: Buffer; name?: string; mime?: string };
   referType?: 'feature' | 'base';
   imageBuffer?: Buffer;
@@ -3285,6 +3307,10 @@ export async function generatePicsartI2v(input: {
   // The public Wan route now uses Vivareel; fail closed for stale callers.
   if (input.model === 'wan_v3') throw Error('WAN_V3_USES_VIVAREEL');
   const cfg = PICSART_I2V_MODELS[input.model];
+  if (input.audios?.length && !['seedance_2', 'seedance_2_fast', 'seedance_2_mini'].includes(input.model)) {
+    throw Error('SEEDANCE2_AUDIO_UNSUPPORTED_MODEL');
+  }
+  validateSeedanceAudioBuffers(input.audios);
   const regularKling4 = input.model === 'kling_v4_regular' || input.model === 'kling_v4_frames';
   const referenceKling4 = input.model === 'kling_v4' || input.model === 'kling_v4_omni';
   if (input.video) {
@@ -3347,6 +3373,11 @@ export async function generatePicsartI2v(input: {
       imageUrls.push(imageUrl);
       console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=upload-complete image=${index + 1}/${imagesToUpload.length}`);
     }
+    const audioUrls: string[] = [];
+    for (const audio of input.audios ?? []) {
+      input.onStatus?.('upload');
+      audioUrls.push(await uploadFile(credId, audio.buffer, audio.name || 'reference.mp3', audio.mime || 'audio/mpeg'));
+    }
     let videoUrl: string | undefined;
     if (input.video) {
       input.onStatus?.('upload');
@@ -3380,7 +3411,7 @@ export async function generatePicsartI2v(input: {
       input.model,
       input.prompt,
       imageUrls[0] ?? '',
-      { ratio: input.ratio, imageUrls, duration: input.duration, videoUrl, referType: input.referType }
+      { ratio: input.ratio, imageUrls, audioUrls, duration: input.duration, videoUrl, referType: input.referType }
     );
     console.log(`[picsart:i2v] model=${input.model} cred=${credId} stage=submit-accepted job=${id}`);
     input.onStatus?.('poll');
