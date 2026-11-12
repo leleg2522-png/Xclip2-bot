@@ -25,7 +25,7 @@ vm.runInContext(ts.transpileModule(priceFn.getText(ast), {
 }).outputText, prices);
 const tariff = vm.runInContext('hargaText()', prices);
 assert.doesNotMatch(tariff, /Wan v2|Wan 3\.0 \(30 detik · 480p\)|Seedance 2\.0 \(15 detik · 480p\)|HappyHorse/i);
-assert.match(tariff, /Wan 3\.0 \(30 detik · 1080p\)/);
+assert.match(tariff, /Wan 3\.0 \(hingga 30 detik · 1080p\)/);
 assert.match(tariff, /Seedance 2 Uncensored/);
 assert.match(tariff, /MiniMax H3 \(15 detik · 2K\)/);
 

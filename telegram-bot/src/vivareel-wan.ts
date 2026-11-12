@@ -1,25 +1,41 @@
+import { inspectWanReferenceVideo } from './vivareel-wan-media';
+
 export type WanRatio = '9:16' | '16:9';
 export interface WanImage { buffer: Buffer; name?: string; mime?: string }
 export interface WanInput {
   prompt: string;
   ratio?: WanRatio;
   images?: WanImage[];
+  video?: WanImage;
   onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
   onPoll?: (elapsedSec: number) => void;
 }
 const BASE = 'https://vivareel.ai/api/developer/v1';
 export const VIVAREEL_WAN_MODEL = 'dashscope-wan3.0-video';
+export const WAN_REFERENCE_MAX_BYTES = 19 * 1024 * 1024;
 
-export function wanRequest(prompt: string, ratio: WanRatio, urls: string[] = []) {
+export function wanOutputDuration(referenceSeconds?: number): number {
+  if (referenceSeconds === undefined) return 30;
+  if (!Number.isFinite(referenceSeconds) || referenceSeconds < 1 || referenceSeconds > 15) {
+    throw Error('WAN_REFERENCE_DURATION_INVALID');
+  }
+  return Math.floor(30 - referenceSeconds);
+}
+
+export function wanRequest(prompt: string, ratio: WanRatio, urls: string[] = [],
+  referenceVideo?: { url: string; duration: number }) {
   if (!prompt.trim() || !['9:16', '16:9'].includes(ratio) || urls.length > 5) {
     throw Error('WAN_INVALID_INPUT');
   }
   if (urls.some(url => !url.startsWith('https://'))) throw Error('WAN_INVALID_IMAGE_URL');
+  if (referenceVideo && !referenceVideo.url.startsWith('https://')) throw Error('WAN_INVALID_VIDEO_URL');
   return {
     model: VIVAREEL_WAN_MODEL, motion_instruction: prompt, aspect_ratio: ratio,
-    duration_seconds: 30, resolution: '480P', audio: true,
+    duration_seconds: wanOutputDuration(referenceVideo?.duration), resolution: '480P', audio: true,
     prompt_extend: false, smart_duration: false, watermark: false,
-    ...(urls.length === 1 ? { capability: 'first_frame', image_url: urls[0] }
+    ...(referenceVideo ? { capability: 'image_reference', reference_video_urls: [referenceVideo.url],
+      ...(urls.length ? { reference_urls: urls } : {}) }
+      : urls.length === 1 ? { capability: 'first_frame', image_url: urls[0] }
       : urls.length > 1 ? { capability: 'image_reference', reference_urls: urls } : {}),
   };
 }
@@ -52,11 +68,13 @@ export class VivareelWanClient {
     if (json.code !== 200 || !json.data) throw Error('VIVAREEL_REJECTED_RESPONSE');
     return json.data;
   }
-  async upload(image: WanImage): Promise<string> {
-    if (!image.buffer.length || image.buffer.length > 20 * 1024 * 1024) throw Error('WAN_INVALID_IMAGE');
+  async upload(image: WanImage, video = false): Promise<string> {
+    if (!image.buffer.length || image.buffer.length > (video ? WAN_REFERENCE_MAX_BYTES : 20 * 1024 * 1024)) {
+      throw Error(video ? 'WAN_INVALID_VIDEO' : 'WAN_INVALID_IMAGE');
+    }
     const form = new FormData();
-    form.append('file', new Blob([new Uint8Array(image.buffer)], { type: image.mime ?? 'image/jpeg' }),
-      image.name ?? 'reference.jpg');
+    form.append('file', new Blob([new Uint8Array(image.buffer)], { type: image.mime ?? (video ? 'video/mp4' : 'image/jpeg') }),
+      image.name ?? (video ? 'reference.mp4' : 'reference.jpg'));
     const data = await this.request('/files', form);
     if (typeof data.url !== 'string' || !data.url.startsWith('https://')) throw Error('VIVAREEL_UPLOAD_FAILED');
     return data.url;
@@ -103,22 +121,28 @@ export class VivareelWanClient {
     const ratio = input.ratio ?? '9:16';
     wanRequest(input.prompt, ratio); // Validate before any upload or billable action.
     if (images.length > 5) throw Error('WAN_TOO_MANY_IMAGES');
+    const referenceSeconds = input.video ? await inspectWanReferenceVideo(input.video.buffer) : undefined;
+    const durationSeconds = wanOutputDuration(referenceSeconds);
     const catalog = await this.request('/models');
     const model = catalog.video_models?.find((m: any) => m.name === VIVAREEL_WAN_MODEL);
-    const capability = images.length === 1 ? 'first_frame' : images.length > 1 ? 'image_reference' : 'text_to_video';
+    const capability = input.video ? 'image_reference'
+      : images.length === 1 ? 'first_frame' : images.length > 1 ? 'image_reference' : 'text_to_video';
     const maxDuration = model?.max_duration_seconds?.[capability];
     if (!model?.is_available || !model.allowed_resolutions?.includes('480P')
-      || !model.capabilities?.includes(capability) || !Number.isFinite(maxDuration) || maxDuration < 30
-      || (images.length > 1 && !(model.max_reference_images >= images.length))) {
+      || !model.capabilities?.includes(capability) || !Number.isFinite(maxDuration) || maxDuration < durationSeconds
+      || ((images.length > 1 || input.video) && !(model.max_reference_images >= images.length))
+      || (input.video && !(model.max_reference_videos >= 1))) {
       throw Error('VIVAREEL_MODEL_UNAVAILABLE');
     }
     const urls: string[] = [];
-    if (images.length) input.onStatus?.('upload');
+    if (images.length || input.video) input.onStatus?.('upload');
     for (const image of images) urls.push(await this.upload(image));
+    const videoUrl = input.video ? await this.upload(input.video, true) : undefined;
     input.onStatus?.('submit');
-    const id = await this.submit(wanRequest(input.prompt, ratio, urls));
+    const id = await this.submit(wanRequest(input.prompt, ratio, urls,
+      videoUrl ? { url: videoUrl, duration: referenceSeconds! } : undefined));
     input.onStatus?.('poll');
-    return this.poll(id, input.onPoll);
+    return { ...await this.poll(id, input.onPoll), durationSeconds };
   }
 }
 

@@ -95,12 +95,19 @@ async function main() {
   const compiled = ts.transpileModule(source.slice(start, end), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
   }).outputText;
+  for (const videoReference of [false, true]) {
   for (const mode of ['success', 'provider-failure', 'crop-failure', 'host-failure', 'upscale-failure',
     'upscale-native', 'delivery-failure', 'charge-rejected', 'other-model']) {
+    if (videoReference && mode === 'other-model') continue;
     const events: string[] = [], refunds: number[] = [];
     const context: any = {
       console: { log() {}, warn() {}, error() {} },
       Buffer, Date, Error, Math,
+      wanOutputDuration: (seconds: number) => Math.floor(30 - seconds),
+      inspectWanReferenceVideo: async () => 10,
+      retryTelegramFileRead: (fn: any) => fn(),
+      telegramHttp: { get: async () => ({ data: Buffer.from('reference-video') }) },
+      KLING4_REFERENCE_VIDEO_MAX_BYTES: 19 * 1024 * 1024,
       picsart: {
         PICSART_I2V_MODELS: { wan_v3: { label: 'Wan 3.0 1080p', settingsLabel: '30 detik · 1080p · crop otomatis' },
           pixverse_v6: { label: 'PixVerse', settingsLabel: '15 detik' } },
@@ -113,14 +120,17 @@ async function main() {
       beginCharge: async () => ({ ok: mode !== 'charge-rejected', reason: 'insufficient' }),
       chargeFailMsg: () => 'insufficient', supportsMultiplePicsartI2vImages: () => true,
       downloadBuffer: async () => ({ buf: Buffer.from('reference'), ext: 'jpg', mime: 'image/jpeg' }),
-      generateVivareelWan: async () => {
+      generateVivareelWan: async (input: any) => {
         events.push('vivareel');
+        assert.equal(Boolean(input.video), videoReference);
+        if (videoReference) assert.equal(input.video.buffer.toString(), 'reference-video');
         if (mode === 'provider-failure') throw Error('VIVAREEL_SUBMIT_AMBIGUOUS');
         return { url: 'https://cdn.example/native.mp4', credits: 120 };
       },
-      prepareWanDelivery: async (_url: string, ratio: string) => {
+      prepareWanDelivery: async (_url: string, ratio: string, duration: number) => {
         events.push('crop');
         assert.equal(ratio, '9:16');
+        assert.equal(duration, videoReference ? 20 : 30);
         if (mode === 'crop-failure') throw Error('WAN_CROP_VALIDATION_FAILED');
         return Buffer.from('cropped-output');
       },
@@ -144,6 +154,7 @@ async function main() {
           assert.equal(args[1], 'https://our-bot.example/1080p.mp4');
           assert.equal(args[5], undefined, 'Never send the low-resolution cropped buffer as the final output');
           assert.match(args[2], /1080p/);
+          assert.match(args[2], videoReference ? /20 detik/ : /30 detik/);
         }
         return mode !== 'delivery-failure';
       },
@@ -152,13 +163,15 @@ async function main() {
       addSaldo: async (_id: number, price: number) => refunds.push(price),
       formatRupiah: (n: number) => String(n), describeError: (e: Error) => e.message,
       releaseGenerating: () => events.push('release'),
-      bot: { telegram: { editMessageText: async () => {}, sendMessage: async () => {}, deleteMessage: async () => {} } },
+      bot: { telegram: { editMessageText: async () => {}, sendMessage: async () => {}, deleteMessage: async () => {},
+        getFileLink: async () => ({ href: 'https://telegram.example/reference' }) } },
     };
     vm.createContext(context);
     vm.runInContext(compiled, context);
     await context.runPicsartI2v(1, 2, 3, 4, 'duel', {
       model: mode === 'other-model' ? 'pixverse_v6' : 'wan_v3', imageUrls: ['https://example.com/photo.jpg'],
       ratio: '9:16',
+      ...(videoReference ? { videoFileId: 'reference-video', wanDurationSeconds: 20 } : {}),
     });
     if (mode === 'charge-rejected') assert.deepEqual(events, []);
     else {
@@ -173,6 +186,7 @@ async function main() {
       if (mode === 'delivery-failure') assert.equal(events.filter(e => e === 'send').length, 1,
         'Never fall back to native video after a 1080p delivery failure');
     }
+  }
   }
   assert.match(source, /picsart_wan_v3: 6000/);
   assert.match(source, /wanHD && !finalVideo\.upscaled.*WAN_1080_FINISH_FAILED/);

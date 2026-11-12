@@ -27,13 +27,36 @@ async function probe(path: string) {
     { timeout: 30000, maxBuffer: 1024 * 1024 });
   return JSON.parse(stdout);
 }
+/** Probe actual bytes, never Telegram's rounded duration or a filename alone. */
+export async function inspectWanReferenceVideo(buffer: Buffer): Promise<number> {
+  if (!buffer.length || buffer.length > 19 * 1024 * 1024) throw Error('WAN_REFERENCE_SIZE_INVALID');
+  const dir = await mkdtemp(join(tmpdir(), 'wan-reference-'));
+  try {
+    const input = join(dir, 'reference.mp4');
+    await writeFile(input, buffer);
+    const facts = await probe(input);
+    const video = facts.streams?.find((s: any) => s.codec_type === 'video');
+    const duration = Number(facts.format?.duration);
+    if (!video || !(video.width > 0 && video.height > 0)
+      || !facts.format?.format_name?.split(',').some((name: string) => ['mov', 'mp4'].includes(name))
+      || !Number.isFinite(duration) || duration < 1 || duration > 15) throw Error('WAN_REFERENCE_DURATION_INVALID');
+    return duration;
+  } catch {
+    throw Error('WAN_REFERENCE_INVALID');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
 async function audioHash(path: string) {
   const { stdout } = await exec('ffmpeg', ['-v', 'error', '-i', path, '-map', '0:a:0', '-c', 'copy',
     '-f', 'hash', '-hash', 'sha256', '-'], { timeout: 60000 });
   return stdout.trim();
 }
-export async function cropWanBuffer(buffer: Buffer, ratio: WanRatio): Promise<Buffer> {
+export async function cropWanBuffer(buffer: Buffer, ratio: WanRatio, expectedDuration = 30): Promise<Buffer> {
   if (!buffer.length || buffer.length > MAX_BYTES) throw Error('WAN_OUTPUT_TOO_LARGE');
+  if (!Number.isInteger(expectedDuration) || expectedDuration < 2 || expectedDuration > 30) {
+    throw Error('WAN_OUTPUT_DURATION_INVALID');
+  }
   const dir = await mkdtemp(join(tmpdir(), 'wan-crop-'));
   try {
     const input = join(dir, 'original.mp4'), output = join(dir, 'cropped.mp4');
@@ -41,7 +64,7 @@ export async function cropWanBuffer(buffer: Buffer, ratio: WanRatio): Promise<Bu
     const before = await probe(input);
     const video = before.streams?.find((s: any) => s.codec_type === 'video');
     const duration = Number(before.format?.duration);
-    if (!video || !Number.isFinite(duration) || Math.abs(duration - 30) > 0.5
+    if (!video || !Number.isFinite(duration) || Math.abs(duration - expectedDuration) > 0.5
       || Math.min(video.width, video.height) !== 480) {
       throw Error('WAN_OUTPUT_SETTINGS_MISMATCH');
     }
@@ -66,7 +89,7 @@ export async function cropWanBuffer(buffer: Buffer, ratio: WanRatio): Promise<Bu
     await rm(dir, { recursive: true, force: true });
   }
 }
-export async function prepareWanDelivery(url: string, ratio: WanRatio): Promise<Buffer> {
+export async function prepareWanDelivery(url: string, ratio: WanRatio, expectedDuration = 30): Promise<Buffer> {
   // Never forward provider authentication to the result CDN.
   const response = await fetch(url, { signal: AbortSignal.timeout(180000) });
   if (!response.ok || !response.body) throw Error('WAN_DOWNLOAD_FAILED');
@@ -86,5 +109,5 @@ export async function prepareWanDelivery(url: string, ratio: WanRatio): Promise<
     reader.releaseLock();
   }
   // Mandatory finishing. No return of the unprocessed source on any failure.
-  return cropWanBuffer(Buffer.concat(chunks), ratio);
+  return cropWanBuffer(Buffer.concat(chunks), ratio, expectedDuration);
 }
