@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { withGenerationErrors } from './generation-error-harness';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
@@ -167,7 +168,7 @@ async function main() {
         getFileLink: async () => ({ href: 'https://telegram.example/reference' }) } },
     };
     vm.createContext(context);
-    vm.runInContext(compiled, context);
+    vm.runInContext(compiled, withGenerationErrors(context));
     await context.runPicsartI2v(1, 2, 3, 4, 'duel', {
       model: mode === 'other-model' ? 'pixverse_v6' : 'wan_v3', imageUrls: ['https://example.com/photo.jpg'],
       ratio: '9:16',
@@ -227,7 +228,7 @@ async function main() {
       } },
     };
     vm.createContext(context);
-    vm.runInContext(senderCode, context);
+    vm.runInContext(senderCode, withGenerationErrors(context));
     const delivered = await context.sendResult(1, 'https://cdn.example/native.mp4', 'Wan 3.0', true, false, bytes);
     assert.equal(delivered, strategy !== 'failed');
     assert.deepEqual(deliveries, strategy === 'failed' ? [] : [strategy]);

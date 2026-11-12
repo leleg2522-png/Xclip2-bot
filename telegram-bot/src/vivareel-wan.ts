@@ -1,4 +1,5 @@
 import { inspectWanReferenceVideo } from './vivareel-wan-media';
+import { generationFailure } from './generation-errors';
 
 export type WanRatio = '9:16' | '16:9';
 export interface WanImage { buffer: Buffer; name?: string; mime?: string }
@@ -63,9 +64,12 @@ export class VivareelWanClient {
       // Never include transport errors that may contain credentials or signed URLs.
       throw Error(path === '/videos/generations' ? 'VIVAREEL_SUBMIT_AMBIGUOUS' : 'VIVAREEL_NETWORK_ERROR');
     }
-    if (!response.ok) throw Error(`VIVAREEL_HTTP_${response.status}`);
+    if (!response.ok) {
+      const detail = await response.json().catch(() => undefined);
+      throw generationFailure(`VIVAREEL_HTTP_${response.status}`, detail);
+    }
     const json = await response.json().catch(() => { throw Error('VIVAREEL_INVALID_RESPONSE'); });
-    if (json.code !== 200 || !json.data) throw Error('VIVAREEL_REJECTED_RESPONSE');
+    if (json.code !== 200 || !json.data) throw generationFailure('VIVAREEL_REJECTED_RESPONSE', json);
     return json.data;
   }
   async upload(image: WanImage, video = false): Promise<string> {
@@ -103,7 +107,11 @@ export class VivareelWanClient {
         continue;
       }
       onPoll?.(Math.floor((Date.now() - start) / 1000));
-      if (['failed', 'cancelled', 'canceled'].includes(data.status)) throw Error('VIVAREEL_GENERATION_FAILED');
+      if (['failed', 'cancelled', 'canceled'].includes(data.status)) {
+        throw generationFailure('VIVAREEL_GENERATION_FAILED', {
+          message: data.error_message, error: data.error, code: data.error_code, reason: data.failure_reason,
+        });
+      }
       if (data.status === 'completed') {
         if (typeof data.result_url !== 'string' || !data.result_url.startsWith('https://')) {
           throw Error('VIVAREEL_MISSING_RESULT');

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { withGenerationErrors } from './generation-error-harness';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -394,7 +395,7 @@ async function billingTest(model: PublicModel, outcome: string, ratio: '9:16' | 
     console: { log() {}, error() {}, warn() {} },
   });
   vm.runInContext(compile(fragment(app, 'function getPicsartI2vPrice(', '\n//')), ctx);
-  vm.runInContext(compile(fragment(app, 'async function runPicsartI2v(', '// ─── Background: Picsart Seedance 2.5')), ctx);
+  vm.runInContext(compile(fragment(app, 'async function runPicsartI2v(', '// ─── Background: Picsart Seedance 2.5')), withGenerationErrors(ctx));
   if (videoMode) ctx.bot.telegram.getFileLink = async () => new URL('https://example.test/telegram-reference.mp4');
   await ctx.runPicsartI2v(1, 2, 3, 4, 'A landscape', { model, imageUrls: model === 'kling_v4_t2v' ? [] : model === 'kling_v4_frames' ? [image, image] : [image], ratio, duration,
     ...(videoMode ? { videoFileId: 'clip', referType: videoMode } : {}) });

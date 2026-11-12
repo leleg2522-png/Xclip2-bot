@@ -42,11 +42,11 @@ export class DeapiDramaRenderer implements DramaRenderer {
       }
     }
     if (!r.ok) {
+      const body = await r.json().catch(() => null);
       if (r.status === 403) {
-        const body = await r.json().catch(() => null);
         if (explicitDeapiSuspension(body)) throw new DeapiAccountSuspendedError(quote ? 'QUOTE' : 'SUBMIT');
       }
-      throw new Error(`DEAPI_${quote ? 'QUOTE' : 'SUBMIT'}_HTTP_${r.status}`);
+      throw new Error(`DEAPI_${quote ? 'QUOTE' : 'SUBMIT'}_HTTP_${r.status}`, { cause: body });
     }
     return await r.json() as any;
   }
@@ -79,7 +79,11 @@ export class DeapiDramaRenderer implements DramaRenderer {
       if (!r.ok) throw new Error(`DEAPI_POLL_HTTP_${r.status}`);
       const body = await r.json() as any;
       const status = body.data?.status;
-      if (['failed', 'error'].includes(status)) throw new Error('DEAPI_JOB_FAILED');
+      if (['failed', 'error'].includes(status)) {
+        throw new Error('DEAPI_JOB_FAILED', { cause: {
+          message: body.data?.error_message, error: body.data?.error, code: body.data?.error_code,
+        } });
+      }
       if (status === 'done') {
         const url = body.data?.result_url;
         if (typeof url !== 'string' || !url.startsWith('https://')) throw new Error('DEAPI_RESULT_INVALID');

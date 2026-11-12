@@ -1,3 +1,4 @@
+import { generationErrorMessage } from './generation-errors';
 import { scenePrompt, type BuatSimpelWriter } from './microdrama-plan';
 import type { DramaRenderer } from './microdrama-deapi';
 import { DeapiRateLimitError } from './deapi-rate-limit';
@@ -20,14 +21,14 @@ export function dramaError(error: unknown): string {
   if (code === 'PLAN_INVALID' || error instanceof SyntaxError) return 'Naskah AI tidak memenuhi format dua adegan. Tidak ada render video yang dimulai.';
   if (code === 'LLM_MODEL_UNAVAILABLE') return 'Model naskah sedang tidak tersedia. Pilih model aktif lewat /microdramamodel.';
   if (code.startsWith('LLM_')) return 'Permintaan naskah belum berhasil. Tidak diulang otomatis; permintaan ini mungkin sudah memakai kuota LLM.';
-  if (code === 'DEAPI_JOB_FAILED') return 'Provider menyatakan salah satu klip gagal. Tidak ada pengiriman ulang job berbayar.';
+  if (code === 'DEAPI_JOB_FAILED') return `${generationErrorMessage(error)} Tidak ada pengiriman ulang job berbayar.`;
   if (code === 'DEAPI_POOL_NO_USABLE_KEY') return 'Tidak ada key DeAPI yang dapat dipakai untuk model ini. Periksa /deapipool dan akses/saldo akun provider. Belum ada submit klip berikutnya.';
   if (code === 'DEAPI_JOB_KEY_UNKNOWN' || code === 'DEAPI_JOB_KEY_MISSING') return 'Key asal job ini belum teridentifikasi atau tidak ditemukan di pool. Job tidak dikirim ulang dan tidak dipindah ke akun lain.';
   if (code === 'DEAPI_QUOTE_OVER_LIMIT' || code === 'DRAMA_BUDGET_CHANGED') return 'Harga tidak valid, melebihi batas US$0,30 per klip, atau naik dari persetujuan. Submit berikutnya dihentikan.';
   if (code === 'DRAMA_ADMIN_REVOKED') return 'Akses admin tidak lagi aktif. Submit berikutnya dihentikan.';
   if (code === 'DRAMA_APPROVAL_EXPIRED') return 'Estimasi sudah kedaluwarsa. Minta estimasi baru sebelum menyetujui render.';
   if (code === 'DRAMA_MEDIA_INVALID') return 'Klip tidak memiliki ukuran, durasi, atau audio yang diharapkan. Hasil tidak dikirim sebagai video selesai.';
-  return 'Proses belum selesai. Status job tersimpan; lanjutkan job yang sama tanpa membuat ulang klip yang sudah diterima.';
+  return `${generationErrorMessage(error)} Status job tersimpan; lanjutkan job yang sama tanpa membuat ulang klip yang sudah diterima.`;
 }
 
 const cost = (n: number) => `US$${n.toFixed(6)}`;

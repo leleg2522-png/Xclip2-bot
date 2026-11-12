@@ -1,4 +1,5 @@
 import { generateVivareelWan, wanOutputDuration, WAN_REFERENCE_MAX_BYTES } from './vivareel-wan';
+import { generationErrorMessage } from './generation-errors';
 import { prepareWanDelivery, inspectWanReferenceVideo } from './vivareel-wan-media';
 import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
@@ -336,11 +337,17 @@ function describeError(err: any): string {
 // an internal provider name into a display label.
 function customerSafeModelLabel(label: string, fallback: string): string {
   const safe = String(label || '')
-    .replace(/\b(?:Picsart|Freebeat|OneOver|Renderful)\b/gi, '')
+    .replace(/\b(?:Picsart|Flora(?:\s*AI)?|Freebeat|OneOver|Renderful|Vivareel|Snapgen|Deapi|Alriz|Chinaapi|Aiveed|Botelex|Buatsimpel|Flowy|Novai|Modelrunner|Edanbot|Decodo)\b/gi, '')
     .replace(/\s{2,}/g, ' ')
     .replace(/\s+([·:])/g, '$1')
     .trim();
   return safe || fallback;
+}
+
+async function notifyGenerationFailure(chatId: number, statusMsgId: number, error: unknown, stage?: string) {
+  const text = `${generationErrorMessage(error, { stage })}\n\n/menu untuk coba lagi`;
+  await bot.telegram.editMessageText(chatId, statusMsgId, undefined, text)
+    .catch(() => bot.telegram.sendMessage(chatId, text).catch(() => {}));
 }
 
 function formatRupiah(n: number): string {
@@ -2576,6 +2583,7 @@ async function sendResult(chatId: number, outputUrl: string, caption: string, is
   // Download the file server-side. The user must NEVER see the upstream CDN URL,
   // so everything is fetched by us and re-delivered from our own side.
   let buf: Buffer | null = preparedBuffer ?? null;
+  let downloadError: unknown;
   if (!buf) {
     try {
       const res = await telegramHttp.get(outputUrl, { responseType: 'arraybuffer', timeout: 300_000 });
@@ -2583,12 +2591,13 @@ async function sendResult(chatId: number, outputUrl: string, caption: string, is
       console.log(`Downloaded result: ${(buf.length / 1024 / 1024).toFixed(1)} MB, isVideo: ${looksLikeVideo}`);
     } catch (e: any) {
       console.log(`Download failed: ${e.message}`);
+      downloadError = e;
     }
   }
 
   if (!buf) {
     await bot.telegram.sendMessage(chatId,
-      `✅ Hasil selesai, tapi gagal mengambil file. Coba lagi sebentar ya.\n\n${caption}`
+      `${generationErrorMessage(downloadError, { stage: 'delivery' })}\n\n/menu untuk coba lagi`
     );
     return false;
   }
@@ -2640,7 +2649,7 @@ async function sendResult(chatId: number, outputUrl: string, caption: string, is
   } catch (e: any) {
     console.log(`Self-hosted link failed: ${e.message}`);
     await bot.telegram.sendMessage(chatId,
-      `✅ Hasil selesai, tapi gagal mengirim file. Coba lagi sebentar ya.\n\n${caption}`
+      `${generationErrorMessage(e, { stage: 'delivery' })}\n\n/menu untuk coba lagi`
     );
     return false;
   }
@@ -3579,16 +3588,7 @@ const budgetVideoBot = createBudgetVideoBot({
         const raw = error instanceof Error ? error.message : '';
         const code = /^[A-Z][A-Z0-9_]{1,80}$/.test(raw) ? raw : 'VIDEO_FAILED';
         console.error(`[budget-video] model=${input.model} user=${userId} code=${code}`);
-        const message = code === 'SNAPGEN_HIGH_TRAFFIC'
-          ? 'Layanan sedang ramai. Video belum berhasil dibuat.'
-          : code === 'SNAPGEN_CONTENT_MODERATION'
-            ? 'Prompt atau foto ditolak oleh filter konten model. Gunakan konten yang sesuai ketentuan layanan. Video tidak dibuat; saldo akan dikembalikan.'
-          : /_(UNSUPPORTED_IMAGE_FORMAT|INVALID_FILE_CONTENT|EMPTY_FILE|INVALID_REFERENCE_IMAGE)$/.test(code)
-            ? 'Foto referensi ditolak. Gunakan foto JPG/PNG/WebP yang valid, maksimal 10 MB.'
-          : code === 'DEAPI_POOL_NO_USABLE_KEY'
-            ? 'Semua akun untuk model ini sedang tidak tersedia, dibatasi, atau ditangguhkan. Coba lagi nanti.'
-            : 'Video belum berhasil dibuat atau dikirim. Tidak ada submit ulang otomatis.';
-        await bot.telegram.editMessageText(chatId, statusId, undefined, `${message}\n/menu untuk kembali`).catch(() => {});
+        await notifyGenerationFailure(chatId, statusId, error);
       },
       refund: async () => { await addSaldo(dbUserId, config.price); },
       refunded: async () => { await bot.telegram.sendMessage(chatId, 'Saldo Rp500 dikembalikan karena video tidak berhasil dikirim.').catch(() => {}); },
@@ -8952,13 +8952,13 @@ bot.on('text', async (ctx) => {
         // Tandai key dead kalau 401/403.
         if (resp.status === 401 || resp.status === 403) await markAutoappKeyDead(apiKey).catch(() => {});
         console.error(`[${userId}] Chat AI error status ${resp.status}:`, JSON.stringify(resp.data).slice(0, 200));
-        return ctx.reply('❌ AI tidak merespons. Saldo dikembalikan. Coba lagi.');
+        return ctx.reply(`${generationErrorMessage({ response: { status: resp.status, data: resp.data } })}\nSaldo dikembalikan.`);
       }
       replyText = resp.data?.choices?.[0]?.message?.content ?? '(Tidak ada balasan dari AI)';
     } catch (e: any) {
       await addSaldo(session.dbUserId!, MODEL_PRICES.chat).catch(() => {});
       console.error(`[${userId}] Chat AI exception:`, e.message);
-      return ctx.reply('❌ Gagal menghubungi AI. Saldo dikembalikan. Coba lagi.');
+      return ctx.reply(`${generationErrorMessage(e)}\nSaldo dikembalikan.`);
     }
 
     // Update history (cap at CHAT_MAX_HISTORY).
@@ -9663,7 +9663,7 @@ async function runHarModel(
     }
   } catch (error) {
     console.error(`[${userId}] ${cfg.label} failed: ${describeError(error)}`);
-    await status('❌ Hasil tidak berhasil diproses. Saldo akan dikembalikan.\n\n/menu untuk coba lagi');
+    await notifyGenerationFailure(chatId, statusMsgId, error);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -9720,15 +9720,7 @@ async function runXclipMotion(
     }
   } catch (error) {
     console.error(`[${userId}] XclipMotion failed: ${describeError(error)}`);
-    const known: Record<string, string> = {
-      XCLIP_REFERENCE_DURATION: 'Durasi video referensi harus 3–15 detik.',
-      XCLIP_VIDEO_TOO_LARGE: 'Video referensi maksimal 15MB.',
-      XCLIP_IMAGE_TOO_LARGE: 'Foto karakter maksimal 10MB.',
-      XCLIP_INVALID_REFERENCE_VIDEO: 'Video referensi harus jelas, minimal 240px per sisi.',
-      INVALID_CHARACTER_IMAGE: 'Foto karakter harus JPG/PNG, minimal 300px per sisi.',
-    };
-    const message = error instanceof Error ? known[error.message] : undefined;
-    await status(`❌ ${message ?? 'Generate tidak berhasil.'} Saldo akan dikembalikan.\n\n/menu untuk coba lagi`);
+    await notifyGenerationFailure(chatId, statusMsgId, error);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -9786,7 +9778,7 @@ async function runKlingV3Standard(
     }
   } catch (error) {
     console.error(`[${userId}] KlingV3Standard failed: ${describeError(error)}`);
-    await status('❌ Generate tidak berhasil. Saldo akan dikembalikan.\n\n/menu untuk coba lagi');
+    await notifyGenerationFailure(chatId, statusMsgId, error);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -9928,17 +9920,7 @@ async function runKlingMotionControl(chatId: number, userId: number, dbUserId: n
   } catch (err: any) {
     const msg = describeError(err);
     console.error(`[${userId}] ${label} Picsart error: ${msg}`);
-    let friendly: string;
-    if (msg.includes('PICSART_TIMEOUT')) {
-      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
-    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
-      friendly = '❌ Media tidak bisa diproses. Coba file lain.';
-    } else {
-      friendly = '❌ Gagal memproses. Coba lagi nanti.';
-    }
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${friendly}\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+    await notifyGenerationFailure(chatId, statusMsgId, err);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -10112,11 +10094,7 @@ async function runKlingEdanbot(
         }
         // ERXX99 = backend error (biasanya video terlalu besar/panjang)
         if (desc.includes('ERXX99') || desc.includes('EDANBOT_JOB_FAILED')) {
-          await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-            `❌ Gagal generate.\n\n` +
-            `Kemungkinan video referensi terlalu besar atau terlalu panjang.\n` +
-            `Coba dengan video yang lebih pendek (< 10 detik, < 15MB).\n\n/menu untuk coba lagi`
-          ).catch(() => bot.telegram.sendMessage(chatId, `❌ Video referensi terlalu besar/panjang. Coba yang lebih pendek.\n\n/menu`));
+          await notifyGenerationFailure(chatId, statusMsgId, err);
           refund = true;
           return;
         }
@@ -10127,16 +10105,12 @@ async function runKlingEdanbot(
 
     const errMsg = describeError(lastErr);
     console.error(`[${userId}] ${label} all attempts failed: ${errMsg}`);
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `❌ Gagal memproses. Coba lagi nanti.\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `❌ Gagal memproses.\n\n/menu`));
+    await notifyGenerationFailure(chatId, statusMsgId, lastErr);
 
   } catch (err: any) {
     const msg = describeError(err);
     console.error(`[${userId}] ${label} outer error: ${msg}`);
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `❌ Gagal memproses. Coba lagi nanti.\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `❌ Gagal memproses.\n\n/menu`));
+    await notifyGenerationFailure(chatId, statusMsgId, err);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -10309,9 +10283,7 @@ async function runKlingV3Pro(
   } catch (error: unknown) {
     // Do not log Axios objects: request config contains the account cookie.
     console.error(`[${userId}] Kling v3 Pro failed: ${describeError(error)}`);
-    const text = `❌ ${label} gagal diproses atau dikirim. Saldo dikembalikan penuh.\n\n/menu untuk coba lagi`;
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, text)
-      .catch(() => bot.telegram.sendMessage(chatId, text).catch(() => {}));
+    await notifyGenerationFailure(chatId, statusMsgId, error);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, price).catch(() => {});
@@ -10490,20 +10462,7 @@ async function runPicsartI2v(
       `error=${msg}${pollCause ? ` cause=${pollCause}` : ''}`,
       err?.stack ? `\n${err.stack}` : ''
     );
-    let friendly = '❌ Gagal memproses. Coba lagi nanti.';
-    if (opts.model === 'wan_v3' && stage === 'finishing') {
-      friendly = '❌ Video gagal disiapkan dengan crop otomatis dan peningkatan ke 1080p. Saldo akan dikembalikan penuh.';
-    } else if (kling4HD && stage === 'finishing') {
-      friendly = '❌ Video gagal disiapkan ke 1080p. Saldo akan dikembalikan penuh.';
-    } else if (msg.includes('PICSART_TIMEOUT')) {
-      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
-    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
-      friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
-    } else if (msg.includes('PICSART_NO_CREDENTIAL') || msg.includes('PICSART_INSUFFICIENT_CREDITS')) {
-      friendly = '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.';
-    }
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
-      .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+    await notifyGenerationFailure(chatId, statusMsgId, err, stage);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -10617,17 +10576,7 @@ async function runPicsartSeedance25(
       `[seedance-2.5] user=${userId} dbUser=${dbUserId} stage=${stage} error=${msg}`,
       err?.stack ? `\n${err.stack}` : ''
     );
-    const friendly = msg.includes('SEEDANCE25_MEDIA_SIZE_LIMIT')
-      ? '❌ Referensi melebihi batas 19MB per file atau 100MB gabungan. Saldo kamu akan dikembalikan.'
-      : msg.includes('PICSART_NO_ACCOUNT') || msg.includes('PICSART_INSUFFICIENT_CREDITS')
-      ? '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.'
-      : msg.includes('TIMEOUT')
-        ? '❌ Proses terlalu lama. Saldo kamu akan dikembalikan.'
-        : msg.includes('INVALID_IMAGE')
-          ? '❌ Foto tidak bisa diproses. Coba foto lain.'
-          : '❌ Gagal memproses video. Saldo kamu akan dikembalikan.';
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
-      .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+    await notifyGenerationFailure(chatId, statusMsgId, err, stage);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -10760,18 +10709,7 @@ async function runSeedanceVideoEdit(
       `imageCount=${opts.imageUrls.length} error=${msg}`,
       err?.stack ? `\n${err.stack}` : ''
     );
-    let friendly = '❌ Gagal memproses video. Coba lagi nanti.';
-    if (msg.includes('PICSART_TIMEOUT')) {
-      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
-    } else if (msg.includes('PICSART_REFERENCE_VIDEO_TOO_LARGE')) {
-      friendly = '❌ Video referensi terlalu besar. Maksimal 19MB.';
-    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
-      friendly = '❌ Media referensi tidak bisa diproses. Coba file lain.';
-    } else if (msg.includes('PICSART_NO_CREDENTIAL') || msg.includes('PICSART_INSUFFICIENT_CREDITS')) {
-      friendly = '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.';
-    }
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
-      .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+    await notifyGenerationFailure(chatId, statusMsgId, err, stage);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -10986,17 +10924,7 @@ async function runOneOverSeedance25(
     if (providerAccepted && oneover.isOneOverAuthFailure(err)) {
       await markOneOverSessionDead(poolSession).catch(() => {});
     }
-    const friendly = msg.includes('ONEOVER_NO_CREDENTIAL') || msg.includes('ONEOVER_NO_SESSION') || msg.includes('ONEOVER_POOL_UNAVAILABLE')
-      ? '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.'
-      : msg.includes('ONEOVER_INVALID_IMAGE')
-        ? '❌ Foto tidak bisa diproses. Coba foto JPG atau PNG lain.'
-        : msg.includes('ONEOVER_SUBMIT_TIMEOUT')
-          ? '❌ Server terlalu lama menerima permintaan. Saldo kamu akan dikembalikan.'
-        : msg.includes('ONEOVER_TIMEOUT')
-          ? '❌ Proses terlalu lama. Saldo kamu akan dikembalikan.'
-          : '❌ Gagal memproses video. Saldo kamu akan dikembalikan.';
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
-      .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu`));
+    await notifyGenerationFailure(chatId, statusMsgId, err);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -11084,17 +11012,7 @@ async function runRunway(
   } catch (err: any) {
     const msg = describeError(err);
     console.error(`[${userId}] Runway error: ${msg}`);
-    let friendly: string;
-    if (msg.includes('PICSART_TIMEOUT')) {
-      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
-    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
-      friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
-    } else {
-      friendly = '❌ Gagal memproses. Coba lagi nanti.';
-    }
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${friendly}\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+    await notifyGenerationFailure(chatId, statusMsgId, err);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -11190,17 +11108,7 @@ async function runSora(
   } catch (err: any) {
     const msg = describeError(err);
     console.error(`[${userId}] Sora error: ${msg}`);
-    let friendly: string;
-    if (msg.includes('PICSART_TIMEOUT')) {
-      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
-    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
-      friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
-    } else {
-      friendly = '❌ Gagal memproses. Coba lagi nanti.';
-    }
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${friendly}\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+    await notifyGenerationFailure(chatId, statusMsgId, err);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -11384,17 +11292,7 @@ async function runVeo(
   } catch (err: any) {
     const msg = describeError(err);
     console.error(`[${userId}] ${label} error: ${msg}`);
-    let friendly: string;
-    if (msg.includes('SNAPGEN_TIMEOUT')) {
-      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
-    } else if (msg.includes('SNAPGEN_KEY_MISSING')) {
-      friendly = '❌ Layanan sedang tidak tersedia. Coba lagi nanti.';
-    } else {
-      friendly = '❌ Gagal memproses. Coba lagi nanti.';
-    }
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${friendly}\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+    await notifyGenerationFailure(chatId, statusMsgId, err);
     // Notifikasi admin (sejalan dengan pola notify owner di backend lain).
     const owner = process.env.PICSART_OWNER_CHAT_ID;
     if (owner) bot.telegram.sendMessage(owner, `⚠️ ${label} gagal untuk user ${userId}: ${msg.slice(0, 300)}`).catch(() => {});
@@ -11539,17 +11437,7 @@ async function runMinimaxH3(
   } catch (err: any) {
     const msg = describeError(err);
     console.error(`[${userId}] ${label} error: ${msg}`);
-    const friendly = msg.includes('PICSART_TIMEOUT')
-      ? '❌ Proses terlalu lama. Coba lagi nanti.'
-      : msg.includes('PICSART_UPLOAD_FAILED')
-        ? '❌ Frame tidak bisa diproses. Coba gambar lain.'
-        : '❌ Gagal memproses. Coba lagi nanti.';
-    await bot.telegram.editMessageText(
-      chatId,
-      statusMsgId,
-      undefined,
-      `${friendly}\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+    await notifyGenerationFailure(chatId, statusMsgId, err);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -11644,17 +11532,7 @@ async function runPicsartVeo31(
   } catch (err: any) {
     const msg = describeError(err);
     console.error(`[${userId}] ${label} error: ${msg}`);
-    const friendly = msg.includes('PICSART_TIMEOUT')
-      ? '❌ Proses terlalu lama. Coba lagi nanti.'
-      : msg.includes('PICSART_UPLOAD_FAILED')
-        ? '❌ Foto tidak bisa diproses. Coba foto lain.'
-        : '❌ Gagal memproses. Coba lagi nanti.';
-    await bot.telegram.editMessageText(
-      chatId,
-      statusMsgId,
-      undefined,
-      `${friendly}\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+    await notifyGenerationFailure(chatId, statusMsgId, err);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -11832,17 +11710,7 @@ async function runImage(
   } catch (err: any) {
     const msg = describeError(err);
     console.error(`[${userId}] ${label} error: ${msg}`);
-    let friendly: string;
-    if (/timeout/i.test(msg)) {
-      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
-    } else if (msg.includes('BANANA_UNAVAILABLE')) {
-      friendly = '❌ Layanan sedang tidak tersedia. Coba lagi nanti.';
-    } else {
-      friendly = '❌ Gagal memproses. Coba lagi nanti.';
-    }
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${friendly}\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+    await notifyGenerationFailure(chatId, statusMsgId, err);
     const owner = process.env.PICSART_OWNER_CHAT_ID;
     if (owner) bot.telegram.sendMessage(owner, `⚠️ ${label} gagal untuk user ${userId}: ${msg.slice(0, 300)}`).catch(() => {});
   } finally {
@@ -11858,16 +11726,18 @@ async function runImage(
 // unduh sendiri lalu upload bytes-nya supaya URL upstream tidak pernah terlihat.
 async function sendImageResult(chatId: number, outputUrl: string, caption: string, require4k: boolean | 'native' = false): Promise<boolean> {
   let buf: Buffer | null = null;
+  let downloadError: unknown;
   try {
     const res = await telegramHttp.get(outputUrl, { responseType: 'arraybuffer', timeout: 120_000 });
     buf = Buffer.from(res.data);
     console.log(`Downloaded image result: ${(buf.length / 1024).toFixed(1)} KB`);
   } catch (e: any) {
     console.log(`Image download failed: ${e.message}`);
+    downloadError = e;
   }
   if (!buf) {
     await bot.telegram.sendMessage(chatId,
-      `✅ Gambar selesai, tapi gagal mengambil file. Coba lagi sebentar ya.\n\n${caption}`
+      `${generationErrorMessage(downloadError, { stage: 'delivery' })}\n\n/menu untuk coba lagi`
     );
     return false;
   }
@@ -11910,7 +11780,7 @@ async function sendImageResult(chatId: number, outputUrl: string, caption: strin
   } catch (e: any) {
     console.log(`sendDocument failed: ${e.message}`);
     await bot.telegram.sendMessage(chatId,
-      `✅ Gambar selesai, tapi gagal mengirim file. Coba lagi sebentar ya.\n\n${caption}`
+      `${generationErrorMessage(e, { stage: 'delivery' })}\n\n/menu untuk coba lagi`
     );
     return false;
   }
@@ -12032,17 +11902,7 @@ async function runGeminiOmni(
   } catch (err: any) {
     const msg = describeError(err);
     console.error(`[${userId}] ${label} error: ${msg}`);
-    let friendly: string;
-    if (msg.includes('PICSART_TIMEOUT')) {
-      friendly = '❌ Proses terlalu lama. Coba lagi nanti.';
-    } else if (msg.includes('PICSART_UPLOAD_FAILED')) {
-      friendly = '❌ Foto tidak bisa diproses. Coba foto lain.';
-    } else {
-      friendly = '❌ Gagal memproses. Coba lagi nanti.';
-    }
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${friendly}\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
+    await notifyGenerationFailure(chatId, statusMsgId, err);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -12116,9 +11976,7 @@ async function runSeedream(
   } catch (err: any) {
     const msg = describeError(err);
     console.error(`[${userId}] Seedream 4K error: ${msg}`);
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `❌ Gagal memproses Seedream 4K. Coba lagi nanti.\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `❌ Seedream 4K gagal.\n\n/menu untuk coba lagi`));
+    await notifyGenerationFailure(chatId, statusMsgId, err);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -12200,9 +12058,7 @@ async function runGptImage(
   } catch (err: any) {
     const msg = describeError(err);
     console.error(`[${userId}] ${label} error: ${msg}`);
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `❌ Gagal memproses ${label}. Coba lagi nanti.\n\n/menu untuk coba lagi`
-    ).catch(() => bot.telegram.sendMessage(chatId, `❌ ${label} gagal.\n\n/menu untuk coba lagi`));
+    await notifyGenerationFailure(chatId, statusMsgId, err);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -12331,10 +12187,7 @@ async function runKling21P2(
         // it again with another key; refund the user instead.
         if (acceptedRunId) {
           if (isFloraKeyExhaustedError(desc)) await markFloraKeyDead(apiKey).catch(() => {});
-          const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
-          const friendly = contentRejected
-            ? '❌ Input tidak dapat diproses karena melanggar kebijakan konten.'
-            : '❌ Proses video tidak berhasil. Saldo akan dikembalikan.';
+          const friendly = generationErrorMessage(err);
           await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
             .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
           return;
@@ -12355,10 +12208,7 @@ async function runKling21P2(
           continue;
         }
 
-        const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
-        const friendly = contentRejected
-          ? '❌ Input tidak dapat diproses karena melanggar kebijakan konten.'
-          : '❌ Gagal memproses video. Coba lagi nanti.';
+        const friendly = generationErrorMessage(err);
         await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
           .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
         return;
@@ -12372,12 +12222,7 @@ async function runKling21P2(
     ).catch(() => {});
   } catch (err: any) {
     console.error(`[${userId}] ${LABEL} outer error: ${describeError(err)}`);
-    await bot.telegram.editMessageText(
-      chatId,
-      statusMsgId,
-      undefined,
-      '❌ Gagal memproses video. Coba lagi nanti.\n\n/menu untuk coba lagi'
-    ).catch(() => bot.telegram.sendMessage(chatId, '❌ Gagal memproses video. Coba lagi nanti.\n\n/menu untuk coba lagi'));
+    await notifyGenerationFailure(chatId, statusMsgId, err);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -12488,10 +12333,7 @@ async function runGeminiOmni11Flora(
         // second upstream job; refund the customer instead.
         if (acceptedRunId) {
           if (isFloraKeyExhaustedError(desc)) await markFloraKeyDead(apiKey).catch(() => {});
-          const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
-          const friendly = contentRejected
-            ? '❌ Input tidak dapat diproses karena melanggar kebijakan konten.'
-            : '❌ Proses video tidak berhasil. Saldo akan dikembalikan.';
+          const friendly = generationErrorMessage(err);
           await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
             .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
           return;
@@ -12503,10 +12345,7 @@ async function runGeminiOmni11Flora(
           continue;
         }
 
-        const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
-        const friendly = contentRejected
-          ? '❌ Input tidak dapat diproses karena melanggar kebijakan konten.'
-          : '❌ Gagal memproses video. Coba lagi nanti.';
+        const friendly = generationErrorMessage(err);
         await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
           .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
         return;
@@ -12514,12 +12353,7 @@ async function runGeminiOmni11Flora(
     }
   } catch (err: any) {
     console.error(`[${userId}] ${LABEL} outer error: ${describeError(err)}`);
-    await bot.telegram.editMessageText(
-      chatId,
-      statusMsgId,
-      undefined,
-      '❌ Gagal memproses video. Coba lagi nanti.\n\n/menu untuk coba lagi'
-    ).catch(() => bot.telegram.sendMessage(chatId, '❌ Gagal memproses video. Coba lagi nanti.\n\n/menu untuk coba lagi'));
+    await notifyGenerationFailure(chatId, statusMsgId, err);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -12724,10 +12558,7 @@ async function runFlora480Video(
             if (isExplicitFlora480KeyRejection(err)) await markFloraKeyDead(apiKey).catch(() => {});
             const diagnostic = flora480PostAcceptDiagnostic(err, stage, acceptedRunId);
             console.error(`[${userId}] ${LABEL} failed after an accepted run ${diagnostic}; no resubmission will be attempted`);
-            const contentRejected = /MODERATED|content policy|PROMPT_MODERATED/i.test(describeError(err));
-            const message = contentRejected
-              ? '❌ Input tidak dapat diproses karena melanggar kebijakan konten.'
-              : '❌ Proses video tidak berhasil. Saldo akan dikembalikan.';
+            const message = generationErrorMessage(err, { stage });
             await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${message}\n\n/menu untuk coba lagi`)
               .catch(() => bot.telegram.sendMessage(chatId, `${message}\n\n/menu untuk coba lagi`));
             return;
@@ -12764,7 +12595,7 @@ async function runFlora480Video(
             console.error(`[${userId}] ${LABEL} submit response was ambiguous; refusing to resubmit`);
             await bot.telegram.editMessageText(
               chatId, statusMsgId, undefined,
-              '❌ Status pengiriman video tidak dapat dipastikan. Saldo akan dikembalikan demi keamanan.\n\n/menu untuk coba lagi'
+              `${generationErrorMessage(err, { stage })}\n\n/menu untuk coba lagi`
             ).catch(() => {});
             return;
           }
@@ -12775,10 +12606,7 @@ async function runFlora480Video(
             continue;
           }
 
-          const contentRejected = /MODERATED|content policy|PROMPT_MODERATED/i.test(desc);
-          const message = contentRejected
-            ? '❌ Input tidak dapat diproses karena melanggar kebijakan konten.'
-            : '❌ Gagal memproses video. Coba lagi nanti.';
+          const message = generationErrorMessage(err, { stage });
           await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${message}\n\n/menu untuk coba lagi`)
             .catch(() => bot.telegram.sendMessage(chatId, `${message}\n\n/menu untuk coba lagi`));
           console.error(`[${userId}] ${LABEL} failed before an accepted run (${stage}); provider details withheld`);
@@ -12796,12 +12624,9 @@ async function runFlora480Video(
         ? '❌ Mode video input dengan pengaturan ini belum tersedia. Tidak ada video yang digenerate. Saldo akan dikembalikan; coba dengan foto acuan.\n\n/menu untuk coba lagi'
         : '❌ Layanan model ini sedang tidak tersedia. Saldo akan dikembalikan.\n\n/menu untuk coba lagi'
     ).catch(() => {});
-  } catch {
+  } catch (error) {
     console.error(`[${userId}] ${LABEL} runner failed; provider details withheld`);
-    await bot.telegram.editMessageText(
-      chatId, statusMsgId, undefined,
-      '❌ Gagal memproses video. Coba lagi nanti.\n\n/menu untuk coba lagi'
-    ).catch(() => bot.telegram.sendMessage(chatId, '❌ Gagal memproses video. Coba lagi nanti.\n\n/menu untuk coba lagi'));
+    await notifyGenerationFailure(chatId, statusMsgId, error);
   } finally {
     try {
       if (refund) {
@@ -12905,9 +12730,7 @@ async function runChinaVideo(
     if (isChinaKeyRejection(error)) deadReason = 'rejected';
     // Raw upstream errors can contain account details; keep customer copy neutral.
     console.error(`[${userId}] native video failed model=${modelKey}; details withheld`);
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      `${config.label} tidak berhasil diproses. Saldo akan dikembalikan.\n\n/menu untuk coba lagi.`
-    ).catch(() => {});
+    await notifyGenerationFailure(chatId, statusMsgId, error);
   } finally {
     try {
       if (refund) {
@@ -13009,10 +12832,7 @@ async function runFloraImage(
         // pernah submit ulang ke key lain; cukup refund saldo pengguna.
         if (acceptedRunId) {
           if (isFloraKeyExhaustedError(desc)) await markFloraKeyDead(apiKey).catch(() => {});
-          const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
-          const friendly = contentRejected
-            ? '❌ Prompt tidak dapat diproses karena melanggar kebijakan konten.'
-            : '❌ Proses gambar tidak berhasil. Saldo akan dikembalikan.';
+          const friendly = generationErrorMessage(err);
           await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
             .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
           return;
@@ -13024,10 +12844,7 @@ async function runFloraImage(
           continue;
         }
 
-        const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
-        const friendly = contentRejected
-          ? '❌ Prompt tidak dapat diproses karena melanggar kebijakan konten.'
-          : '❌ Gagal memproses gambar. Coba lagi nanti.';
+        const friendly = generationErrorMessage(err);
         await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
           .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
         return;
@@ -13035,9 +12852,7 @@ async function runFloraImage(
     }
   } catch (err: any) {
     console.error(`[${userId}] ${label} Flora image outer error: ${describeError(err)}`);
-    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-      '❌ Gagal memproses gambar. Coba lagi nanti.\n\n/menu untuk coba lagi'
-    ).catch(() => bot.telegram.sendMessage(chatId, '❌ Gagal memproses gambar. Coba lagi nanti.\n\n/menu untuk coba lagi'));
+    await notifyGenerationFailure(chatId, statusMsgId, err);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -13148,10 +12963,7 @@ async function runFloraLipsync(
         // again to another key; refund instead.
         if (acceptedRunId) {
           if (isFloraKeyExhaustedError(desc)) await markFloraKeyDead(apiKey).catch(() => {});
-          const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
-          const friendly = contentRejected
-            ? '❌ Media tidak dapat diproses karena melanggar kebijakan konten.'
-            : '❌ Proses lipsync tidak berhasil. Saldo akan dikembalikan.';
+          const friendly = generationErrorMessage(err);
           await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
             .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
           return;
@@ -13163,10 +12975,7 @@ async function runFloraLipsync(
           continue;
         }
 
-        const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
-        const friendly = contentRejected
-          ? '❌ Media tidak dapat diproses karena melanggar kebijakan konten.'
-          : '❌ Gagal memproses lipsync. Coba lagi nanti.';
+        const friendly = generationErrorMessage(err);
         await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
           .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
         return;
@@ -13174,12 +12983,7 @@ async function runFloraLipsync(
     }
   } catch (err: any) {
     console.error(`[${userId}] ${label} lipsync outer error: ${describeError(err)}`);
-    await bot.telegram.editMessageText(
-      chatId,
-      statusMsgId,
-      undefined,
-      '❌ Gagal memproses lipsync. Coba lagi nanti.\n\n/menu untuk coba lagi'
-    ).catch(() => bot.telegram.sendMessage(chatId, '❌ Gagal memproses lipsync. Coba lagi nanti.\n\n/menu untuk coba lagi'));
+    await notifyGenerationFailure(chatId, statusMsgId, err);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -13303,10 +13107,7 @@ async function runFloraAudio(
         // Never re-submit a job once it is accepted upstream; refund instead.
         if (acceptedRunId) {
           if (isFloraKeyExhaustedError(desc)) await markFloraKeyDead(apiKey).catch(() => {});
-          const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
-          const friendly = contentRejected
-            ? '❌ Input tidak dapat diproses karena melanggar kebijakan konten.'
-            : '❌ Proses audio tidak berhasil. Saldo akan dikembalikan.';
+          const friendly = generationErrorMessage(err);
           await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
             .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
           return;
@@ -13318,10 +13119,7 @@ async function runFloraAudio(
           continue;
         }
 
-        const contentRejected = desc.includes('MODERATED') || desc.includes('content policy') || desc.includes('PROMPT_MODERATED');
-        const friendly = contentRejected
-          ? '❌ Input tidak dapat diproses karena melanggar kebijakan konten.'
-          : '❌ Gagal memproses audio. Coba lagi nanti.';
+        const friendly = generationErrorMessage(err);
         await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
           .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
         return;
@@ -13329,12 +13127,7 @@ async function runFloraAudio(
     }
   } catch (err: any) {
     console.error(`[${userId}] ${label} audio ${mode} outer error: ${describeError(err)}`);
-    await bot.telegram.editMessageText(
-      chatId,
-      statusMsgId,
-      undefined,
-      '❌ Gagal memproses audio. Coba lagi nanti.\n\n/menu untuk coba lagi'
-    ).catch(() => bot.telegram.sendMessage(chatId, '❌ Gagal memproses audio. Coba lagi nanti.\n\n/menu untuk coba lagi'));
+    await notifyGenerationFailure(chatId, statusMsgId, err);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -13447,23 +13240,13 @@ async function runByteDanceUpscale(
           continue;
         }
 
-        await bot.telegram.editMessageText(
-          chatId,
-          statusMsgId,
-          undefined,
-          '❌ ByteDance Upscaler 1K gagal. Video tidak berhasil dikirim.\n\n/menu untuk coba lagi'
-        ).catch(() => bot.telegram.sendMessage(chatId, '❌ ByteDance Upscaler 1K gagal.\n\n/menu'));
+        await notifyGenerationFailure(chatId, statusMsgId, err, submitted ? 'finishing' : undefined);
         return;
       }
     }
   } catch (err: any) {
     console.error(`[${userId}] ByteDance Upscaler outer error: ${describeError(err)}`);
-    await bot.telegram.editMessageText(
-      chatId,
-      statusMsgId,
-      undefined,
-      '❌ ByteDance Upscaler 1K error tak terduga.\n\n/menu untuk coba lagi'
-    ).catch(() => {});
+    await notifyGenerationFailure(chatId, statusMsgId, err);
   } finally {
     if (refund) {
       await addSaldo(dbUserId, PRICE).catch(() => {});
@@ -13748,7 +13531,7 @@ bot.catch(async (err, ctx) => {
   }
   console.error(`⚠️ Bot error on update ${ctx?.updateType}:`, err);
   try {
-    await ctx?.reply('⚠️ Terjadi error sebentar, coba lagi ya.');
+    await ctx?.reply(generationErrorMessage(err));
   } catch {
     /* ignore reply failures */
   }

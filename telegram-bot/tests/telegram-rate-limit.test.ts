@@ -1,3 +1,4 @@
+import { generationErrorMessage } from '../src/generation-errors';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -47,6 +48,7 @@ async function main() {
   vm.runInNewContext(ts.transpileModule(source.slice(start, end), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
   }).outputText, {
+    generationErrorMessage,
     bot: { catch(fn: any) { handler = fn; } },
     isTransientNetworkError: () => false, isTelegramRateLimitError, telegramRetryAfterSeconds,
     console: { warn() { warnings++; }, error() {} },

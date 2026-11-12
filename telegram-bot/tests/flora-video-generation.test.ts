@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { withGenerationErrors } from './generation-error-harness';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
@@ -216,7 +217,7 @@ function harness(options: Options = {}) {
       },
     },
   });
-  vm.runInContext(executable, context);
+  vm.runInContext(executable, withGenerationErrors(context));
   const run = (
     key: Flora480VideoModelKey,
     chatId = 1,

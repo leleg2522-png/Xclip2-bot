@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { withGenerationErrors } from './generation-error-harness';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
@@ -31,6 +32,15 @@ function harness(options: { upscale?: boolean; failDelivery?: boolean; failUpsca
         return { url: `https://example.test/${input.userId}.mp4` };
       },
     },
+    generateVivareelWan: async (input: any) => {
+      events.order.push('generate');
+      events.inputs.push(input);
+      input.onStatus('poll');
+      if (options.generationFails) throw Error('VIVAREEL_GENERATION_FAILED');
+      return { url: `https://example.test/${input.userId}.mp4` };
+    },
+    prepareWanDelivery: async () => { events.order.push('crop'); return Buffer.from('cropped'); },
+    publishMedia: async () => { events.order.push('publish'); return 'https://example.test/1.mp4'; },
     console: { log() {}, warn() {}, error() {} },
     MODEL_PRICES: {},
     customerSafeModelLabel: (label: string) => label,
@@ -61,7 +71,7 @@ function harness(options: { upscale?: boolean; failDelivery?: boolean; failUpsca
       deleteMessage: async () => {},
     } },
   });
-  vm.runInContext(executable, context);
+  vm.runInContext(executable, withGenerationErrors(context));
   return {
     events, context,
     run: (model: string, id = 1) => context.runPicsartI2v(id, id, id, 10, 'fixture', {
@@ -116,14 +126,14 @@ async function main() {
     const wan = harness(options);
     await wan.run('wan_v3');
     assert.deepEqual(wan.events.charges, [6000]);
-    assert.deepEqual(wan.events.order, options.generationFails ? ['generate'] : ['generate', 'deliver']);
+    assert.deepEqual(wan.events.order, options.generationFails ? ['generate'] : ['generate', 'crop', 'publish', 'upscale', 'deliver']);
     assert.deepEqual(wan.events.refunds, options.failDelivery || options.generationFails ? wan.events.charges : []);
     assert.deepEqual(wan.events.releases, [1]);
     if (!options.generationFails) {
       assert.equal(wan.events.deliveries.length, 1, 'Wan must not retry delivery through an upscale fallback');
-      assert.equal(wan.events.deliveries[0].url, 'https://example.test/1.mp4');
-      assert.match(wan.events.deliveries[0].caption, /720p native/);
-      assert.doesNotMatch(wan.events.deliveries[0].caption, /1080p|480p|hasil 1K|Renderful/);
+      assert.equal(wan.events.deliveries[0].url, 'https://example.test/1-1080.mp4');
+      assert.match(wan.events.deliveries[0].caption, /1080p/);
+      assert.doesNotMatch(wan.events.deliveries[0].caption, /720p|480p|native|Renderful|Vivareel/);
     }
   }
   const parallel = harness();

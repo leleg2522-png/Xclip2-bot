@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { withGenerationErrors } from './generation-error-harness';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -156,7 +157,7 @@ async function billingTests(outcome: string) {
   });
   const start = source.indexOf('async function runXclipMotion(');
   const end = source.indexOf('// ─── Background: Kling Motion V3 Standard', start);
-  vm.runInContext(compile(source.slice(start, end)), ctx);
+  vm.runInContext(compile(source.slice(start, end)), withGenerationErrors(ctx));
   await ctx.runXclipMotion(1, 2, 3, 4, 'photo', 'video', outcome === 'metadata-duration' ? 30 : undefined, 'move');
   assert.deepEqual(events.charges, outcome === 'metadata-duration' ? [] : [3500]);
   assert.deepEqual(events.refunds, ['success', 'insufficient', 'metadata-duration'].includes(outcome) ? [] : [3500]);
@@ -232,7 +233,7 @@ async function deliveryPrivacyTests() {
       },
       console: { log() {} },
     });
-    vm.runInContext(compile(snippet), ctx);
+    vm.runInContext(compile(snippet), withGenerationErrors(ctx));
     assert.equal(await ctx.sendResult(1, upstream, caption, true), mode !== 'download-failed');
     if (mode === 'link' || mode === 'large') assert.ok(messages.some(text => text.includes(ownLink)));
     if (mode === 'inline' || mode === 'document') assert.equal(uploaded.length, 1);

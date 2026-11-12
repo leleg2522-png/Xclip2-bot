@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { withGenerationErrors } from './generation-error-harness';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
@@ -245,7 +246,7 @@ async function main() {
       } },
     });
     if (stage === 'refund') FakeClient.prototype.poll = async () => { throw Error('failed'); };
-    vm.runInContext(executable, context);
+    vm.runInContext(executable, withGenerationErrors(context));
     return { events, run: (key: string) => context.runChinaVideo(1, 2, 3, 4, key, 'https://api.telegram.org/file/botPRIVATE/photo', 'walk', '16:9') };
   }
   for (const key of keys) {
@@ -329,7 +330,7 @@ async function main() {
     console,
   });
   const wizard = section("  if (data.startsWith('mode_china_')) {", "  if (data === 'mode_flora_seedance_2_480') {");
-  const photo = section("  if (session.mode === 'china_video_wait_image') {", "  if (session.mode === 'flora_seedance_2_480_wait_image') {");
+  const photo = section("  if (session.mode === 'china_video_wait_image') {", "  if (session.mode === 'flora_seedance_2_480_wait_image' || session.mode === 'flora_seedance_2_480_wait_prompt') {");
   const prompt = section("  if (session.mode === 'china_video_wait_prompt') {", "  if (\n    session.mode === 'flora_minimax_h3_480_wait_prompt'");
   const wrappers =
     `async function wizard(ctx, data, userId) { ${wizard} }\n` +

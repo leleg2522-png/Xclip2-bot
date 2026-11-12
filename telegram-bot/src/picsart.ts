@@ -3659,7 +3659,12 @@ export async function generateHarModel(input: {
           if (!url) throw new Error('PICSART_NO_RESULT_URL');
           return { url, credits: response.usage?.credits };
         }
-        if (['FAILED', 'ERROR', 'CANCELLED'].includes(status)) throw new Error('PICSART_GEN_FAILED');
+        if (['FAILED', 'ERROR', 'CANCELLED'].includes(status)) {
+          throw new Error('PICSART_GEN_FAILED', { cause: {
+            error: response?.error, message: response?.message,
+            reason: response?.reason, error_message: response?.error_message,
+          } });
+        }
       }
       throw diag.timeoutError();
     } catch (error) {
@@ -3668,7 +3673,7 @@ export async function generateHarModel(input: {
       }
       // Do not include original auth/credit sentinels that runWithAccount matches.
       console.error(`[picsart:har] accepted job ${id} failed during poll: ${String(error)}`);
-      throw new Error(`PICSART_ACCEPTED_JOB_FAILED job=${id}`);
+      throw new Error(`PICSART_ACCEPTED_JOB_FAILED job=${id}`, { cause: error });
     }
   });
 }

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { withGenerationErrors } from './generation-error-harness';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
@@ -93,7 +94,7 @@ async function billingTests() {
       releaseGenerating: () => { events.released++; }, describeError: () => 'error',
       formatRupiah: (n: number) => `Rp${n}`, console: {log() {},error() {}},
     });
-    vm.runInContext(ts.transpile(runner, {target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}), ctx);
+    vm.runInContext(ts.transpile(runner, {target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}), withGenerationErrors(ctx));
     await ctx.runKlingV3Pro(1, 2, 3, 4, 'move', failure === 'invalid' ? [] : ['https://photo.test/a']);
     assert.equal(events.refunds, ['none','charge'].includes(failure) ? 0 : 1, failure);
     assert.equal(events.usage, failure === 'none' ? 1 : 0);

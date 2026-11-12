@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { withGenerationErrors } from './generation-error-harness';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -120,7 +121,7 @@ async function billingTests() {
         releaseGenerating: () => { events.releases++; }, formatRupiah: (n: number) => String(n),
         console: { log() {}, error() {} },
       });
-      vm.runInContext(compile(runSource), context);
+      vm.runInContext(compile(runSource), withGenerationErrors(context));
       await context.runImage(1, 2, 3, 4, 'draw', { model: models[i], priceKey: keys[i], inputMode: mode, ratio: '1:1', imageUrls: mode === 'i2i' ? ['https://api.telegram.org/file/botPRIVATE/photo', 'https://api.telegram.org/file/botPRIVATE/photo2'] : [] });
       const failed = outcome !== 'success' && outcome !== 'insufficient' && !(mode === 't2i' && outcome === 'download');
       assert.deepEqual(events.charges, [prices[keys[i]]]);
@@ -149,7 +150,7 @@ async function deliveryTests() {
       } },
       publishMedia: async (bytes: Buffer) => { hosted++; assert.deepEqual(bytes, buf); return 'https://our-domain.test/dl/output.png'; },
     });
-    vm.runInContext(compile(source.slice(from, to)), context);
+    vm.runInContext(compile(source.slice(from, to)), withGenerationErrors(context));
     const acceptable = quality === 'native' || width >= 3840;
     assert.equal(await context.sendImageResult(1, 'https://provider.test/image.png', 'image', quality), acceptable);
     assert.equal(photos, 0, 'Never compress a 4K result through sendPhoto');

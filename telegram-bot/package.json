@@ -4,6 +4,7 @@
   "description": "Telegram bot for Kling 2.6 Pro Motion Control video generation via Renderful.ai",
   "main": "dist/index.js",
   "scripts": {
+    "test:generation-errors": "tsx tests/generation-errors.test.ts",
     "test:vivareel": "tsx tests/vivareel-wan.test.ts && tsx tests/vivareel-wan-media.test.ts && tsx tests/vivareel-wan-reference.test.ts",
     "test:topup": "tsx tests/klikqris-mypg.test.ts",
     "test:video-menu": "tsx tests/video-menu.test.ts && tsx tests/retired-video-models.test.ts",

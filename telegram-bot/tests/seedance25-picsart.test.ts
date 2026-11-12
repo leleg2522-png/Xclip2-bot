@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { withGenerationErrors } from './generation-error-harness';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
@@ -83,7 +84,7 @@ function harness(options: Options = {}) {
       editMessageText: async () => {}, sendMessage: async () => {}, deleteMessage: async () => {},
     } },
   });
-  vm.runInContext(runner, context);
+  vm.runInContext(runner, withGenerationErrors(context));
   return {
     events,
     run: (draft = settings, count = draft.mode === 't2v' ? 0 : 1, id = 1, videos = 0, audios = 0,
