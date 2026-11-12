@@ -31,6 +31,24 @@ aggregate duration or visual-reference requirement as Flora API limitations.
 Flora also lists a separate audio-to-video variant, unlike the Picsart 2.0
 audio-only restriction; listing it is not proof of a completed paid generation.
 
+## Seedance 2 numbered image mentions
+
+Literal `@1` and `@2` successfully addressed the first and second uploaded
+images in a controlled live test of Seedance 2 Reference's mixed-to-video
+endpoint. No bot-side mention rewriting was applied.
+
+**Why:** Two synthetic characters were uploaded in the same order for both
+generations, with the same seed, four-second duration and 480p settings. Asking
+for `@1` left / `@2` right, then `@2` left / `@1` right, correctly reversed
+the characters. Visual inspection and sixteen sampled frames per output agreed.
+This establishes more than merely accepting a prompt or using both images.
+
+**How to apply:** Number references against the actual submitted image array,
+not arrival order of asynchronous uploads. This evidence is specific to two
+image references on the tested Flora Seedance 2 Reference route. Do not extend
+it to Picsart, Seedance 2.5, video/audio mentions, complex attribute transfer,
+or the ordinary single-image endpoint without verification.
+
 # Flora AI API — hasil verifikasi langsung (Jul 2026)
 
 ## Format request yang benar

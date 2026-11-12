@@ -1328,3 +1328,45 @@ mtime_ms = 1794478564757
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/0d267e7f-d40b-4c6f-8232-fb4c98376d71/63096d95-8b68-47a7-8a55-3f06dd7c916a"
 storage_version_token = "1794478628391741"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "6knCI_X9VT35FAmFSuvai"
+uri = "file://generated-artifacts/flora-reference-mentions/case-A.mp4"
+type = "video"
+title = "Tes A — @1 di kiri, @2 di kanan"
+description = "Seedance 2 Reference di Flora: robot merah sebagai gambar pertama, kucing biru sebagai gambar kedua. Hasil pertama sesuai susunan prompt; tes posisi terbalik masih diproses."
+logical_id = "3828bb80-1510-4ddc-9493-27605d4eaf07"
+content_hash = "sha256:6c22963a59c15547fc32ff74148d7ce8b6076ba8cfd728e54bbd614bc4430fae"
+size = 533777
+mtime_ms = 1794503127998
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/3828bb80-1510-4ddc-9493-27605d4eaf07/49aa225d-06b6-452a-b2cb-241d4ba07917"
+storage_version_token = "1794503198974674"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "QR3s5SYAeBmhpxtfjfbM-"
+uri = "file://generated-artifacts/flora-reference-mentions/comparison.png"
+type = "image"
+title = "Bukti @1 dan @2 di Flora mengikuti referensi"
+description = "Urutan upload tetap sama. Tes A meminta @1 di kiri; tes B meminta @2 di kiri. Kedua hasil mengikuti perubahan posisi di prompt."
+logical_id = "ad39897f-318a-4c78-9561-8478901d876b"
+content_hash = "sha256:d269171b6fbb9a3cb6bc24263aaf74cec6f55669674fc91973dfbbe198b0083a"
+size = 347244
+mtime_ms = 1794503397150
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/ad39897f-318a-4c78-9561-8478901d876b/7e9ba085-288b-4df4-96ea-f6dd880f3cfe"
+storage_version_token = "1794503459856343"
+content_type = "image/png"
+
+[[outputs]]
+id = "BvH-Cpj_7Bs7biqx5JXdE"
+uri = "file://generated-artifacts/flora-reference-mentions/case-B.mp4"
+type = "video"
+title = "Tes B — @2 di kiri, @1 di kanan"
+description = "Video pembanding Seedance 2 Reference Flora. Kucing biru kini di kiri dan robot merah di kanan meskipun urutan file tidak diubah. 4 detik, 480p."
+logical_id = "407b24f4-b933-492c-b307-4a60247fed4f"
+content_hash = "sha256:ee73e25fc956f64366d7cb09bd00d1ee7f1d71433e8331011bbd8ec3b121f1e4"
+size = 544967
+mtime_ms = 1794503294695
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/407b24f4-b933-492c-b307-4a60247fed4f/a88883d5-a1d8-48a5-94a3-90cf138088bf"
+storage_version_token = "1794503461203728"
+content_type = "video/mp4"
