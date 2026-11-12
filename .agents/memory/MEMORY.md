@@ -50,4 +50,4 @@
 - [Vivareel API base URL](vivareel-api.md) — docs examples on vivareel.ai work; the api.vivareel.com hostname mentioned in docs failed DNS during a live preflight.
 - [Seedance reference audio](seedance-reference-audio.md) — keep Picsart routes; 2.0 requires visual media with audio, 2.5 permits audio-only; distinguish per-file docs from bot totals.
 - [Seedance reference numbering](seedance-reference-numbering.md) — Dreamina-style actual image binding, not cosmetic labels; provider semantics need separate output evidence.
-- [Posbot API acknowledgement](posbot-api.md) — live paid submit returns job_code/status_url, unlike the public job_id example; parsing failure must never cause another submission.
+- [Posbot API contract](posbot-api.md) — use downloadable Markdown: transactions recover job_code; /status/<job_code> returns results without portal login. Never resubmit on parse failure.

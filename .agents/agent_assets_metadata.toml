@@ -1370,3 +1370,17 @@ mtime_ms = 1794503294695
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/407b24f4-b933-492c-b307-4a60247fed4f/a88883d5-a1d8-48a5-94a3-90cf138088bf"
 storage_version_token = "1794503461203728"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "uKHtL28NP3a3fuD4oHshc"
+uri = "file://generated-artifacts/posbot-seedance25-test/seedance25-posbot.mp4"
+type = "video"
+title = "Hasil tes Seedance 2.5 Posbot"
+description = "Generasi yang sama berhasil dipulihkan melalui API: 30 detik, 720×1280, 24 fps, dengan audio. Biaya satu job Rp6.000; tidak ada submit ulang."
+logical_id = "d3f993f1-ff82-40b5-a534-be805feb102c"
+content_hash = "sha256:acecfd703cbd766e7662802afb07003a6e8bbab7bc5cbe1fd9cc146b74c535f3"
+size = 6033340
+mtime_ms = 1794507583430
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/d3f993f1-ff82-40b5-a534-be805feb102c/9774aac4-985a-4d21-9db3-145755c3a5d1"
+storage_version_token = "1794507649198064"
+content_type = "video/mp4"
