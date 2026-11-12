@@ -11,7 +11,7 @@ Use the documented examples on `https://vivareel.ai/api/developer/v1` as the fir
 
 Treat catalog point pricing as an estimate until the finished task reports its cost.
 
-**Why:** A completed Wan 3.0 text-to-video run requested 30 seconds at 480P. The catalog advertised 7 points per second, but the task reported both `points_cost` and `billing_points` as 120, not the 210-point catalog estimate. The reason for the difference was not established.
+**Why:** A completed Wan 3.0 text-to-video run requested 30 seconds at 480P. The catalog advertised 7 points per second, but the task reported both `points_cost` and `billing_points` as 120, not the 210-point catalog estimate. The reason for the difference was not established. A subsequent completed 30-second, 720P, portrait first-frame run reported 180 points and delivered actual 720×1280 video with audio; the 480P price is not a universal 30-second tariff.
 
 **How to apply:** Quote the catalog with that caveat, then report the completed task's cost. Do not infer a universal resolution discount from this one observation or claim that an account balance was verified when only task-cost fields were read.
 

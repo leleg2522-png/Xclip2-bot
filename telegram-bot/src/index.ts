@@ -1,3 +1,5 @@
+import { generateVivareelWan } from './vivareel-wan';
+import { prepareWanDelivery } from './vivareel-wan-media';
 import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
 import { retiredSeedanceVideoEditGuard } from './retired-seedance-video-edit';
@@ -268,7 +270,7 @@ const MODEL_PRICES = {
   picsart_seedance_2_fast_edit: 4000, // Seedance 2.0 Fast Video Edit, native 480p
   picsart_seedance_2_video_edit: 4500, // Seedance 2 Video Edit, native 480p
   picsart_seedance_2: 4000, // Seedance 2.0 Mini/Fast/Standard, native 480p
-  picsart_wan_v3: 6000, // Wan 3.0 30s, native 720p
+  picsart_wan_v3: 6000, // Wan 3.0 30s, 720p delivery after mandatory crop
   alriz_seedance_25: 5000, // Historical Alriz tariff; not used for new orders
   picsart_seedance_25: 15000, // Seedance 2.5, 30s: native 480p → mandatory 1080p finishing
   oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
@@ -2555,7 +2557,7 @@ setInterval(async () => {
 
 // Mengembalikan true HANYA jika hasil benar-benar sampai ke user (inline / link).
 // Dipakai run* untuk memutuskan refund kalau pengiriman gagal.
-async function sendResult(chatId: number, outputUrl: string, caption: string, isVideo: boolean, forceDocument = false): Promise<boolean> {
+async function sendResult(chatId: number, outputUrl: string, caption: string, isVideo: boolean, forceDocument = false, preparedBuffer?: Buffer): Promise<boolean> {
   const TELEGRAM_MAX_BYTES = 48 * 1024 * 1024; // 48MB safe limit
 
   // Auto-detect type from URL extension if not forced
@@ -2569,13 +2571,15 @@ async function sendResult(chatId: number, outputUrl: string, caption: string, is
 
   // Download the file server-side. The user must NEVER see the upstream CDN URL,
   // so everything is fetched by us and re-delivered from our own side.
-  let buf: Buffer | null = null;
-  try {
-    const res = await telegramHttp.get(outputUrl, { responseType: 'arraybuffer', timeout: 300_000 });
-    buf = Buffer.from(res.data);
-    console.log(`Downloaded result: ${(buf.length / 1024 / 1024).toFixed(1)} MB, isVideo: ${looksLikeVideo}`);
-  } catch (e: any) {
-    console.log(`Download failed: ${e.message}`);
+  let buf: Buffer | null = preparedBuffer ?? null;
+  if (!buf) {
+    try {
+      const res = await telegramHttp.get(outputUrl, { responseType: 'arraybuffer', timeout: 300_000 });
+      buf = Buffer.from(res.data);
+      console.log(`Downloaded result: ${(buf.length / 1024 / 1024).toFixed(1)} MB, isVideo: ${looksLikeVideo}`);
+    } catch (e: any) {
+      console.log(`Download failed: ${e.message}`);
+    }
   }
 
   if (!buf) {
@@ -10312,7 +10316,7 @@ async function runPicsartI2v(
       }));
       video = { buffer: Buffer.from(response.data), name: 'reference.mp4', mime: 'video/mp4' };
     }
-    const result = await picsart.generatePicsartI2v({
+    const result = await (opts.model === 'wan_v3' ? generateVivareelWan : picsart.generatePicsartI2v)({
       userId: dbUserId,
       model: opts.model,
       prompt,
@@ -10347,6 +10351,13 @@ async function runPicsartI2v(
     });
 
     stage = 'finishing';
+    // A crop failure must refund, never deliver the branded source instead.
+    let preparedBuffer: Buffer | undefined;
+    if (opts.model === 'wan_v3') {
+      await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+        `⏳ ${label}: menyiapkan hasil 720p dengan crop otomatis...`).catch(() => {});
+      preparedBuffer = await prepareWanDelivery(result.url, opts.ratio ?? '9:16');
+    }
     const finalVideo = (seedance1080 || kling4HD)
       ? await upscaleGeneratedVideo(result.url, userId, chatId, statusMsgId)
       : { url: result.url, upscaled: false };
@@ -10366,7 +10377,7 @@ async function runPicsartI2v(
       chatId,
       finalVideo.url,
       `🧩 ${deliveredLabel} (${deliveredSettings})\n\n/menu untuk buat lagi`,
-      true
+      true, false, preparedBuffer
     ).catch(() => false);
     if (!delivered && finalVideo.upscaled && !kling4HD) {
       const originalCaption = seedance1080
@@ -10392,7 +10403,9 @@ async function runPicsartI2v(
       err?.stack ? `\n${err.stack}` : ''
     );
     let friendly = '❌ Gagal memproses. Coba lagi nanti.';
-    if (kling4HD && stage === 'finishing') {
+    if (opts.model === 'wan_v3' && stage === 'finishing') {
+      friendly = '❌ Video gagal disiapkan dengan crop otomatis ke 720p. Saldo akan dikembalikan penuh.';
+    } else if (kling4HD && stage === 'finishing') {
       friendly = '❌ Video gagal disiapkan ke 1080p. Saldo akan dikembalikan penuh.';
     } else if (msg.includes('PICSART_TIMEOUT')) {
       friendly = '❌ Proses terlalu lama. Coba lagi nanti.';

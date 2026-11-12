@@ -2327,7 +2327,7 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
   },
   wan_v3: {
     label: 'Wan 3.0 720p',
-    settingsLabel: '30 detik · 720p native',
+    settingsLabel: '30 detik · 720p · crop otomatis',
     workflowPath: 'wan/v3/video',
     pool: 'p500',
     pollAttempts: 240,
@@ -3282,6 +3282,8 @@ export async function generatePicsartI2v(input: {
   onStatus?: (stage: 'upload' | 'submit' | 'poll' | 'export') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
+  // The public Wan route now uses Vivareel; fail closed for stale callers.
+  if (input.model === 'wan_v3') throw Error('WAN_V3_USES_VIVAREEL');
   const cfg = PICSART_I2V_MODELS[input.model];
   const regularKling4 = input.model === 'kling_v4_regular' || input.model === 'kling_v4_frames';
   const referenceKling4 = input.model === 'kling_v4' || input.model === 'kling_v4_omni';

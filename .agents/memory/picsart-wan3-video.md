@@ -1,32 +1,16 @@
 ---
-name: Picsart Wan 3.0 video
-description: Wan 3.0 requests native 720p and direct delivery; historical completed capture verified only 480p.
+name: Wan 3.0 provider and crop
+description: Regular Wan 3.0 uses Vivareel with mandatory logo cropping; keep Uncensored separate.
 ---
 
-Wan 3.0 uses the standard model through the Picsart gateway v3 video workflow.
-The captured successful submission uses model `wan3.0-video`, resolution
-`480P`, duration `30`, `ratio: "9:16"`, one `reference_image`, audio and thinking
-enabled, and watermark disabled. The Drive metadata model is `wan-3.0-video`.
+Use Vivareel for regular Wan 3.0 instead of Picsart, with automatic logo cropping before delivery.
 
-The capture contains generation and polling only. Completion uses `result.url`
-and reports 60 credits. That evidence applies to 480p only, not the current
-720p request or its credit cost.
+**Why:** The user requested “ganti wan 3,0 yg dari picsart jadi pake dari vivareel ai” and selected “Otomatis crop logo” after reviewing a portrait crop comparison.
 
-**Why:** A newer successful HAR superseded the former Prime contract. The user
-previously requested native 1080p without Renderful, then changed the requested
-resolution: “buat wan jadi 720 p”.
+**How to apply:** Keep the existing 30-second, 720p-output, Rp6,000 package and reference-image choices. Crop is mandatory, including the output's framing loss; never silently deliver the branded source if cropping fails. Refund the actual charge on failed delivery. Do not revert regular Wan to Picsart or change the separate Wan Uncensored provider or pricing.
 
-**How to apply:** Request `720P` in both the generation payload and Drive metadata,
-keep the p500 pool, and deliver Picsart's result directly,
-without Renderful. Do not change the separate Flora Wan Uncensored route.
-Do not claim live 720p generation is verified without a completed result.
-The successful historical HAR run is 9:16; it does not independently verify 16:9.
+720p describes the delivered dimensions, not an untouched native frame after cropping.
 
-Regular Wan 3.0 costs **Rp6,000 per 30-second generation**.
+**Why:** Removing the VR corner mark loses part of the frame and enlarges the remaining picture, as the user accepted in the comparison. They did not ask for a different price, duration, or resolution.
 
-**Why:** The user requested “harga wan naikan jadi 6k”, raising the regular
-package's price, not lowering the separately priced Uncensored package.
-
-**How to apply:** Keep list prices and balance charges aligned with Rp6,000;
-refund the actual charge on failed delivery. Do not change Wan Uncensored
-pricing or the regular model's native 720p delivery.
+**How to apply:** Request a 720p source and restore 720p delivery dimensions after crop. Do not silently generate 480p and label an enlarged result as native 720p, or use Renderful as an unrequested substitute.

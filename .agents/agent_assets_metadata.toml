@@ -1300,3 +1300,17 @@ mtime_ms = 1794448451865
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/81bf89e2-3ef9-471c-8fda-2d5e7864a332/c6427e8d-5114-44d3-a383-70dea88bba85"
 storage_version_token = "1794448491186754"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "w89bQeSsDNAv1I2qpkf8Y"
+uri = "file://generated-artifacts/wan3-vivareel-migration-validation-20261112/wan30-i2v-720p-cropped.mp4"
+type = "video"
+title = "Hasil tes Wan 3.0 Vivareel — gambar ke video 720p"
+description = "Tes nyata first-frame portrait berhasil: 30 detik, 720×1280, 30 fps, audio AAC. Crop otomatis mempertahankan durasi dan audio, dan logo VR tidak terlihat pada enam sampel sepanjang video. Biaya task 180 poin. Ini hasil verifikasi kode, bukan konfirmasi pembaruan bot Railway."
+logical_id = "e38b9dcf-dbc3-44c3-bf4b-385bad00fbfa"
+content_hash = "sha256:0ac60039b6a9950078474cd5b1a76b8d17ab397a002430bf3f935ddd1b369bc9"
+size = 20810448
+mtime_ms = 1794473281136
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/e38b9dcf-dbc3-44c3-bf4b-385bad00fbfa/0324318e-676f-494d-bf5c-4c49f1db2914"
+storage_version_token = "1794473355412194"
+content_type = "video/mp4"

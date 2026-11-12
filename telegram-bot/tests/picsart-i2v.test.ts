@@ -689,7 +689,7 @@ assert.deepEqual(wan, {
 });
 
 const wan3Portrait = buildPicsartI2vParams('wan_v3', prompt, imageUrl, { ratio: '9:16' });
-assert.equal(PICSART_I2V_MODELS.wan_v3.settingsLabel, '30 detik · 720p native');
+assert.equal(PICSART_I2V_MODELS.wan_v3.settingsLabel, '30 detik · 720p · crop otomatis');
 assert.equal(PICSART_I2V_MODELS.wan_v3.label, 'Wan 3.0 720p');
 assert.doesNotMatch(JSON.stringify(wan3Portrait), /prime/i);
 assert.deepEqual(wan3Portrait, {
