@@ -1188,3 +1188,17 @@ mtime_ms = 1794442847478
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/47266028-0683-41b9-8612-24cc16e110c9/c4ee1c61-2089-4a93-be7d-b69559e90525"
 storage_version_token = "1794442906441830"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "QQKPqH6tjQVIAaBKujU7C"
+uri = "file://generated-artifacts/modelrunner-seedance25-image-test-20261112/seedance25-image-dance-30s-480p.mp4"
+type = "video"
+title = "Seedance 2.5 — tes tarian dari gambar"
+description = "Tes image-to-video berhasil untuk prompt tarian nonseksual yang disetujui: 30,048 detik, 852×480, 24 fps, audio AAC. Biaya aktual US$4,6277."
+logical_id = "5474c680-e320-4e58-abec-1cc78ea6d575"
+content_hash = "sha256:fda46dce5d9c0893452108fd2da39a62f4db7de8f26a8f39256c8139d3aff668"
+size = 28428450
+mtime_ms = 1794443606814
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/5474c680-e320-4e58-abec-1cc78ea6d575/04aa90d8-2878-4a23-b379-d6f6576bb479"
+storage_version_token = "1794443642175485"
+content_type = "video/mp4"
