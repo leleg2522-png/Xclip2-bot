@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as referenceLabels from '../src/seedance-reference-labels';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
@@ -63,7 +64,7 @@ function harness() {
     return { href: `https://example.test/${fileId}` };
   };
   const context = vm.createContext({
-    Buffer, SEEDANCE25_MAX_TXT_BYTES, validateSeedance25Prompt,
+    Buffer, ...referenceLabels, SEEDANCE25_MAX_TXT_BYTES, validateSeedance25Prompt,
     retryTelegramFileRead: (fn: any) => retryTelegramFileRead(fn, async ms => { waits.push(ms); }),
     retryTelegramRateLimit: (fn: any) => retryTelegramRateLimit(fn, async ms => { waits.push(ms); }),
     validateSeedance25TxtDocument, decodeSeedance25Txt, validateSeedance25Request,
@@ -189,7 +190,7 @@ async function checkDocumentToProviderPayload() {
     return next();
   });
   const context = vm.createContext({
-    Buffer, ...limits, bot, SEEDANCE25_MAX_TXT_BYTES,
+    Buffer, ...limits, ...referenceLabels, bot, SEEDANCE25_MAX_TXT_BYTES,
     retryTelegramFileRead, retryTelegramRateLimit,
     validateSeedance25Prompt, validateSeedance25TxtDocument, decodeSeedance25Txt,
     getSession: () => current,

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as referenceLabels from '../src/seedance-reference-labels';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
@@ -203,7 +204,7 @@ async function billingTests() {
   const calls: any[][] = [], replies: string[] = [];
   let linkFailure = false;
   const context = vm.createContext({
-    SEEDANCE25_P2, validateP2References, validateSeedance25Prompt,
+    ...referenceLabels, SEEDANCE25_P2, validateP2References, validateSeedance25Prompt,
     MODEL_PRICES: { seedance25_p2: 7500 },
     retryTelegramFileRead: async (read: () => Promise<any>) => read(),
     runPicsartSeedance25: async (...args: any[]) => { calls.push(args); },

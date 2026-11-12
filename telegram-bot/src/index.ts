@@ -3,6 +3,7 @@ import { VivareelKeyPool } from './vivareel-key-pool';
 import { registerVivareelAdmin } from './vivareel-admin';
 import { generationErrorMessage } from './generation-errors';
 import { FLORA_SEEDANCE2_MAX_IMAGES, validateFloraSeedance2Mentions } from './flora-seedance2-references';
+import { SEEDANCE_IMAGE_LABEL_HELP, seedanceImageLabels, validateSeedanceImageMentions } from './seedance-reference-labels';
 import { createSeedanceAudioHandler, supportsSeedance2Audio, SEEDANCE2_AUDIO_HELP,
   loadSeedanceReferenceAudios, seedanceAudioMime, type SeedanceAudioDraft } from './seedance-reference-audio';
 import { prepareWanDelivery, inspectWanReferenceVideo } from './vivareel-wan-media';
@@ -2015,6 +2016,7 @@ interface Session {
   picsartI2vDisplayLabel?: string;
   picsartI2vImageUrl?: string;
   picsartI2vImageUrls?: string[];
+  picsartSeedanceImageFileIds?: string[];
   picsartI2vVideoFileId?: string;
   wanReferencePending?: boolean;
   wanReferenceDuration?: number;
@@ -5424,7 +5426,7 @@ bot.on('callback_query', async (ctx) => {
     const instructions = 'Kirim hingga 30 gambar, 10 video, dan 10 audio (boleh dicampur atau audio saja). Total video maksimal 30 detik, total audio maksimal 30 detik; 19MB per file dan 100MB gabungan. Gambar menjadi referensi, bukan pengunci frame awal/akhir.';
     return ctx.editMessageText(
       `🌊 Seedance 2.5 · ${ratio} · 30 detik · ${settings.resolution}p melalui upscale · audio ${settings.audio ? 'aktif' : 'nonaktif'}\n\n` +
-      (textOnly ? 'Kirim prompt sebagai pesan teks atau file .txt UTF-8 (maksimal 20.000 karakter).' : `${instructions}\nSetelah semua referensi diterima, tekan lanjut.`),
+      (textOnly ? 'Kirim prompt sebagai pesan teks atau file .txt UTF-8 (maksimal 20.000 karakter).' : `${instructions}\n${SEEDANCE_IMAGE_LABEL_HELP}\nSetelah semua referensi diterima, tekan lanjut.`),
       textOnly ? {} : seedance25InputKeyboard()
     );
   }
@@ -5444,6 +5446,7 @@ bot.on('callback_query', async (ctx) => {
     setSession(userId, { mode: 'oneover_wait_prompt', seedance25Step: 'prompt' });
     return ctx.editMessageText(
       `✅ Referensi diterima: *${imageCount} gambar, ${videoCount} video, ${audioCount} audio*.\n\n` +
+      `${seedanceImageLabels(imageCount)}\n${SEEDANCE_IMAGE_LABEL_HELP}\n\n` +
       '*Langkah terakhir:* Kirim *prompt teks atau file .txt UTF-8* untuk video kamu (maksimal 20.000 karakter).',
       { parse_mode: 'Markdown' }
     );
@@ -5527,7 +5530,7 @@ bot.on('callback_query', async (ctx) => {
 
     if (data === 'picsart_i2v_add_photo') {
     const session = getSession(userId);
-    const imageCount = session.picsartI2vImageUrls?.length ?? 0;
+    const imageCount = session.picsartSeedanceImageFileIds?.length || session.picsartI2vImageUrls?.length || 0;
       if (
         session.mode !== 'picsart_i2v_wait_image'
         || !session.picsartI2vModel
@@ -5585,7 +5588,9 @@ bot.on('callback_query', async (ctx) => {
       ? `\nHasil ${session.wanDurationSeconds ?? 30} detik · 1080p · harga tetap Rp6.000.\n` : '';
     setSession(userId, { mode: 'picsart_i2v_wait_prompt' });
     return ctx.editMessageText(
-      `🌀 *${label}*\n\n✅ ${imageCount} foto acuan${session.picsartI2vVideoFileId ? ' + 1 video referensi' : ''} diterima.\n${wanSettings}\n*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).`,
+      `🌀 *${label}*\n\n✅ ${imageCount} foto acuan${session.picsartI2vVideoFileId ? ' + 1 video referensi' : ''} diterima.\n` +
+      (isSeedance2I2vModel(model) ? `${seedanceImageLabels(imageCount)}\n${SEEDANCE_IMAGE_LABEL_HELP}\n` : '') +
+      `${wanSettings}\n*Langkah terakhir:* Kirim *prompt teks* untuk video kamu (deskripsi adegan).`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -5618,6 +5623,7 @@ bot.on('callback_query', async (ctx) => {
         mode: model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_regular' || model === 'kling_v4_frames' ? 'picsart_i2v_wait_duration' : 'picsart_i2v_wait_ratio',
         picsartI2vModel: model,
         seedanceAudioDraft: undefined,
+        picsartSeedanceImageFileIds: [],
         picsartI2vDuration: undefined,
         picsartI2vRatio: undefined,
         picsartI2vDisplayLabel: model === 'wan_v3' ? 'Wan 3.0' : undefined,
@@ -5630,7 +5636,7 @@ bot.on('callback_query', async (ctx) => {
       return ctx.editMessageText(
         `🌀 *${model === 'wan_v3' ? 'Wan 3.0' : cfg.label}*\n\n` +
         `${picsartI2vPublicSettings(model, cfg.settingsLabel)}\n\n` +
-        (isSeedance2I2vModel(model) ? `${SEEDANCE2_AUDIO_HELP}\n\n` : '') +
+        (isSeedance2I2vModel(model) ? `${SEEDANCE2_AUDIO_HELP}\n${SEEDANCE_IMAGE_LABEL_HELP}\n\n` : '') +
         (model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_regular' || model === 'kling_v4_frames' ? '*Langkah 1:* Pilih durasi video:' : '*Langkah 1:* Pilih rasio video:'),
         { parse_mode: 'Markdown', ...(model === 'kling_v4' || model === 'kling_v4_t2v' || model === 'kling_v4_regular' || model === 'kling_v4_frames'
           ? Markup.inlineKeyboard([
@@ -6837,6 +6843,8 @@ async function submitSeedance25Prompt(ctx: any, rawPrompt: string, expectedSetti
   const imageFileIds = activeDraft.seedance25ImageFileIds?.length
     ? activeDraft.seedance25ImageFileIds
     : activeDraft.oneoverImageUrl ? [activeDraft.oneoverImageUrl] : [];
+  try { validateSeedanceImageMentions(prompt, imageFileIds.length); }
+  catch (error: any) { return ctx.reply(error.message); }
   const settings = activeDraft.seedance25Settings;
   const videoFiles = activeDraft.seedance25Videos ?? [];
   const audioFiles = activeDraft.seedance25Audios ?? [];
@@ -7120,6 +7128,11 @@ async function submitPicsartI2vPrompt(ctx: any, rawPrompt: string, expectedDraft
   const imageUrls = activeDraft.picsartI2vImageUrls?.length
     ? activeDraft.picsartI2vImageUrls
     : activeDraft.picsartI2vImageUrl ? [activeDraft.picsartI2vImageUrl] : [];
+  const imageFileIds = model && isSeedance2I2vModel(model) ? [...(activeDraft.picsartSeedanceImageFileIds ?? [])] : [];
+  if (model && isSeedance2I2vModel(model)) {
+    try { validateSeedanceImageMentions(prompt, imageFileIds.length || imageUrls.length); }
+    catch (error: any) { return ctx.reply(error.message); }
+  }
   const referenceModel = model === 'kling_v4' || model === 'kling_v4_omni' || model === 'wan_v3';
   const videoFileId = referenceModel ? activeDraft.picsartI2vVideoFileId : undefined;
   const referType = referenceModel ? activeDraft.picsartI2vVideoMode ?? 'feature' : undefined;
@@ -7131,7 +7144,7 @@ async function submitPicsartI2vPrompt(ctx: any, rawPrompt: string, expectedDraft
     return ctx.reply('Video belum diperiksa. Mulai ulang dari /menu.');
   }
   if (!activeDraft.dbUserId || !model || !isPicsartI2vModelKey(model)
-    || (model !== 'kling_v4_t2v' && imageUrls.length === 0 && !videoFileId)
+    || (model !== 'kling_v4_t2v' && imageUrls.length === 0 && imageFileIds.length === 0 && !videoFileId)
     || (model === 'kling_v4_t2v' && imageUrls.length > 0)
     || (model === 'kling_v4_regular' && imageUrls.length !== 1)
     || (model === 'kling_v4_frames' && imageUrls.length !== 2)) {
@@ -7163,6 +7176,7 @@ async function submitPicsartI2vPrompt(ctx: any, rawPrompt: string, expectedDraft
   setSession(userId, {
     mode: 'idle', picsartI2vImageUrl: undefined, picsartI2vImageUrls: undefined,
     seedanceAudioDraft: undefined,
+    picsartSeedanceImageFileIds: undefined,
     picsartI2vFrameMessageIds: undefined, picsartI2vRatio: undefined,
     picsartI2vVideoFileId: undefined, picsartI2vVideoMode: undefined,
     wanReferencePending: false, wanReferenceDuration: undefined, wanReferenceMime: undefined, wanDurationSeconds: undefined,
@@ -7175,6 +7189,7 @@ async function submitPicsartI2vPrompt(ctx: any, rawPrompt: string, expectedDraft
   );
   runPicsartI2v(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, {
     model, imageUrls, ratio, duration, displayLabel, priceKey, videoFileId, referType, wanDurationSeconds, wanReferenceMime, audioRefs,
+    ...(imageFileIds.length ? { imageFileIds } : {}),
   }).catch(e => console.error(`[${userId}] ${publicLabel} error:`, e.message));
 }
 
@@ -7423,6 +7438,23 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     );
   }
 
+  if (['picsart_i2v_wait_image', 'picsart_i2v_wait_prompt'].includes(session.mode)
+    && isSeedance2I2vModel(session.picsartI2vModel!) && fileId) {
+    if (fileUrl) return ctx.reply('Proses foto sebelumnya sudah tidak aktif. Kirim ulang gambar untuk pilihan yang sekarang.');
+    const ids = session.picsartSeedanceImageFileIds ?? [];
+    const max = maxPicsartI2vImages(session.picsartI2vModel!);
+    if (ids.includes(fileId)) return ctx.reply(`Gambar ini sudah diterima sebagai @${ids.indexOf(fileId) + 1}.`);
+    if (ids.length >= max) return ctx.reply(`Maksimal ${max} gambar. ${seedanceImageLabels(ids.length)} Kirim prompt atau /menu untuk mulai ulang.`);
+    const next = [...ids, fileId];
+    setSession(userId, {
+      picsartSeedanceImageFileIds: next, picsartI2vImageUrl: undefined, picsartI2vImageUrls: [],
+      mode: next.length >= max ? 'picsart_i2v_wait_prompt' : 'picsart_i2v_wait_image',
+    });
+    return ctx.reply(`Gambar @${next.length} diterima.\n${seedanceImageLabels(next.length)}\n` +
+      `${SEEDANCE_IMAGE_LABEL_HELP}\nKirim gambar berikutnya (maksimal ${max}), audio opsional, atau lanjut ke prompt.`,
+      picsartI2vAddPhotoKeyboard(next.length, session.picsartI2vModel));
+  }
+
   if (session.mode === 'picsart_i2v_wait_image') {
     const model = session.picsartI2vModel;
     if (!model || !isPicsartI2vModelKey(model)) {
@@ -7509,6 +7541,7 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
   }
 
   if (session.mode === 'oneover_wait_image') {
+    if (fileUrl) return ctx.reply('Proses foto sebelumnya sudah tidak aktif. Kirim ulang gambar untuk pilihan yang sekarang.');
     if (!fileId) return ctx.reply('⚠️ Foto tidak bisa dibaca. Kirim ulang foto JPG atau PNG.');
     if (session.seedance25Settings?.provider !== 'picsart' || session.seedance25Settings.mode !== 'reference') {
       setSession(userId, { mode: 'idle' });
@@ -7529,12 +7562,12 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     });
     if (reachedLimit) {
       return ctx.reply(
-        `✅ ${max} gambar diterima (maksimal).\n\nTekan lanjut untuk mengisi prompt.`,
+        `✅ ${max} gambar diterima (maksimal).\n${seedanceImageLabels(imageFileIds.length)}\n\nTekan lanjut untuk mengisi prompt.`,
         { parse_mode: 'Markdown', ...seedance25InputKeyboard() }
       );
     }
     return ctx.reply(
-      `✅ Gambar acuan ke-${imageFileIds.length} diterima.\n\n` +
+      `✅ Gambar @${imageFileIds.length} diterima.\n${seedanceImageLabels(imageFileIds.length)}\n${SEEDANCE_IMAGE_LABEL_HELP}\n\n` +
       `Kirim gambar berikutnya (maksimal ${max}), video/audio referensi, atau tekan tombol lanjut.`,
       { parse_mode: 'Markdown', ...seedance25InputKeyboard() }
     );
@@ -7783,6 +7816,10 @@ bot.on('photo', async (ctx) => {
   if (!await requireLogin(ctx)) return;
   const draft = getSession(ctx.from.id);
   const photo = ctx.message.photo[ctx.message.photo.length - 1];
+  if (['picsart_i2v_wait_image', 'picsart_i2v_wait_prompt'].includes(draft.mode) && isSeedance2I2vModel(draft.picsartI2vModel!)) {
+    if (photo.file_size && photo.file_size > SEEDANCE25_MAX_MEDIA_BYTES) return ctx.reply('Maksimal 19MB per gambar referensi.');
+    return handleImageInput(ctx, '', photo.file_id);
+  }
   if (draft.mode === 'flora_seedance_2_480_wait_image' || draft.mode === 'flora_seedance_2_480_wait_prompt') {
     if (photo.file_size && photo.file_size > SEEDANCE25_MAX_MEDIA_BYTES) return ctx.reply('Maksimal 19MB per foto referensi.');
     return handleImageInput(ctx, '', photo.file_id);
@@ -9414,6 +9451,10 @@ bot.on('document', async (ctx) => {
     return handleImageInput(ctx, '', doc.file_id);
   }
   if (doc.mime_type?.startsWith('image/')) {
+    if (['picsart_i2v_wait_image', 'picsart_i2v_wait_prompt'].includes(session.mode) && isSeedance2I2vModel(session.picsartI2vModel!)) {
+      if (doc.file_size && doc.file_size > SEEDANCE25_MAX_MEDIA_BYTES) return ctx.reply('Maksimal 19MB per gambar referensi.');
+      return handleImageInput(ctx, '', doc.file_id);
+    }
     if (session.mode === 'flora_seedance_2_480_wait_image' || session.mode === 'flora_seedance_2_480_wait_prompt') {
       if (doc.file_size && doc.file_size > SEEDANCE25_MAX_MEDIA_BYTES) return ctx.reply('Maksimal 19MB per foto referensi.');
       return handleImageInput(ctx, '', doc.file_id);
@@ -10284,7 +10325,8 @@ async function runSeedance25P2(job: P2Job) {
     validateP2References(refs);
     validateSeedance25Prompt(prompt);
     if (!SEEDANCE25_P2.ratios.includes(ratio)) throw Error('INVALID_RATIO');
-    for (const reference of refs) {
+    validateSeedanceImageMentions(prompt, refs.filter(r => r.kind === 'image').length);
+    for (const reference of [...refs].sort((a, b) => a.order - b.order)) {
       const link = await retryTelegramFileRead<{ href: string }>(
         () => bot.telegram.getFileLink(reference.fileId)
       );
@@ -10401,6 +10443,7 @@ async function runPicsartI2v(
   opts: {
     model: picsart.PicsartI2vModelKey;
     imageUrls: string[];
+    imageFileIds?: string[];
     audioRefs?: Seedance25Media[];
     videoFileId?: string;
     referType?: 'feature' | 'base';
@@ -10446,8 +10489,14 @@ async function runPicsartI2v(
       : opts.model === 'kling_v4' || opts.model === 'kling_v4_omni' ? 8
       : supportsMultiplePicsartI2vImages(opts.model) ? picsart.PICSART_I2V_MAX_IMAGES : 1;
     if ((opts.model === 'kling_v4' || opts.model === 'kling_v4_omni') && opts.imageUrls.length > maxImages) throw Error('PICSART_KLING4_TOO_MANY_IMAGES');
+    if (opts.imageFileIds?.length && (!seedance1080 || opts.imageFileIds.length > maxImages
+      || new Set(opts.imageFileIds).size !== opts.imageFileIds.length)) throw Error('SEEDANCE_INVALID_IMAGE_REFERENCES');
+    const imageUrls = opts.imageFileIds?.length
+      ? await Promise.all(opts.imageFileIds.map(async fileId =>
+          (await retryTelegramFileRead(() => bot.telegram.getFileLink(fileId))).href))
+      : opts.imageUrls;
     const images = await Promise.all(
-      opts.imageUrls.slice(0, maxImages).map(async (imageUrl, index) => {
+      imageUrls.slice(0, maxImages).map(async (imageUrl, index) => {
         const image = await downloadBuffer(imageUrl);
         return {
           buffer: image.buf,

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as referenceLabels from '../src/seedance-reference-labels';
 import { readFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -38,7 +39,7 @@ function harness() {
   let duration = 3, invalid = false, reads = 0;
   let gate: Promise<void> = Promise.resolve();
   const context = vm.createContext({
-    Buffer, ...limits, seedanceAudioMime,
+    Buffer, ...limits, ...referenceLabels, seedanceAudioMime,
     getSession: () => session,
     setSession: (_: number, data: any) => { session = { ...session, ...data }; },
     telegramHttp: { get: async () => { reads++; await gate; return { data: Buffer.from('media') }; } },

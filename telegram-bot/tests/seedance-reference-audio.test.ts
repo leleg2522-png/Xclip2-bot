@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as referenceLabels from '../src/seedance-reference-labels';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
@@ -160,7 +161,7 @@ async function p2Tests() {
   assert.equal(jobs[0].refs.length, 3);
   const calls: any[][] = [];
   const context = vm.createContext({
-    SEEDANCE25_P2, validateP2References, validateSeedance25Prompt: (value: string) => value,
+    ...referenceLabels, SEEDANCE25_P2, validateP2References, validateSeedance25Prompt: (value: string) => value,
     MODEL_PRICES: { seedance25_p2: 7500 },
     retryTelegramFileRead: async (fn: any) => fn(),
     bot: { telegram: { getFileLink: async (id: string) => ({ href: `https://example.test/${id}` }) } },
@@ -195,20 +196,25 @@ async function runnerTests() {
         generatePicsartI2v: async (input: any) => { inputs.push(input); if (fail) throw Error('Picsart input_text_sensitive'); return { url: 'https://example.test/result.mp4' }; },
         describePicsartPostSubmitCause: () => '' },
       MODEL_PRICES: {}, getPicsartI2vPrice: () => 4000, userModelPrice: async (_id: number, _model: string, normal: number) => normal,
-      beginCharge: async () => ({ ok: true }), downloadBuffer: async () => ({ buf: Buffer.from('image'), mime: 'image/jpeg', ext: 'jpg' }),
+      beginCharge: async () => ({ ok: true }), downloadBuffer: async (url: string) => ({ buf: Buffer.from(url), mime: 'image/jpeg', ext: 'jpg' }),
+      retryTelegramFileRead: async (read: any) => read(),
       loadSeedanceReferenceAudios: async (refs: any[]) => refs.map(ref => ({ buffer: Buffer.from('audio'), name: 'voice.ogg', mime: ref.mime, duration: ref.duration })),
       downloadTelegramFileBuffer: async () => Buffer.from('audio'),
       upscaleGeneratedVideo: async () => ({ url: 'https://example.test/1080.mp4', upscaled: true }),
       sendResult: async () => true, incrementKlingUsage: async () => 1, markGenSuccess() {},
       addSaldo: async (_id: number, amount: number) => { refunds.push(amount); }, releaseGenerating() {},
       describeError: (error: any) => error.message, formatRupiah: (amount: number) => `Rp${amount}`,
-      bot: { telegram: { editMessageText: async (...args: any[]) => { messages.push(args[3]); }, sendMessage: async (_id: number, message: string) => { messages.push(message); }, deleteMessage: async () => {} } },
+      bot: { telegram: { getFileLink: async (id: string) => ({ href: `https://example.test/${id}` }),
+        editMessageText: async (...args: any[]) => { messages.push(args[3]); }, sendMessage: async (_id: number, message: string) => { messages.push(message); }, deleteMessage: async () => {} } },
       console: { log() {}, error() {} },
     }));
     vm.runInContext(functionCode(botSource, ['runPicsartI2v']), context);
-    await context.runPicsartI2v(1, 1, 1, 1, 'walk', { model: 'seedance_2', imageUrls: [reference],
+    await context.runPicsartI2v(1, 1, 1, 1, 'walk', { model: 'seedance_2', imageUrls: [], imageFileIds: ['first', 'second'],
       audioRefs: [{ fileId: 'one', mime: 'audio/ogg', duration: 2 }] });
     assert.equal(inputs.length, 1);
+    assert.deepEqual(Array.from(inputs[0].images, (image: any) => image.buffer.toString()), [
+      'https://example.test/first', 'https://example.test/second',
+    ]);
     assert.equal(inputs[0].audios[0].mime, 'audio/ogg');
     assert.equal(refunds.length, fail ? 1 : 0);
     assert.doesNotMatch(messages.join('\n'), /Picsart/i);

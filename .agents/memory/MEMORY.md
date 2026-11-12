@@ -49,3 +49,4 @@
 - [ModelRunner video billing](modelrunner-video-billing.md) — requested whole-second duration is not an exact cost cap; use settled totalPrice and check billingStatus, not COMPLETED alone.
 - [Vivareel API base URL](vivareel-api.md) — docs examples on vivareel.ai work; the api.vivareel.com hostname mentioned in docs failed DNS during a live preflight.
 - [Seedance reference audio](seedance-reference-audio.md) — keep Picsart routes; 2.0 requires visual media with audio, 2.5 permits audio-only; distinguish per-file docs from bot totals.
+- [Seedance reference numbering](seedance-reference-numbering.md) — Dreamina-style actual image binding, not cosmetic labels; provider semantics need separate output evidence.

@@ -1,4 +1,5 @@
 import { seedanceAudioMime } from './seedance-reference-audio';
+import { SEEDANCE_IMAGE_LABEL_HELP, seedanceImageLabels, validateSeedanceImageMentions } from './seedance-reference-labels';
 import { randomUUID } from 'node:crypto';
 import { Markup } from 'telegraf';
 import { SEEDANCE25_P2, validateP2References, type P2Ratio, type P2Reference } from './seedance25-edan';
@@ -34,7 +35,7 @@ const instructions =
   'Kirim gambar JPG/PNG, video MP4, dan/atau audio MP3/M4A/WAV/OGG atau voice note (boleh dicampur atau audio saja). ' +
   'Batas bot: 10 gambar, 10 video, dan 10 audio; total video 30 detik, total audio 30 detik, minimal 2 detik per video. ' +
   'Maksimal 19MB per file dan 100MB gabungan. Ini referensi, bukan start/end frame.\n' +
-  'Tunggu semua file diterima, lalu tekan selesai upload.';
+  `Tunggu semua file diterima, lalu tekan selesai upload.\n${SEEDANCE_IMAGE_LABEL_HELP}`;
 
 export function createSeedance25P2Bot(deps: Dependencies) {
   async function callback(ctx: any, data: string) {
@@ -74,6 +75,7 @@ export function createSeedance25P2Bot(deps: Dependencies) {
       return ctx.editMessageText(
         `Referensi diterima: ${draft.refs.filter(r => r.kind === 'image').length} gambar, ` +
         `${draft.refs.filter(r => r.kind === 'video').length} video, ${draft.refs.filter(r => r.kind === 'audio').length} audio.\n\n` +
+        `${seedanceImageLabels(draft.refs.filter(r => r.kind === 'image').length)}\n${SEEDANCE_IMAGE_LABEL_HELP}\n\n` +
         'Kirim prompt sebagai pesan teks atau file .txt UTF-8 (batas bot 20.000 karakter). /menu untuk batal.',
       );
     }
@@ -125,7 +127,11 @@ export function createSeedance25P2Bot(deps: Dependencies) {
     }
     deps.setSession(userId, { mode: 's25p2_wait_media', seedance25P2: { ...current, refs, pending } });
     return ctx.reply(`Referensi diterima: ${refs.filter(r => r.kind === 'image').length} gambar, ` +
-      `${refs.filter(r => r.kind === 'video').length} video, ${refs.filter(r => r.kind === 'audio').length} audio.`, inputsKeyboard(draft.id));
+      `${refs.filter(r => r.kind === 'video').length} video, ${refs.filter(r => r.kind === 'audio').length} audio.\n` +
+      (pending.some(p => p.kind === 'image')
+        ? 'Gambar lain masih diperiksa. Nomor gambar dikonfirmasi setelah semua gambar diterima.'
+        : `${seedanceImageLabels(refs.filter(r => r.kind === 'image').length)} Nomor mengikuti urutan kirim, bukan urutan selesai diperiksa.`),
+      inputsKeyboard(draft.id));
   }
 
   async function submit(ctx: any, text: string, draft: P2Draft) {
@@ -134,7 +140,10 @@ export function createSeedance25P2Bot(deps: Dependencies) {
     const dbUserId = deps.getSession(userId).dbUserId;
     if (!current || !dbUserId || !current.ratio) return;
     let prompt: string;
-    try { prompt = validateSeedance25Prompt(text); validateP2References(current.refs); }
+    try {
+      prompt = validateSeedance25Prompt(text); validateP2References(current.refs);
+      validateSeedanceImageMentions(prompt, current.refs.filter(r => r.kind === 'image').length);
+    }
     catch (error: any) { return ctx.reply(error.message); }
     const ms = deps.cooldown(userId);
     if (ms > 0) return ctx.reply(`Tunggu ${Math.ceil(ms / 1000)} detik sebelum generate berikutnya.`);
