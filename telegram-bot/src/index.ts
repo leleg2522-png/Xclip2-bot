@@ -1,4 +1,6 @@
-import { generateVivareelWan, wanOutputDuration, WAN_REFERENCE_MAX_BYTES } from './vivareel-wan';
+import { generateVivareelWan as generateVivareelWanFromPool, wanOutputDuration, WAN_REFERENCE_MAX_BYTES, type WanInput } from './vivareel-wan';
+import { VivareelKeyPool } from './vivareel-key-pool';
+import { registerVivareelAdmin } from './vivareel-admin';
 import { generationErrorMessage } from './generation-errors';
 import { prepareWanDelivery, inspectWanReferenceVideo } from './vivareel-wan-media';
 import { Telegraf, Markup } from 'telegraf';
@@ -170,6 +172,8 @@ const db = new Pool({
 const freebeatBridge = new FreebeatBridgeQueue(db);
 const chinaKeyPool = new ChinaApiKeyPool(db);
 const alrizKeyPool = new AlrizKeyPool({ query: dbq });
+const vivareelKeyPool = new VivareelKeyPool({ query: dbq });
+const generateVivareelWan = (input: WanInput) => generateVivareelWanFromPool(input, vivareelKeyPool);
 const deapiKeyPool = new DeapiKeyPool({ query: dbq });
 // CRITICAL: a pooled client can error while idle (server closed the socket).
 // The pg Pool emits 'error' for that; with NO listener Node treats it as an
@@ -1662,6 +1666,7 @@ async function incrementKlingUsage(dbUserId: number): Promise<number> {
 const bot = new Telegraf(BOT_TOKEN);
 registerChinaApiAdmin(bot, chinaKeyPool, requireAdmin);
 registerAlrizAdmin(bot, alrizKeyPool, requireAdmin);
+registerVivareelAdmin(bot, vivareelKeyPool, requireAdmin);
 registerDeapiAdmin(bot, deapiKeyPool, requireAdmin);
 const microdramaStore = new PgDramaStore(db);
 function registerLegacyMicrodrama() {
@@ -13477,6 +13482,13 @@ app.listen(PORT, () => {
     console.log('✅ Picsart keepalive aktif (refresh tiap 3 hari)');
   } catch (e: any) {
     console.error('❌ Picsart schema gagal:', e?.message ?? e);
+  }
+  try {
+    await vivareelKeyPool.ensureSchema();
+    if (process.env.VIVAREEL_API_KEY) await vivareelKeyPool.addKeys([process.env.VIVAREEL_API_KEY]);
+    console.log('Wan key pool ready');
+  } catch {
+    console.error('Wan key pool initialization failed; credential details withheld');
   }
   try {
     await chinaKeyPool.ensureSchema();

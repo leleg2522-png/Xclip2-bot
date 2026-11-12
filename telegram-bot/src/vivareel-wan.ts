@@ -1,5 +1,6 @@
 import { inspectWanReferenceVideo } from './vivareel-wan-media';
 import { generationFailure } from './generation-errors';
+import type { VivareelKeySource } from './vivareel-key-pool';
 
 export type WanRatio = '9:16' | '16:9';
 export interface WanImage { buffer: Buffer; name?: string; mime?: string }
@@ -14,6 +15,12 @@ export interface WanInput {
 const BASE = 'https://vivareel.ai/api/developer/v1';
 export const VIVAREEL_WAN_MODEL = 'dashscope-wan3.0-video';
 export const WAN_REFERENCE_MAX_BYTES = 19 * 1024 * 1024;
+
+export class VivareelHttpError extends Error {
+  constructor(readonly status: number, cause: unknown) {
+    super(`VIVAREEL_HTTP_${status}`, { cause });
+  }
+}
 
 export function wanOutputDuration(referenceSeconds?: number): number {
   if (referenceSeconds === undefined) return 30;
@@ -66,7 +73,7 @@ export class VivareelWanClient {
     }
     if (!response.ok) {
       const detail = await response.json().catch(() => undefined);
-      throw generationFailure(`VIVAREEL_HTTP_${response.status}`, detail);
+      throw new VivareelHttpError(response.status, detail);
     }
     const json = await response.json().catch(() => { throw Error('VIVAREEL_INVALID_RESPONSE'); });
     if (json.code !== 200 || !json.data) throw generationFailure('VIVAREEL_REJECTED_RESPONSE', json);
@@ -102,7 +109,7 @@ export class VivareelWanClient {
         data = await this.request(`/tasks/${encodeURIComponent(taskId)}`);
         failures = 0;
       } catch (error) {
-        if (/HTTP_40[134]/.test(String(error)) || ++failures >= 6) throw error;
+        if (/HTTP_40[1234]/.test(String(error)) || ++failures >= 6) throw error;
         await this.pause(10000);
         continue;
       }
@@ -154,6 +161,23 @@ export class VivareelWanClient {
   }
 }
 
-export function generateVivareelWan(input: WanInput) {
-  return new VivareelWanClient(process.env.VIVAREEL_API_KEY ?? '').generate(input);
+export async function generateVivareelWan(
+  input: WanInput, pool: VivareelKeySource,
+  options: { transport?: typeof fetch; pause?: (ms: number) => Promise<void> } = {},
+) {
+  const key = await pool.next();
+  if (!key) throw Error('VIVAREEL_POOL_NO_USABLE_KEY');
+  try {
+    // One credential per job, including uploads, submit and polling.
+    // Never replay generate on another key after an ambiguous/accepted submit.
+    return await new VivareelWanClient(key.apiKey, options.transport, options.pause).generate(input);
+  } catch (error) {
+    // A generic 403 may be moderation, not a dead key. Do not disable on it.
+    if (error instanceof VivareelHttpError && [401, 402].includes(error.status)) {
+      await pool.disable(key.id).catch(() => {
+        console.warn('[wan] key status update failed; credential details withheld');
+      });
+    }
+    throw error;
+  }
 }

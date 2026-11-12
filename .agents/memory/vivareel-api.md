@@ -26,3 +26,9 @@ Wan 3.0 video-reference support is live-verified, not just a catalog claim.
 **Why:** A direct test using only a 3-second MP4 in `reference_video_urls`, with `capability: image_reference`, completed and delivered a roughly 5-second 854×480, 30 fps video with audio. The task billed 15 points despite a catalog estimate of 6 points/second; the VR watermark remained.
 
 **How to apply:** Distinguish upstream support from bot integration. Reference mode uses `reference_video_urls`, not first-frame fields. Vivareel documents a 15-second total reference-video limit and a combined reference-plus-output limit of 30 seconds, so the bot's fixed 30-second output cannot be reused unchanged when adding video references. A short native test does not verify cropping or Renderful finishing.
+
+Disabling a Vivareel key in the DB must remain authoritative; an empty or unavailable pool must not silently fall back to an environment key.
+
+**Why:** An environment fallback could reuse the same account an admin disabled, bypass pool controls, and hide a database outage.
+
+**How to apply:** Treat the environment key only as an initial, idempotent pool seed, never as an alternate runtime credential when the pool cannot provide one.
