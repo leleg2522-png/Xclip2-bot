@@ -1258,3 +1258,45 @@ mtime_ms = 1794447635148
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/5956ce21-4c4d-4d0e-87a1-bcf2f6e8ad0b/da239cb9-8c32-444b-bd9c-00ba82da1dcb"
 storage_version_token = "1794447672910223"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "_zHgAq6ENIh7wyD-LEazx"
+uri = "file://generated-artifacts/vivareel-wan30-portrait-test-20261112/portrait-crop-comparison.jpg"
+type = "image"
+title = "Perbandingan portrait: asli vs crop"
+description = "Kiri: frame asli dengan kotak hijau sebagai area yang dipertahankan. Kanan: hasil crop yang diperbesar kembali ke 480×854. Terpotong 24 px di kiri, 24 px di kanan, dan 86 px di bawah; atas tidak dipotong."
+logical_id = "c3cf08cb-2703-4c95-835b-385458e3168c"
+content_hash = "sha256:e284d1915027f75b1e5e2b0eb9dc4cc9df5e8101700d41c3c57cd85e49d98cdf"
+size = 64365
+mtime_ms = 1794448456254
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/c3cf08cb-2703-4c95-835b-385458e3168c/e41b31fd-bbb3-491c-9ad7-5d3cb4880a7f"
+storage_version_token = "1794448487640986"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "Zvt8svn0PD01s3pAlc8AC"
+uri = "file://generated-artifacts/vivareel-wan30-portrait-test-20261112/vivareel-wan30-battle-portrait-original.mp4"
+type = "video"
+title = "Video portrait asli — 30 detik"
+description = "Hasil generate Vivareel Wan 3.0, portrait 480×854, 30 fps, dengan audio. Logo VR masih ada meskipun watermark:false diminta. Biaya aktual task dilaporkan 120 poin."
+logical_id = "c2762770-c70c-4f76-8ba2-38e9c1587bf1"
+content_hash = "sha256:6df81675fe1a15e725dc1b6bd44ad18c0d7bf6b2da2c73cc2dce5bd5ae7d8376"
+size = 8822866
+mtime_ms = 1794448375284
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/c2762770-c70c-4f76-8ba2-38e9c1587bf1/e74b75bd-0ac8-49b4-b78f-6f621e2ca83d"
+storage_version_token = "1794448489772191"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "WCTy0a3oPuWePR-vZE7N6"
+uri = "file://generated-artifacts/vivareel-wan30-portrait-test-20261112/vivareel-wan30-battle-portrait-cropped.mp4"
+type = "video"
+title = "Video portrait hasil crop — 30 detik"
+description = "Crop 432×768 dari x=24, y=0, lalu diperbesar kembali ke 480×854. Logo VR tidak terlihat pada enam sampel sepanjang video. Durasi, 30 fps, dan audio tetap; audio diverifikasi tidak berubah. File asli tetap utuh."
+logical_id = "81bf89e2-3ef9-471c-8fda-2d5e7864a332"
+content_hash = "sha256:22be02a2ad571fc8cb81ce838979657b4eccc5e7a5c8d7bb19105509b9d8da0e"
+size = 13681580
+mtime_ms = 1794448451865
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/81bf89e2-3ef9-471c-8fda-2d5e7864a332/c6427e8d-5114-44d3-a383-70dea88bba85"
+storage_version_token = "1794448491186754"
+content_type = "video/mp4"
