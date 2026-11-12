@@ -1216,3 +1216,17 @@ mtime_ms = 1794443785390
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/425d609b-8797-4784-bc0d-c9c6965f321d/70de8713-df8f-4c3d-b381-7374cee5a668"
 storage_version_token = "1794443823220306"
 content_type = "text/csv"
+
+[[outputs]]
+id = "Umjvl-EhLRdhi3dB79RpO"
+uri = "file://generated-artifacts/vivareel-wan30-test-20261112/vivareel-wan30-30s-480p-landscape.mp4"
+type = "video"
+title = "Tes Wan 3.0 Vivareel — 30 detik, 480p"
+description = "Generate nyata berhasil: video 30 detik, Landscape 854×480, 30 fps, audio AAC, sekitar 6 MB. Biaya yang dilaporkan API 120 poin. Terlihat watermark VR di kanan bawah."
+logical_id = "31330b05-cf74-407b-b940-d7de039bbf11"
+content_hash = "sha256:d4d1dd7c894fbc6b9acf88e19aff8e2436b4895649c514be78f5e52527109045"
+size = 5989304
+mtime_ms = 1794446197877
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/31330b05-cf74-407b-b940-d7de039bbf11/02dc4bac-7997-4211-9a21-64b7bc5e0063"
+storage_version_token = "1794446261486967"
+content_type = "video/mp4"
