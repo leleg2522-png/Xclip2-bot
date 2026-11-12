@@ -82,6 +82,21 @@ async function start(h: ReturnType<typeof harness>, ratio = '916') {
 }
 
 async function main() {
+  const audio = harness();
+  await start(audio);
+  await audio.photo();
+  const refs = [{ fileId: 'voice', mime: 'audio/ogg', duration: 2 }];
+  audio.patch({ seedanceAudioDraft: { id: 'audio-draft', refs, pending: ['uploading'] } });
+  await audio.prompt();
+  assert.equal(audio.jobs.length, 0, 'Prompt must not race audio validation');
+  assert.match(audio.messages.at(-1)!, /Audio masih diperiksa/);
+  audio.patch({ seedanceAudioDraft: { id: 'audio-draft', refs, pending: [] } });
+  await audio.prompt();
+  assert.deepEqual(audio.jobs[0][11], refs, 'Validated audio must be captured before clearing the session');
+  assert.equal(audio.state().seedanceAudioDraft, undefined);
+  audio.patch({ seedanceAudioDraft: { id: 'old-audio', refs, pending: [] } });
+  await start(audio);
+  assert.equal(audio.state().seedanceAudioDraft, undefined, 'New draft must not reuse previous audio');
   for (const ratio of ['916', '169']) {
     const h = harness();
     await start(h, ratio);
@@ -91,8 +106,9 @@ async function main() {
     assert.equal(h.state().floraSeedance2480ImageUrl, undefined);
     await h.prompt();
     await h.prompt();
-    assert.deepEqual(h.jobs, [[9, 9, 7, 88, 'seedance_2_480', '', 'Restyle this footage',
+    assert.deepEqual(h.jobs.map(args => args.slice(0, 11)), [[9, 9, 7, 88, 'seedance_2_480', '', 'Restyle this footage',
       ratio === '916' ? '9:16' : '16:9', 15, 'clip', 'video/mp4']]);
+    assert.equal(h.jobs[0][11].length, 0);
     assert.equal(h.state().mode, 'idle');
     assert.equal(h.state().floraSeedance2480VideoFileId, undefined);
     assert.equal(h.state().floraSeedance2480DraftId, undefined);

@@ -86,6 +86,7 @@ function catalog() {
 }
 
 type Options = {
+  invalidAudio?: boolean;
   keys?: string[];
   chargeOk?: boolean;
   catalog?: (key: string, attempt: number) => unknown;
@@ -150,9 +151,15 @@ function harness(options: Options = {}) {
       ? { buf: Buffer.from('video fixture'), ext: 'mp4', mime: 'video/mp4' }
       : { buf: Buffer.from('fixture'), ext: 'jpg', mime: 'image/jpeg' },
     retryTelegramFileRead: async (read: () => Promise<any>) => read(),
+    downloadTelegramFileBuffer: async () => Buffer.from('audio fixture'),
+    loadSeedanceReferenceAudios: async (refs: any[]) => {
+      if (options.invalidAudio) throw Error('SEEDANCE2_AUDIO_INVALID');
+      return refs.map(ref => ({ buffer: Buffer.from('audio fixture'), mime: ref.mime, duration: ref.duration, name: 'reference.ogg' }));
+    },
     floraUploadAsset: async (key: string, _workspace: string, _buf: Buffer, _name: string, mime: string) => {
       events.videoUploads.push({ key, mime });
-      return 'https://provider.example.test/video-reference.mp4';
+      return mime.startsWith('audio/') ? `https://provider.example.test/audio-${events.videoUploads.length}.ogg`
+        : 'https://provider.example.test/video-reference.mp4';
     },
     getNextFloraKey: async (skipped: Set<string>) => keys.find(key => !skipped.has(key)) ?? null,
     markFloraKeyDead: async (key: string) => { events.dead.push(key); },
@@ -227,10 +234,11 @@ function harness(options: Options = {}) {
     referenceVideoFileId?: string,
     referenceVideoMime?: string,
     inputImageUrl = key === 'seedance_2_480' && referenceVideoFileId ? '' : 'https://example.test/reference.jpg',
+    referenceAudios: any[] = [],
   ) =>
     context.runFlora480Video(chatId, chatId, chatId, chatId * 10, key,
       inputImageUrl, prompt, ratio, durationSeconds,
-      referenceVideoFileId, referenceVideoMime) as Promise<void>;
+      referenceVideoFileId, referenceVideoMime, referenceAudios) as Promise<void>;
   return { events, run };
 }
 
@@ -283,10 +291,11 @@ async function verifySeedanceWizard() {
     await context.prompt(ctx, 9);
     await context.prompt(ctx, 9);
     assert.equal(jobs.length, 1, 'duplicate prompt must not submit twice');
-    assert.deepEqual(jobs[0], [
+    assert.deepEqual(jobs[0].slice(0, 11), [
       9, 9, 7, 88, 'seedance_2_480', 'https://example.test/ref.jpg',
       'Animate this image', ratio, 15, undefined, undefined,
     ]);
+    assert.equal(jobs[0][11].length, 0);
     assert.equal(state.mode, 'idle');
     assert.equal(state.floraSeedance2480ImageUrl, undefined);
     assert.equal(state.floraSeedance2480Ratio, undefined);
@@ -370,7 +379,7 @@ async function verifySeedance25Wizard() {
   await context.prompt(ctx, 9);
   await context.prompt(ctx, 9);
   assert.equal(jobs.length, 1, 'duplicate prompt must not submit twice');
-  assert.deepEqual(jobs[0], [
+  assert.deepEqual(jobs[0].slice(0, 11), [
     9, 9, 7, 88, 'seedance_2_5_480', 'https://example.test/ref.jpg',
     'Animate this image', '16:9', 15, 'video-ref-1', 'video/mp4',
   ]);
@@ -389,13 +398,48 @@ async function verifySeedance25Wizard() {
   assert.equal(state.mode, 'flora_seedance_2_5_480_wait_duration');
   await context.callback('flora480_seedance25_duration_10', ctx, 9);
   await context.prompt(ctx, 9);
-  assert.deepEqual(jobs[1], [
+  assert.deepEqual(jobs[1].slice(0, 11), [
     9, 9, 7, 88, 'seedance_2_5_480', 'https://example.test/ref.jpg',
     'Animate this image', '9:16', 10, undefined, undefined,
   ]);
 }
 
 async function main() {
+  const audioCatalog = () => ({ models: [{
+    model_id: 'mixed-seedance2-live', name: 'Seedance 2.0 Reference', type: 'video', capabilities: ['mixed-to-video'],
+    params: [
+      ...['image_urls', 'video_urls', 'audio_urls'].map(name => ({ name, type: 'string[]', default: [] })),
+      { name: 'duration', options: [{ value: '15' }] },
+      { name: 'resolution', options: [{ value: '480p' }] },
+      { name: 'aspect_ratio', options: [{ value: '9:16' }, { value: '16:9' }] },
+    ],
+  }] });
+  const audioRefs = [{ fileId: 'voice', mime: 'audio/ogg', duration: 2 }];
+  for (const [image, video] of [[true, false], [false, true], [true, true]]) {
+    const h = harness({ catalog: audioCatalog });
+    await h.run('seedance_2_480', 1, 'audio-reference', '9:16', 15, video ? 'video-reference' : undefined,
+      video ? 'video/mp4' : undefined, image ? 'https://example.test/reference.jpg' : '', audioRefs);
+    assert.equal(h.events.submissions.length, 1);
+    const submission = h.events.submissions[0];
+    assert.equal(submission.model, 'mixed-seedance2-live');
+    assert.equal(submission.params.audio_urls.length, 1);
+    assert.equal(Boolean(submission.params.image_urls), image);
+    assert.equal(Boolean(submission.params.video_urls), video);
+    assert.ok(h.events.videoUploads.every(upload => upload.key === submission.key));
+    assert.ok(h.events.uploads.every(key => key === submission.key));
+    assert.equal(h.events.refunds.length, 0);
+  }
+  const rejectedAudio = harness({ invalidAudio: true });
+  await rejectedAudio.run('seedance_2_480', 1, 'bad audio', '9:16', 15, undefined, undefined,
+    'https://example.test/reference.jpg', audioRefs);
+  assert.equal(rejectedAudio.events.submissions.length, 0);
+  assert.deepEqual(rejectedAudio.events.refunds, [15000]);
+  const acceptedAudioFailure = harness({ catalog: audioCatalog, keys: ['first', 'second'],
+    poll: () => { throw httpError(403, 'Flora private account failure'); } });
+  await acceptedAudioFailure.run('seedance_2_480', 1, 'accepted audio', '9:16', 15, undefined, undefined,
+    'https://example.test/reference.jpg', audioRefs);
+  assert.equal(acceptedAudioFailure.events.submissions.length, 1);
+  assert.deepEqual(acceptedAudioFailure.events.refunds, [15000]);
   await verifySeedanceWizard();
   await verifySeedance25Wizard();
   const videoCatalog = () => ({

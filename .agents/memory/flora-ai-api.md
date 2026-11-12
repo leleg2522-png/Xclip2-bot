@@ -15,6 +15,22 @@ returned `BILLING_NOT_ENOUGH_CREDITS`, without testing input compatibility.
 model's reference-duration limits. Inspect the accepted run; never automatically
 replay it on another account. A further boundary test needs separate authorization.
 
+## Seedance 2 reference audio
+
+Do not assume the ordinary single-image endpoint can receive audio. Flora's
+live reference variants expose `image_urls`, `video_urls`, and `audio_urls`;
+the simple image route instead exposes only `image_url`.
+
+**Why:** The authenticated account catalogue distinguished ordinary I2V from
+audio-image, audio-video and mixed-reference variants despite similar display
+names. Audio-rich requests need a compatible account-scoped contract.
+
+**How to apply:** Resolve and validate the live schema before uploading, and
+keep all references on that same account. Do not describe the bot's conservative
+aggregate duration or visual-reference requirement as Flora API limitations.
+Flora also lists a separate audio-to-video variant, unlike the Picsart 2.0
+audio-only restriction; listing it is not proof of a completed paid generation.
+
 # Flora AI API — hasil verifikasi langsung (Jul 2026)
 
 ## Format request yang benar

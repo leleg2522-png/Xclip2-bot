@@ -4904,6 +4904,7 @@ bot.on('callback_query', async (ctx) => {
   if (data === 'mode_flora_seedance_2_480') {
     setSession(userId, {
       mode: 'flora_seedance_2_480_wait_ratio',
+      seedanceAudioDraft: undefined,
       floraSeedance2480Ratio: undefined,
       floraSeedance2480ImageUrl: undefined,
       floraSeedance2480DraftId: crypto.randomUUID(),
@@ -4913,7 +4914,7 @@ bot.on('callback_query', async (ctx) => {
     });
     return ctx.editMessageText(
       `🎬 *Seedance 2 Uncensored • 15 detik • 1080p*\n\n` +
-      `Foto / Video / Foto + Video · *15 detik* · *1080p*\n` +
+      `Foto / Video / Foto + Video, dengan audio referensi opsional · *15 detik* · *1080p*\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.flora_seedance_2_480)}* per video\n\n` +
       '*Langkah 1:* Pilih rasio video:',
       { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
@@ -4933,6 +4934,7 @@ bot.on('callback_query', async (ctx) => {
     const ratio: Flora480AspectRatio = data.endsWith('_169') ? '16:9' : '9:16';
     setSession(userId, {
       mode: 'flora_seedance_2_480_wait_image',
+      seedanceAudioDraft: undefined,
       floraSeedance2480Ratio: ratio,
       floraSeedance2480ImageUrl: undefined,
       floraSeedance2480DraftId: crypto.randomUUID(),
@@ -4942,8 +4944,11 @@ bot.on('callback_query', async (ctx) => {
     });
     return ctx.editMessageText(
       `🎬 *Seedance 2 Uncensored • 15 detik • 1080p*\n\nRasio: *${ratio}* · 15 detik · 1080p\n\n` +
-      '*Langkah 2:* Kirim *foto acuan atau 1 video MP4* (maksimal 19MB). Bisa kirim *foto + video* untuk digabung, lalu kirim prompt.',
-      { parse_mode: 'Markdown' }
+      '*Langkah 2:* Kirim *foto acuan atau 1 video MP4* (maksimal 19MB). Bisa kirim *foto + video* untuk digabung.\n\n' +
+      'Opsional: kirim audio MP3/M4A/WAV/OGG atau voice note (maksimal 3 audio, total 15 detik; 19MB per file). Setelah referensi siap, kirim prompt.',
+      { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
+        [Markup.button.callback('Tambah audio (opsional)', 'seedance_reference_audio')],
+      ]) }
     );
   }
 
@@ -8663,6 +8668,7 @@ bot.on('text', async (ctx) => {
     const activeDraft = getSession(userId);
     const minimax = activeDraft.mode === 'flora_minimax_h3_480_wait_prompt';
     const seedance = activeDraft.mode === 'flora_seedance_2_480_wait_prompt';
+    if (seedance && activeDraft.seedanceAudioDraft?.pending.length) return ctx.reply('Audio masih diperiksa. Tunggu semua diterima sebelum mengirim prompt.');
     const seedance25 = activeDraft.mode === 'flora_seedance_2_5_480_wait_prompt';
     if (seedance && activeDraft.floraSeedance2480VideoPending) return ctx.reply('Video masih diperiksa. Tunggu sebentar sebelum mengirim prompt.');
     if (!minimax && !seedance && !seedance25 && activeDraft.mode !== 'flora_wan_v3_480_wait_prompt') return;
@@ -8681,6 +8687,7 @@ bot.on('text', async (ctx) => {
       : seedance
         ? {
             mode: 'idle', floraSeedance2480Ratio: undefined, floraSeedance2480ImageUrl: undefined,
+            seedanceAudioDraft: undefined,
             floraSeedance2480DraftId: undefined, floraSeedance2480VideoFileId: undefined,
             floraSeedance2480VideoMime: undefined, floraSeedance2480VideoPending: false,
           }
@@ -8727,6 +8734,7 @@ bot.on('text', async (ctx) => {
       : seedance ? activeDraft.floraSeedance2480VideoFileId : undefined;
     const referenceVideoMime = seedance25 ? activeDraft.floraSeedance25480VideoMime
       : seedance ? activeDraft.floraSeedance2480VideoMime : undefined;
+    const referenceAudios = seedance ? activeDraft.seedanceAudioDraft?.refs ?? [] : [];
     const dbUserId = activeDraft.dbUserId;
     setSession(userId, clearedDraft);
 
@@ -8742,7 +8750,7 @@ bot.on('text', async (ctx) => {
     );
     runFlora480Video(
       ctx.chat.id, userId, dbUserId, statusMsg.message_id, modelKey, imageUrl ?? '', prompt, ratio, durationSeconds,
-      referenceVideoFileId, referenceVideoMime,
+      referenceVideoFileId, referenceVideoMime, referenceAudios,
     )
       .catch(() => console.error(`[${userId}] ${displayLabel} generation failed; provider details withheld`));
     return;
@@ -12473,6 +12481,7 @@ async function runFlora480Video(
   durationSeconds: number,
   referenceVideoFileId?: string,
   referenceVideoMime?: string,
+  referenceAudios: Seedance25Media[] = [],
 ): Promise<void> {
   const config = FLORA_480_VIDEO_MODELS[modelKey];
   const LABEL = config.label;
@@ -12490,6 +12499,8 @@ async function runFlora480Video(
 
   let refund = true;
   try {
+    if (referenceAudios.length && modelKey !== 'seedance_2_480') throw Error('FLORA_AUDIO_REFERENCE_UNSUPPORTED');
+    const audios = referenceAudios.length ? await loadSeedanceReferenceAudios(referenceAudios, downloadTelegramFileBuffer) : [];
     const videoOnly = modelKey === 'seedance_2_480' && Boolean(referenceVideoFileId) && !imageUrl;
     const image = videoOnly ? undefined : await downloadBuffer(imageUrl);
     const referenceVideo = referenceVideoFileId
@@ -12515,7 +12526,7 @@ async function runFlora480Video(
           let modelContract: ReturnType<typeof resolveFlora480VideoModelContract>;
           try {
             modelContract = resolveFlora480VideoModelContract(
-              modelKey, modelsRes.data, durationSeconds, Boolean(referenceVideo), Boolean(image)
+              modelKey, modelsRes.data, durationSeconds, Boolean(referenceVideo), Boolean(image), audios.length
             );
           } catch (catalogError: any) {
             const code = String(catalogError?.message ?? '');
@@ -12556,6 +12567,13 @@ async function runFlora480Video(
               referenceVideoMime ?? referenceVideo.mime ?? 'video/mp4',
             )
             : undefined;
+          const uploadedAudioUrls: string[] = [];
+          if (audios.length && !modelContract.audioReferenceParam) throw Error('FLORA_MODEL_UNSUPPORTED_PARAMETERS');
+          for (const audio of audios) {
+            uploadedAudioUrls.push(await floraUploadAsset(
+              apiKey, ws.workspaceId, audio.buffer, audio.name ?? 'reference.mp3', audio.mime ?? 'audio/mpeg',
+            ));
+          }
           const params = buildFlora480VideoParams(
             modelKey,
             uploadedImageUrl,
@@ -12566,6 +12584,10 @@ async function runFlora480Video(
                   url: uploadedVideoUrl, parameter: modelContract.videoReferenceParam,
                   imageParameter: modelContract.imageReferenceParam,
                 }
+              : undefined,
+            uploadedAudioUrls.length && modelContract.audioReferenceParam
+              ? { urls: uploadedAudioUrls, parameter: modelContract.audioReferenceParam,
+                  imageParameter: modelContract.imageReferenceParam }
               : undefined,
           );
           await bot.telegram.editMessageText(

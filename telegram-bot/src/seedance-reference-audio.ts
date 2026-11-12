@@ -18,7 +18,8 @@ export function seedanceAudioMime(file: { mime_type?: string; file_name?: string
 type AudioSession = { mode: string; picsartI2vModel?: string; seedanceAudioDraft?: SeedanceAudioDraft };
 
 export function supportsSeedance2Audio(session: AudioSession): boolean {
-  return (['picsart_i2v_wait_image', 'picsart_i2v_wait_prompt'].includes(session.mode)
+  return ['flora_seedance_2_480_wait_image', 'flora_seedance_2_480_wait_prompt'].includes(session.mode)
+    || (['picsart_i2v_wait_image', 'picsart_i2v_wait_prompt'].includes(session.mode)
     && ['seedance_2', 'seedance_2_fast', 'seedance_2_mini'].includes(session.picsartI2vModel ?? ''))
     || /^seedance_(?:mini|fast|2)_edit_wait_(?:image|prompt)$/.test(session.mode);
 }

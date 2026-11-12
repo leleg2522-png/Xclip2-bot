@@ -116,6 +116,11 @@ export type Flora480VideoReference = {
   parameter: Flora480VideoReferenceParam;
   imageParameter?: Flora480VideoReferenceParam;
 };
+export type Flora480AudioReference = {
+  urls: string[];
+  parameter: Flora480VideoReferenceParam;
+  imageParameter?: Flora480VideoReferenceParam;
+};
 
 /**
  * Resolve the account's live endpoint rather than deriving an ID from its name.
@@ -127,7 +132,8 @@ export function resolveFlora480VideoModelContract(
   durationSeconds?: number,
   includeVideoReference = false,
   includeImageReference = key !== 'seedance_2_480' || !includeVideoReference,
-): { modelId: string; videoReferenceParam?: Flora480VideoReferenceParam; imageReferenceParam?: Flora480VideoReferenceParam } {
+  audioReferenceCount = 0,
+): { modelId: string; videoReferenceParam?: Flora480VideoReferenceParam; imageReferenceParam?: Flora480VideoReferenceParam; audioReferenceParam?: Flora480VideoReferenceParam } {
   const config = FLORA_480_VIDEO_MODELS[key];
   const seedance2Video = key === 'seedance_2_480' && includeVideoReference;
   const combined = seedance2Video && includeImageReference;
@@ -135,6 +141,38 @@ export function resolveFlora480VideoModelContract(
   const allowedDurations = config.durationOptionsSeconds ?? (config.durationSeconds ? [config.durationSeconds] : []);
   if (selectedDuration == null || !allowedDurations.includes(selectedDuration)) {
     throw new Error('FLORA_INVALID_DURATION');
+  }
+  if (audioReferenceCount) {
+    if (key !== 'seedance_2_480' || !Number.isInteger(audioReferenceCount)
+      || audioReferenceCount < 1 || audioReferenceCount > 3 || (!includeImageReference && !includeVideoReference)) {
+      throw Error('FLORA_AUDIO_REFERENCE_UNSUPPORTED');
+    }
+    const capabilities = includeImageReference && includeVideoReference ? ['mixed-to-video']
+      : includeImageReference ? ['audio-image-to-video', 'mixed-to-video']
+        : ['audio-video-to-video', 'mixed-to-video'];
+    for (const row of catalogRows(rawModels)) {
+      const name = String(row.name ?? row.display_name ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (!['seedance20', 'seedance20reference'].includes(name) || row.type !== 'video'
+        || !row.model_id?.trim() || !Array.isArray(row.params)
+        || !row.capabilities?.some(capability => capabilities.includes(capability))) continue;
+      const audio = mediaReferenceParam(row.params, ['audio_urls', 'reference_audio_urls', 'audio_url', 'reference_audio_url']);
+      const image = includeImageReference ? mediaReferenceParam(row.params, ['image_urls', 'image_url']) : undefined;
+      const video = includeVideoReference ? mediaReferenceParam(row.params, VIDEO_REFERENCE_PARAM_NAMES) : undefined;
+      if (!audio || (audioReferenceCount > 1 && audio.type === 'string')
+        || (includeImageReference && !image) || (includeVideoReference && !video)) continue;
+      const expected = buildFlora480VideoParams(key, image ? 'https://example.test/image.jpg' : '', '9:16',
+        selectedDuration, video ? { url: 'https://example.test/video.mp4', parameter: video, imageParameter: image } : undefined,
+        { urls: Array(audioReferenceCount).fill('https://example.test/audio.mp3'), parameter: audio, imageParameter: image });
+      const params = new Map(row.params.map(param => [param.name, param]));
+      if (row.params.some(param => param.required && param.default == null && !(param.name! in expected))
+        || !supportsOption(params.get('duration'), String(selectedDuration))
+        || !supportsOption(params.get('resolution'), config.resolution)
+        || !supportsOption(params.get('aspect_ratio'), '9:16')
+        || !supportsOption(params.get('aspect_ratio'), '16:9')) continue;
+      return { modelId: row.model_id, audioReferenceParam: audio,
+        ...(image ? { imageReferenceParam: image } : {}), ...(video ? { videoReferenceParam: video } : {}) };
+    }
+    throw Error('FLORA_MODEL_UNSUPPORTED_PARAMETERS');
   }
   const candidates = catalogRows(rawModels).filter((row) => {
     const name = String(row?.name ?? row?.display_name ?? '')
@@ -200,6 +238,7 @@ export function buildFlora480VideoParams(
   ratio: Flora480AspectRatio,
   durationSeconds?: number,
   videoReference?: Flora480VideoReference,
+  audioReference?: Flora480AudioReference,
 ): Record<string, unknown> {
   const videoOnly = key === 'seedance_2_480' && Boolean(videoReference);
   if (!videoOnly && !imageUrl.trim()) throw new Error('FLORA_REFERENCE_IMAGE_REQUIRED');
@@ -209,6 +248,23 @@ export function buildFlora480VideoParams(
   const allowedDurations = config.durationOptionsSeconds ?? (config.durationSeconds ? [config.durationSeconds] : []);
   if (selectedDuration == null || !allowedDurations.includes(selectedDuration)) {
     throw new Error('FLORA_INVALID_DURATION');
+  }
+  if (audioReference) {
+    if (key !== 'seedance_2_480' || !audioReference.urls.length || audioReference.urls.length > 3
+      || (audioReference.parameter.type === 'string' && audioReference.urls.length > 1)
+      || audioReference.urls.some(url => {
+        try { const parsed = new URL(url); return parsed.protocol !== 'https:' || !!parsed.username || !!parsed.password; }
+        catch { return true; }
+      })) throw Error('FLORA_AUDIO_REFERENCE_UNSUPPORTED');
+    const imageParam = audioReference.imageParameter ?? videoReference?.imageParameter;
+    if (imageUrl.trim() && !imageParam) throw Error('FLORA_MODEL_UNSUPPORTED_PARAMETERS');
+    return {
+      ...(imageUrl.trim() && imageParam ? { [imageParam.name]: imageParam.type === 'string' ? imageUrl : [imageUrl] } : {}),
+      ...(videoReference ? { [videoReference.parameter.name]: videoReference.parameter.type === 'string'
+        ? videoReference.url : [videoReference.url] } : {}),
+      [audioReference.parameter.name]: audioReference.parameter.type === 'string' ? audioReference.urls[0] : audioReference.urls,
+      duration: String(selectedDuration), resolution: config.resolution, aspect_ratio: ratio,
+    };
   }
   if (key === 'seedance_2_480') {
     if (videoReference) {
