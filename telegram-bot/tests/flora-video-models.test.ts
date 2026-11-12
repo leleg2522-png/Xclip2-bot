@@ -180,4 +180,47 @@ assert.throws(() => buildFlora480VideoParams('seedance_2_480', '', '9:16', 15, {
   url: '', parameter: videoParam,
 }), /REFERENCE_VIDEO_REQUIRED/);
 
+// Real live-catalog shape: video/mixed endpoints are named "Seedance 2.0 Reference".
+const ordinary = fixture('seedance_2_480', 'ordinary-photo');
+const referenceParams = [
+  ...ordinary.params.filter(p => p.name !== 'image_url'),
+  { name: 'image_urls', type: 'string[]', default: [] },
+  { name: 'video_urls', type: 'string[]', default: [] },
+  { name: 'audio_urls', type: 'string[]', default: [] },
+];
+const videoEndpoint = {
+  ...ordinary, name: 'Seedance 2.0 Reference', model_id: 'account-video-id',
+  capabilities: ['video-to-video'], params: referenceParams,
+};
+const mixedEndpoint = {
+  ...videoEndpoint, model_id: 'account-mixed-id', capabilities: ['mixed-to-video'],
+};
+const liveShape = [ordinary, videoEndpoint, mixedEndpoint];
+const mixed = resolveFlora480VideoModelContract('seedance_2_480', liveShape, 15, true, true);
+assert.equal(mixed.modelId, 'account-mixed-id');
+assert.deepEqual(mixed.imageReferenceParam, { name: 'image_urls', type: 'string[]' });
+assert.deepEqual(mixed.videoReferenceParam, videoParam);
+assert.equal(resolveFlora480VideoModelContract('seedance_2_480', liveShape, 15, true, false).modelId, 'account-video-id');
+assert.equal(resolveFlora480VideoModel('seedance_2_480', liveShape), 'ordinary-photo');
+assert.deepEqual(buildFlora480VideoParams('seedance_2_480', imageUrl, '9:16', 15, {
+  url: videoUrl, parameter: mixed.videoReferenceParam!, imageParameter: mixed.imageReferenceParam,
+}), {
+  image_urls: [imageUrl], video_urls: [videoUrl], duration: '15', resolution: '480p', aspect_ratio: '9:16',
+});
+assert.throws(() => buildFlora480VideoParams('seedance_2_480', imageUrl, '9:16', 15, {
+  url: videoUrl, parameter: videoParam,
+}), /UNSUPPORTED_PARAMETERS/, 'never silently discard a provided photo');
+assert.throws(() => resolveFlora480VideoModelContract('seedance_2_480', [ordinary, videoEndpoint], 15, true, true), /MODEL_UNAVAILABLE/);
+assert.throws(() => resolveFlora480VideoModelContract('seedance_2_480', [{
+  ...mixedEndpoint, params: referenceParams.filter(p => p.name !== 'image_urls'),
+}], 15, true, true), /UNSUPPORTED_PARAMETERS/);
+assert.throws(() => resolveFlora480VideoModelContract('seedance_2_480', [{
+  ...mixedEndpoint, params: referenceParams.filter(p => p.name !== 'video_urls'),
+}], 15, true, true), /UNSUPPORTED_PARAMETERS/);
+for (const name of ['Seedance 2.0 Reference (Fast)', 'Seedance 2.0 (US)', 'Seedance 2.5']) {
+  assert.throws(() => resolveFlora480VideoModelContract('seedance_2_480', [{
+    ...mixedEndpoint, name,
+  }], 15, true, true), /MODEL_UNAVAILABLE/, 'do not substitute another model variant');
+}
+
 console.log('Flora native 480p model catalog and payload checks passed.');

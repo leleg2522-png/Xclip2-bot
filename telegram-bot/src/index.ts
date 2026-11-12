@@ -4887,7 +4887,7 @@ bot.on('callback_query', async (ctx) => {
     });
     return ctx.editMessageText(
       `🎬 *Seedance 2 Uncensored • 15 detik • 1080p*\n\n` +
-      `Foto atau Video to Video · *15 detik* · *1080p*\n` +
+      `Foto / Video / Foto + Video · *15 detik* · *1080p*\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.flora_seedance_2_480)}* per video\n\n` +
       '*Langkah 1:* Pilih rasio video:',
       { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
@@ -4916,9 +4916,32 @@ bot.on('callback_query', async (ctx) => {
     });
     return ctx.editMessageText(
       `🎬 *Seedance 2 Uncensored • 15 detik • 1080p*\n\nRasio: *${ratio}* · 15 detik · 1080p\n\n` +
-      '*Langkah 2:* Kirim *foto acuan atau 1 video MP4* (maksimal 19MB), lalu kirim prompt. Video input memakai mode Video to Video jika tersedia.',
+      '*Langkah 2:* Kirim *foto acuan atau 1 video MP4* (maksimal 19MB). Bisa kirim *foto + video* untuk digabung, lalu kirim prompt.',
       { parse_mode: 'Markdown' }
     );
+  }
+
+  if (data.startsWith('flora480_seedance_addvideo_') || data.startsWith('flora480_seedance_skipvideo_')) {
+    const draft = getSession(userId);
+    const add = data.startsWith('flora480_seedance_addvideo_');
+    const expected = `${add ? 'flora480_seedance_addvideo_' : 'flora480_seedance_skipvideo_'}${draft.floraSeedance2480DraftId}`;
+    if (!draft.floraSeedance2480DraftId || data !== expected || !draft.floraSeedance2480ImageUrl
+      || (add && Boolean(draft.floraSeedance2480VideoFileId))
+      || draft.mode !== (add ? 'flora_seedance_2_480_wait_prompt' : 'flora_seedance_2_480_wait_image')) {
+      return ctx.reply('⚠️ Pilihan referensi sudah tidak aktif. Mulai lagi dari /menu.');
+    }
+    if (draft.floraSeedance2480VideoPending) return ctx.reply('Video masih diperiksa. Tunggu sebentar.');
+    if (add) {
+      setSession(userId, { mode: 'flora_seedance_2_480_wait_image' });
+      return ctx.editMessageText('📹 Foto acuan tersimpan. Kirim 1 video MP4 maksimal 19MB untuk digabung dengan foto, atau lanjut tanpa video.', {
+        ...Markup.inlineKeyboard([[Markup.button.callback('Lanjut tanpa video', `flora480_seedance_skipvideo_${draft.floraSeedance2480DraftId}`)]]),
+      });
+    }
+    setSession(userId, {
+      mode: 'flora_seedance_2_480_wait_prompt',
+      floraSeedance2480VideoFileId: undefined, floraSeedance2480VideoMime: undefined,
+    });
+    return ctx.editMessageText('✅ Lanjut dengan foto acuan. Kirim prompt teks untuk video kamu.');
   }
 
   if (data === 'mode_flora_seedance_2_5_480') {
@@ -6847,7 +6870,8 @@ async function handleFloraSeedance2VideoInput(
 ) {
   const userId = ctx.from.id;
   const draft = getSession(userId);
-  if (draft.mode !== 'flora_seedance_2_480_wait_image' || !draft.floraSeedance2480DraftId) return;
+  if (!['flora_seedance_2_480_wait_image', 'flora_seedance_2_480_wait_prompt'].includes(draft.mode)
+    || !draft.floraSeedance2480DraftId) return;
   if (draft.floraSeedance2480VideoPending) return ctx.reply('Video sebelumnya masih diperiksa. Tunggu sebentar.');
   if (file.file_size && file.file_size > SEEDANCE25_MAX_MEDIA_BYTES) {
     return ctx.reply('Video input maksimal 19MB. Kompres video atau kirim file lebih kecil.');
@@ -6867,21 +6891,25 @@ async function handleFloraSeedance2VideoInput(
     if (!bytes.length || bytes.length > SEEDANCE25_MAX_MEDIA_BYTES) throw Error('INVALID_VIDEO');
     const facts = await inspectFloraUpscaleVideo(bytes);
     const current = getSession(userId);
-    if (current.mode !== 'flora_seedance_2_480_wait_image' || current.floraSeedance2480DraftId !== draftId) return;
+    if (!['flora_seedance_2_480_wait_image', 'flora_seedance_2_480_wait_prompt'].includes(current.mode)
+      || current.floraSeedance2480DraftId !== draftId) return;
     setSession(userId, {
       mode: 'flora_seedance_2_480_wait_prompt',
-      floraSeedance2480ImageUrl: undefined,
       floraSeedance2480VideoFileId: file.file_id,
       floraSeedance2480VideoMime: 'video/mp4',
       floraSeedance2480VideoPending: false,
     });
     return ctx.reply(
-      `✅ Video input diterima (${facts.duration.toFixed(1)} detik).\n\nKirim prompt untuk mengarahkan perubahan video. ` +
+      `✅ Video input diterima (${facts.duration.toFixed(1)} detik). ` +
+      (current.floraSeedance2480ImageUrl
+        ? 'Foto + video siap digabung. Kirim prompt untuk mengarahkan hasil.\n\n'
+        : 'Kirim foto karakter jika ingin foto + video, atau kirim prompt untuk video saja.\n\n') +
       `Hasil 15 detik; harga tetap ${formatRupiah(MODEL_PRICES.flora_seedance_2_480)}. Ketersediaan mode video diperiksa sebelum generate.`,
     );
   } catch {
     const current = getSession(userId);
-    if (current.mode === 'flora_seedance_2_480_wait_image' && current.floraSeedance2480DraftId === draftId) {
+    if (['flora_seedance_2_480_wait_image', 'flora_seedance_2_480_wait_prompt'].includes(current.mode)
+      && current.floraSeedance2480DraftId === draftId) {
       return ctx.reply('Video tidak bisa dibaca. Kirim MP4 yang valid, maksimal 19MB, atau kirim foto acuan.');
     }
   } finally {
@@ -7421,18 +7449,23 @@ async function handleImageInput(ctx: any, fileUrl: string, fileId?: string) {
     return ctx.reply('Foto acuan diterima. Kirim prompt teks untuk video kamu.');
   }
 
-  if (session.mode === 'flora_seedance_2_480_wait_image') {
+  if (session.mode === 'flora_seedance_2_480_wait_image' || session.mode === 'flora_seedance_2_480_wait_prompt') {
     if (session.floraSeedance2480VideoPending) return ctx.reply('Video masih diperiksa. Tunggu sebentar.');
     setSession(userId, {
       floraSeedance2480ImageUrl: fileUrl,
-      floraSeedance2480VideoFileId: undefined,
-      floraSeedance2480VideoMime: undefined,
       mode: 'flora_seedance_2_480_wait_prompt',
     });
     return ctx.reply(
       `✅ Foto acuan diterima! (Rasio: ${session.floraSeedance2480Ratio ?? '9:16'})\n\n` +
-      '*Langkah terakhir:* Kirim *prompt teks* untuk video kamu.',
-      { parse_mode: 'Markdown' }
+      (session.floraSeedance2480VideoFileId
+        ? 'Foto + video siap digabung. Kirim *prompt teks* untuk mengarahkan hasil.'
+        : 'Kirim *prompt teks* untuk foto saja, atau tambahkan *1 video referensi MP4* untuk foto + video.'),
+      {
+        parse_mode: 'Markdown',
+        ...(!session.floraSeedance2480VideoFileId ? Markup.inlineKeyboard([[
+          Markup.button.callback('Tambah video referensi', `flora480_seedance_addvideo_${session.floraSeedance2480DraftId}`),
+        ]]) : {}),
+      }
     );
   }
 
@@ -7641,7 +7674,7 @@ bot.on('video', async (ctx) => {
   const vid = ctx.message.video;
   const MAX_VIDEO_BYTES = 19 * 1024 * 1024; // 19MB — Telegram bot API limit is 20MB
 
-  if (session.mode === 'flora_seedance_2_480_wait_image') {
+  if (session.mode === 'flora_seedance_2_480_wait_image' || session.mode === 'flora_seedance_2_480_wait_prompt') {
     return handleFloraSeedance2VideoInput(ctx, { ...vid, mime_type: vid.mime_type ?? 'video/mp4' });
   }
 
@@ -8504,6 +8537,7 @@ bot.on('text', async (ctx) => {
     const minimax = activeDraft.mode === 'flora_minimax_h3_480_wait_prompt';
     const seedance = activeDraft.mode === 'flora_seedance_2_480_wait_prompt';
     const seedance25 = activeDraft.mode === 'flora_seedance_2_5_480_wait_prompt';
+    if (seedance && activeDraft.floraSeedance2480VideoPending) return ctx.reply('Video masih diperiksa. Tunggu sebentar sebelum mengirim prompt.');
     if (!minimax && !seedance && !seedance25 && activeDraft.mode !== 'flora_wan_v3_480_wait_prompt') return;
     const clearedDraft: Partial<Session> = seedance25
       ? {
@@ -9175,7 +9209,7 @@ bot.on('document', async (ctx) => {
   const session = getSession(userId);
   const doc = ctx.message.document;
 
-  if (session.mode === 'flora_seedance_2_480_wait_image'
+  if ((session.mode === 'flora_seedance_2_480_wait_image' || session.mode === 'flora_seedance_2_480_wait_prompt')
     && (doc.mime_type?.startsWith('video/') || /\.mp4$/i.test(doc.file_name ?? ''))) {
     return handleFloraSeedance2VideoInput(ctx, doc);
   }
@@ -12458,7 +12492,7 @@ async function runFlora480Video(
 
   let refund = true;
   try {
-    const videoOnly = modelKey === 'seedance_2_480' && Boolean(referenceVideoFileId);
+    const videoOnly = modelKey === 'seedance_2_480' && Boolean(referenceVideoFileId) && !imageUrl;
     const image = videoOnly ? undefined : await downloadBuffer(imageUrl);
     const referenceVideo = referenceVideoFileId
       ? await downloadBuffer((await retryTelegramFileRead(
@@ -12483,7 +12517,7 @@ async function runFlora480Video(
           let modelContract: ReturnType<typeof resolveFlora480VideoModelContract>;
           try {
             modelContract = resolveFlora480VideoModelContract(
-              modelKey, modelsRes.data, durationSeconds, Boolean(referenceVideo)
+              modelKey, modelsRes.data, durationSeconds, Boolean(referenceVideo), Boolean(image)
             );
           } catch (catalogError: any) {
             const code = String(catalogError?.message ?? '');
@@ -12530,7 +12564,10 @@ async function runFlora480Video(
             ratio,
             durationSeconds,
             uploadedVideoUrl && modelContract.videoReferenceParam
-              ? { url: uploadedVideoUrl, parameter: modelContract.videoReferenceParam }
+              ? {
+                  url: uploadedVideoUrl, parameter: modelContract.videoReferenceParam,
+                  imageParameter: modelContract.imageReferenceParam,
+                }
               : undefined,
           );
           await bot.telegram.editMessageText(

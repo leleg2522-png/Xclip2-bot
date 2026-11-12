@@ -12,7 +12,7 @@ function fragment(start: string, end: string) {
 }
 const callbacks = fragment("  if (data === 'mode_flora_seedance_2_480')", "  if (data === 'mode_flora_minimax_h3_480'");
 const handler = fragment('async function handleFloraSeedance2VideoInput(', 'async function handleFloraSeedance25VideoReference(');
-const photo = fragment("  if (session.mode === 'flora_seedance_2_480_wait_image')", "  if (session.mode === 'flora_seedance_2_5_480_wait_image')");
+const photo = fragment("  if (session.mode === 'flora_seedance_2_480_wait_image'", "  if (session.mode === 'flora_seedance_2_5_480_wait_image')");
 const prompt = fragment("  if (\n    session.mode === 'flora_minimax_h3_480_wait_prompt'", '  // ── Runway Gen-4.5 prompt');
 const videoRoute = fragment("bot.on('video'", "bot.on('text'");
 const documentRoute = fragment("bot.on('document'", 'async function runKling21Pro(');
@@ -120,6 +120,79 @@ async function main() {
   assert.equal(invalid.state().mode, 'flora_seedance_2_480_wait_image');
   assert.equal(invalid.state().floraSeedance2480VideoPending, false);
   assert.match(invalid.messages.at(-1)!, /Video tidak bisa dibaca/);
+
+  for (const videoFirst of [false, true]) {
+    const combined = harness();
+    await start(combined);
+    if (videoFirst) {
+      await combined.video();
+      await combined.photo();
+    } else {
+      await combined.photo();
+      const draftId = combined.state().floraSeedance2480DraftId;
+      await combined.callback(`flora480_seedance_addvideo_${draftId}`);
+      assert.equal(combined.state().mode, 'flora_seedance_2_480_wait_image');
+      await combined.video();
+    }
+    assert.match(combined.messages.at(-1)!, /Foto \+ video siap digabung/);
+    await combined.callback(`flora480_seedance_addvideo_${combined.state().floraSeedance2480DraftId}`);
+    assert.equal(combined.state().mode, 'flora_seedance_2_480_wait_prompt', 'old add-video button must not reopen a completed upload');
+    assert.equal(combined.state().floraSeedance2480VideoFileId, 'clip');
+    await combined.prompt();
+    await combined.prompt();
+    assert.equal(combined.jobs.length, 1);
+    assert.equal(combined.jobs[0][5], 'https://example.test/photo.jpg');
+    assert.equal(combined.jobs[0][9], 'clip');
+    assert.equal(combined.state().floraSeedance2480VideoFileId, undefined);
+    assert.equal(combined.state().floraSeedance2480ImageUrl, undefined);
+    await start(combined);
+    await combined.video();
+    await combined.prompt();
+    assert.equal(combined.jobs[1][5], '', 'new draft must not reuse old character photo');
+  }
+  const direct = harness();
+  await start(direct);
+  await direct.photo();
+  await direct.video();
+  await direct.prompt();
+  assert.equal(direct.jobs[0][5], 'https://example.test/photo.jpg');
+  assert.equal(direct.jobs[0][9], 'clip', 'direct video attachment after photo must work without pressing button');
+  const skip = harness();
+  await start(skip);
+  await skip.photo();
+  const skipId = skip.state().floraSeedance2480DraftId;
+  assert.ok(Buffer.byteLength(`flora480_seedance_skipvideo_${'x'.repeat(36)}`) <= 64);
+  await skip.callback(`flora480_seedance_addvideo_${skipId}`);
+  await skip.callback(`flora480_seedance_skipvideo_${skipId}`);
+  await skip.prompt();
+  assert.equal(skip.jobs.length, 1);
+  assert.equal(skip.jobs[0][9], undefined);
+  await start(skip);
+  await skip.photo();
+  await skip.callback(`flora480_seedance_addvideo_${skipId}`);
+  assert.equal(skip.state().mode, 'flora_seedance_2_480_wait_prompt', 'stale button must not reopen a new draft');
+  assert.match(skip.messages.at(-1)!, /sudah tidak aktif/);
+
+  const pendingMixed = harness();
+  await start(pendingMixed);
+  await pendingMixed.photo();
+  let finishInspection!: () => void, notifyInspection!: () => void;
+  const inspectionBegun = new Promise<void>(resolve => { notifyInspection = resolve; });
+  pendingMixed.onInspect(async () => {
+    notifyInspection();
+    await new Promise<void>(resolve => { finishInspection = resolve; });
+  });
+  const pendingVideo = pendingMixed.video();
+  await inspectionBegun;
+  await pendingMixed.prompt();
+  await pendingMixed.video();
+  assert.equal(pendingMixed.jobs.length, 0, 'prompt while video validates must not submit photo-only job');
+  assert.equal(pendingMixed.reads.length, 1);
+  finishInspection();
+  await pendingVideo;
+  await pendingMixed.prompt();
+  assert.equal(pendingMixed.jobs.length, 1);
+  assert.equal(pendingMixed.jobs[0][9], 'clip');
 
   const concurrent = harness();
   await start(concurrent);

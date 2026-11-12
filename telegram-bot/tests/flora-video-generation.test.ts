@@ -225,9 +225,10 @@ function harness(options: Options = {}) {
     durationSeconds = FLORA_480_VIDEO_MODELS[key].durationSeconds ?? 10,
     referenceVideoFileId?: string,
     referenceVideoMime?: string,
+    inputImageUrl = key === 'seedance_2_480' && referenceVideoFileId ? '' : 'https://example.test/reference.jpg',
   ) =>
     context.runFlora480Video(chatId, chatId, chatId, chatId * 10, key,
-      key === 'seedance_2_480' && referenceVideoFileId ? '' : 'https://example.test/reference.jpg', prompt, ratio, durationSeconds,
+      inputImageUrl, prompt, ratio, durationSeconds,
       referenceVideoFileId, referenceVideoMime) as Promise<void>;
   return { events, run };
 }
@@ -238,7 +239,7 @@ function httpError(status: number, message: string) {
 
 async function verifySeedanceWizard() {
   const callbacks = source.slice(source.indexOf("  if (data === 'mode_flora_seedance_2_480')"), source.indexOf("  if (data === 'mode_flora_minimax_h3_480'"));
-  const photo = source.slice(source.indexOf("  if (session.mode === 'flora_seedance_2_480_wait_image')"), source.indexOf("  if (session.mode === 'flora_minimax_h3_480_wait_image')"));
+  const photo = source.slice(source.indexOf("  if (session.mode === 'flora_seedance_2_480_wait_image'"), source.indexOf("  if (session.mode === 'flora_minimax_h3_480_wait_image')"));
   const prompt = source.slice(source.indexOf("  if (\n    session.mode === 'flora_minimax_h3_480_wait_prompt'"), source.indexOf('  // ── Runway Gen-4.5 prompt'));
   assert.ok(callbacks && photo && prompt);
   for (const ratio of ['9:16', '16:9'] as const) {
@@ -299,7 +300,7 @@ async function verifySeedanceWizard() {
 
 async function verifySeedance25Wizard() {
   const callbacks = source.slice(source.indexOf("  if (data === 'mode_flora_seedance_2_480')"), source.indexOf("  if (data === 'mode_flora_minimax_h3_480'"));
-  const photo = source.slice(source.indexOf("  if (session.mode === 'flora_seedance_2_480_wait_image')"), source.indexOf("  if (session.mode === 'flora_minimax_h3_480_wait_image')"));
+  const photo = source.slice(source.indexOf("  if (session.mode === 'flora_seedance_2_480_wait_image'"), source.indexOf("  if (session.mode === 'flora_minimax_h3_480_wait_image')"));
   const prompt = source.slice(source.indexOf("  if (\n    session.mode === 'flora_minimax_h3_480_wait_prompt'"), source.indexOf('  // ── Runway Gen-4.5 prompt'));
   const videoHandler = source.slice(
     source.indexOf('async function handleFloraSeedance25VideoReference('),
@@ -398,7 +399,7 @@ async function main() {
   await verifySeedance25Wizard();
   const videoCatalog = () => ({
     models: [...catalog().models, {
-      model_id: 'live-seedance-video', name: 'Seedance 2.0', type: 'video',
+      model_id: 'live-seedance-video', name: 'Seedance 2.0 Reference', type: 'video',
       capabilities: ['video-to-video'],
       params: [
         { name: 'video_urls', type: 'string[]', required: true },
@@ -441,6 +442,53 @@ async function main() {
     assert.equal(video.events.submissions.length, 1, `${failure}: never replay paid video input`);
     assert.deepEqual(video.events.refunds, [15000]);
     assert.deepEqual(video.events.releases, [9]);
+  }
+  const mixedCatalog = () => ({
+    models: [...videoCatalog().models, {
+      model_id: 'account-seedance-mixed', name: 'Seedance 2.0 Reference', type: 'video',
+      capabilities: ['mixed-to-video'],
+      params: [
+        { name: 'image_urls', type: 'string[]', required: false, default: [] },
+        { name: 'video_urls', type: 'string[]', required: false, default: [] },
+        { name: 'audio_urls', type: 'string[]', required: false, default: [] },
+        { name: 'duration', options: [{ value: '15' }] },
+        { name: 'resolution', options: [{ value: '480p' }] },
+        { name: 'aspect_ratio', options: [{ value: '9:16' }, { value: '16:9' }] },
+      ],
+    }],
+  });
+  for (const ratio of ['9:16', '16:9'] as const) {
+    const mixed = harness({ catalog: mixedCatalog });
+    await mixed.run('seedance_2_480', 9, 'character photo and motion video', ratio, 15, 'clip', 'video/mp4', 'https://example.test/character.jpg');
+    assert.equal(mixed.events.uploads.length, 1);
+    assert.equal(mixed.events.videoUploads.length, 1);
+    assert.equal(mixed.events.submissions.length, 1);
+    assert.equal(mixed.events.submissions[0].model, 'account-seedance-mixed');
+    assert.deepEqual(mixed.events.submissions[0].params, {
+      image_urls: ['https://provider.example.test/image.jpg'],
+      video_urls: ['https://provider.example.test/video-reference.mp4'],
+      duration: '15', resolution: '480p', aspect_ratio: ratio,
+    });
+    assert.deepEqual(mixed.events.charges, [15000]);
+    assert.deepEqual(mixed.events.refunds, []);
+    assert.deepEqual(mixed.events.order, ['poll', 'upscale', 'deliver']);
+  }
+  const wrongMixed = harness({ catalog: videoCatalog });
+  await wrongMixed.run('seedance_2_480', 9, 'cannot discard photo', '9:16', 15, 'clip', 'video/mp4', 'https://example.test/character.jpg');
+  assert.equal(wrongMixed.events.submissions.length, 0);
+  assert.equal(wrongMixed.events.uploads.length, 0, 'reject incompatible mixed schema before uploading');
+  assert.deepEqual(wrongMixed.events.refunds, [15000]);
+  for (const failure of ['accepted-poll', 'ambiguous-submit', 'delivery'] as const) {
+    const mixed = harness({
+      catalog: mixedCatalog,
+      ...(failure === 'accepted-poll' ? { poll: () => { throw httpError(403, 'Forbidden'); } } : {}),
+      ...(failure === 'ambiguous-submit' ? { submit: () => { throw new Error('network timeout'); } } : {}),
+      ...(failure === 'delivery' ? { deliver: false } : {}),
+    });
+    await mixed.run('seedance_2_480', 9, failure, '9:16', 15, 'clip', 'video/mp4', 'https://example.test/character.jpg');
+    assert.equal(mixed.events.submissions.length, 1, `${failure}: never repeat accepted mixed job`);
+    assert.deepEqual(mixed.events.refunds, [15000]);
+    assert.deepEqual(mixed.events.releases, [9]);
   }
   for (const model of ['wan_v3_480', 'minimax_h3_480', 'seedance_2_480', 'seedance_2_5_480'] as const) {
     for (const code of ['FLORA_NO_PROJECT', 'FLORA_NO_WORKSPACE']) {
