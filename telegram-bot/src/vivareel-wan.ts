@@ -17,7 +17,7 @@ export function wanRequest(prompt: string, ratio: WanRatio, urls: string[] = [])
   if (urls.some(url => !url.startsWith('https://'))) throw Error('WAN_INVALID_IMAGE_URL');
   return {
     model: VIVAREEL_WAN_MODEL, motion_instruction: prompt, aspect_ratio: ratio,
-    duration_seconds: 30, resolution: '720P', audio: true,
+    duration_seconds: 30, resolution: '480P', audio: true,
     prompt_extend: false, smart_duration: false, watermark: false,
     ...(urls.length === 1 ? { capability: 'first_frame', image_url: urls[0] }
       : urls.length > 1 ? { capability: 'image_reference', reference_urls: urls } : {}),
@@ -107,7 +107,7 @@ export class VivareelWanClient {
     const model = catalog.video_models?.find((m: any) => m.name === VIVAREEL_WAN_MODEL);
     const capability = images.length === 1 ? 'first_frame' : images.length > 1 ? 'image_reference' : 'text_to_video';
     const maxDuration = model?.max_duration_seconds?.[capability];
-    if (!model?.is_available || !model.allowed_resolutions?.includes('720P')
+    if (!model?.is_available || !model.allowed_resolutions?.includes('480P')
       || !model.capabilities?.includes(capability) || !Number.isFinite(maxDuration) || maxDuration < 30
       || (images.length > 1 && !(model.max_reference_images >= images.length))) {
       throw Error('VIVAREEL_MODEL_UNAVAILABLE');

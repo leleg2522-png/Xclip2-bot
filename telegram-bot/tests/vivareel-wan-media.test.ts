@@ -9,7 +9,7 @@ async function main() {
   const dir = mkdtempSync(join(tmpdir(), 'wan-media-test-'));
   try {
     for (const ratio of ['9:16', '16:9'] as const) {
-      const [width, height] = ratio === '9:16' ? [720, 1280] : [1280, 720];
+      const [width, height] = ratio === '9:16' ? [480, 854] : [854, 480];
       const input = join(dir, `input-${width}.mp4`), output = join(dir, `output-${width}.mp4`);
       execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', `color=c=blue:s=${width}x${height}:r=2:d=30`,
         '-f', 'lavfi', '-i', 'sine=frequency=440:duration=30', '-threads', '2',
@@ -30,7 +30,7 @@ async function main() {
     }
     await assert.rejects(cropWanBuffer(Buffer.from('not-video'), '9:16'));
     await assert.rejects(cropWanBuffer(Buffer.alloc(0), '9:16'), /OUTPUT_TOO_LARGE/);
-    console.log('Vivareel media tests passed: both 720p ratios, crop, duration, frame rate, unchanged audio and invalid media.');
+    console.log('Vivareel media tests passed: both 480p ratios, crop, duration, frame rate, unchanged audio and invalid media.');
   } finally {
     rmSync(dir, { force: true, recursive: true });
   }

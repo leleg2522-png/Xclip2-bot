@@ -32,7 +32,7 @@ async function audioHash(path: string) {
     '-f', 'hash', '-hash', 'sha256', '-'], { timeout: 60000 });
   return stdout.trim();
 }
-export async function cropWanBuffer(buffer: Buffer, ratio: WanRatio, require720 = true): Promise<Buffer> {
+export async function cropWanBuffer(buffer: Buffer, ratio: WanRatio): Promise<Buffer> {
   if (!buffer.length || buffer.length > MAX_BYTES) throw Error('WAN_OUTPUT_TOO_LARGE');
   const dir = await mkdtemp(join(tmpdir(), 'wan-crop-'));
   try {
@@ -42,7 +42,7 @@ export async function cropWanBuffer(buffer: Buffer, ratio: WanRatio, require720 
     const video = before.streams?.find((s: any) => s.codec_type === 'video');
     const duration = Number(before.format?.duration);
     if (!video || !Number.isFinite(duration) || Math.abs(duration - 30) > 0.5
-      || (require720 && Math.min(video.width, video.height) !== 720)) {
+      || Math.min(video.width, video.height) !== 480) {
       throw Error('WAN_OUTPUT_SETTINGS_MISMATCH');
     }
     const crop = wanCropPlan(video.width, video.height, ratio);

@@ -2326,8 +2326,8 @@ export const PICSART_I2V_MODELS: Record<PicsartI2vModelKey, PicsartI2vModelConfi
     pollAttempts: 180,
   },
   wan_v3: {
-    label: 'Wan 3.0 720p',
-    settingsLabel: '30 detik · 720p · crop otomatis',
+    label: 'Wan 3.0 1080p',
+    settingsLabel: '30 detik · 1080p · crop otomatis',
     workflowPath: 'wan/v3/video',
     pool: 'p500',
     pollAttempts: 240,

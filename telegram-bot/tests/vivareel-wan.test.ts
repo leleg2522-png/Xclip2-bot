@@ -8,14 +8,14 @@ import { wanCropPlan } from '../src/vivareel-wan-media';
 const json = (data: unknown, status = 200) => new Response(JSON.stringify({ code: 200, data }), { status });
 const catalog = { video_models: [{ name: VIVAREEL_WAN_MODEL, is_available: true,
   max_reference_images: 5,
-  allowed_resolutions: ['720P'], capabilities: ['text_to_video', 'first_frame', 'image_reference'],
+  allowed_resolutions: ['480P'], capabilities: ['text_to_video', 'first_frame', 'image_reference'],
   max_duration_seconds: { text_to_video: 30, first_frame: 30, image_reference: 30 } }] };
 async function main() {
   for (const ratio of ['9:16', '16:9'] as const) {
     for (const count of [0, 1, 5]) {
       const body = wanRequest('duel', ratio, Array.from({ length: count }, (_, i) => `https://cdn.example/${i}.jpg`));
       assert.equal(body.duration_seconds, 30);
-      assert.equal(body.resolution, '720P');
+      assert.equal(body.resolution, '480P');
       assert.equal(body.aspect_ratio, ratio);
       assert.equal(body.audio, true);
       assert.equal(body.watermark, false);
@@ -28,8 +28,8 @@ async function main() {
   assert.throws(() => wanRequest('test', '9:16', ['http://example.com/image']));
   assert.throws(() => wanRequest('test', '9:16', Array(6).fill('https://cdn.example/image')));
   assert.throws(() => new VivareelWanClient(''));
-  assert.deepEqual(wanCropPlan(720, 1280, '9:16'), { width: 648, height: 1152, x: 36, y: 0 });
-  assert.deepEqual(wanCropPlan(1280, 720, '16:9'), { width: 1088, height: 612, x: 0, y: 0 });
+  assert.deepEqual(wanCropPlan(480, 854, '9:16'), { width: 432, height: 768, x: 24, y: 0 });
+  assert.deepEqual(wanCropPlan(854, 480, '16:9'), { width: 736, height: 414, x: 0, y: 0 });
   assert.throws(() => wanCropPlan(720, 720, '9:16'));
 
   const image = { buffer: Buffer.from('reference'), mime: 'image/jpeg', name: 'reference.jpg' };
@@ -61,7 +61,7 @@ async function main() {
   assert.equal(calls.filter(c => c.path.endsWith('/videos/generations')).length, 1);
   const body = calls.find(c => c.path.endsWith('/videos/generations'))!.body;
   assert.equal(body.capability, 'first_frame');
-  assert.equal(body.resolution, '720P');
+  assert.equal(body.resolution, '480P');
   assert.equal(body.aspect_ratio, '16:9');
 
   for (const failure of ['timeout', '401', '429', 'invalid', 'missing-id']) {
@@ -95,13 +95,14 @@ async function main() {
   const compiled = ts.transpileModule(source.slice(start, end), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
   }).outputText;
-  for (const mode of ['success', 'provider-failure', 'crop-failure', 'delivery-failure', 'charge-rejected', 'other-model']) {
+  for (const mode of ['success', 'provider-failure', 'crop-failure', 'host-failure', 'upscale-failure',
+    'upscale-native', 'delivery-failure', 'charge-rejected', 'other-model']) {
     const events: string[] = [], refunds: number[] = [];
     const context: any = {
       console: { log() {}, warn() {}, error() {} },
       Buffer, Date, Error, Math,
       picsart: {
-        PICSART_I2V_MODELS: { wan_v3: { label: 'Wan 3.0', settingsLabel: '30 detik · 720p · crop otomatis' },
+        PICSART_I2V_MODELS: { wan_v3: { label: 'Wan 3.0 1080p', settingsLabel: '30 detik · 1080p · crop otomatis' },
           pixverse_v6: { label: 'PixVerse', settingsLabel: '15 detik' } },
         PICSART_I2V_MAX_IMAGES: 5,
         generatePicsartI2v: async () => { events.push('picsart'); return { url: 'https://cdn.example/other.mp4' }; },
@@ -123,9 +124,27 @@ async function main() {
         if (mode === 'crop-failure') throw Error('WAN_CROP_VALIDATION_FAILED');
         return Buffer.from('cropped-output');
       },
+      publishMedia: async (bytes: Buffer, video: boolean) => {
+        events.push('publish');
+        assert.equal(bytes.toString(), 'cropped-output');
+        assert.equal(video, true);
+        if (mode === 'host-failure') throw Error('HOST_FAILED');
+        return 'https://our-bot.example/cropped.mp4';
+      },
+      upscaleGeneratedVideo: async (url: string) => {
+        events.push('upscale');
+        assert.equal(url, 'https://our-bot.example/cropped.mp4');
+        if (mode === 'upscale-failure') throw Error('RENDERFUL_FAILED');
+        return mode === 'upscale-native' ? { url, upscaled: false }
+          : { url: 'https://our-bot.example/1080p.mp4', upscaled: true };
+      },
       sendResult: async (...args: any[]) => {
         events.push('send');
-        if (mode !== 'other-model') assert.equal(args[5].toString(), 'cropped-output');
+        if (mode !== 'other-model') {
+          assert.equal(args[1], 'https://our-bot.example/1080p.mp4');
+          assert.equal(args[5], undefined, 'Never send the low-resolution cropped buffer as the final output');
+          assert.match(args[2], /1080p/);
+        }
         return mode !== 'delivery-failure';
       },
       incrementKlingUsage: async () => { events.push('usage'); return 1; },
@@ -146,13 +165,18 @@ async function main() {
       assert.equal(events.at(-1), 'release');
       assert.equal(events.filter(e => e === 'vivareel').length, mode === 'other-model' ? 0 : 1);
       assert.equal(events.includes('picsart'), mode === 'other-model');
-      assert.deepEqual(refunds, ['provider-failure', 'crop-failure', 'delivery-failure'].includes(mode) ? [6000] : []);
-      if (mode === 'provider-failure' || mode === 'crop-failure') assert.ok(!events.includes('send'));
-      if (mode === 'success') assert.ok(events.includes('success'));
+      const failed = ['provider-failure', 'crop-failure', 'host-failure', 'upscale-failure', 'upscale-native', 'delivery-failure'];
+      assert.deepEqual(refunds, failed.includes(mode) ? [6000] : []);
+      if (failed.includes(mode) && mode !== 'delivery-failure') assert.ok(!events.includes('send'));
+      if (mode === 'success') assert.deepEqual(events,
+        ['vivareel', 'crop', 'publish', 'upscale', 'send', 'usage', 'success', 'release']);
+      if (mode === 'delivery-failure') assert.equal(events.filter(e => e === 'send').length, 1,
+        'Never fall back to native video after a 1080p delivery failure');
     }
   }
   assert.match(source, /picsart_wan_v3: 6000/);
-  assert.match(source, /true, false, preparedBuffer/);
+  assert.match(source, /wanHD && !finalVideo\.upscaled.*WAN_1080_FINISH_FAILED/);
+  assert.match(source, /!delivered && finalVideo\.upscaled && !kling4HD && !wanHD/);
   assert.match(readFileSync('src/picsart.ts', 'utf8'), /input\.model === 'wan_v3'.*WAN_V3_USES_VIVAREEL/);
   // Confirm the shared sender uses only processed bytes, including its link fallback.
   const senderStart = source.indexOf('async function sendResult(');
@@ -194,6 +218,6 @@ async function main() {
     assert.equal(delivered, strategy !== 'failed');
     assert.deepEqual(deliveries, strategy === 'failed' ? [] : [strategy]);
   }
-  console.log('Vivareel Wan tests passed: inputs, ratios, upload, single submit, polling, crop routing, refunds, other models.');
+  console.log('Vivareel Wan tests passed: 480p inputs, ratios, single submit, polling, crop→Renderful 1080p, full refunds, no native fallback, other models.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
