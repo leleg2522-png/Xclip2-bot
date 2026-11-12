@@ -1244,3 +1244,17 @@ mtime_ms = 1794447279072
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/e94faf51-4b27-4894-b155-1a475f512a13/8c9f028a-80b8-408f-a389-5439cd7c3d74"
 storage_version_token = "1794447314702798"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "fQor6ISLZWmsrXK64A9qc"
+uri = "file://generated-artifacts/vivareel-wan30-battle-test-20261112/vivareel-wan30-battle-cropped.mp4"
+type = "video"
+title = "Video pertempuran — tes crop tanpa logo VR"
+description = "Salinan hasil crop area kanan dan bawah, lalu dikembalikan ke 854×480. Logo VR tidak terlihat pada sampel awal, tengah, dan akhir; framing menjadi lebih dekat. Durasi tetap sekitar 30 detik, 30 fps, dan audio asli dipertahankan tanpa perubahan. File asli tidak ditimpa; tidak ada generate berbayar baru."
+logical_id = "5956ce21-4c4d-4d0e-87a1-bcf2f6e8ad0b"
+content_hash = "sha256:9159fe60e6318b310f4afc9448ff1a796b2269c3397a78bdb8e542665096798d"
+size = 12626682
+mtime_ms = 1794447635148
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/5956ce21-4c4d-4d0e-87a1-bcf2f6e8ad0b/da239cb9-8c32-444b-bd9c-00ba82da1dcb"
+storage_version_token = "1794447672910223"
+content_type = "video/mp4"
