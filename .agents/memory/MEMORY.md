@@ -46,3 +46,4 @@
 - [Video menu organization](video-menu-organization.md) — user prefers grouping by model family, not by use case; menu cleanup must preserve existing models and pricing.
 - [Workspace dependency recovery](workspace-dependency-recovery.md) — when a workspace package fetch is blocked, offline filtered installs may restore only the needed artifact dependency closure.
 - [Telegram bot TSX eval](telegram-bot-tsx-eval.md) — dynamic imports via `tsx -e` expose the bot's CommonJS exports under `.default`; verify before provider calls.
+- [ModelRunner video billing](modelrunner-video-billing.md) — requested whole-second duration is not an exact cost cap; use settled totalPrice and check billingStatus, not COMPLETED alone.
