@@ -1314,3 +1314,17 @@ mtime_ms = 1794473281136
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/e38b9dcf-dbc3-44c3-bf4b-385bad00fbfa/0324318e-676f-494d-bf5c-4c49f1db2914"
 storage_version_token = "1794473355412194"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "62-vbm2h533LTle8-gPyE"
+uri = "file://generated-artifacts/vivareel-video-reference-test/result-native.mp4"
+type = "video"
+title = "Hasil tes Wan 3.0 — video referensi"
+description = "Referensi video 3 detik → hasil sekitar 5 detik, 854×480, 30 fps, memiliki audio. Biaya aktual 15 poin. Hasil native masih berlogo VR; belum crop atau upscale Renderful."
+logical_id = "0d267e7f-d40b-4c6f-8232-fb4c98376d71"
+content_hash = "sha256:a27511a2d308abc327e0eedb5c98b657dbd8f3d7b036cbf9307cc96239c64fb1"
+size = 824364
+mtime_ms = 1794478564757
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/0d267e7f-d40b-4c6f-8232-fb4c98376d71/63096d95-8b68-47a7-8a55-3f06dd7c916a"
+storage_version_token = "1794478628391741"
+content_type = "video/mp4"

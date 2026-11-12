@@ -20,3 +20,9 @@ Check the delivered file for watermarks even when the request sets `watermark: f
 **Why:** The successful Wan 3.0 sample still displayed a small VR mark in its lower-right corner despite that requested setting.
 
 **How to apply:** Mention observed branding when delivering a test. Do not advertise watermark-free output based only on the request parameter.
+
+Wan 3.0 video-reference support is live-verified, not just a catalog claim.
+
+**Why:** A direct test using only a 3-second MP4 in `reference_video_urls`, with `capability: image_reference`, completed and delivered a roughly 5-second 854×480, 30 fps video with audio. The task billed 15 points despite a catalog estimate of 6 points/second; the VR watermark remained.
+
+**How to apply:** Distinguish upstream support from bot integration. Reference mode uses `reference_video_urls`, not first-frame fields. Vivareel documents a 15-second total reference-video limit and a combined reference-plus-output limit of 30 seconds, so the bot's fixed 30-second output cannot be reused unchanged when adding video references. A short native test does not verify cropping or Renderful finishing.
