@@ -12,6 +12,7 @@ const ALLOWED = new Set([
   "run.bat",
   "cio-dracin-menit-01.mp4",
   "cio-dracin-menit-02.mp4",
+  "posbot-i2v-test-7694481da421c076f156d18f8ff2bff1-character.jpg",
 ]);
 
 router.get("/download/:name", (req, res) => {
@@ -27,6 +28,8 @@ router.get("/download/:name", (req, res) => {
   }
   const type = name.endsWith(".mp4")
     ? "video/mp4"
+    : name.endsWith(".jpg")
+      ? "image/jpeg"
     : name.endsWith(".zip")
     ? "application/zip"
     : name.endsWith(".js")
