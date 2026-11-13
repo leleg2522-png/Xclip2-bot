@@ -60,7 +60,7 @@ export function buildPosbotSeedance25Request(input: {
   if (input.mode === 'i2v') {
     if (input.videoUrl || input.imageUrls.length < 1
       || input.imageUrls.length > POSBOT_SEEDANCE25_MAX_IMAGES_I2V) {
-      throw Error('Seedance 2.5 I2V membutuhkan 1–2 foto referensi.');
+      throw Error('Seedance 2.5 P3 I2V membutuhkan 1–2 foto referensi.');
     }
     return {
       model: 's2_seedance_25_30s',
@@ -76,7 +76,7 @@ export function buildPosbotSeedance25Request(input: {
 
   if (!input.videoUrl || !validPublicHttpsUrl(input.videoUrl)
     || input.imageUrls.length > POSBOT_SEEDANCE25_MAX_IMAGES_R2V) {
-    throw Error('Seedance 2.5 R2V membutuhkan 1 video dan maksimal 9 foto referensi.');
+    throw Error('Seedance 2.5 P3 R2V membutuhkan 1 video dan maksimal 9 foto referensi.');
   }
   return {
     model: 'seedance_25_30s_r2v',

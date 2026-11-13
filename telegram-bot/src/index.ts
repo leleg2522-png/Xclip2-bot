@@ -260,7 +260,7 @@ const MODEL_PRICES = {
   kling_p3: 4000,      // Kling MC V3.0 PRO P3 (Edanbot)
   kling_p2: 4000,      // Kling MC V3 PRO P2 (Edanbot)
   seedance25_p2: 7500, // Seedance 2.5 P2: Picsart P1 route with mandatory 1080p finishing.
-  posbot_seedance25: POSBOT_SEEDANCE25_PRICE, // PosBot Seedance 2.5 I2V and R2V, 30 seconds.
+  posbot_seedance25: POSBOT_SEEDANCE25_PRICE, // PosBot Seedance 2.5 P3 I2V and R2V, 30 seconds.
   kling_p4: 2500,      // Kling MC V3 Pro P4 (Alriz native)
   kling_v3_standard: 2500, // Kling MC V3 Pro P5 (Alriz native)
   heygen: 2500,
@@ -2789,8 +2789,8 @@ function videoModelRows() {
     [Markup.button.callback('🌊 Seedance 2.0 1080p', 'mode_pi2v_seedance_2')],
     [Markup.button.callback('🌊 Seedance 2.5 • Teks / Gambar / Video / Audio', 'mode_oneover_seedance25')],
     [Markup.button.callback(`Seedance 2.5 P2 · Gambar / Video / Audio · 30s · 1080p · ${formatRupiah(MODEL_PRICES.seedance25_p2)}`, 'mode_seedance25_p2')],
-    [Markup.button.callback(`Seedance 2.5 I2V · 30 detik · ${formatRupiah(MODEL_PRICES.posbot_seedance25)}`, 'mode_posbot_s25_i2v')],
-    [Markup.button.callback(`Seedance 2.5 R2V · 30 detik · ${formatRupiah(MODEL_PRICES.posbot_seedance25)}`, 'mode_posbot_s25_r2v')],
+    [Markup.button.callback(`Seedance 2.5 P3 · I2V · 30 detik · ${formatRupiah(MODEL_PRICES.posbot_seedance25)}`, 'mode_posbot_s25_i2v')],
+    [Markup.button.callback(`Seedance 2.5 P3 · R2V · 30 detik · ${formatRupiah(MODEL_PRICES.posbot_seedance25)}`, 'mode_posbot_s25_r2v')],
     [Markup.button.callback('🌌 Grok Imagine Video', 'mode_pi2v_grok_imagine')],
     [Markup.button.callback('🎬 Creatify Boreal • 20 detik • 1080p', 'mode_pi2v_creatify_boreal')],
     [Markup.button.callback('🎬 LTX 2.5 PRO • 10 detik • 1080p', 'mode_pi2v_ltx_pro')],
@@ -3403,8 +3403,8 @@ function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false 
     `• Seedance 2.0 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
     `• Seedance 2.5 Teks / Gambar / Video / Audio (30s, 1080p) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25)}\n` +
     `• Seedance 2.5 P2 Gambar / Video referensi (30s, 1080p melalui upscale) — ${formatRupiah(MODEL_PRICES.seedance25_p2)}\n` +
-    `• Seedance 2.5 I2V dari foto (30 detik) — ${formatRupiah(MODEL_PRICES.posbot_seedance25)}\n` +
-    `• Seedance 2.5 R2V dari video referensi (30 detik) — ${formatRupiah(MODEL_PRICES.posbot_seedance25)}\n` +
+    `• Seedance 2.5 P3 I2V dari foto (30 detik) — ${formatRupiah(MODEL_PRICES.posbot_seedance25)}\n` +
+    `• Seedance 2.5 P3 R2V dari video referensi (30 detik) — ${formatRupiah(MODEL_PRICES.posbot_seedance25)}\n` +
     `• Grok Imagine Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Creatify Boreal (20 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_creatify_boreal)}\n` +
     `• LTX 2.5 PRO (10 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_ltx_pro)}\n` +
@@ -10490,16 +10490,16 @@ async function runSeedance25Posbot(job: PosbotSeedance25Job) {
           ? `${Math.round(progress)}%` : 'sedang dibuat';
         void bot.telegram.editMessageText(
           chatId, statusMsgId, undefined,
-          `⏳ Seedance 2.5 ${mode.toUpperCase()} · ${detail}. Hasil dikirim otomatis.`,
+          `⏳ Seedance 2.5 P3 ${mode.toUpperCase()} · ${detail}. Hasil dikirim otomatis.`,
         ).catch(() => {});
       } },
     );
-    console.log(`[${userId}] PosBot Seedance 2.5 ${mode.toUpperCase()} accepted/completed job=${result.jobCode}`);
+    console.log(`[${userId}] PosBot Seedance 2.5 P3 ${mode.toUpperCase()} accepted/completed job=${result.jobCode}`);
     deliveryAttempted = true;
     const delivered = await sendResult(
       chatId,
       result.resultUrl,
-      `Seedance 2.5 ${mode.toUpperCase()} · 30 detik · ${ratio}\nRp8.000/video\n\n/menu untuk buat lagi`,
+      `Seedance 2.5 P3 ${mode.toUpperCase()} · 30 detik · ${ratio}\nRp8.000/video\n\n/menu untuk buat lagi`,
       true,
     );
     if (!delivered) throw Error('POSBOT_DELIVERY_FAILED');

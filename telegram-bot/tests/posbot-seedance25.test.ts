@@ -126,7 +126,7 @@ assert.match(missingVideoMessage, /video referensi/i);
 assert.equal(state.get(7).mode, 'posbot_s25_wait_media');
 await bot.message(fakeCtx({ video: { file_id: 'video1', file_size: 200 } }));
 assert.equal(state.get(7).posbotSeedance25Draft.refs[0].kind, 'video');
-console.log('PosBot Seedance 2.5 I2V/R2V contracts, single-submit safety, and Telegram wizard passed.');
+console.log('PosBot Seedance 2.5 P3 I2V/R2V contracts, single-submit safety, and Telegram wizard passed.');
 }
 
 void main().catch(error => {

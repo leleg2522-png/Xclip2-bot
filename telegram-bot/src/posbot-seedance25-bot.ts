@@ -42,7 +42,7 @@ export type PosbotSeedance25Job = {
 };
 
 const ratios: PosbotSeedance25Ratio[] = ['9:16', '16:9', '1:1'];
-const label = (mode: PosbotSeedance25Mode) => `Seedance 2.5 ${mode.toUpperCase()}`;
+const label = (mode: PosbotSeedance25Mode) => `Seedance 2.5 P3 ${mode.toUpperCase()}`;
 const mediaKeyboard = (id: string) => Markup.inlineKeyboard([
   [Markup.button.callback('Selesai input · Lanjut ke prompt', `pb25_done:${id}`)],
   [Markup.button.callback('Batal · Menu Utama', 'back_main')],
@@ -74,7 +74,7 @@ export function createPosbotSeedance25Bot(deps: {
     const selectedMode = data === 'mode_posbot_s25_i2v' ? 'i2v'
       : data === 'mode_posbot_s25_r2v' ? 'r2v' : undefined;
     if (selectedMode) {
-      if (!deps.available()) return ctx.reply('Seedance 2.5 sementara belum tersedia. Coba lagi nanti.');
+      if (!deps.available()) return ctx.reply('Seedance 2.5 P3 sementara belum tersedia. Coba lagi nanti.');
       const draft: PosbotSeedance25Draft = { id: randomUUID(), mode: selectedMode, refs: [], pending: [] };
       deps.setSession(userId, { mode: 'posbot_s25_wait_ratio', posbotSeedance25Draft: draft });
       return ctx.editMessageText(
@@ -114,7 +114,7 @@ export function createPosbotSeedance25Bot(deps: {
       const imageCount = draft.refs.filter(ref => ref.kind === 'image').length;
       const hasVideo = draft.refs.some(ref => ref.kind === 'video');
       if (draft.mode === 'i2v' && (imageCount < 1 || imageCount > POSBOT_SEEDANCE25_MAX_IMAGES_I2V)) {
-        return ctx.reply('Seedance 2.5 I2V membutuhkan 1–2 foto acuan.');
+        return ctx.reply('Seedance 2.5 P3 I2V membutuhkan 1–2 foto acuan.');
       }
       if (draft.mode === 'r2v' && !hasVideo) return ctx.reply('Kirim satu video referensi sebelum lanjut.');
       deps.setSession(userId, { mode: 'posbot_s25_wait_prompt', posbotSeedance25Draft: draft });
