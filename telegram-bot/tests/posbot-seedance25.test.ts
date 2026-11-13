@@ -88,7 +88,7 @@ const bot = createPosbotSeedance25Bot({
   getSession: id => state.get(id) ?? { mode: 'idle' },
   setSession: (id, patch) => state.set(id, { ...state.get(id), ...patch }),
   available: () => true,
-  price: () => 8000,
+  price: () => 7000,
   download: async () => Buffer.from('valid'),
   inspect: async (_bytes, kind) => kind === 'video'
     ? { duration: 8, width: 640, height: 480 } : { width: 800, height: 800 },

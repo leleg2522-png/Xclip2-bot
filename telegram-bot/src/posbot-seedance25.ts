@@ -1,4 +1,4 @@
-export const POSBOT_SEEDANCE25_PRICE = 8_000;
+export const POSBOT_SEEDANCE25_PRICE = 7_000;
 export const POSBOT_SEEDANCE25_API_BASE = 'https://api.posbot.web.id/api/v1';
 export const POSBOT_SEEDANCE25_MAX_PROMPT = 8_000;
 export const POSBOT_SEEDANCE25_MAX_IMAGES_I2V = 2;

@@ -10499,7 +10499,7 @@ async function runSeedance25Posbot(job: PosbotSeedance25Job) {
     const delivered = await sendResult(
       chatId,
       result.resultUrl,
-      `Seedance 2.5 P3 ${mode.toUpperCase()} · 30 detik · ${ratio}\nRp8.000/video\n\n/menu untuk buat lagi`,
+      `Seedance 2.5 P3 ${mode.toUpperCase()} · 30 detik · ${ratio}\nRp7.000/video\n\n/menu untuk buat lagi`,
       true,
     );
     if (!delivered) throw Error('POSBOT_DELIVERY_FAILED');
