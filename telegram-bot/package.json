@@ -46,6 +46,7 @@
     "test:oneover": "tsx tests/oneover-i2v.test.ts",
     "test:seedance25-picsart": "tsx tests/seedance25-picsart.test.ts && tsx tests/seedance25-media.test.ts && tsx tests/seedance25-prompt.test.ts",
     "test:seedance25-p2": "tsx tests/seedance25-edan.test.ts && tsx tests/seedance25-p2-diagnostic.test.ts",
+    "test:posbot-seedance25": "tsx tests/posbot-seedance25.test.ts",
     "test:microdrama": "tsx tests/microdrama-llm.test.ts && tsx tests/microdrama.test.ts",
     "test:episode": "tsx tests/episode.test.ts",
     "test:microdrama-pg": "tsx tests/microdrama-pg.test.ts",

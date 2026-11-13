@@ -44,10 +44,23 @@ import {
   SEEDANCE25_MAX_MEDIA_BYTES, SEEDANCE25_MAX_TOTAL_BYTES, SEEDANCE25_MAX_REFERENCE_SECONDS, validateSeedance25Request, seedance25ReferenceName,
   type Seedance25Settings, type Seedance25Media, type Seedance25ResolvedMedia,
 } from './seedance25-picsart';
-import { inspectFloraSeedance25Video, inspectSeedance25Media } from './seedance25-media';
+import {
+  inspectFloraSeedance25Video, inspectSeedance25Media, inspectPosbotSeedance25Video,
+} from './seedance25-media';
 import { SEEDANCE25_P2, validateP2References } from './seedance25-edan';
 import { KLING4_REFERENCE_VIDEO_MAX_BYTES } from './kling4-reference-video';
 import { createSeedance25P2Bot, type P2Draft, type P2Job, type P2Mode } from './seedance25-edan-bot';
+import {
+  createPosbotSeedance25Bot,
+  type PosbotSeedance25BotMode,
+  type PosbotSeedance25Draft,
+  type PosbotSeedance25Job,
+} from './posbot-seedance25-bot';
+import {
+  generatePosbotSeedance25,
+  POSBOT_SEEDANCE25_PRICE,
+  POSBOT_SEEDANCE25_MAX_MEDIA_BYTES,
+} from './posbot-seedance25';
 import {
   SEEDANCE25_MAX_TXT_BYTES, validateSeedance25Prompt,
   validateSeedance25TxtDocument, decodeSeedance25Txt,
@@ -86,6 +99,7 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const RENDERFUL_API_KEY = process.env.RENDERFUL_API_KEY;
 const RENDERFUL_BASE = 'https://api.renderful.ai/api/v1';
 const DATABASE_URL = process.env.RAILWAY_DATABASE_URL;
+const POSBOT_API_KEY = process.env.POSBOT_API_KEY?.trim();
 const AIVIDEOAPI_BASE = 'https://api.aivideoapi.ai/v1';
 const FREEPIK_API_KEY = process.env.FREEPIK_API_KEY;
 const FREEPIK_BASE = 'https://api.freepik.com/v1';
@@ -246,6 +260,7 @@ const MODEL_PRICES = {
   kling_p3: 4000,      // Kling MC V3.0 PRO P3 (Edanbot)
   kling_p2: 4000,      // Kling MC V3 PRO P2 (Edanbot)
   seedance25_p2: 7500, // Seedance 2.5 P2: Picsart P1 route with mandatory 1080p finishing.
+  posbot_seedance25: POSBOT_SEEDANCE25_PRICE, // PosBot Seedance 2.5 I2V and R2V, 30 seconds.
   kling_p4: 2500,      // Kling MC V3 Pro P4 (Alriz native)
   kling_v3_standard: 2500, // Kling MC V3 Pro P5 (Alriz native)
   heygen: 2500,
@@ -1771,6 +1786,7 @@ picsart.initPicsart(db, (msg: string) => {
 type Mode =
   | BudgetVideoMode
   | P2Mode
+  | PosbotSeedance25BotMode
   | 'idle'
   | 'kling_wait_image'
   | 'kling_wait_video'
@@ -1899,6 +1915,7 @@ type GenerationDraftKind =
   | 'flora_seedance_2_5_480'
   | 'china_video'
   | 'seedance25_p2'
+  | 'posbot_seedance25'
   | 'budget_video';
 
 interface Session {
@@ -1906,6 +1923,7 @@ interface Session {
   mode: Mode;
   budgetVideo?: BudgetVideoDraft;
   seedance25P2?: P2Draft;
+  posbotSeedance25Draft?: PosbotSeedance25Draft;
   chinaVideoModel?: ChinaVideoModelKey;
   chinaVideoRatio?: ChinaVideoRatio;
   chinaVideoImageUrl?: string;
@@ -2153,6 +2171,7 @@ function setSession(userId: number, data: Partial<Session>) {
 const GENERATION_DRAFT_MODES = new Set<Mode>([
   'budget_video_ratio', 'budget_video_image', 'budget_video_end', 'budget_video_prompt',
   's25p2_wait_ratio', 's25p2_wait_media', 's25p2_wait_prompt',
+  'posbot_s25_wait_ratio', 'posbot_s25_wait_media', 'posbot_s25_wait_prompt',
   'china_video_wait_ratio', 'china_video_wait_image', 'china_video_wait_prompt',
   'kling_wait_image', 'kling_wait_video', 'kling_wait_prompt',
   'klingp2_wait_image', 'klingp2_wait_video', 'klingp2_wait_prompt',
@@ -2213,6 +2232,8 @@ function generationDraftKindForStart(data: string): GenerationDraftKind | undefi
     mode_flora_seedance_2_5_480: 'flora_seedance_2_5_480',
     mode_oneover_seedance25: 'oneover',
     mode_seedance25_p2: 'seedance25_p2',
+    mode_posbot_s25_i2v: 'posbot_seedance25',
+    mode_posbot_s25_r2v: 'posbot_seedance25',
     mode_seedance_mini_edit: 'picsart_i2v',
     mode_seedance_fast_edit: 'picsart_i2v',
     mode_seedance_2_edit: 'picsart_i2v',
@@ -2238,6 +2259,7 @@ function generationDraftKindForStart(data: string): GenerationDraftKind | undefi
 function generationDraftKindForContinuation(data: string): GenerationDraftKind | undefined {
   if (data.startsWith('bvideo_')) return 'budget_video';
   if (data.startsWith('s25p2_')) return 'seedance25_p2';
+  if (data.startsWith('pb25_')) return 'posbot_seedance25';
   if (data.startsWith('china_ratio_')) return 'china_video';
   if (data.startsWith('har_ratio_')) return 'har_models';
   if (data.startsWith('rw_')) return 'runway';
@@ -2541,6 +2563,13 @@ function publicBaseUrl(): string {
   return `http://localhost:${process.env.PORT || 3000}`;
 }
 
+function hasPublicMediaHost(): boolean {
+  try {
+    const url = new URL(publicBaseUrl());
+    return url.protocol === 'https:' && !['localhost', '127.0.0.1', '::1'].includes(url.hostname);
+  } catch { return false; }
+}
+
 // Persist a result buffer to disk and return a public download link on our domain.
 async function publishMedia(buf: Buffer, isVideo: boolean, sourceUrl?: string, includeExtension = false): Promise<string> {
   await fsp.mkdir(MEDIA_DIR, { recursive: true });
@@ -2557,6 +2586,19 @@ async function publishMedia(buf: Buffer, isVideo: boolean, sourceUrl?: string, i
     expiresAt: Date.now() + MEDIA_TTL_MS,
   });
   return `${publicBaseUrl()}/dl/${token}${includeExtension ? `.${ext}` : ''}`;
+}
+
+async function removePublishedMedia(url: string): Promise<void> {
+  try {
+    const token = new URL(url).pathname.split('/').at(-1)?.split('.')[0] ?? '';
+    if (!/^[a-f0-9]{32}$/.test(token)) return;
+    const entry = mediaStore.get(token);
+    if (!entry) return;
+    mediaStore.delete(token);
+    await fsp.rm(entry.filePath, { force: true });
+  } catch {
+    // Cleanup is best-effort; the hourly media sweeper is the final fallback.
+  }
 }
 
 // Long episodes must not be loaded into a single in-memory Buffer.
@@ -2747,6 +2789,8 @@ function videoModelRows() {
     [Markup.button.callback('🌊 Seedance 2.0 1080p', 'mode_pi2v_seedance_2')],
     [Markup.button.callback('🌊 Seedance 2.5 • Teks / Gambar / Video / Audio', 'mode_oneover_seedance25')],
     [Markup.button.callback(`Seedance 2.5 P2 · Gambar / Video / Audio · 30s · 1080p · ${formatRupiah(MODEL_PRICES.seedance25_p2)}`, 'mode_seedance25_p2')],
+    [Markup.button.callback(`Seedance 2.5 I2V · 30 detik · ${formatRupiah(MODEL_PRICES.posbot_seedance25)}`, 'mode_posbot_s25_i2v')],
+    [Markup.button.callback(`Seedance 2.5 R2V · 30 detik · ${formatRupiah(MODEL_PRICES.posbot_seedance25)}`, 'mode_posbot_s25_r2v')],
     [Markup.button.callback('🌌 Grok Imagine Video', 'mode_pi2v_grok_imagine')],
     [Markup.button.callback('🎬 Creatify Boreal • 20 detik • 1080p', 'mode_pi2v_creatify_boreal')],
     [Markup.button.callback('🎬 LTX 2.5 PRO • 10 detik • 1080p', 'mode_pi2v_ltx_pro')],
@@ -3359,6 +3403,8 @@ function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false 
     `• Seedance 2.0 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
     `• Seedance 2.5 Teks / Gambar / Video / Audio (30s, 1080p) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25)}\n` +
     `• Seedance 2.5 P2 Gambar / Video referensi (30s, 1080p melalui upscale) — ${formatRupiah(MODEL_PRICES.seedance25_p2)}\n` +
+    `• Seedance 2.5 I2V dari foto (30 detik) — ${formatRupiah(MODEL_PRICES.posbot_seedance25)}\n` +
+    `• Seedance 2.5 R2V dari video referensi (30 detik) — ${formatRupiah(MODEL_PRICES.posbot_seedance25)}\n` +
     `• Grok Imagine Video — ${formatRupiah(MODEL_PRICES.picsart_i2v)}\n` +
     `• Creatify Boreal (20 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_creatify_boreal)}\n` +
     `• LTX 2.5 PRO (10 detik · 1080p) — ${formatRupiah(MODEL_PRICES.picsart_ltx_pro)}\n` +
@@ -3661,6 +3707,34 @@ bot.use(async (ctx, next) => {
     || ('text' in ctx.message && ctx.message.text.startsWith('/'))) return next();
   if (!await requireLogin(ctx)) return;
   return seedance25P2Bot.message(ctx);
+});
+
+const posbotSeedance25Bot = createPosbotSeedance25Bot({
+  getSession, setSession,
+  available: () => Boolean(POSBOT_API_KEY) && hasPublicMediaHost(),
+  price: () => MODEL_PRICES.posbot_seedance25,
+  download: async (fileId, maxBytes) => {
+    const link = await retryTelegramFileRead(() => bot.telegram.getFileLink(fileId));
+    const response = await telegramHttp.get(link.href, {
+      responseType: 'arraybuffer', timeout: 60_000, maxContentLength: maxBytes,
+    });
+    return Buffer.from(response.data);
+  },
+  inspect: async (bytes, kind) => {
+    if (kind === 'video') return inspectPosbotSeedance25Video(bytes);
+    const metadata = await sharp(bytes, { limitInputPixels: 40_000_000 }).metadata();
+    if (!['jpeg', 'png'].includes(metadata.format ?? '')) throw Error('INVALID_IMAGE');
+    return { width: metadata.width, height: metadata.height };
+  },
+  run: runSeedance25Posbot,
+  failed: () => console.error('[posbot-seedance25] Background task failed; inspect safe error codes and refund status.'),
+});
+
+bot.use(async (ctx, next) => {
+  if (!ctx.from || !ctx.message || !getSession(ctx.from.id).mode.startsWith('posbot_s25_')
+    || ('text' in ctx.message && ctx.message.text.startsWith('/'))) return next();
+  if (!await requireLogin(ctx)) return;
+  return posbotSeedance25Bot.message(ctx);
 });
 
 // Register before every handler so old buttons/media/prompts cannot reach billing.
@@ -4687,6 +4761,10 @@ bot.on('callback_query', async (ctx) => {
 
   if (data === 'mode_seedance25_p2' || data.startsWith('s25p2_')) {
     return seedance25P2Bot.callback(ctx, data);
+  }
+
+  if (data.startsWith('mode_posbot_s25_') || data.startsWith('pb25_')) {
+    return posbotSeedance25Bot.callback(ctx, data);
   }
 
   if (data === 'menu_topup') {
@@ -10369,6 +10447,91 @@ async function runSeedance25P2(job: P2Job) {
     PRICE,
     SEEDANCE25_P2.label,
   );
+}
+
+async function runSeedance25Posbot(job: PosbotSeedance25Job) {
+  const { chatId, userId, dbUserId, statusMsgId, mode, ratio, prompt, refs } = job;
+  const price = MODEL_PRICES.posbot_seedance25;
+  const charge = await beginCharge(dbUserId, price);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, price)).catch(() => {});
+    return;
+  }
+
+  let refund = true;
+  let deliveryAttempted = false;
+  const hostedInputs: string[] = [];
+  try {
+    if (!POSBOT_API_KEY) throw Error('POSBOT_API_KEY_MISSING');
+    if (!hasPublicMediaHost()) throw Error('POSBOT_PUBLIC_MEDIA_HOST_MISSING');
+    const imageUrls: string[] = [];
+    let videoUrl: string | undefined;
+    for (const ref of [...refs].sort((a, b) => a.order - b.order)) {
+      const link = await retryTelegramFileRead(() => bot.telegram.getFileLink(ref.fileId));
+      const response = await telegramHttp.get(link.href, {
+        responseType: 'arraybuffer',
+        timeout: 60_000,
+        maxContentLength: POSBOT_SEEDANCE25_MAX_MEDIA_BYTES,
+      });
+      const bytes = Buffer.from(response.data);
+      if (!bytes.length || bytes.length > POSBOT_SEEDANCE25_MAX_MEDIA_BYTES) {
+        throw Error('POSBOT_REFERENCE_SIZE_INVALID');
+      }
+      const publicUrl = await publishMedia(bytes, ref.kind === 'video', undefined, true);
+      hostedInputs.push(publicUrl);
+      if (ref.kind === 'image') imageUrls.push(publicUrl);
+      else videoUrl = publicUrl;
+    }
+
+    const result = await generatePosbotSeedance25(
+      { mode, prompt, ratio, imageUrls, videoUrl },
+      { apiKey: POSBOT_API_KEY, onPoll: (_status, progress) => {
+        const detail = progress !== undefined && progress >= 0 && progress <= 100
+          ? `${Math.round(progress)}%` : 'sedang dibuat';
+        void bot.telegram.editMessageText(
+          chatId, statusMsgId, undefined,
+          `⏳ Seedance 2.5 ${mode.toUpperCase()} · ${detail}. Hasil dikirim otomatis.`,
+        ).catch(() => {});
+      } },
+    );
+    console.log(`[${userId}] PosBot Seedance 2.5 ${mode.toUpperCase()} accepted/completed job=${result.jobCode}`);
+    deliveryAttempted = true;
+    const delivered = await sendResult(
+      chatId,
+      result.resultUrl,
+      `Seedance 2.5 ${mode.toUpperCase()} · 30 detik · ${ratio}\nRp8.000/video\n\n/menu untuk buat lagi`,
+      true,
+    );
+    if (!delivered) throw Error('POSBOT_DELIVERY_FAILED');
+    refund = false;
+    markGenSuccess(userId);
+    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : '';
+    const code = /^POSBOT_[A-Z0-9_]{1,80}$/.test(raw) ? raw : 'POSBOT_VIDEO_FAILED';
+    console.error(`[${userId}] Seedance 2.5 ${mode.toUpperCase()} failed code=${code}`);
+    if (!deliveryAttempted) await notifyGenerationFailure(chatId, statusMsgId, Error(code));
+  } finally {
+    try {
+      if (refund) {
+        try {
+          await addSaldo(dbUserId, price);
+          await bot.telegram.sendMessage(
+            chatId, `↩️ Saldo ${formatRupiah(price)} dikembalikan karena video tidak berhasil dikirim.`
+          ).catch(() => {});
+        } catch {
+          const reference = `posbot-${chatId}-${statusMsgId}`;
+          console.error(`[REFUND_UNCONFIRMED] ref=${reference} dbUserId=${dbUserId} model=posbot_seedance25 amount=${price}`);
+          await bot.telegram.sendMessage(
+            chatId, `Pengembalian saldo ${formatRupiah(price)} belum dapat dikonfirmasi. Hubungi admin dengan kode ${reference}.`
+          ).catch(() => {});
+        }
+      }
+    } finally {
+      releaseGenerating(dbUserId);
+      await Promise.all(hostedInputs.map(removePublishedMedia));
+    }
+  }
 }
 
 async function runKlingV3Pro(
