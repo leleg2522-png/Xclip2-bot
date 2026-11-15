@@ -1845,6 +1845,12 @@ export const SEEDANCE25_FLASH_MODEL = 'seedance-2.5-flash';
 export const SEEDANCE25_FLASH_DURATION_SECONDS = 5;
 export const SEEDANCE25_FLASH_RESOLUTION = '480p';
 export const SEEDANCE25_FLASH_RATIO = '16:9';
+export const SEEDANCE25_FLASH_MAX_IMAGES = 10;
+export const SEEDANCE25_FLASH_MAX_VIDEOS = 5;
+export const SEEDANCE25_FLASH_MAX_AUDIOS = 5;
+export const SEEDANCE25_FLASH_MAX_MEDIA_BYTES = 19 * 1024 * 1024;
+export const SEEDANCE25_FLASH_MAX_TOTAL_BYTES = 100 * 1024 * 1024;
+export const SEEDANCE25_FLASH_MAX_REFERENCE_SECONDS = 30;
 export type SeedanceResolution = '480p' | '720p';
 export type SeedanceAspectRatio = '9:16' | '16:9';
 // HAR options endpoint reports 120 credits for 480p/30s/audio and 210 credits
@@ -2165,22 +2171,85 @@ export async function pollSeedance25FlashResult(
 export async function generateSeedance25Flash(input: {
   userId: number;
   prompt: string;
-  onStatus?: (stage: 'quote' | 'submit' | 'poll') => void;
+  images?: Array<{ buffer: Buffer; name?: string; mime?: string }>;
+  videos?: Array<{ buffer: Buffer; name?: string; mime?: string; duration: number }>;
+  audios?: Array<{ buffer: Buffer; name?: string; mime?: string; duration: number }>;
+  onStatus?: (stage: 'upload' | 'quote' | 'submit' | 'poll') => void;
   onPoll?: (elapsedSec: number) => void;
 }): Promise<{ url: string; credits?: number }> {
   const prompt = input.prompt.trim();
   if (!prompt || prompt.length > 20_000) throw new Error('SEEDANCE25_FLASH_INVALID_PROMPT');
+  const images = input.images ?? [];
+  const videos = input.videos ?? [];
+  const audios = input.audios ?? [];
+  if (images.length > SEEDANCE25_FLASH_MAX_IMAGES
+    || videos.length > SEEDANCE25_FLASH_MAX_VIDEOS
+    || audios.length > SEEDANCE25_FLASH_MAX_AUDIOS) {
+    throw new Error('SEEDANCE25_FLASH_TOO_MANY_REFERENCES');
+  }
+  const media = [...images, ...videos, ...audios];
+  const totalBytes = media.reduce((total, item) => total + item.buffer.length, 0);
+  if (media.some(item => !item.buffer.length || item.buffer.length > SEEDANCE25_FLASH_MAX_MEDIA_BYTES)
+    || totalBytes > SEEDANCE25_FLASH_MAX_TOTAL_BYTES) {
+    throw new Error('SEEDANCE25_FLASH_MEDIA_SIZE_LIMIT');
+  }
+  const totalVideoSeconds = videos.reduce((total, item) => total + item.duration, 0);
+  const totalAudioSeconds = audios.reduce((total, item) => total + item.duration, 0);
+  if (videos.some(item => !Number.isFinite(item.duration) || item.duration <= 0)
+    || audios.some(item => !Number.isFinite(item.duration) || item.duration <= 0)
+    || totalVideoSeconds > SEEDANCE25_FLASH_MAX_REFERENCE_SECONDS
+    || totalAudioSeconds > SEEDANCE25_FLASH_MAX_REFERENCE_SECONDS) {
+    throw new Error('SEEDANCE25_FLASH_REFERENCE_DURATION_LIMIT');
+  }
   return runWithAccount(input.userId, null, async credId => {
     const { credits: accountCredits } = await getCredits(credId);
     const access = await getAccessToken(credId);
+    const imageUrls: string[] = [];
+    const videoUrls: string[] = [];
+    const audioUrls: string[] = [];
+    for (const [index, image] of images.entries()) {
+      input.onStatus?.('upload');
+      imageUrls.push(await uploadFile(
+        credId,
+        image.buffer,
+        image.name || `reference-image-${index + 1}.jpg`,
+        image.mime || 'image/jpeg',
+        { gateway: true },
+      ));
+    }
+    for (const [index, video] of videos.entries()) {
+      input.onStatus?.('upload');
+      videoUrls.push(await uploadFile(
+        credId,
+        video.buffer,
+        video.name || `reference-video-${index + 1}.mp4`,
+        video.mime || 'video/mp4',
+        { gateway: true },
+      ));
+    }
+    for (const [index, audio] of audios.entries()) {
+      input.onStatus?.('upload');
+      audioUrls.push(await uploadFile(
+        credId,
+        audio.buffer,
+        audio.name || `reference-audio-${index + 1}.mp3`,
+        audio.mime || 'audio/mpeg',
+        { gateway: true },
+      ));
+    }
+    const generateAudio = audioUrls.length > 0;
     const params = {
       prompt,
       resolution: SEEDANCE25_FLASH_RESOLUTION,
       duration: SEEDANCE25_FLASH_DURATION_SECONDS,
       aspectRatio: SEEDANCE25_FLASH_RATIO,
-      generateAudio: false,
+      generateAudio,
       omniReferenceTaskType: 'auto',
+      returnLastFrame: false,
       outputFormat: 'mp4',
+      ...(imageUrls.length ? { imageUrls } : {}),
+      ...(videoUrls.length ? { videoUrls } : {}),
+      ...(audioUrls.length ? { audioUrls } : {}),
     };
     const headers = commonHeaders({
       'content-type': 'application/json',
@@ -2212,10 +2281,13 @@ export async function generateSeedance25Flash(input: {
       aspectRatio: SEEDANCE25_FLASH_RATIO,
       resolution: SEEDANCE25_FLASH_RESOLUTION,
       duration: SEEDANCE25_FLASH_DURATION_SECONDS,
-      generateAudio: false,
+      generateAudio,
+      omniReferenceTaskType: 'auto',
       returnLastFrame: false,
       outputFormat: 'mp4',
-      imageUrls: [],
+      imageUrls,
+      ...(videoUrls.length ? { videoUrls } : {}),
+      ...(audioUrls.length ? { audioUrls } : {}),
     });
     const submitBody = {
       params: {

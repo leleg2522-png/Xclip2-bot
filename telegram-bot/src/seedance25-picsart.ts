@@ -7,7 +7,8 @@ export const SEEDANCE25_MAX_AUDIOS = 10;
 export const SEEDANCE25_MAX_PROMPT_CHARS = 20000;
 export const SEEDANCE25_MAX_MEDIA_BYTES = 19 * 1024 * 1024;
 export const SEEDANCE25_MAX_TOTAL_BYTES = 100 * 1024 * 1024;
-// Conservative aggregate limits while Picsart's docs leave per-file vs total ambiguous.
+// Picsart documents a 30.2s per-reference ceiling; the bot uses stricter
+// 30s per-file and aggregate limits for each reference type.
 export const SEEDANCE25_MAX_REFERENCE_SECONDS = 30;
 export type Seedance25Media = { fileId: string; mime: string; duration: number };
 export type Seedance25ResolvedMedia = { url: string; mime: string; duration: number };

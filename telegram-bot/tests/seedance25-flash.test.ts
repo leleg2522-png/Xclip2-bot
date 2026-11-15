@@ -34,7 +34,13 @@ function harness(options: {
   pollAuthError?: boolean;
   accountCount?: number;
 } = {}) {
-  const calls = { posts: [] as Array<{ url: string; body: any }>, gets: [] as string[], accounts: [] as number[], ownerNotices: 0 };
+  const calls = {
+    posts: [] as Array<{ url: string; body: any }>,
+    gets: [] as string[],
+    uploads: [] as Array<{ name: string; mime: string; bytes: number; gateway: boolean }>,
+    accounts: [] as number[],
+    ownerNotices: 0,
+  };
   class TestPollDiag {
     note(response: { status: number }) {
       if (options.pollAuthError) throw new Error('PICSART_AUTH_DEAD: test');
@@ -52,6 +58,12 @@ function harness(options: {
     SEEDANCE25_FLASH_DURATION_SECONDS: 5,
     SEEDANCE25_FLASH_RESOLUTION: '480p',
     SEEDANCE25_FLASH_RATIO: '16:9',
+    SEEDANCE25_FLASH_MAX_IMAGES: 10,
+    SEEDANCE25_FLASH_MAX_VIDEOS: 5,
+    SEEDANCE25_FLASH_MAX_AUDIOS: 5,
+    SEEDANCE25_FLASH_MAX_MEDIA_BYTES: 19 * 1024 * 1024,
+    SEEDANCE25_FLASH_MAX_TOTAL_BYTES: 100 * 1024 * 1024,
+    SEEDANCE25_FLASH_MAX_REFERENCE_SECONDS: 30,
     ERR_INSUFFICIENT_CREDITS: 'PICSART_INSUFFICIENT_CREDITS',
     MAX_ACCOUNT_ATTEMPTS: options.accountCount ?? 1,
     ok2xx: (status: number) => status >= 200 && status < 300,
@@ -66,6 +78,10 @@ function harness(options: {
     getCredits: async () => ({ credits: options.balance ?? 500 }),
     getAccessToken: async () => 'test-access',
     commonHeaders: (headers: Record<string, string>) => headers,
+    uploadFile: async (_id: number, buffer: Buffer, name: string, mime: string, opts: { gateway?: boolean }) => {
+      calls.uploads.push({ name, mime, bytes: buffer.length, gateway: Boolean(opts?.gateway) });
+      return `https://uploads.test/${name}`;
+    },
     isPicsartSubmitTokenRejection: (error: Error) => /PICSART_(?:SUBMIT|SEEDANCE25_FLASH_OPTIONS)_FAILED status 401/.test(error.message),
     isPicsartPostSubmitAuthFailure: (error: Error) => /PICSART_AUTH_DEAD|PICSART_REFRESH_DEAD/.test(error.message),
     isCreditError: () => false,
@@ -90,7 +106,9 @@ function harness(options: {
   vm.runInContext(compile(accountRunner + poller + generator), context);
   return {
     calls,
-    generate: (prompt = 'A quiet city at sunrise') => context.generateSeedance25Flash({ userId: 42, prompt }),
+    generate: (prompt = 'A quiet city at sunrise', references: any = {}) => context.generateSeedance25Flash({
+      userId: 42, prompt, ...references,
+    }),
   };
 }
 
@@ -116,6 +134,48 @@ async function checkNoSubmitWhenUnaffordable() {
   await assert.rejects(() => h.generate(), /PICSART_INSUFFICIENT_CREDITS/);
   assert.equal(h.calls.posts.length, 1, 'Only free options quote; no paid submit');
   assert.equal(h.calls.gets.length, 0);
+}
+
+async function checkMixedReferencePayload() {
+  const h = harness();
+  const references = {
+    images: [{ buffer: Buffer.from('image'), name: 'reference-image-1.png', mime: 'image/png' }],
+    videos: [{ buffer: Buffer.from('video'), name: 'reference-video-1.mp4', mime: 'video/mp4', duration: 3 }],
+    audios: [{ buffer: Buffer.from('audio'), name: 'reference-audio-1.mp3', mime: 'audio/mpeg', duration: 2 }],
+  };
+  await h.generate('A character walks through the scene', references);
+  assert.equal(h.calls.uploads.length, 3);
+  assert(h.calls.uploads.every(upload => upload.gateway));
+  const quoteParams = h.calls.posts[0].body.params.params;
+  assert.deepEqual(Array.from(quoteParams.imageUrls), ['https://uploads.test/reference-image-1.png']);
+  assert.deepEqual(Array.from(quoteParams.videoUrls), ['https://uploads.test/reference-video-1.mp4']);
+  assert.deepEqual(Array.from(quoteParams.audioUrls), ['https://uploads.test/reference-audio-1.mp3']);
+  assert.equal(quoteParams.generateAudio, true);
+  const submitParams = h.calls.posts[1].body.params.params;
+  assert.deepEqual(Array.from(submitParams.imageUrls), Array.from(quoteParams.imageUrls));
+  assert.deepEqual(Array.from(submitParams.videoUrls), Array.from(quoteParams.videoUrls));
+  assert.deepEqual(Array.from(submitParams.audioUrls), Array.from(quoteParams.audioUrls));
+  const sdkPayload = JSON.parse(h.calls.posts[1].body.params.options.drive.attributes.aiSDKPayload);
+  assert.deepEqual(sdkPayload.imageUrls, ['https://uploads.test/reference-image-1.png']);
+  assert.deepEqual(sdkPayload.videoUrls, ['https://uploads.test/reference-video-1.mp4']);
+  assert.deepEqual(sdkPayload.audioUrls, ['https://uploads.test/reference-audio-1.mp3']);
+  assert.equal(sdkPayload.omniReferenceTaskType, 'auto');
+
+  const tooMany = harness();
+  await assert.rejects(
+    () => tooMany.generate('prompt', { images: Array.from({ length: 11 }, () => ({ buffer: Buffer.from('i') })) }),
+    /SEEDANCE25_FLASH_TOO_MANY_REFERENCES/,
+  );
+  assert.equal(tooMany.calls.uploads.length, 0);
+  assert.equal(tooMany.calls.posts.length, 0);
+  await assert.rejects(
+    () => tooMany.generate('prompt', { videos: Array.from({ length: 6 }, () => ({ buffer: Buffer.from('v'), duration: 1 })) }),
+    /SEEDANCE25_FLASH_TOO_MANY_REFERENCES/,
+  );
+  await assert.rejects(
+    () => tooMany.generate('prompt', { audios: Array.from({ length: 6 }, () => ({ buffer: Buffer.from('a'), duration: 1 })) }),
+    /SEEDANCE25_FLASH_TOO_MANY_REFERENCES/,
+  );
 }
 
 async function checkAmbiguousSubmitNeverReplays() {
@@ -174,7 +234,7 @@ async function checkBotBillingDeliveryAndRefund() {
     } },
   });
   vm.runInContext(compile(runner), context);
-  await context.runPicsartSeedance25Flash(1, 2, 3, 4, 'A test prompt');
+  await context.runPicsartSeedance25Flash(1, 2, 3, 4, 'A test prompt', { images: [], videos: [], audios: [] });
   assert.deepEqual(charges, [6000]);
   assert.equal(providerCalls, 1);
   assert.equal(deliveries.length, 1);
@@ -206,18 +266,89 @@ async function checkBotBillingDeliveryAndRefund() {
     } },
   });
   vm.runInContext(compile(runner), failingContext);
-  await failingContext.runPicsartSeedance25Flash(1, 2, 3, 4, 'A test prompt');
+  await failingContext.runPicsartSeedance25Flash(1, 2, 3, 4, 'A test prompt', { images: [], videos: [], audios: [] });
   assert.deepEqual(charges, [6000, 6000]);
   assert.deepEqual(refunds, [6000], 'Provider failure refunds the full customer price');
   assert.deepEqual(releases, [3, 3]);
 }
 
+async function checkFlashMediaIntake() {
+  const handlers = fragment(
+    botSource,
+    'async function handleSeedance25FlashImage(',
+    'async function handleSeedance25Reference(',
+  );
+  const replies: string[] = [];
+  let session: any = {
+    mode: 'seedance25_flash_wait_media',
+    seedance25FlashDraftId: 'draft-1',
+    seedance25FlashImageFileIds: [],
+    seedance25FlashVideos: [],
+    seedance25FlashAudios: [],
+    seedance25FlashPendingUploads: 0,
+  };
+  const context = vm.createContext({
+    Buffer,
+    SEEDANCE25_MAX_MEDIA_BYTES: 19 * 1024 * 1024,
+    SEEDANCE25_MAX_REFERENCE_SECONDS: 30,
+    SEEDANCE25_MAX_VIDEOS: 10,
+    SEEDANCE25_MAX_AUDIOS: 10,
+    picsart: {
+      SEEDANCE25_FLASH_MAX_IMAGES: 10,
+      SEEDANCE25_FLASH_MAX_VIDEOS: 5,
+      SEEDANCE25_FLASH_MAX_AUDIOS: 5,
+    },
+    getSession: () => session,
+    setSession: (_userId: number, patch: any) => { session = { ...session, ...patch }; },
+    seedance25FlashInputKeyboard: () => ({ keyboard: true }),
+    retryTelegramFileRead: async (read: () => Promise<any>) => read(),
+    telegramHttp: { get: async () => ({ data: Buffer.from('valid-test-media') }) },
+    inspectSeedance25Media: async (_buffer: Buffer, kind: string) => kind === 'video' ? 4 : 3,
+    seedanceAudioMime: () => 'audio/ogg',
+  });
+  vm.runInContext(compile(handlers), context);
+  const ctx = {
+    from: { id: 77 },
+    telegram: { getFileLink: async () => ({ href: 'https://telegram.test/file' }) },
+    reply: async (message: string) => { replies.push(message); return {}; },
+  };
+  for (let i = 0; i < 10; i++) {
+    await context.handleSeedance25FlashImage(ctx, `image-${i + 1}`, 1024);
+  }
+  assert.equal(session.seedance25FlashImageFileIds.length, 10);
+  await context.handleSeedance25FlashImage(ctx, 'image-11', 1024);
+  assert(replies.some(text => text.includes('Maksimal 10 gambar')));
+  await context.handleSeedance25FlashMedia(ctx, 'video', {
+    file_id: 'video-1', file_size: 2048, mime_type: 'video/mp4', duration: 4,
+  });
+  await context.handleSeedance25FlashMedia(ctx, 'audio', {
+    file_id: 'audio-1', file_size: 2048, mime_type: 'audio/ogg', duration: 3,
+  });
+  assert.equal(session.seedance25FlashVideos[0].duration, 4);
+  assert.equal(session.seedance25FlashAudios[0].duration, 3);
+  assert.equal(session.seedance25FlashPendingUploads, 0);
+  session = {
+    ...session,
+    seedance25FlashVideos: Array.from({ length: 5 }, (_, i) => ({
+      fileId: `video-${i}`,
+      mime: 'video/mp4',
+      duration: 1,
+    })),
+  };
+  await context.handleSeedance25FlashMedia(ctx, 'video', {
+    file_id: 'video-6', file_size: 2048, mime_type: 'video/mp4', duration: 1,
+  });
+  assert(replies.some(text => text.includes('Maksimal 5 referensi video')));
+}
+
 async function main() {
   await checkSuccessfulContract();
   await checkNoSubmitWhenUnaffordable();
+  await checkMixedReferencePayload();
   await checkAmbiguousSubmitNeverReplays();
   await checkPostSubmitAuthNeverReplays();
   await checkBotBillingDeliveryAndRefund();
+  await checkFlashMediaIntake();
   console.log('Seedance 2.5 Flash passed: gateway contract, 15-credit preflight, no duplicate jobs, Rp6.000 billing/refunds, native 480p delivery.');
 }
 
