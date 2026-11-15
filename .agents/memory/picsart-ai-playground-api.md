@@ -73,6 +73,13 @@ Host: `https://api.picsart.com`, uploads on `https://upload.picsart.com`, result
 
 - Submit endpoint `/workflows/seedance/submit` (NOT captured in HAR, inferred from Kling pattern) is CONFIRMED working in production (i2v, 9:16/15s/1080p/audio) — full flow upload->submit->poll->video_url verified live.
 
+## Seedance 2.5 Flash (model-v1 gateway, live-verified)
+- Use `/gw-v2/workflows/v1/models/options`, `/gw-v2/workflows/v1/models/submit`, then poll `/gw-v2/workflows/v1/models/{id}/result`; this is distinct from the public API Platform route `/workflows/v1/models/submit`.
+- Request body wraps `model`, nested `params`, and on submit `options.drive` metadata. Use the account access token plus Playground app/subscription headers. A 480p, 5-second text-only job with audio off quoted and consumed 15 credits; completion returned `response.result.url`.
+- HAR also captured a 480p, 30-second image-to-video Flash job with audio on: 90 credits quoted and consumed. Options requests without a prompt or reference media return `invalid_params`; that validation error is separate from submit failures.
+- **Why:** Calling the public API Platform endpoint with the Playground account flow produced HTTP 400; the Railway account itself was valid.
+- **How to apply:** Quote through the model-v1 `options` route before submitting, preserve the gateway-specific Drive metadata, and poll the model-v1 result path. Never retry an ambiguous accepted submit.
+
 ## Seedance 2.0 regular vs fast (both implemented in bot)
 - Same `/workflows/seedance/submit` + `/{id}/result` endpoints for BOTH. Fast = model `seedance_2_0_fast` with image role `reference_image`; regular/premium = model `seedance_2_0` with image role **`first_frame`** (per HAR — the role differs per model string). Result stays at `response.result.video_url`.
 

@@ -1,5 +1,5 @@
 - [Leonardo AI i2v endpoint](leonardo-i2v.md) — correct image-to-video endpoint is /generations-image-to-video with model strings KLING2_1/KLING2_5; Kling 2.6 does not exist on Leonardo AI
-- [Picsart AI Playground internal API](picsart-ai-playground-api.md) — undocumented upload→submit→poll flow; auth is fragile browser session cookie (expires); HAR sanitizes cookies, use Copy-as-cURL
+- [Picsart AI Playground internal API](picsart-ai-playground-api.md) — routes vary; model-v1 uses `/gw-v2/workflows/v1/models/*`; check HAR for gateway auth and Drive metadata.
 - [Wan 3.0 provider and crop](picsart-wan3-video.md) — regular Wan: Vivareel 480p → logo crop → mandatory Renderful 1080p; retain 30s/Rp6,000 and leave Uncensored separate.
 - [Video delivery](picsart-i2v-1080-delivery.md) — selected Wan/MiniMax routes and Seedance 2 I2V variants use automatic finishing; Seedance 2/Mini/Fast advertise 1080p.
 - [Picsart PixVerse v6](picsart-pixverse-v6.md) — v6 requests direct 720p/15s without export; ratio is determined by the cropped source frame.

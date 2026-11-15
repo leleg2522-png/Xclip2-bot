@@ -1384,3 +1384,17 @@ mtime_ms = 1794507583430
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/d3f993f1-ff82-40b5-a534-be805feb102c/9774aac4-985a-4d21-9db3-145755c3a5d1"
 storage_version_token = "1794507649198064"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "er7wZLSXu_Leq0kLxhopa"
+uri = "file://generated-artifacts/seedance-flash-480p-5s-test.mp4"
+type = "video"
+title = "Seedance 2.5 Flash — 480p Test"
+description = "Video test generated through the Railway Picsart account: 480p, 5 seconds, 16:9, no audio; 15 credits used."
+logical_id = "ec73c1f0-2bc6-4e17-ad84-8fb31e282ab3"
+content_hash = "sha256:f577dd3b7755bb9c1867b15b86d60d6c04e97496d7ad28de15d33b77be9c3eea"
+size = 3049797
+mtime_ms = 1794756190065
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/ec73c1f0-2bc6-4e17-ad84-8fb31e282ab3/cc7ca7d8-91c3-4405-a03c-7a5ce5f3e414"
+storage_version_token = "1794756232134600"
+content_type = "video/mp4"
