@@ -19,7 +19,7 @@ const functions = ast.statements.filter(s => ts.isFunctionDeclaration(s)
 assert.equal(functions.match(/function /g)?.length, functionNames.length);
 const context = vm.createContext({
   Markup, CHINA_VIDEO_MODELS, buildVideoMenuScreen, isRetiredVideoCallback, BUDGET_VIDEO_MODELS, isBudgetVideoModel,
-  MODEL_PRICES: { seedance25_p2: 7500, posbot_seedance25: 7000 },
+  MODEL_PRICES: { seedance25_p2: 7500, picsart_seedance_25_flash: 6000, posbot_seedance25: 7000 },
   KLING_V3_PRO: { label: 'Kling v3 Pro' },
   formatRupiah: (value: number) => `Rp${Math.round(value).toLocaleString('id-ID')}`,
   getPicsartI2vPrice: () => 5000,
@@ -29,12 +29,13 @@ vm.runInContext(ts.transpileModule(functions, {
 }).outputText, context);
 const modelRows = JSON.parse(JSON.stringify(vm.runInContext('videoModelRows()', context)));
 assert.match(modelRows.flat().find((b: any) => b.callback_data === 'mode_seedance25_p2').text, /Rp7\.500/);
+assert.match(modelRows.flat().find((b: any) => b.callback_data === 'mode_seedance25_flash').text, /Rp6\.000/);
 const main = JSON.parse(JSON.stringify(vm.runInContext('mainMenuKeyboard().reply_markup.inline_keyboard', context)));
 const expected = [
   'mode_bvideo_vela', 'mode_bvideo_muse', 'mode_bvideo_deapi_ltx', 'mode_bvideo_deapi_h3',
   'menu_kling_list', 'mode_har_heygen',
   'mode_pi2v_seedance_2_mini', 'mode_pi2v_seedance_2_fast', 'mode_pi2v_seedance_2',
-  'mode_oneover_seedance25', 'mode_seedance25_p2', 'mode_posbot_s25_i2v', 'mode_posbot_s25_r2v', 'mode_pi2v_grok_imagine',
+  'mode_oneover_seedance25', 'mode_seedance25_flash', 'mode_seedance25_p2', 'mode_posbot_s25_i2v', 'mode_posbot_s25_r2v', 'mode_pi2v_grok_imagine',
   'mode_pi2v_creatify_boreal', 'mode_pi2v_ltx_pro', 'mode_pi2v_ltx_fast', 'mode_pi2v_pixverse_v6',
   'mode_pi2v_kling_v3_turbo', 'mode_pi2v_kling_v26_pro', 'mode_pi2v_kling_v3',
   'mode_pi2v_kling_v4', 'mode_pi2v_kling_v4_t2v', 'mode_pi2v_kling_v4_regular',
@@ -83,7 +84,7 @@ for (const family of VIDEO_FAMILIES) {
   assert.equal(vm.runInContext(`isGenerationEntryCallback(${JSON.stringify(callback)})`, context), false);
 }
 assert.deepEqual(reached.sort(), [...expected].sort(), 'All model entries reachable exactly once');
-assert.deepEqual(counts, { kling: 11, seedance: 9, veo: 3, wan: 2, minimax: 4,
+assert.deepEqual(counts, { kling: 11, seedance: 10, veo: 3, wan: 2, minimax: 4,
   gemini: 3, ltx: 3, grok: 1, pixverse: 1, runway: 1, sora: 1, heygen: 1, creatify: 1, vela: 1, muse: 1 });
 assert(!root.rows.flat().some(b => b.callback_data === 'menu_video_family_happyhorse'));
 assert.equal(buildVideoMenuScreen('menu_video_family_happyhorse', modelRows), undefined);

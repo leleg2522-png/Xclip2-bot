@@ -432,11 +432,11 @@ async function handleCreditError(credId: number): Promise<'discard' | 'skip'> {
   }
 }
 
-// Only an explicit submit rejection may rotate accounts here. Never match a
-// wrapped post-submit/poll error, timeout, or an ambiguous successful response.
+// Only an explicit pre-acceptance auth rejection may rotate accounts here.
+// Never match a wrapped post-submit/poll error, timeout, or ambiguous response.
 export function isPicsartSubmitTokenRejection(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? '');
-  return /^PICSART_SUBMIT_FAILED(?: status|:)?\s+401(?:\s*:|\s)/.test(message);
+  return /^PICSART_(?:SUBMIT|SEEDANCE25_FLASH_OPTIONS)_FAILED(?: status|:)?\s+401(?:\s*:|\s|$)/.test(message);
 }
 
 // Run a generation for `userId` on its assigned account. If that account is
@@ -472,7 +472,8 @@ async function runWithAccount<T>(
         `[picsart:account] user=${userId} pool=${poolFilter ?? 'any'} ` +
         `cred=${credId} attempt=${attempt + 1}/${ceiling} failed: ${msg || e?.name || 'unknown error'}`
       );
-      if (msg.startsWith('PICSART_SEEDANCE25_POST_SUBMIT_FAILED')) throw e;
+      if (msg.startsWith('PICSART_SEEDANCE25_POST_SUBMIT_FAILED')
+        || msg.startsWith('PICSART_SEEDANCE25_FLASH_POST_SUBMIT_FAILED')) throw e;
       if (isPicsartSubmitTokenRejection(e)) {
         // HTTP 401 rejected the submit: no accepted job is being replayed.
         // Quarantine this credential so subsequent users do not hit it again.
@@ -1840,6 +1841,10 @@ export const SEEDANCE_MODEL = 'seedance_2_5';
 export const SEEDANCE_MAX_REF_IMAGES = 30;
 export const SEEDANCE_MAX_REF_VIDEOS = 10;
 export const SEEDANCE_MAX_REF_AUDIOS = 10;
+export const SEEDANCE25_FLASH_MODEL = 'seedance-2.5-flash';
+export const SEEDANCE25_FLASH_DURATION_SECONDS = 5;
+export const SEEDANCE25_FLASH_RESOLUTION = '480p';
+export const SEEDANCE25_FLASH_RATIO = '16:9';
 export type SeedanceResolution = '480p' | '720p';
 export type SeedanceAspectRatio = '9:16' | '16:9';
 // HAR options endpoint reports 120 credits for 480p/30s/audio and 210 credits
@@ -2104,6 +2109,168 @@ export async function generateSeedance(input: {
         throw new Error(`PICSART_POST_SUBMIT_AUTH_LOST job=${id}`);
       }
       throw new Error(`PICSART_SEEDANCE25_POST_SUBMIT_FAILED job=${id}: ${e?.message ?? e}`);
+    }
+  });
+}
+
+// ─── Seedance 2.5 Flash (model-v1 Playground gateway) ──────────────────────────
+//
+// This is separate from the legacy Seedance 2.5 workflow above. The Flash
+// route was live-verified as 5s, 480p, text-to-video, no audio.
+export async function pollSeedance25FlashResult(
+  credId: number,
+  id: string,
+  opts?: { maxAttempts?: number; intervalMs?: number; onTick?: (elapsedMs: number) => void }
+): Promise<{ url: string; credits?: number }> {
+  const maxAttempts = opts?.maxAttempts ?? 300;
+  const intervalMs = opts?.intervalMs ?? 5000;
+  const start = Date.now();
+  const diag = new PollDiag();
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+    opts?.onTick?.(Date.now() - start);
+    const access = await getAccessToken(credId);
+    const r = await http.get(
+      `${API_BASE}/gw-v2/workflows/v1/models/${encodeURIComponent(id)}/result`,
+      { headers: commonHeaders({
+        authorization: `Bearer ${access}`,
+        'x-app-authorization': X_APP_AUTHORIZATION,
+        'x-sub-package-id': 'subscription_pro_monthly',
+      }), validateStatus: () => true }
+    );
+    if (!diag.note(r)) {
+      const topStatus = String((r.data as any)?.status ?? '').toLowerCase();
+      const reason = String((r.data as any)?.reason ?? '');
+      if (r.status >= 400 && (topStatus === 'error' || reason)) {
+        throw new Error(`PICSART_GEN_FAILED: ${r.status} ${reason || topStatus}`.slice(0, 220));
+      }
+      continue;
+    }
+    const response = (r.data as any)?.response;
+    const status = String(response?.status ?? '').toUpperCase();
+    if (status === 'COMPLETED') {
+      const result = response?.result;
+      const url = result?.url ?? result?.video_url ?? result?.items?.[0]?.url;
+      if (typeof url !== 'string' || !url) throw new Error('PICSART_NO_RESULT_URL');
+      return { url, credits: response?.usage?.credits };
+    }
+    if (status === 'FAILED' || status === 'ERROR' || status === 'CANCELLED') {
+      const reason = String(response?.error?.reason ?? response?.reason ?? status);
+      throw new Error(`PICSART_GEN_FAILED: ${reason}`.slice(0, 220));
+    }
+  }
+  throw diag.timeoutError();
+}
+
+export async function generateSeedance25Flash(input: {
+  userId: number;
+  prompt: string;
+  onStatus?: (stage: 'quote' | 'submit' | 'poll') => void;
+  onPoll?: (elapsedSec: number) => void;
+}): Promise<{ url: string; credits?: number }> {
+  const prompt = input.prompt.trim();
+  if (!prompt || prompt.length > 20_000) throw new Error('SEEDANCE25_FLASH_INVALID_PROMPT');
+  return runWithAccount(input.userId, null, async credId => {
+    const { credits: accountCredits } = await getCredits(credId);
+    const access = await getAccessToken(credId);
+    const params = {
+      prompt,
+      resolution: SEEDANCE25_FLASH_RESOLUTION,
+      duration: SEEDANCE25_FLASH_DURATION_SECONDS,
+      aspectRatio: SEEDANCE25_FLASH_RATIO,
+      generateAudio: false,
+      omniReferenceTaskType: 'auto',
+      outputFormat: 'mp4',
+    };
+    const headers = commonHeaders({
+      'content-type': 'application/json',
+      authorization: `Bearer ${access}`,
+      'x-app-authorization': X_APP_AUTHORIZATION,
+      'x-sub-package-id': 'subscription_pro_monthly',
+    });
+
+    input.onStatus?.('quote');
+    const quoteResponse = await http.post(
+      `${API_BASE}/gw-v2/workflows/v1/models/options`,
+      { params: { model: SEEDANCE25_FLASH_MODEL, params } },
+      { headers, validateStatus: () => true }
+    );
+    const quote = quoteResponse.data?.response;
+    if (!ok2xx(quoteResponse.status) || typeof quote?.credits !== 'number'
+      || !Number.isFinite(quote.credits) || quote.chargeCredits !== false) {
+      if (quoteResponse.status === 401) {
+        throw new Error(`PICSART_SEEDANCE25_FLASH_OPTIONS_FAILED status 401`);
+      }
+      const reason = String(quoteResponse.data?.reason ?? quoteResponse.data?.status ?? 'quote rejected');
+      throw new Error(`PICSART_SEEDANCE25_FLASH_OPTIONS_FAILED status ${quoteResponse.status}: ${reason}`.slice(0, 220));
+    }
+    if (!Number.isFinite(accountCredits) || accountCredits < quote.credits) {
+      throw new Error(ERR_INSUFFICIENT_CREDITS);
+    }
+
+    const aiSDKPayload = JSON.stringify({
+      aspectRatio: SEEDANCE25_FLASH_RATIO,
+      resolution: SEEDANCE25_FLASH_RESOLUTION,
+      duration: SEEDANCE25_FLASH_DURATION_SECONDS,
+      generateAudio: false,
+      returnLastFrame: false,
+      outputFormat: 'mp4',
+      imageUrls: [],
+    });
+    const submitBody = {
+      params: {
+        model: SEEDANCE25_FLASH_MODEL,
+        params,
+        options: {
+          inputs_transformation: { downscale_oversized_images: true },
+          drive: {
+            name: 'seedance-2-5-flash-ai-playground.mp4',
+            attributes: {
+              model: SEEDANCE25_FLASH_MODEL,
+              appId: 'com.picsart.ai-playground',
+              appType: 'miniapp',
+              aiSDKPayload,
+            },
+            folder: { path: 'AI Playground' },
+          },
+        },
+      },
+    };
+    input.onStatus?.('submit');
+    const submitted = await http.post(
+      `${API_BASE}/gw-v2/workflows/v1/models/submit`,
+      submitBody,
+      { headers, validateStatus: () => true }
+    );
+    const id = submitted.data?.response?.id;
+    if (submitted.status >= 500 || (ok2xx(submitted.status) && (typeof id !== 'string' || !id.trim()))) {
+      throw new Error(`PICSART_SEEDANCE25_FLASH_POST_SUBMIT_FAILED ambiguous response status ${submitted.status}`);
+    }
+    if (!ok2xx(submitted.status) || !id) {
+      if (submitted.status === 401) throw new Error('PICSART_SUBMIT_FAILED status 401: gateway rejected account token');
+      const reason = String(submitted.data?.reason ?? submitted.data?.status ?? 'submit rejected');
+      throw new Error(`PICSART_SUBMIT_FAILED status ${submitted.status}: ${reason}`.slice(0, 220));
+    }
+
+    input.onStatus?.('poll');
+    try {
+      return await pollSeedance25FlashResult(credId, id, {
+        onTick: elapsedMs => input.onPoll?.(Math.round(elapsedMs / 1000)),
+      });
+    } catch (error: any) {
+      if (isPicsartPostSubmitAuthFailure(error)) {
+        await q(
+          `UPDATE picsart_credentials SET status = 'dead', dead_at = NOW(), updated_at = NOW() WHERE id = $1`,
+          [credId]
+        );
+        notifyOwner(
+          `⚠️ Akun Picsart #${credId} ditolak saat polling Seedance 2.5 Flash. ` +
+          'Job tidak diulang agar tidak membuat generate ganda.'
+        );
+        throw new Error('PICSART_POST_SUBMIT_AUTH_LOST');
+      }
+      const detail = String(error?.message ?? 'poll failed').slice(0, 160);
+      throw new Error(`PICSART_SEEDANCE25_FLASH_POST_SUBMIT_FAILED ${detail}`);
     }
   });
 }

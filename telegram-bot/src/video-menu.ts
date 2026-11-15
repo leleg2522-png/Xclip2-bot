@@ -30,7 +30,7 @@ export function videoFamilyForCallback(data: string): VideoFamilyId | undefined 
   if (data === 'menu_kling_list' || data.startsWith('mode_pi2v_kling_')
     || ['mode_kling21', 'mode_kling21p2'].includes(data)) return 'kling';
   if (data.startsWith('mode_pi2v_seedance_')
-    || ['mode_oneover_seedance25', 'mode_seedance25_p2', 'mode_china_seedance2',
+    || ['mode_oneover_seedance25', 'mode_seedance25_flash', 'mode_seedance25_p2', 'mode_china_seedance2',
       'mode_flora_seedance_2_480', 'mode_flora_seedance_2_5_480',
       'mode_posbot_s25_i2v', 'mode_posbot_s25_r2v'].includes(data)) return 'seedance';
   if (['mode_veofast', 'mode_veolite', 'mode_veo31'].includes(data)) return 'veo';

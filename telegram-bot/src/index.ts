@@ -297,6 +297,7 @@ const MODEL_PRICES = {
   picsart_wan_v3: 6000, // Wan 3.0 30s, Vivareel 480p → crop → mandatory Renderful 1080p
   alriz_seedance_25: 5000, // Historical Alriz tariff; not used for new orders
   picsart_seedance_25: 15000, // Seedance 2.5, 30s: native 480p → mandatory 1080p finishing
+  picsart_seedance_25_flash: 6000, // Seedance 2.5 Flash: 5s text-to-video, native 480p
   oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
   kling_21_p2: 3000,   // Public Kling 2.1 P2; Flora Kling 2.5 first-frame backend
@@ -1853,6 +1854,7 @@ type Mode =
   | 'seedance_2_edit_wait_prompt'
   | 'oneover_wait_image'
   | 'oneover_wait_prompt'
+  | 'seedance25_flash_wait_prompt'
   | 'kling21_wait_image'
   | 'kling21_wait_prompt'
   | 'kling21p2_wait_image'
@@ -1893,6 +1895,7 @@ type GenerationDraftKind =
   | 'kling21'
   | 'picsart_i2v'
   | 'oneover'
+  | 'seedance25_flash'
   | 'runway'
   | 'sora'
   | 'veofast'
@@ -2195,7 +2198,7 @@ const GENERATION_DRAFT_MODES = new Set<Mode>([
   'seedance_fast_edit_wait_image', 'seedance_fast_edit_wait_prompt',
   'seedance_2_edit_wait_ratio', 'seedance_2_edit_wait_video',
   'seedance_2_edit_wait_image', 'seedance_2_edit_wait_prompt',
-  'oneover_wait_image', 'oneover_wait_prompt',
+  'oneover_wait_image', 'oneover_wait_prompt', 'seedance25_flash_wait_prompt',
   'kling21_wait_image', 'kling21_wait_prompt',
   'kling21p2_wait_image', 'kling21p2_wait_prompt',
   'gomni11_flora_wait_ratio', 'gomni11_flora_wait_image', 'gomni11_flora_wait_prompt',
@@ -2231,6 +2234,7 @@ function generationDraftKindForStart(data: string): GenerationDraftKind | undefi
     mode_flora_seedance_2_480: 'flora_seedance_2_480',
     mode_flora_seedance_2_5_480: 'flora_seedance_2_5_480',
     mode_oneover_seedance25: 'oneover',
+    mode_seedance25_flash: 'seedance25_flash',
     mode_seedance25_p2: 'seedance25_p2',
     mode_posbot_s25_i2v: 'posbot_seedance25',
     mode_posbot_s25_r2v: 'posbot_seedance25',
@@ -2788,6 +2792,7 @@ function videoModelRows() {
     [Markup.button.callback('🌊 Seedance 2.0 Fast 1080p', 'mode_pi2v_seedance_2_fast')],
     [Markup.button.callback('🌊 Seedance 2.0 1080p', 'mode_pi2v_seedance_2')],
     [Markup.button.callback('🌊 Seedance 2.5 • Teks / Gambar / Video / Audio', 'mode_oneover_seedance25')],
+    [Markup.button.callback(`⚡ Seedance 2.5 Flash · Teks → Video · 5 detik · 480p · ${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}`, 'mode_seedance25_flash')],
     [Markup.button.callback(`Seedance 2.5 P2 · Gambar / Video / Audio · 30s · 1080p · ${formatRupiah(MODEL_PRICES.seedance25_p2)}`, 'mode_seedance25_p2')],
     [Markup.button.callback(`Seedance 2.5 P3 · I2V · 30 detik · ${formatRupiah(MODEL_PRICES.posbot_seedance25)}`, 'mode_posbot_s25_i2v')],
     [Markup.button.callback(`Seedance 2.5 P3 · R2V · 30 detik · ${formatRupiah(MODEL_PRICES.posbot_seedance25)}`, 'mode_posbot_s25_r2v')],
@@ -3402,6 +3407,7 @@ function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false 
     `• Seedance 2.0 Fast 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_fast'))}\n` +
     `• Seedance 2.0 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
     `• Seedance 2.5 Teks / Gambar / Video / Audio (30s, 1080p) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25)}\n` +
+    `• Seedance 2.5 Flash Teks → Video (5s, 480p) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}\n` +
     `• Seedance 2.5 P2 Gambar / Video referensi (30s, 1080p melalui upscale) — ${formatRupiah(MODEL_PRICES.seedance25_p2)}\n` +
     `• Seedance 2.5 P3 I2V dari foto (30 detik) — ${formatRupiah(MODEL_PRICES.posbot_seedance25)}\n` +
     `• Seedance 2.5 P3 R2V dari video referensi (30 detik) — ${formatRupiah(MODEL_PRICES.posbot_seedance25)}\n` +
@@ -5463,6 +5469,29 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
+  if (data === 'mode_seedance25_flash') {
+    setSession(userId, {
+      mode: 'seedance25_flash_wait_prompt',
+      oneoverImageUrl: undefined,
+      seedance25ImageFileIds: undefined,
+      seedance25Videos: undefined,
+      seedance25Audios: undefined,
+      seedance25PendingUploads: 0,
+      seedance25VideoFileId: undefined,
+      seedance25VideoMime: undefined,
+      seedance25Ratio: undefined,
+      seedance25Settings: undefined,
+      seedance25Step: undefined,
+    });
+    return ctx.editMessageText(
+      `⚡ *Seedance 2.5 Flash · Teks ke Video*\n\n` +
+      `Durasi: *5 detik* • *480p* • tanpa audio\n` +
+      `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}* per video\n\n` +
+      'Kirim prompt teks (maksimal 20.000 karakter).',
+      { parse_mode: 'Markdown' }
+    );
+  }
+
   if (data.startsWith('seedance25_mode_')) {
     const s = getSession(userId);
     const mode = data.slice('seedance25_mode_'.length) as Seedance25Settings['mode'];
@@ -6902,6 +6931,37 @@ function seedance25RatioKeyboard() {
   return Markup.inlineKeyboard(ratios.map(r => [
     Markup.button.callback(r, `seedance25_ratio_${r.replace(':', '')}`),
   ]));
+}
+
+async function submitSeedance25FlashPrompt(ctx: any, rawPrompt: string) {
+  const userId = ctx.from.id;
+  let prompt: string;
+  try {
+    prompt = validateSeedance25Prompt(rawPrompt);
+  } catch (error: any) {
+    return ctx.reply(error.message);
+  }
+  if (getSession(userId).mode !== 'seedance25_flash_wait_prompt') return;
+  if (!getSession(userId).dbUserId && !await requireLogin(ctx)) return;
+  const activeDraft = getSession(userId);
+  if (activeDraft.mode !== 'seedance25_flash_wait_prompt') return;
+  if (!activeDraft.dbUserId) return ctx.reply('Mulai lagi dari /menu.');
+
+  const cooldownMs = getCooldownRemainingMs(userId);
+  if (cooldownMs > 0) {
+    setSession(userId, { mode: 'idle' });
+    return ctx.reply(
+      `⏳ Sabar ya, lagi cooldown!\n\nKamu baru aja generate. Tunggu *${formatCooldown(cooldownMs)}* lagi sebelum generate berikutnya.`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+  const dbUserId = activeDraft.dbUserId;
+  setSession(userId, { mode: 'idle' });
+  const statusMsg = await retryTelegramRateLimit<{ message_id: number }>(() => ctx.reply(
+    '⏳ Seedance 2.5 Flash sedang memeriksa biaya dan membuat video 480p...'
+  ));
+  runPicsartSeedance25Flash(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt)
+    .catch((error: any) => console.error(`[${userId}] Seedance 2.5 Flash error:`, describeError(error)));
 }
 
 async function submitSeedance25Prompt(ctx: any, rawPrompt: string, expectedSettings?: Seedance25Settings) {
@@ -8674,6 +8734,10 @@ bot.on('text', async (ctx) => {
   // ── Picsart image-to-video prompt ──
   if (session.mode === 'picsart_i2v_wait_prompt') {
     return submitPicsartI2vPrompt(ctx, ctx.message.text);
+  }
+
+  if (session.mode === 'seedance25_flash_wait_prompt') {
+    return submitSeedance25FlashPrompt(ctx, ctx.message.text);
   }
 
   // ── Picsart Seedance 2.5 prompt (legacy callback/session IDs retained) ──
@@ -10897,6 +10961,82 @@ async function runPicsartSeedance25(
       await bot.telegram.sendMessage(
         chatId,
         `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`
+      ).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
+// ─── Background: Seedance 2.5 Flash, native 480p text-to-video ────────────────
+
+async function runPicsartSeedance25Flash(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+) {
+  const label = 'Seedance 2.5 Flash';
+  const price = MODEL_PRICES.picsart_seedance_25_flash;
+  let stage = 'charge';
+  const charge = await beginCharge(dbUserId, price, MAX_PARALLEL_GENERATIONS_PER_USER);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, price)).catch(() => {});
+    return;
+  }
+  let refund = true;
+
+  try {
+    stage = 'quote';
+    let lastEdit = 0;
+    const result = await picsart.generateSeedance25Flash({
+      userId: dbUserId,
+      prompt,
+      onStatus: providerStage => {
+        stage = providerStage;
+        const message = providerStage === 'quote'
+          ? `⏳ ${label}: memeriksa biaya provider...`
+          : providerStage === 'submit'
+            ? `⏳ ${label}: mengirim permintaan video...`
+            : `⏳ ${label}: membuat video 480p...`;
+        lastEdit = Date.now();
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, message).catch(() => {});
+      },
+      onPoll: elapsedSec => {
+        if (Date.now() - lastEdit < 30_000) return;
+        lastEdit = Date.now();
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = elapsedSec % 60;
+        const elapsed = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
+        bot.telegram.editMessageText(
+          chatId, statusMsgId, undefined,
+          `⏳ ${label}: video sedang dibuat...\n⏱️ Sudah berjalan ${elapsed}. Video akan dikirim otomatis.`
+        ).catch(() => {});
+      },
+    });
+    stage = 'delivery';
+    const delivered = await sendResult(
+      chatId,
+      result.url,
+      `⚡ ${label} (teks ke video · 16:9 · 5 detik · 480p · tanpa audio)\n\n/menu untuk buat lagi`,
+      true
+    ).catch(() => false);
+    if (delivered) {
+      refund = false;
+      const newCount = await incrementKlingUsage(dbUserId);
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+      console.log(`[seedance25-flash] user=${userId} done usage=${newCount} providerCredits=${result.credits ?? '?'}`);
+    }
+  } catch (error: any) {
+    const message = describeError(error);
+    console.error(`[seedance25-flash] user=${userId} dbUser=${dbUserId} stage=${stage} error=${message}`);
+    await notifyGenerationFailure(chatId, statusMsgId, error, stage);
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, price).catch(() => {});
+      await bot.telegram.sendMessage(
+        chatId, `↩️ Saldo ${formatRupiah(price)} dikembalikan (generate tidak berhasil).`
       ).catch(() => {});
     }
     releaseGenerating(dbUserId);
