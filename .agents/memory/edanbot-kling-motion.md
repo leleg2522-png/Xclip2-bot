@@ -6,7 +6,7 @@ description: P2/P3 Edan Bot native; P4/P5 share Alriz 2.6 Pro and deliver direct
 # Current Kling Motion routing
 
 P2/P3 use the HAR-verified Edan Bot generation flow and model key
-`kling-motion-26-pro--secondary`. Deliver the provider result directly without
+`kling-motion-26-pro`. Deliver the provider result directly without
 Renderful finishing; keep the public package labels and prices separate. P4
 and P5 use Alriz `mc-kling-2.6-pro` and the same database key pool.
 Its customer-facing name must remain **Kling MC V3 Pro P5**, independently
@@ -78,12 +78,12 @@ from a mocked generation test or replay an already accepted paid job to check.
 **Hard rule:** never let any user-facing string (reply/caption/error/filename) leak `edanbot`/`roboneo`/`wavespeed`/`openart`/`meitu`/`meitudata`, and never send the raw `result_url` as a link — always re-upload bytes.
 
 ## Model variants
-- P2 and P3 both submit the HAR-verified public model key `kling-motion-26-pro--secondary`.
+- P2 and P3 both submit the HAR-verified model key `kling-motion-26-pro`.
 - The HAR response's internal model/provider fields are implementation details and must remain hidden from customers.
 
-**Why:** The latest supplied HAR completed a Kling MC generation with this key; older HAR evidence used a different key.
+**Why:** The newest supplied HAR submitted `kling-motion-26-pro` and the job completed; this supersedes the older `--secondary` model-key evidence.
 
-**How to apply:** Submit `kling-motion-26-pro--secondary` for both P2 and P3 while preserving their separate public labels and prices; the prompt entered after the reference video goes in `fields.prompt` (a `-` means empty prompt). Customer-facing text must not expose the key or supplier.
+**How to apply:** Submit `kling-motion-26-pro` for both P2 and P3 while preserving their separate public labels and prices; the prompt entered after the reference video goes in `fields.prompt` (a `-` means empty prompt). Customer-facing text must not expose the key or supplier.
 
 ## API flow (single shared account)
 - Auth: `EDANBOT_COOKIE` secret. It is the value of a Flask **signed** `session=` cookie. Normalize: prepend `session=` if missing (users often paste only the value → 401 without the prefix).

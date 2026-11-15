@@ -165,11 +165,11 @@ const floraHttp = axios.create({ timeout: 180_000 });
 // Direct HTTP client for Telegram downloads — tidak pakai proxy
 const telegramHttp = axios.create({ timeout: 60_000 });
 
-// Direct HTTP client untuk Kling MC V3.0 PRO P3 — TANPA proxy. Cookie session-nya
+// Direct HTTP client untuk Kling MC V3 PRO P2/P3 — TANPA proxy. Cookie session-nya
 // tidak terikat IP, dan lewat proxy Decodo malah kena 407 (proxy auth) di Railway.
 const edanbotHttp = axios.create({ timeout: 120_000, proxy: false });
 const EDANBOT_JOB_TIMEOUT_MS = 20 * 60 * 1000;
-const EDANBOT_KLING_MC_MODEL = 'kling-motion-26-pro--secondary';
+const EDANBOT_KLING_MC_MODEL = 'kling-motion-26-pro';
 
 
 // ─── Database ─────────────────────────────────────────────────────────────────

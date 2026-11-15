@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 const source = fs.readFileSync(path.resolve(__dirname, '../src/index.ts'), 'utf8');
-const MODEL = 'kling-motion-26-pro--secondary';
+const MODEL = 'kling-motion-26-pro';
 const prices = { kling_p2: 4000, kling_p3: 4000 };
 
 function compile(text: string) {
@@ -115,6 +115,7 @@ async function runnerTest(variant: 'p2' | 'p3', failure?: 'submit-timeout' | 'po
     markGenSuccess: () => { events.successes++; },
     addSaldo: async (_id: number, amount: number) => { events.refunds.push(amount); },
     releaseGenerating: () => {},
+    notifyGenerationFailure: async () => {},
     describeError: (error: any) => String(error?.message ?? error),
     formatRupiah: (amount: number) => `Rp${amount}`,
     console: { error() {}, log() {} },
@@ -171,7 +172,7 @@ async function runnerTest(variant: 'p2' | 'p3', failure?: 'submit-timeout' | 'po
 }
 
 async function main() {
-  assert.match(source, /EDANBOT_KLING_MC_MODEL\s*=\s*'kling-motion-26-pro--secondary'/);
+  assert.match(source, /EDANBOT_KLING_MC_MODEL\s*=\s*'kling-motion-26-pro'/);
   assert.match(source, /kling_p2:\s*4000/);
   assert.match(source, /kling_p3:\s*4000/);
   await wrapperTests();
