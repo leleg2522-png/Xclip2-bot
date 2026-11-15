@@ -55,7 +55,7 @@ function harness(options: {
     API_BASE: 'https://picsart.test',
     X_APP_AUTHORIZATION: 'test-app-auth',
     SEEDANCE25_FLASH_MODEL: 'seedance-2.5-flash',
-    SEEDANCE25_FLASH_DURATION_SECONDS: 5,
+    SEEDANCE25_FLASH_DURATION_SECONDS: 30,
     SEEDANCE25_FLASH_RESOLUTION: '480p',
     SEEDANCE25_FLASH_RATIO: '16:9',
     SEEDANCE25_FLASH_MAX_IMAGES: 10,
@@ -93,13 +93,13 @@ function harness(options: {
       post: async (url: string, body: any) => {
         calls.posts.push({ url, body });
         if (url.endsWith('/options')) {
-          return { status: 201, data: { status: 'success', response: { credits: 15, price: 3, unit: 'second', usageAmount: 5, chargeCredits: false } } };
+          return { status: 201, data: { status: 'success', response: { credits: 90, price: 3, unit: 'second', usageAmount: 30, chargeCredits: false } } };
         }
         return options.submitResponse ?? { status: 201, data: { response: { id: 'accepted-task' } } };
       },
       get: async (url: string) => {
         calls.gets.push(url);
-        return { status: 200, data: { response: { status: 'COMPLETED', result: { url: 'https://result.test/video.mp4' }, usage: { credits: 15 } } } };
+        return { status: 200, data: { response: { status: 'COMPLETED', result: { url: 'https://result.test/video.mp4' }, usage: { credits: 90 } } } };
       },
     },
   });
@@ -116,11 +116,11 @@ async function checkSuccessfulContract() {
   const h = harness();
   const result = await h.generate();
   assert.equal(result.url, 'https://result.test/video.mp4');
-  assert.equal(result.credits, 15);
+  assert.equal(result.credits, 90);
   assert.equal(h.calls.posts.length, 2);
   assert.equal(h.calls.posts[0].url, 'https://picsart.test/gw-v2/workflows/v1/models/options');
   assert.equal(h.calls.posts[0].body.params.model, 'seedance-2.5-flash');
-  assert.equal(h.calls.posts[0].body.params.params.duration, 5);
+  assert.equal(h.calls.posts[0].body.params.params.duration, 30);
   assert.equal(h.calls.posts[0].body.params.params.resolution, '480p');
   assert.equal(h.calls.posts[0].body.params.params.generateAudio, false);
   assert.equal(h.calls.posts[1].url, 'https://picsart.test/gw-v2/workflows/v1/models/submit');
@@ -130,7 +130,7 @@ async function checkSuccessfulContract() {
 }
 
 async function checkNoSubmitWhenUnaffordable() {
-  const h = harness({ balance: 14 });
+  const h = harness({ balance: 89 });
   await assert.rejects(() => h.generate(), /PICSART_INSUFFICIENT_CREDITS/);
   assert.equal(h.calls.posts.length, 1, 'Only free options quote; no paid submit');
   assert.equal(h.calls.gets.length, 0);
@@ -215,9 +215,9 @@ async function checkBotBillingDeliveryAndRefund() {
     },
     chargeFailMsg: () => 'Saldo tidak cukup',
     formatRupiah: (amount: number) => `Rp${amount}`,
-    picsart: { generateSeedance25Flash: async () => {
+    picsart: { SEEDANCE25_FLASH_DURATION_SECONDS: 30, generateSeedance25Flash: async () => {
       providerCalls++;
-      return { url: 'https://result.test/video.mp4', credits: 15 };
+      return { url: 'https://result.test/video.mp4', credits: 90 };
     } },
     sendResult: async (...args: any[]) => { deliveries.push(args); return true; },
     incrementKlingUsage: async () => 1,
@@ -238,7 +238,7 @@ async function checkBotBillingDeliveryAndRefund() {
   assert.deepEqual(charges, [6000]);
   assert.equal(providerCalls, 1);
   assert.equal(deliveries.length, 1);
-  assert.match(deliveries[0][2], /5 detik · 480p · tanpa audio/);
+  assert.match(deliveries[0][2], /30 detik · 480p · tanpa audio/);
   assert.equal(deliveries[0][3], true);
   assert.deepEqual(refunds, []);
   assert.deepEqual(releases, [3]);
@@ -251,7 +251,7 @@ async function checkBotBillingDeliveryAndRefund() {
     beginCharge: async (_id: number, price: number) => { charges.push(price); return { ok: true }; },
     chargeFailMsg: () => 'Saldo tidak cukup',
     formatRupiah: (amount: number) => `Rp${amount}`,
-    picsart: { generateSeedance25Flash: async () => { throw Error('PICSART_GEN_FAILED'); } },
+    picsart: { SEEDANCE25_FLASH_DURATION_SECONDS: 30, generateSeedance25Flash: async () => { throw Error('PICSART_GEN_FAILED'); } },
     sendResult: async () => false,
     incrementKlingUsage: async () => 1,
     markGenSuccess: () => {},
@@ -349,7 +349,7 @@ async function main() {
   await checkPostSubmitAuthNeverReplays();
   await checkBotBillingDeliveryAndRefund();
   await checkFlashMediaIntake();
-  console.log('Seedance 2.5 Flash passed: gateway contract, 15-credit preflight, no duplicate jobs, Rp6.000 billing/refunds, native 480p delivery.');
+  console.log('Seedance 2.5 Flash passed: 30s gateway settings, quoted-credit preflight, no duplicate jobs, Rp6.000 billing/refunds, native 480p delivery.');
 }
 
 main().catch(error => {

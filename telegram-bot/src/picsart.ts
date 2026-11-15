@@ -1842,7 +1842,7 @@ export const SEEDANCE_MAX_REF_IMAGES = 30;
 export const SEEDANCE_MAX_REF_VIDEOS = 10;
 export const SEEDANCE_MAX_REF_AUDIOS = 10;
 export const SEEDANCE25_FLASH_MODEL = 'seedance-2.5-flash';
-export const SEEDANCE25_FLASH_DURATION_SECONDS = 5;
+export const SEEDANCE25_FLASH_DURATION_SECONDS = 30;
 export const SEEDANCE25_FLASH_RESOLUTION = '480p';
 export const SEEDANCE25_FLASH_RATIO = '16:9';
 export const SEEDANCE25_FLASH_MAX_IMAGES = 10;
@@ -2121,8 +2121,9 @@ export async function generateSeedance(input: {
 
 // ─── Seedance 2.5 Flash (model-v1 Playground gateway) ──────────────────────────
 //
-// This is separate from the legacy Seedance 2.5 workflow above. The Flash
-// route was live-verified as 5s, 480p, text-to-video, no audio.
+// This is separate from the legacy Seedance 2.5 workflow above. The original
+// Flash T2V request was live-verified at 5s/480p/no audio; the API docs allow
+// 30s, which is the output duration configured for this bot flow.
 export async function pollSeedance25FlashResult(
   credId: number,
   id: string,
