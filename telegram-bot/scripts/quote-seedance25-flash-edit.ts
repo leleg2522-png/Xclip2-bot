@@ -8,8 +8,15 @@ async function main() {
   const args = process.argv.slice(2);
   const [videoPath, imagePath] = args.filter(arg => !arg.startsWith('--'));
   const submit = args.includes('--submit');
+  const identityLock = args.includes('--identity-lock');
   const maxCreditsArg = args.find(arg => arg.startsWith('--max-provider-credits='));
   const maxProviderCredits = maxCreditsArg ? Number(maxCreditsArg.split('=')[1]) : undefined;
+  const variantArg = args.find(arg => arg.startsWith('--variant='));
+  const variant = (variantArg?.split('=')[1] ?? 'default')
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40) || 'default';
   if (!videoPath || !imagePath) {
     throw new Error('Usage: quote-seedance25-flash-edit.ts <video> <character-image>');
   }
@@ -31,9 +38,12 @@ async function main() {
     ]);
     const videoDuration = await inspectSeedance25Media(videoBuffer, 'video');
     let lastPollLog = 0;
+    const prompt = identityLock
+      ? 'Use the woman in the image reference as the exact facial identity for the main performer. Match her face closely: preserve the same face shape, eye shape and spacing, nose, lips, jawline, skin tone, apparent age, and distinctive features. Keep this identity consistent in every frame and during head turns; do not replace or blend her face with a generic person. Replace only the main performer while preserving the source movement, gestures, timing, body pose, camera, background, lighting, other people, and original audio. Do not add people or change the scene.'
+      : 'Replace the main person in the source video with the woman shown in the image reference. Preserve the source movement and choreography, timing, camera framing and movement, background, lighting, other people, and original audio. Keep the reference woman recognizable and consistent throughout; do not add people or change the scene.';
     const sharedInput = {
       userId: 0,
-      prompt: 'Replace the main person in the source video with the woman shown in the image reference. Preserve the source movement and choreography, timing, camera framing and movement, background, lighting, other people, and original audio. Keep the reference woman recognizable and consistent throughout; do not add people or change the scene.',
+      prompt,
       images: [{ buffer: imageBuffer, name: 'character-reference.jpg', mime: 'image/jpeg' }],
       videos: [{ buffer: videoBuffer, name: 'source-video.mp4', mime: 'video/mp4', duration: videoDuration }],
       taskType: 'edit',
@@ -83,7 +93,7 @@ async function main() {
         .replace(/[^a-z0-9-]+/g, '-')
         .replace(/^-+|-+$/g, '')
         .slice(0, 80) || 'source';
-      const outputPath = resolve(process.cwd(), `../generated-artifacts/seedance25-flash-edit-${videoLabel}/output.mp4`);
+      const outputPath = resolve(process.cwd(), `../generated-artifacts/seedance25-flash-edit-${videoLabel}-${variant}/output.mp4`);
       await mkdir(resolve(outputPath, '..'), { recursive: true });
       await writeFile(outputPath, output);
       console.log(JSON.stringify({
