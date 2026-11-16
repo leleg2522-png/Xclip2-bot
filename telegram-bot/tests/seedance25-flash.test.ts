@@ -343,6 +343,12 @@ async function checkBotBillingDeliveryAndRefund() {
   let providerCalls = 0;
   let providerInput: any;
   let finishingCalls = 0;
+  let finishingMode: 'success' | 'fallback' | 'throw' = 'success';
+  let deliveryOk = true;
+  const finishingInputs: any[] = [];
+  const failures: string[] = [];
+  const order: string[] = [];
+  const publicMessages: string[] = [];
   const context = vm.createContext({
     console: { log() {}, warn() {}, error() {} },
     MAX_PARALLEL_GENERATIONS_PER_USER: 3,
@@ -355,19 +361,29 @@ async function checkBotBillingDeliveryAndRefund() {
     formatRupiah: (amount: number) => `Rp${amount}`,
     picsart: { SEEDANCE25_FLASH_DURATION_SECONDS: 30, generateSeedance25Flash: async (input: any) => {
       providerCalls++;
+      order.push('generate');
       providerInput = input;
+      for (const stage of ['upload', 'quote', 'submit', 'poll']) input.onStatus?.(stage);
       return { url: 'https://result.test/video.mp4', credits: 90 };
     } },
-    sendResult: async (...args: any[]) => { deliveries.push(args); return true; },
+    sendResult: async (...args: any[]) => { order.push('deliver'); deliveries.push(args); return deliveryOk; },
     incrementKlingUsage: async () => 1,
     markGenSuccess: () => {},
     addSaldo: async (_id: number, amount: number) => { refunds.push(amount); },
     releaseGenerating: (id: number) => releases.push(id),
     describeError: (error: Error) => error.message,
-    notifyGenerationFailure: async () => {},
-    upscaleGeneratedVideo: async () => { finishingCalls++; throw Error('Flash must remain native 480p'); },
+    notifyGenerationFailure: async (_chat: number, _status: number, _error: Error, stage: string) => { failures.push(stage); },
+    upscaleGeneratedVideo: async (...args: any[]) => {
+      finishingCalls++;
+      finishingInputs.push(args);
+      order.push('upscale');
+      if (finishingMode === 'throw') throw Error('Finishing unavailable');
+      return finishingMode === 'fallback'
+        ? { url: args[0], upscaled: false }
+        : { url: 'https://result.test/video-1080.mp4', upscaled: true };
+    },
     bot: { telegram: {
-      editMessageText: async () => {},
+      editMessageText: async (_chat: number, _message: number, _inline: unknown, text: string) => { publicMessages.push(text); },
       sendMessage: async () => {},
       deleteMessage: async () => {},
     } },
@@ -383,11 +399,41 @@ async function checkBotBillingDeliveryAndRefund() {
   assert.equal(providerCalls, 1);
   assert.equal(deliveries.length, 1);
   assert.equal(providerInput.taskType, 'edit');
-  assert.match(deliveries[0][2], /edit · durasi mengikuti video sumber · 480p · audio aktif/);
+  assert.equal(deliveries[0][1], 'https://result.test/video-1080.mp4');
+  assert.match(deliveries[0][2], /edit · durasi mengikuti video sumber · 1080p · audio aktif/);
+  assert.doesNotMatch(deliveries[0][2], /upscal|renderful|480p|native/i);
   assert.equal(deliveries[0][3], true);
   assert.deepEqual(refunds, []);
   assert.deepEqual(releases, [3]);
-  assert.equal(finishingCalls, 0, 'Flash delivers native 480p without upscaling');
+  assert.equal(finishingCalls, 1, 'Flash must complete finishing before delivery');
+  assert.equal(finishingInputs[0][0], 'https://result.test/video.mp4');
+  assert.match(finishingInputs[0][4], /menyiapkan hasil 1080p/);
+  assert.doesNotMatch(finishingInputs[0][4], /upscal|renderful|480p|native/i);
+  assert.deepEqual(order, ['generate', 'upscale', 'deliver']);
+  assert.doesNotMatch(publicMessages.join('\n'), /upscal|renderful|480p|native|provider/i);
+
+  for (const mode of ['fallback', 'throw'] as const) {
+    finishingMode = mode;
+    const beforeProvider = providerCalls;
+    await context.runPicsartSeedance25Flash(1, 2, 3, 4, 'A new scene', {
+      images: [], videos: [], audios: [], taskType: 'auto',
+    });
+    assert.equal(deliveries.length, 1, 'Never deliver a native fallback as 1080p');
+    assert.equal(providerCalls, beforeProvider + 1, 'Never regenerate after finishing fails');
+    assert.equal(failures.at(-1), 'finishing');
+  }
+  assert.deepEqual(refunds, [6000, 6000], 'Every finishing failure refunds the full price');
+  finishingMode = 'success';
+  deliveryOk = false;
+  await context.runPicsartSeedance25Flash(1, 2, 3, 4, 'A new scene', {
+    images: [], videos: [], audios: [], taskType: 'auto',
+  });
+  assert.equal(deliveries.length, 2, 'Failed delivery does not retry with the native source');
+  assert.equal(deliveries[1][1], 'https://result.test/video-1080.mp4');
+  assert.match(deliveries[1][2], /30 detik · 16:9 · 1080p/);
+  assert.deepEqual(refunds, [6000, 6000, 6000], 'Failed final delivery also refunds');
+  assert.deepEqual(releases, [3, 3, 3, 3]);
+  const callsBeforeProviderFailure = finishingCalls;
 
   const failingContext = vm.createContext({
     console: { log() {}, warn() {}, error() {} },
@@ -414,9 +460,10 @@ async function checkBotBillingDeliveryAndRefund() {
   await failingContext.runPicsartSeedance25Flash(1, 2, 3, 4, 'A test prompt', {
     images: [], videos: [], audios: [], taskType: 'auto',
   });
-  assert.deepEqual(charges, [6000, 6000]);
-  assert.deepEqual(refunds, [6000], 'Provider failure refunds the full customer price');
-  assert.deepEqual(releases, [3, 3]);
+  assert.deepEqual(charges, [6000, 6000, 6000, 6000, 6000]);
+  assert.deepEqual(refunds, [6000, 6000, 6000, 6000], 'Provider failure refunds the full customer price');
+  assert.deepEqual(releases, [3, 3, 3, 3, 3]);
+  assert.equal(finishingCalls, callsBeforeProviderFailure, 'Do not upscale failed generations');
 }
 
 async function checkFlashMediaIntake() {
@@ -518,6 +565,7 @@ async function checkEditRejectedBeforePromptAndCharge() {
   };
   const replies: string[] = [];
   let promptScreens = 0;
+  const screenTexts: string[] = [];
   const context = vm.createContext({
     getSession: () => session,
     setSession: (_id: number, patch: any) => { session = { ...session, ...patch }; },
@@ -533,7 +581,7 @@ async function checkEditRejectedBeforePromptAndCharge() {
   const ctx = {
     from: { id: 1 },
     reply: async (text: string) => { replies.push(text); },
-    editMessageText: async () => { promptScreens++; },
+    editMessageText: async (text: string) => { promptScreens++; screenTexts.push(text); },
   };
   await context.continueFlash(ctx);
   assert.equal(session.mode, 'seedance25_flash_wait_media');
@@ -549,6 +597,17 @@ async function checkEditRejectedBeforePromptAndCharge() {
   await context.continueFlash(ctx);
   assert.equal(session.mode, 'seedance25_flash_wait_prompt');
   assert.equal(promptScreens, 1);
+  for (const refs of [
+    { seedance25FlashImageFileIds: [], seedance25FlashVideos: [], seedance25FlashAudios: [] },
+    { seedance25FlashImageFileIds: ['image'], seedance25FlashVideos: [], seedance25FlashAudios: [] },
+    { seedance25FlashImageFileIds: [], seedance25FlashVideos: [], seedance25FlashAudios: [{ duration: 3 }] },
+  ]) {
+    session = { ...session, ...refs, mode: 'seedance25_flash_wait_media' };
+    await context.continueFlash(ctx);
+    assert.equal(session.mode, 'seedance25_flash_wait_prompt', 'Every reference is optional, including all of them');
+  }
+  assert(screenTexts.some(text => text.includes('text-to-video tanpa referensi')));
+  assert.doesNotMatch(screenTexts.join('\n'), /upscal|renderful|480p|native/i);
 }
 
 async function main() {
@@ -566,7 +625,16 @@ async function main() {
   await checkFlashMediaIntake();
   await checkFlashContinuationDraftGuard();
   await checkEditRejectedBeforePromptAndCharge();
-  console.log('Seedance 2.5 Flash passed: 30s gateway settings, quoted-credit preflight, no duplicate jobs, Rp6.000 billing/refunds, native 480p delivery.');
+  const flashMenuRow = botSource.split('\n').find(line => line.includes("'mode_seedance25_flash')"));
+  assert.match(flashMenuRow!, /1080p/);
+  assert.doesNotMatch(flashMenuRow!, /480p/);
+  const entry = fragment(botSource, "  if (data === 'mode_seedance25_flash') {",
+    "  if (data === 'seedance25_flash_refs_done') {");
+  assert.doesNotMatch(entry, /upscal|renderful|480p|native/i);
+  const flashPriceRow = botSource.split('\n').find(line => line.includes('Flash Teks / Referensi'));
+  assert.match(flashPriceRow!, /1080p/);
+  assert.doesNotMatch(flashPriceRow!, /upscal|renderful|480p|native/i);
+  console.log('Seedance 2.5 Flash passed: documented subtasks, quoted-credit preflight, mandatory Renderful 1080p, no native fallback, Rp6.000 billing/refunds.');
 }
 
 main().catch(error => {

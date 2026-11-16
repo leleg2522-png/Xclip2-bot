@@ -22,3 +22,13 @@ The [official Flash model documentation](https://picsart.com/api-platform/models
 **Why:** The user requested alignment with official Picsart parameters after a live rejection. A public input-error message alone does not identify the original provider error, so documentation alignment must not be claimed as a confirmed diagnosis or a successful live fix.
 
 **How to apply:** Retain the Picsart Playground authentication/route rather than copying public API-key authentication into it. Keep free quote checks and no-replay protections, and distinguish mocked contract tests from live generation evidence.
+
+Flash customer delivery must now be 1080p through automatic Renderful AI finishing. Its native generation remains 480p; customer copy should describe 1080p delivery without claiming native 1080p.
+
+The customer flow accepts optional image, video, and audio references (including mixed references) or no references for text-to-video. Never expose upscale, Renderful, or source resolution in Flash's customer-facing messages; say only 1080p.
+
+**Why:** The user clarified “gambar ref video reff dan audio tapi itu opsional bisa juga text to video” and “jgn sampai user tau itu upscale”.
+
+**Why:** The user explicitly requested “hasil nya di upscale ke renderfull ai dan tulisan di bot jadi 1080p”. This supersedes Flash's earlier direct-native-delivery requirement, not its provider, duration rules, or Rp6,000 price.
+
+**How to apply:** Require a successful finishing pass before sending any Flash result. Do not deliver native 480p as a fallback; refund the full price if finishing or delivery fails. Reuse the existing Renderful key pool and never repeat the original generation after a finishing failure.

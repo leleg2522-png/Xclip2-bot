@@ -295,7 +295,7 @@ const MODEL_PRICES = {
   picsart_wan_v3: 6000, // Wan 3.0 30s, Vivareel 480p → crop → mandatory Renderful 1080p
   alriz_seedance_25: 5000, // Historical Alriz tariff; not used for new orders
   picsart_seedance_25: 15000, // Seedance 2.5, 30s: native 480p → mandatory 1080p finishing
-  picsart_seedance_25_flash: 6000, // Seedance 2.5 Flash: 30s T2V/references, native 480p
+  picsart_seedance_25_flash: 6000, // Seedance 2.5 Flash: native 480p → mandatory Renderful 1080p
   oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
   kling_21_p2: 3000,   // Public Kling 2.1 P2; Flora Kling 2.5 first-frame backend
@@ -2751,10 +2751,10 @@ async function upscaleGeneratedVideo(
   sourceUrl: string,
   userId: number,
   chatId: number,
-  statusMsgId: number
+  statusMsgId: number,
+  statusText = '⏳ Video sedang diproses. Hasil akan dikirim otomatis.'
 ): Promise<{ url: string; upscaled: boolean }> {
-  await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
-    '⏳ Video sedang diproses. Hasil akan dikirim otomatis.').catch(() => {});
+  await bot.telegram.editMessageText(chatId, statusMsgId, undefined, statusText).catch(() => {});
   return generateRenderful1080(sourceUrl, {
     key: getNextRenderfulPoolKey,
     disable: markRenderfulPoolKeyDead,
@@ -2798,7 +2798,7 @@ function videoModelRows() {
     [Markup.button.callback('🌊 Seedance 2.0 Fast 1080p', 'mode_pi2v_seedance_2_fast')],
     [Markup.button.callback('🌊 Seedance 2.0 1080p', 'mode_pi2v_seedance_2')],
     [Markup.button.callback('🌊 Seedance 2.5 • Teks / Gambar / Video / Audio', 'mode_oneover_seedance25')],
-    [Markup.button.callback(`⚡ Seedance 2.5 Flash · Teks + referensi · 30 detik · 480p · ${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}`, 'mode_seedance25_flash')],
+    [Markup.button.callback(`⚡ Seedance 2.5 Flash · Teks + referensi · 30 detik · 1080p · ${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}`, 'mode_seedance25_flash')],
     [Markup.button.callback(`Seedance 2.5 P2 · Gambar / Video / Audio · 30s · 1080p · ${formatRupiah(MODEL_PRICES.seedance25_p2)}`, 'mode_seedance25_p2')],
     [Markup.button.callback(`Seedance 2.5 P3 · I2V · 30 detik · ${formatRupiah(MODEL_PRICES.posbot_seedance25)}`, 'mode_posbot_s25_i2v')],
     [Markup.button.callback(`Seedance 2.5 P3 · R2V · 30 detik · ${formatRupiah(MODEL_PRICES.posbot_seedance25)}`, 'mode_posbot_s25_r2v')],
@@ -3413,7 +3413,7 @@ function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false 
     `• Seedance 2.0 Fast 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2_fast'))}\n` +
     `• Seedance 2.0 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
     `• Seedance 2.5 Teks / Gambar / Video / Audio (30s, 1080p) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25)}\n` +
-    `• Seedance 2.5 Flash Teks / Referensi (30s, 480p) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}\n` +
+    `• Seedance 2.5 Flash Teks / Referensi (30s, 1080p) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}\n` +
     `• Seedance 2.5 P2 Gambar / Video referensi (30s, 1080p melalui upscale) — ${formatRupiah(MODEL_PRICES.seedance25_p2)}\n` +
     `• Seedance 2.5 P3 I2V dari foto (30 detik) — ${formatRupiah(MODEL_PRICES.posbot_seedance25)}\n` +
     `• Seedance 2.5 P3 R2V dari video referensi (30 detik) — ${formatRupiah(MODEL_PRICES.posbot_seedance25)}\n` +
@@ -5496,9 +5496,10 @@ bot.on('callback_query', async (ctx) => {
     });
     return ctx.editMessageText(
       `⚡ *Seedance 2.5 Flash*\n\n` +
-      `Output text-to-video: *30 detik* • *480p* • *16:9*\n` +
+      `Output text-to-video: *30 detik* • *1080p* • *16:9*\n` +
       `Jika mengirim gabungan gambar + video, mode edit mengikuti durasi dan rasio video sumber (minimal 4 detik).\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}* per video\n\n` +
+      'Hasil video 1080p. Jika proses gagal, saldo dikembalikan.\n\n' +
       `Kirim referensi opsional sebelum prompt: maksimal ${picsart.SEEDANCE25_FLASH_MAX_IMAGES} gambar, ` +
       `${picsart.SEEDANCE25_FLASH_MAX_VIDEOS} video, dan ${picsart.SEEDANCE25_FLASH_MAX_AUDIOS} audio. ` +
       'Boleh dicampur; tanpa referensi akan menjadi text-to-video.\n' +
@@ -5533,10 +5534,10 @@ bot.on('callback_query', async (ctx) => {
       (images ? 'Urutan gambar dipertahankan sebagai urutan upload.\n' : '') +
       `\nKirim prompt teks maksimal 20.000 karakter.\n\n` +
       (images > 0 && videos > 0
-        ? 'Mode edit karakter: hasil mengikuti durasi dan rasio video sumber.'
+        ? 'Mode edit karakter: hasil 1080p mengikuti durasi dan rasio video sumber.'
         : images + videos + audios
-          ? 'Mode: video dengan referensi, durasi hasil 30 detik.'
-          : 'Mode: text-to-video tanpa referensi, durasi hasil 30 detik.'),
+          ? 'Mode: video dengan referensi, durasi hasil 30 detik, 1080p.'
+          : 'Mode: text-to-video tanpa referensi, durasi hasil 30 detik, 1080p.'),
     );
   }
 
@@ -7097,8 +7098,8 @@ async function submitSeedance25FlashPrompt(ctx: any, rawPrompt: string) {
   if (getSession(userId).mode !== 'idle' && getSession(userId).seedance25FlashDraftId !== draftId) return;
   const statusMsg = await retryTelegramRateLimit<{ message_id: number }>(() => ctx.reply(
     references.taskType === 'edit'
-      ? '⏳ Seedance 2.5 Flash sedang mengunggah referensi, memeriksa biaya, dan mengedit video 480p...'
-      : '⏳ Seedance 2.5 Flash sedang mengunggah referensi, memeriksa biaya, dan membuat video 480p...'
+      ? '⏳ Seedance 2.5 Flash sedang menyiapkan edit video 1080p. Hasil akan dikirim otomatis...'
+      : '⏳ Seedance 2.5 Flash sedang menyiapkan video 1080p. Hasil akan dikirim otomatis...'
   ));
   runPicsartSeedance25Flash(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, references)
     .catch((error: any) => console.error(`[${userId}] Seedance 2.5 Flash error:`, describeError(error)));
@@ -11099,7 +11100,7 @@ async function runPicsartSeedance25(
   }
 }
 
-// ─── Background: Seedance 2.5 Flash, native 480p ─────────────────────────────
+// ─── Background: Seedance 2.5 Flash, mandatory Renderful 1080p ───────────────
 
 async function runPicsartSeedance25Flash(
   chatId: number,
@@ -11132,10 +11133,10 @@ async function runPicsartSeedance25Flash(
         const message = providerStage === 'upload'
           ? `⏳ ${label}: mengunggah media referensi...`
           : providerStage === 'quote'
-            ? `⏳ ${label}: memeriksa biaya provider...`
+            ? `⏳ ${label}: memeriksa permintaan...`
             : providerStage === 'submit'
               ? `⏳ ${label}: mengirim permintaan video...`
-              : `⏳ ${label}: membuat video 480p...`;
+              : `⏳ ${label}: membuat video 1080p...`;
         lastEdit = Date.now();
         bot.telegram.editMessageText(chatId, statusMsgId, undefined, message).catch(() => {});
       },
@@ -11147,10 +11148,16 @@ async function runPicsartSeedance25Flash(
         const elapsed = mins > 0 ? `${mins} menit ${secs} detik` : `${secs} detik`;
         bot.telegram.editMessageText(
           chatId, statusMsgId, undefined,
-          `⏳ ${label}: video sedang dibuat...\n⏱️ Sudah berjalan ${elapsed}. Video akan dikirim otomatis.`
+          `⏳ ${label}: video sedang dibuat...\n⏱️ Sudah berjalan ${elapsed}. Hasil 1080p akan dikirim otomatis.`
         ).catch(() => {});
       },
     });
+    stage = 'finishing';
+    const finalVideo = await upscaleGeneratedVideo(
+      result.url, userId, chatId, statusMsgId,
+      `⏳ ${label}: menyiapkan hasil 1080p. Video akan dikirim otomatis.`,
+    );
+    if (!finalVideo.upscaled || !finalVideo.url) throw Error('SEEDANCE25_FLASH_1080_FINISH_FAILED');
     stage = 'delivery';
     const referenceCount = references.images.length + references.videos.length + references.audios.length;
     const inputLabel = referenceCount
@@ -11161,8 +11168,8 @@ async function runPicsartSeedance25Flash(
       : `${picsart.SEEDANCE25_FLASH_DURATION_SECONDS} detik · 16:9`;
     const delivered = await sendResult(
       chatId,
-      result.url,
-      `⚡ ${label} (${inputLabel} · ${outputLabel} · 480p · ${references.taskType === 'edit' || references.audios.length ? 'audio aktif' : 'tanpa audio'})\n\n/menu untuk buat lagi`,
+      finalVideo.url,
+      `⚡ ${label} (${inputLabel} · ${outputLabel} · 1080p · ${references.taskType === 'edit' || references.audios.length ? 'audio aktif' : 'tanpa audio'})\n\n/menu untuk buat lagi`,
       true
     ).catch(() => false);
     if (delivered) {
