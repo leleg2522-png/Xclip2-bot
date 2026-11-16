@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { validateSeedance25Prompt } from './seedance25-prompt';
 
 export const GENJUTSU_PRICES = Object.freeze({ 15: 4500, 30: 8000 });
 
+// Legacy diagnostic fixtures only. The customer flow requires the user's own prompt.
 export const GENJUTSU_NEGATIVE_PROMPT =
   'original face, blended faces, changing identity, distorted face, changed background, extra people, subtitles';
 
@@ -20,12 +22,13 @@ export interface GenjutsuFile {
 
 export interface GenjutsuDraft {
   id: string;
-  step: 'package' | 'video' | 'checking_video' | 'image' | 'checking_image' | 'confirm' | 'submitting';
+  step: 'package' | 'video' | 'checking_video' | 'image' | 'checking_image' | 'prompt' | 'confirm' | 'submitting';
   maxReferenceSeconds?: 15 | 30;
   video?: { fileId: string; mime: string; duration: number };
   imageFileId?: string;
   imageFileIds?: string[];
   pendingImageFileIds?: string[];
+  prompt?: string;
 }
 
 interface Dependencies {
@@ -50,6 +53,7 @@ function imageKeyboard(draft: GenjutsuDraft) {
 function keyboard(draft?: GenjutsuDraft, price?: string) {
   return { reply_markup: { inline_keyboard: [
     ...(draft ? [[{ text: `Generate · ${price}`, callback_data: `genjutsu_generate_${draft.id}` }]] : []),
+    ...(draft ? [[{ text: 'Ubah prompt', callback_data: `genjutsu_prompt_edit_${draft.id}` }]] : []),
     [{ text: 'Batal · Menu Utama', callback_data: 'back_main' }],
   ] } };
 }
@@ -74,11 +78,12 @@ export function createGenjutsuFlow(deps: Dependencies) {
       (draft.pendingImageFileIds?.length ? 'Gambar lain masih diperiksa.' : 'Tekan Selesai tambah gambar jika sudah.'),
       imageKeyboard(draft),
     );
+    if (draft.step === 'prompt') return ctx.reply(promptInstructions(draft), keyboard());
     const max = draft.maxReferenceSeconds ?? 30;
     const text = draft.step === 'video'
       ? `Genjutsu · Paket ${max} detik: kirim 1 video sumber berdurasi 3–${max} detik, maksimal 19MB.`
       : draft.step === 'confirm'
-          ? 'Video dan foto sudah siap. Tekan Generate untuk mulai; prompt dibuat otomatis.'
+          ? 'Video, gambar, dan prompt kamu sudah siap. Tekan Generate untuk mulai atau pilih Ubah prompt.'
           : 'Input Genjutsu sedang diperiksa atau diproses. Tunggu sebentar.';
     return ctx.reply(text, keyboard(draft.step === 'confirm' ? draft : undefined, deps.price(max)));
   }
@@ -103,7 +108,7 @@ export function createGenjutsuFlow(deps: Dependencies) {
       });
       return ctx.reply(
         `Video sumber diterima (${duration.toFixed(1)} detik).\n\n` +
-        'Sekarang kirim 1–10 gambar referensi karakter pengganti. Gunakan wajah yang tajam ' +
+        'Langkah 2/3: kirim 1–10 gambar referensi karakter pengganti. Gunakan wajah yang tajam ' +
         'dan jelas, tanpa penutup wajah atau filter berat. Maksimal 19MB per gambar, total seluruh referensi 100MB.\n' +
         'Boleh kirim satu per satu, sebagai album, atau sebagai file gambar. ' +
         'Setelah selesai, tekan Selesai tambah gambar.',
@@ -154,22 +159,48 @@ export function createGenjutsuFlow(deps: Dependencies) {
     return ctx.reply(
       `Gambar referensi diterima (${imageIds(ready).length - ready.pendingImageFileIds!.length}/10).\n` +
       (ready.pendingImageFileIds!.length ? 'Menunggu pemeriksaan gambar lainnya.'
-        : 'Kirim gambar tambahan atau tekan Selesai tambah gambar untuk melihat konfirmasi.'),
+        : 'Kirim gambar tambahan atau tekan Selesai tambah gambar untuk menulis prompt.'),
       imageKeyboard(ready),
     );
   }
 
-  async function confirmImages(ctx: any, draft: GenjutsuDraft) {
+  function promptInstructions(draft: GenjutsuDraft) {
+    return `Video dan ${imageIds(draft).length} gambar referensi sudah siap.\n\n` +
+      'Langkah 3/3: kirim prompt kamu sendiri dalam bentuk pesan teks. ' +
+      'Jelaskan karakter, pakaian, gerakan, dan peran tiap gambar sesuai urutan kirim (gambar 1, gambar 2, dan seterusnya).\n' +
+      'Prompt tidak akan diganti atau ditambah instruksi otomatis. Saldo belum dipotong.';
+  }
+
+  async function requestPrompt(ctx: any, draft: GenjutsuDraft) {
     if (draft.pendingImageFileIds?.length) return ctx.reply('Gambar masih diperiksa. Tunggu sebentar sebelum melanjutkan.');
     if (!imageIds(draft).length || imageIds(draft).length > 10) return message(ctx);
-    const ready: GenjutsuDraft = { ...draft, step: 'confirm' };
+    const ready: GenjutsuDraft = { ...draft, step: 'prompt', prompt: undefined };
+    deps.set(ctx.from.id, ready);
+    return ctx.reply(promptInstructions(ready), keyboard());
+  }
+
+  async function text(ctx: any, rawPrompt: string) {
+    const draft = deps.get(ctx.from.id);
+    if (!draft) return;
+    if (draft.step !== 'prompt' && draft.step !== 'confirm') return message(ctx);
+    if (!rawPrompt.trim()) return ctx.reply('Prompt kosong. Kirim instruksi kamu dalam bentuk pesan teks. Saldo belum dipotong.');
+    let prompt: string;
+    try {
+      prompt = validateSeedance25Prompt(rawPrompt);
+    } catch (error: any) {
+      return ctx.reply(error.message);
+    }
+    const ready: GenjutsuDraft = {
+      ...draft, id: draft.step === 'confirm' ? randomUUID() : draft.id, step: 'confirm', prompt,
+    };
     deps.set(ctx.from.id, ready);
     return ctx.reply(
         `Genjutsu · Character Swap · 1080p\n\n` +
         `Paket: ${ready.maxReferenceSeconds ?? 30} detik\n` +
         `Video sumber: ${ready.video!.duration.toFixed(1)} detik\nGambar referensi: ${imageIds(ready).length}/10\n` +
         'Durasi, rasio, dan audio asli mengikuti video sumber. Video tanpa audio tetap tanpa audio.\n' +
-        'Prompt penggantian karakter dibuat otomatis.\n\n' +
+        `Prompt kamu${prompt.length > 600 ? ' (cuplikan; teks lengkap tetap dikirim)' : ''}:\n` +
+        `${prompt.slice(0, 600)}${prompt.length > 600 ? '…' : ''}\n\n` +
         'Foto menjadi acuan wajah dan penampilan; video menjadi acuan gerakan dan adegan. ' +
         'Kemiripan wajah tidak dijamin dan perlu diperiksa pada hasil.\n\n' +
         `Harga: ${deps.price(ready.maxReferenceSeconds ?? 30)} per video. Jika proses gagal, saldo dikembalikan penuh.\n` +
@@ -189,25 +220,31 @@ export function createGenjutsuFlow(deps: Dependencies) {
         'Gerakan, kamera, dan latar diminta mengikuti video sumber; hasil bergantung pada materi input.\n\n' +
         'Pilih batas durasi referensi: paket 15 detik menerima 3–15 detik, ' +
         'paket 30 detik menerima 3–30 detik. Hasil mengikuti durasi video sumber.\n' +
-        'Setelah itu, kirim 1–10 gambar referensi karakter. Tidak perlu menulis prompt.',
+        'Setelah itu, kirim 1–10 gambar referensi karakter, lalu tulis prompt kamu sendiri sebelum konfirmasi Generate.',
         packageKeyboard(draft, deps.price),
       );
     }
     const draft = deps.get(userId);
     if (draft?.step === 'image' && data === `genjutsu_images_done_${draft.id}`) {
-      return confirmImages(ctx, draft);
+      return requestPrompt(ctx, draft);
+    }
+    if (draft?.step === 'confirm' && data === `genjutsu_prompt_edit_${draft.id}`) {
+      return requestPrompt(ctx, { ...draft, id: randomUUID() });
+    }
+    if (draft?.step === 'confirm' && !draft.prompt && data === `genjutsu_generate_${draft.id}`) {
+      return requestPrompt(ctx, draft);
     }
     const selected = /^genjutsu_duration_(15|30)_(.+)$/.exec(data);
     if (selected && draft?.step === 'package' && selected[2] === draft.id) {
       const max = Number(selected[1]) as 15 | 30;
       deps.set(userId, { ...draft, step: 'video', maxReferenceSeconds: max });
       return ctx.editMessageText(
-        `Genjutsu · Paket ${max} detik · ${deps.price(max)}\n\nLangkah 1/2: kirim 1 video referensi berdurasi 3–${max} detik, maksimal 19MB.\n` +
+        `Genjutsu · Paket ${max} detik · ${deps.price(max)}\n\nLangkah 1/3: kirim 1 video referensi berdurasi 3–${max} detik, maksimal 19MB.\n` +
         'Durasi hasil mengikuti video sumber. Setelah itu, kirim 1–10 gambar referensi karakter.',
         keyboard(),
       );
     }
-    if (!draft || draft.step !== 'confirm' || !draft.video || !imageIds(draft).length
+    if (!draft || draft.step !== 'confirm' || !draft.prompt?.trim() || !draft.video || !imageIds(draft).length
       || imageIds(draft).length > 10 || draft.pendingImageFileIds?.length
       || data !== `genjutsu_generate_${draft.id}`) {
       return ctx.reply('Tombol Genjutsu ini sudah tidak aktif. Gunakan draft yang sedang berjalan atau /menu.');
@@ -215,7 +252,7 @@ export function createGenjutsuFlow(deps: Dependencies) {
     // Claim synchronously before any awaited work: a double tap must not bill twice.
     deps.set(userId, { ...draft, step: 'submitting' });
     try {
-      return await deps.submit(ctx, draft, GENJUTSU_PROMPT);
+      return await deps.submit(ctx, draft, draft.prompt);
     } catch {
       const current = deps.get(userId);
       if (current?.id === draft.id && current.step === 'submitting') {
@@ -225,5 +262,5 @@ export function createGenjutsuFlow(deps: Dependencies) {
     }
   }
 
-  return { callback, video, image, message };
+  return { callback, video, image, message, text };
 }

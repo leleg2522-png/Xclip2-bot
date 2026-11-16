@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { Telegraf, Markup } from 'telegraf';
-import { createGenjutsuFlow, GENJUTSU_PRICES, GENJUTSU_PROMPT, GENJUTSU_NEGATIVE_PROMPT, type GenjutsuDraft } from '../src/genjutsu';
+import { createGenjutsuFlow, GENJUTSU_PRICES, GENJUTSU_PROMPT, type GenjutsuDraft } from '../src/genjutsu';
+
+const USER_PROMPT = 'Ganti karakter utama menggunakan gambar referensi. Pertahankan gerakan video. Jangan tambahkan subtitle.';
 
 const source = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true);
@@ -56,6 +58,7 @@ function harness() {
 async function checkWizard() {
   const h = harness();
   await h.flow.callback(h.ctx, 'mode_genjutsu');
+  await h.flow.text(h.ctx, 'Teks sebelum upload bukan prompt final');
   assert.equal(h.draft()?.step, 'package');
   await h.flow.callback(h.ctx, `genjutsu_duration_30_${h.draft()!.id}`);
   await h.flow.image(h.ctx, { file_id: 'early-photo' });
@@ -77,6 +80,10 @@ async function checkWizard() {
   await h.flow.image(h.ctx, { file_id: 'character' });
   assert.equal(h.draft()?.step, 'image', 'More references can be added before confirmation');
   await h.flow.callback(h.ctx, `genjutsu_images_done_${h.draft()!.id}`);
+  assert.equal(h.draft()?.step, 'prompt');
+  await h.flow.callback(h.ctx, `genjutsu_generate_${h.draft()!.id}`);
+  assert.equal(h.submitted.length, 0, 'Cannot generate before the user supplies a prompt');
+  await h.flow.text(h.ctx, USER_PROMPT);
   assert.equal(h.draft()?.step, 'confirm');
   assert.equal(h.submitted.length, 0, 'Uploading media never charges or submits');
   const callback = `genjutsu_generate_${h.draft()!.id}`;
@@ -86,13 +93,10 @@ async function checkWizard() {
   assert.equal(h.submitted.length, 1, 'A double click can submit only once');
   assert.equal(h.submitted[0].value.video.fileId, 'video');
   assert.deepEqual(h.submitted[0].value.imageFileIds, ['character']);
-  assert.equal(h.submitted[0].prompt, GENJUTSU_PROMPT);
-  assert.equal(GENJUTSU_PROMPT,
-    'Replace the character in the reference video with the character in the reference image.' +
-    `\n\nAvoid: ${GENJUTSU_NEGATIVE_PROMPT}.`);
-  assert.match(GENJUTSU_NEGATIVE_PROMPT, /original face/);
-  assert.match(GENJUTSU_NEGATIVE_PROMPT, /blended faces/);
-  assert.match(GENJUTSU_NEGATIVE_PROMPT, /changing identity/);
+  assert.equal(h.submitted[0].prompt, USER_PROMPT);
+  assert.notEqual(h.submitted[0].prompt, GENJUTSU_PROMPT, 'Never substitute the legacy automatic prompt');
+  assert.match(h.messages.join('\n'), /Prompt kamu/);
+  assert.doesNotMatch(h.messages.join('\n'), /prompt dibuat otomatis|Tidak perlu menulis prompt/);
   assert.match(h.messages.join('\n'), /Kemiripan wajah tidak dijamin/);
   assert.match(h.messages.join('\n'), /sebagai file gambar/);
   assert.match(h.messages.join('\n'), /Harga: Rp8\.000/);
@@ -142,6 +146,7 @@ async function checkDurationPackages() {
       if (valid) {
         await h.flow.image(h.ctx, { file_id: 'replacement' });
         await h.flow.callback(h.ctx, `genjutsu_images_done_${id}`);
+        await h.flow.text(h.ctx, USER_PROMPT);
         assert.match(h.messages.join('\n'), new RegExp(`Harga: Rp${max === 15 ? '4\\.500' : '8\\.000'}`));
         await h.flow.callback(h.ctx, `genjutsu_generate_${id}`);
         assert.equal(h.submitted[0].value.maxReferenceSeconds, max);
@@ -182,6 +187,8 @@ async function checkMultipleImages() {
   await h.flow.callback(h.ctx, 'genjutsu_images_done_stale');
   assert.equal(h.draft()?.step, 'image');
   await h.flow.callback(h.ctx, `genjutsu_images_done_${id}`);
+  assert.equal(h.draft()?.step, 'prompt');
+  await h.flow.text(h.ctx, USER_PROMPT);
   assert.match(h.messages.join('\n'), /Gambar referensi: 10\/10/);
   await Promise.all([h.flow.callback(h.ctx, `genjutsu_generate_${id}`), h.flow.callback(h.ctx, `genjutsu_generate_${id}`)]);
   assert.equal(h.submitted.length, 1);
@@ -201,6 +208,52 @@ async function checkMultipleImages() {
   await pending;
   assert.equal(cancelled.draft()?.id, fresh);
   assert.equal(cancelled.draft()?.imageFileIds, undefined, 'Old image completions cannot overwrite a fresh draft');
+}
+
+async function checkOwnPrompt() {
+  const h = harness();
+  await h.flow.callback(h.ctx, 'mode_genjutsu');
+  await h.flow.callback(h.ctx, `genjutsu_duration_15_${h.draft()!.id}`);
+  await h.flow.video(h.ctx, { file_id: 'source' });
+  await h.flow.image(h.ctx, { file_id: 'character' });
+  await h.flow.callback(h.ctx, `genjutsu_images_done_${h.draft()!.id}`);
+  for (const invalid of ['', '   ', 'a'.repeat(20001), 'text\u0000binary']) {
+    await h.flow.text(h.ctx, invalid);
+    assert.equal(h.draft()?.step, 'prompt');
+    assert.equal(h.draft()?.prompt, undefined);
+    assert.equal(h.submitted.length, 0);
+  }
+  const longPrompt = 'a'.repeat(20000);
+  await h.flow.text(h.ctx, longPrompt);
+  assert.equal(h.draft()?.prompt, longPrompt, 'Keep the entire accepted prompt, not the shortened preview');
+  assert(h.messages.at(-1)!.length < 4096, 'Confirmation must fit Telegram even for a long prompt');
+  const oldId = h.draft()!.id;
+  await h.flow.callback(h.ctx, `genjutsu_prompt_edit_${oldId}`);
+  assert.equal(h.draft()?.step, 'prompt');
+  assert.equal(h.draft()?.prompt, undefined);
+  assert.notEqual(h.draft()?.id, oldId);
+  await h.flow.callback(h.ctx, `genjutsu_generate_${oldId}`);
+  assert.equal(h.submitted.length, 0);
+  const custom = 'Gunakan gambar 1 untuk wajah.\nPakaian: [merah] _utuh_ <b>tanpa HTML</b>. 对白保持原样.';
+  await h.flow.text(h.ctx, custom);
+  const beforeEdit = h.draft()!.id;
+  await h.flow.text(h.ctx, `${custom}\nJangan ganti latar.`);
+  assert.notEqual(h.draft()?.id, beforeEdit, 'Direct text edits invalidate earlier confirmation buttons');
+  await h.flow.callback(h.ctx, `genjutsu_generate_${beforeEdit}`);
+  assert.equal(h.submitted.length, 0);
+  await h.flow.callback(h.ctx, `genjutsu_generate_${h.draft()!.id}`);
+  assert.equal(h.submitted[0].prompt, `${custom}\nJangan ganti latar.`);
+  assert.equal(h.submitted[0].value.prompt, h.submitted[0].prompt);
+
+  const legacy = harness();
+  await legacy.flow.callback(legacy.ctx, 'mode_genjutsu');
+  await legacy.flow.callback(legacy.ctx, `genjutsu_duration_30_${legacy.draft()!.id}`);
+  await legacy.flow.video(legacy.ctx, { file_id: 'source' });
+  await legacy.flow.image(legacy.ctx, { file_id: 'character' });
+  legacy.draft()!.step = 'confirm';
+  await legacy.flow.callback(legacy.ctx, `genjutsu_generate_${legacy.draft()!.id}`);
+  assert.equal(legacy.draft()?.step, 'prompt', 'A legacy confirmation must request text, not use an automatic fallback');
+  assert.equal(legacy.submitted.length, 0);
 }
 
 /** Drive actual Telegram callback/photo/video/document handlers without any network. */
@@ -259,6 +312,8 @@ async function checkTelegramRouting() {
       ? { document: { file_id: 'character', file_unique_id: 'i', mime_type: 'image/jpeg', file_name: 'character.jpg' } }
       : { photo: [{ file_id: 'character', file_unique_id: 'i', width: 720, height: 1280 }] });
     await callback(`genjutsu_images_done_${session.genjutsuDraft.id}`);
+    assert.equal(session.genjutsuDraft.step, 'prompt');
+    await message({ text: USER_PROMPT });
     assert.equal(session.genjutsuDraft.step, 'confirm');
     const id = session.genjutsuDraft.id;
     await callback(`genjutsu_generate_${id}`);
@@ -285,6 +340,7 @@ async function checkRealGenerationAdapter() {
       mode: 'genjutsu', dbUserId: 7, generationDraft: true, generationDraftKind: 'genjutsu',
       genjutsuDraft: {
         id: 'confirmed-draft', step: 'confirm', imageFileIds: Array.from({ length: 10 }, (_, i) => `image-${i}`),
+        prompt: USER_PROMPT,
         maxReferenceSeconds: packageSeconds,
         video: { fileId: 'source', mime: 'video/mp4', duration: 10 },
       },
@@ -383,7 +439,7 @@ async function checkRealGenerationAdapter() {
     assert.equal(providerInputs[0].images[9].buffer.toString(), 'identity-image-9');
     assert.equal(providerInputs[0].videos[0].buffer.toString(), 'original-performance-video');
     assert.equal(providerInputs[0].audios.length, 0);
-    assert.equal(providerInputs[0].prompt, GENJUTSU_PROMPT);
+    assert.equal(providerInputs[0].prompt, USER_PROMPT);
     assert.equal(finishing, 1);
     assert.deepEqual(releases, [7]);
     assert.equal(audioRestores, upscale ? 1 : 0);
@@ -440,10 +496,11 @@ async function main() {
   await checkWizard();
   await checkDurationPackages();
   await checkMultipleImages();
+  await checkOwnPrompt();
   await checkCancellation();
   await checkTelegramRouting();
   await checkRealGenerationAdapter();
   await checkIdentityReferenceGuards();
-  console.log('Genjutsu passed: mandatory video + photo, automatic prompt, explicit confirmation, cancellation, stale/double-click guards, actual Telegram media/document routing.');
+  console.log('Genjutsu passed: one video, 1–10 images, required user prompt, editing/validation, package prices/refunds, Renderful finishing, actual Telegram routing.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

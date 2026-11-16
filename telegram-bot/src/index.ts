@@ -2824,7 +2824,8 @@ const genjutsuFlow = createGenjutsuFlow({
     const images = draft.imageFileIds ?? (draft.imageFileId ? [draft.imageFileId] : []);
     if (current.mode !== 'genjutsu' || current.genjutsuDraft?.id !== draft.id
       || current.genjutsuDraft.step !== 'submitting' || !draft.video
-      || images.length < 1 || images.length > 10 || draft.pendingImageFileIds?.length) return;
+      || images.length < 1 || images.length > 10 || draft.pendingImageFileIds?.length
+      || !draft.prompt || prompt !== draft.prompt) return;
     // Reuse media collection and delivery, but Genjutsu's runner selects
     // standard Seedance 2.5 edit instead of the ordinary Flash backend.
     setSession(ctx.from.id, {
@@ -8706,7 +8707,7 @@ bot.on('voice', async (ctx) => {
 bot.on('text', async (ctx) => {
   const userId = ctx.from.id;
   const session = getSession(userId);
-  if (session.mode === 'genjutsu') return genjutsuFlow.message(ctx);
+  if (session.mode === 'genjutsu') return genjutsuFlow.text(ctx, ctx.message.text);
 
   if (session.mode === 'seedance25_flash_wait_media') {
     return ctx.reply('Kirim referensi gambar/video/audio atau tekan tombol lanjut ke prompt. Tanpa referensi, Flash membuat text-to-video.');

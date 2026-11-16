@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { generateGenjutsuWithSeedance25 } from '../src/picsart-genjutsu';
-import { GENJUTSU_PROMPT } from '../src/genjutsu';
+const USER_PROMPT = 'Gunakan gambar 1 untuk wajah dan gambar 2 untuk pakaian; ikuti video sumber.';
 
 const ast = ts.createSourceFile('picsart.ts', readFileSync(new URL('../src/picsart.ts', import.meta.url), 'utf8'),
   ts.ScriptTarget.Latest, true);
@@ -52,7 +52,7 @@ function harness(options: { quote?: number; balance?: number; pollFails?: boolea
   });
   vm.runInContext(code, context);
   const input = {
-    userId: 1, prompt: GENJUTSU_PROMPT, taskType: 'edit', generateAudio: false, maxReferenceSeconds: 15,
+    userId: 1, prompt: USER_PROMPT, taskType: 'edit', generateAudio: false, maxReferenceSeconds: 15,
     images: [{ buffer: Buffer.from('replacement'), name: 'character.jpg', mime: 'image/jpeg' }],
     videos: [{ buffer: Buffer.from('original'), name: 'source.mp4', mime: 'video/mp4', duration: 10 }],
     audios: [],
@@ -75,7 +75,7 @@ async function main() {
     assert.equal(p.ratio, 'adaptive');
     assert.equal(p.omni_reference_task_type, 'edit');
     assert.equal(p.generate_audio, false);
-    assert.equal(p.content.find((item: any) => item.type === 'text').text, GENJUTSU_PROMPT);
+    assert.equal(p.content.find((item: any) => item.type === 'text').text, USER_PROMPT);
     assert.equal(p.content.find((item: any) => item.type === 'image_url').role, 'reference_image');
     assert.equal(p.content.find((item: any) => item.type === 'video_url').role, 'reference_video');
     assert.equal(p.negative_prompt, undefined);
@@ -84,6 +84,14 @@ async function main() {
   assert.equal(metadata.duration, -1);
   assert.equal(metadata.aspectRatio, 'adaptive');
   assert.equal(metadata.prompt, undefined, 'Do not duplicate prompt into Drive metadata');
+  for (const prompt of ['对白保持原样。\nGunakan gambar 1, bukan gambar 2.', 'a'.repeat(20000)]) {
+    const custom = harness();
+    await custom.run({ prompt });
+    for (const call of custom.calls.posts) {
+      assert.equal(call.body.params.content.find((item: any) => item.type === 'text').text, prompt,
+        'Quote and submit must receive the complete user prompt without automatic additions');
+    }
+  }
 
   for (const patch of [
     { images: [] }, { audios: [{ buffer: Buffer.from('x'), duration: 2 }] },

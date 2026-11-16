@@ -3,7 +3,7 @@ name: Genjutsu character swap product
 description: User-approved scope and customer flow for the separate Genjutsu Telegram feature.
 ---
 
-Genjutsu is a separate customer menu, not a replacement for the general Seedance 2.5 Flash flow. It requires one source video followed by 1–10 reference images, uses an automatic character-replacement prompt, and asks for explicit Generate confirmation.
+Genjutsu is a separate customer menu, not a replacement for the general Seedance 2.5 Flash flow. It requires one source video followed by 1–10 reference images, the user's own prompt, and explicit Generate confirmation.
 
 Genjutsu's 15-second package costs **Rp4,500** and its 30-second package costs **Rp8,000**.
 
@@ -53,16 +53,16 @@ explicit 3-second minimum for both packages.
 retain the original source separately, and restore original duration and audio
 for delivery. Do not treat technical preparation as permission to expand a story.
 
-The user wants Genjutsu's automatic prompt kept simple: “ganti karakter video
-refrensi dengan karakter image refrensi”, plus negative instructions.
+Customers must write their own Genjutsu prompt after finishing the image uploads
+and before confirming Generate. This supersedes the earlier automatic-prompt rule.
 
-**Why:** The user explicitly replaced the earlier elaborate identity-lock prompt
-with this short instruction.
+**Why:** With multiple references, the user confirmed: “Ya, user tulis prompt sendiri”.
 
-**How to apply:** Do not expand it back into a long identity/performance prompt
-without asking. Flash's documented parameter list has no separate negative
-prompt field; disclose inline exclusions as text instructions, not native
-negative conditioning or a guaranteed identity lock.
+**How to apply:** Require a nonempty valid prompt, let the user explain each
+reference's role and edit the prompt before charging, and forward the complete
+accepted text without substituting a template or appending automatic exclusions.
+A shortened confirmation preview must not truncate the submitted prompt.
+Legacy prompts retained for diagnostics are not customer defaults.
 
 For owner-run Genjutsu experiments, show and review the raw model output before
 paying for finishing. Do not automatically upscale a test whose character swap
@@ -85,7 +85,7 @@ authorize hardcoding that duration. Keep the ordinary non-edit Flash flow separa
 
 **Why:** The user chose “Menu Genjutsu terpisah” and later selected ordinary Seedance 2.5 after comparing raw samples.
 
-**How to apply:** Keep ordinary Flash's optional mixed references and text-to-video intact. Genjutsu delivers 1080p with hidden Renderful finishing, keeps supplier names and source resolution out of customer messages, and refunds failed generation/finishing/delivery. Ask the model to preserve source motion, camera, and scene; restore audio separately as described below. Never promise Higgsfield-identical quality or guaranteed identity consistency.
+**How to apply:** Keep ordinary Flash's optional mixed references and text-to-video intact. Genjutsu delivers 1080p with hidden Renderful finishing, keeps supplier names and source resolution out of customer messages, and refunds failed generation/finishing/delivery. Preserve the customer's own prompt without injecting automatic instructions; restore audio separately as described below. Never promise Higgsfield-identical quality or guaranteed identity consistency.
 
 Genjutsu must generate visuals without model-created audio, then restore audio from the user's source video after finishing. If the source is silent, deliver silent video; never keep the generated soundtrack as a fallback.
 
@@ -103,7 +103,7 @@ Completing generation, audio restoration, and finishing does not establish succe
 
 **Why:** Clothing/style resemblance and technical delivery were incorrectly summarized as success without establishing facial identity fidelity.
 
-**How to apply:** Treat the image as the sole identity source and the video as performance guidance, explicitly prohibit retaining/blending the source face, and preserve the exact image/video roles. Describe prompt and payload checks as local verification only, never as proof of improved likeness. New paid comparisons require fresh permission.
+**How to apply:** When reviewing character-swap experiments, evaluate reference identity rather than clothing resemblance alone and preserve the exact image/video roles. Historical identity-lock prompt instructions must not be injected into the current customer's own prompt. Describe prompt and payload checks as local verification only, never as proof of improved likeness. New paid comparisons require fresh permission.
 
 An authorized repeat with explicit identity-first instructions still did not produce adequate reference likeness on visual review, despite successful video/audio delivery.
 
