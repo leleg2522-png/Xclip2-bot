@@ -93,6 +93,21 @@ duplicate inside Drive metadata, and validate serialized attributes before
 paid submission. Do not silently truncate prompts or replay accepted jobs.
 Verify finishing separately before claiming delivered 1080p.
 
+## Legacy Seedance price-quote response
+
+The authenticated `/gw-v2/workflows/seedance/options` endpoint returns a free
+quote with numeric `credits` and fields such as `estimated`, `price`, and
+`usageAmount`, but may omit `chargeCredits`. Do not apply Flash's requirement
+for `chargeCredits: false` to this legacy endpoint.
+
+**Why:** A valid HTTP 201 price response was initially rejected by a preflight
+that incorrectly reused the model-v1 Flash response assumptions.
+
+**How to apply:** Verify the documented options route, successful HTTP status,
+and positive finite credits; reject an explicit charging flag if present.
+Keep Flash's separate model-v1 checks unchanged, and distinguish the quote
+from a completed job's actual deduction.
+
 ## P2 route and historical Edan evidence
 
 ### Active public P2 route
