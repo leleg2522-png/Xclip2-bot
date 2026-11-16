@@ -1095,14 +1095,14 @@ content_type = "video/mp4"
 id = "K27wRiouy0doiZWV435N6"
 uri = "file://attached_assets/generated_images/young-ceo-woman-reference.jpg"
 type = "image"
-title = "Karakter referensi untuk swap"
-description = "Potret perempuan yang dipakai sebagai referensi pengganti karakter pria berjas navy."
+title = "Foto karakter referensi Genjutsu"
+description = "Foto wanita berambut panjang dengan blazer putih dan blus biru abu-abu. Ini foto karakter pengganti yang dipakai pada tes tadi."
 logical_id = "4acdebc5-dad4-479f-a512-e3b59e6fb37c"
 content_hash = "sha256:9995c8ce0455040ccaa2840657e7bc299ec63cf083cf90edbfc2a2e6668b13c6"
 size = 96717
 mtime_ms = 1794056633141
-storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/4acdebc5-dad4-479f-a512-e3b59e6fb37c/fe61f18c-c1b3-42ba-bead-77740179ef7f"
-storage_version_token = "1794792859647841"
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/4acdebc5-dad4-479f-a512-e3b59e6fb37c/901af925-0a3d-4693-b5f0-4413a51d6a49"
+storage_version_token = "1794857233819122"
 content_type = "image/jpeg"
 
 [[outputs]]
@@ -1417,14 +1417,14 @@ content_type = "video/mp4"
 id = "xnQXOaa6Viy8fiCS2-z_Q"
 uri = "file://generated-artifacts/kling4-woman-dance-live/native.mp4"
 type = "video"
-title = "Kandidat video ref — perempuan solo, 10 detik"
-description = "Satu perempuan di latar sederhana; gerakannya ringan dan lebih banyak gestur tangan daripada tarian seluruh tubuh."
+title = "Video asli sebelum Genjutsu"
+description = "Video sumber 10,04 detik sebelum penggantian karakter. Gerakan, latar, dan audio aslinya menjadi acuan hasil tes."
 logical_id = "3f97d144-dbb1-448c-b9f3-29c0890a6754"
 content_hash = "sha256:a1ddf2a9abe31b14e4fb17e1f8bd76a494ddbd8dd461b679c0daf8b140cbe3cd"
 size = 4428344
 mtime_ms = 1793920504067
-storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/3f97d144-dbb1-448c-b9f3-29c0890a6754/673b814d-b00d-4e64-9b6d-5ea2b34bd7b1"
-storage_version_token = "1794793066411183"
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/3f97d144-dbb1-448c-b9f3-29c0890a6754/f23ab257-4009-4e4b-a1a6-804e8bee9dc9"
+storage_version_token = "1794857235284218"
 content_type = "video/mp4"
 
 [[outputs]]
