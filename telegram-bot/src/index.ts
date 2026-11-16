@@ -5496,7 +5496,8 @@ bot.on('callback_query', async (ctx) => {
     });
     return ctx.editMessageText(
       `⚡ *Seedance 2.5 Flash*\n\n` +
-      `Durasi hasil: *30 detik* • *480p* • audio mengikuti referensi\n` +
+      `Output text-to-video: *30 detik* • *480p* • *16:9*\n` +
+      `Jika mengirim gabungan gambar + video, mode edit mengikuti durasi dan rasio video sumber.\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}* per video\n\n` +
       `Kirim referensi opsional sebelum prompt: maksimal ${picsart.SEEDANCE25_FLASH_MAX_IMAGES} gambar, ` +
       `${picsart.SEEDANCE25_FLASH_MAX_VIDEOS} video, dan ${picsart.SEEDANCE25_FLASH_MAX_AUDIOS} audio. ` +
@@ -5523,7 +5524,11 @@ bot.on('callback_query', async (ctx) => {
       `✅ Referensi siap: ${images} gambar, ${videos} video, ${audios} audio.\n` +
       (images ? 'Urutan gambar dipertahankan sebagai urutan upload.\n' : '') +
       `\nKirim prompt teks maksimal 20.000 karakter.\n\n` +
-      (images + videos + audios ? 'Mode: video dengan referensi.' : 'Mode: text-to-video tanpa referensi.'),
+      (images > 0 && videos > 0
+        ? 'Mode edit karakter: hasil mengikuti durasi dan rasio video sumber.'
+        : images + videos + audios
+          ? 'Mode: video dengan referensi, durasi hasil 30 detik.'
+          : 'Mode: text-to-video tanpa referensi, durasi hasil 30 detik.'),
     );
   }
 
@@ -7011,10 +7016,12 @@ async function submitSeedance25FlashPrompt(ctx: any, rawPrompt: string) {
     seedance25FlashAudios: undefined,
     seedance25FlashPendingUploads: 0,
   });
-  const references: Required<Pick<Parameters<typeof picsart.generateSeedance25Flash>[0], 'images' | 'videos' | 'audios'>> = {
+  const references: Required<Pick<Parameters<typeof picsart.generateSeedance25Flash>[0], 'images' | 'videos' | 'audios'>>
+    & { taskType: picsart.Seedance25FlashTaskType } = {
     images: [],
     videos: [],
     audios: [],
+    taskType: imageFileIds.length > 0 && videoFiles.length > 0 ? 'edit' : 'auto',
   };
   let totalBytes = 0;
   const download = async (fileId: string) => {
@@ -7071,7 +7078,9 @@ async function submitSeedance25FlashPrompt(ctx: any, rawPrompt: string) {
   }
   if (getSession(userId).mode !== 'idle' && getSession(userId).seedance25FlashDraftId !== draftId) return;
   const statusMsg = await retryTelegramRateLimit<{ message_id: number }>(() => ctx.reply(
-    '⏳ Seedance 2.5 Flash sedang mengunggah referensi, memeriksa biaya, dan membuat video 480p...'
+    references.taskType === 'edit'
+      ? '⏳ Seedance 2.5 Flash sedang mengunggah referensi, memeriksa biaya, dan mengedit video 480p...'
+      : '⏳ Seedance 2.5 Flash sedang mengunggah referensi, memeriksa biaya, dan membuat video 480p...'
   ));
   runPicsartSeedance25Flash(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, references)
     .catch((error: any) => console.error(`[${userId}] Seedance 2.5 Flash error:`, describeError(error)));
@@ -11199,7 +11208,8 @@ async function runPicsartSeedance25Flash(
   dbUserId: number,
   statusMsgId: number,
   prompt: string,
-  references: Required<Pick<Parameters<typeof picsart.generateSeedance25Flash>[0], 'images' | 'videos' | 'audios'>>,
+  references: Required<Pick<Parameters<typeof picsart.generateSeedance25Flash>[0], 'images' | 'videos' | 'audios'>>
+    & { taskType: picsart.Seedance25FlashTaskType },
 ) {
   const label = 'Seedance 2.5 Flash';
   const price = MODEL_PRICES.picsart_seedance_25_flash;
@@ -11247,10 +11257,13 @@ async function runPicsartSeedance25Flash(
     const inputLabel = referenceCount
       ? `${references.images.length} gambar ref · ${references.videos.length} video ref · ${references.audios.length} audio ref`
       : 'text-to-video';
+    const outputLabel = references.taskType === 'edit'
+      ? 'edit · durasi mengikuti video sumber'
+      : `${picsart.SEEDANCE25_FLASH_DURATION_SECONDS} detik · 16:9`;
     const delivered = await sendResult(
       chatId,
       result.url,
-      `⚡ ${label} (${inputLabel} · ${picsart.SEEDANCE25_FLASH_DURATION_SECONDS} detik · 480p · ${references.audios.length ? 'audio referensi' : 'tanpa audio'})\n\n/menu untuk buat lagi`,
+      `⚡ ${label} (${inputLabel} · ${outputLabel} · 480p · ${references.taskType === 'edit' || references.audios.length ? 'audio aktif' : 'tanpa audio'})\n\n/menu untuk buat lagi`,
       true
     ).catch(() => false);
     if (delivered) {

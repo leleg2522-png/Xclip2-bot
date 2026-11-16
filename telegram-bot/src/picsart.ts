@@ -343,7 +343,8 @@ async function acquireAccount(
   userId: number,
   poolFilter: PicsartPool | null = null,
   exclude: number[] = [],
-  strictPool = false
+  strictPool = false,
+  assignUser = true
 ): Promise<number | null> {
   const stickyKey = poolFilter ?? 'any';
   // Wildcard (pool IS NULL = legacy accounts) match every pool request so that
@@ -376,13 +377,15 @@ async function acquireAccount(
   const credId = pick.rows[0]?.id as number | undefined;
   if (credId == null) return null;
 
-  await q(
-    `INSERT INTO picsart_user_accounts (user_id, pool, credential_id, assigned_at)
-       VALUES ($1, $2, $3, NOW())
-     ON CONFLICT (user_id, pool)
-       DO UPDATE SET credential_id = EXCLUDED.credential_id, assigned_at = NOW()`,
-    [userId, stickyKey, credId]
-  );
+  if (assignUser) {
+    await q(
+      `INSERT INTO picsart_user_accounts (user_id, pool, credential_id, assigned_at)
+         VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (user_id, pool)
+         DO UPDATE SET credential_id = EXCLUDED.credential_id, assigned_at = NOW()`,
+      [userId, stickyKey, credId]
+    );
+  }
   return credId;
 }
 
@@ -447,6 +450,7 @@ async function runWithAccount<T>(
   userId: number,
   poolFilter: PicsartPool | null,
   fn: (credId: number) => Promise<T>,
+  options: { assignAccount?: boolean } = {},
 ): Promise<T> {
   // Credit-tier tags remain useful for administration, not model restrictions.
   // Override historical callers so every generation can use either tier.
@@ -460,7 +464,7 @@ async function runWithAccount<T>(
   const poolCount = await q(`SELECT COUNT(*)::int AS n FROM picsart_credentials`);
   const ceiling = Math.min(MAX_ACCOUNT_ATTEMPTS, Math.max(1, poolCount.rows[0]?.n ?? 1));
   for (let attempt = 0; attempt < ceiling; attempt++) {
-    const credId = await acquireAccount(userId, poolFilter, tried, false);
+    const credId = await acquireAccount(userId, poolFilter, tried, false, options.assignAccount !== false);
     if (credId == null) break;
     tried.push(credId);
     try {
@@ -2169,20 +2173,49 @@ export async function pollSeedance25FlashResult(
   throw diag.timeoutError();
 }
 
-export async function generateSeedance25Flash(input: {
+export type Seedance25FlashTaskType = 'auto' | 'edit';
+export type Seedance25FlashInput = {
   userId: number;
   prompt: string;
   images?: Array<{ buffer: Buffer; name?: string; mime?: string }>;
   videos?: Array<{ buffer: Buffer; name?: string; mime?: string; duration: number }>;
   audios?: Array<{ buffer: Buffer; name?: string; mime?: string; duration: number }>;
+  taskType?: Seedance25FlashTaskType;
+  generateAudio?: boolean;
+  quoteOnly?: boolean;
   onStatus?: (stage: 'upload' | 'quote' | 'submit' | 'poll') => void;
   onPoll?: (elapsedSec: number) => void;
-}): Promise<{ url: string; credits?: number }> {
+};
+export type Seedance25FlashQuote = {
+  quoteOnly: true;
+  taskType: Seedance25FlashTaskType;
+  duration: number;
+  aspectRatio: string;
+  credits: number;
+  availableCredits: number;
+  hasEnoughProviderCredits: boolean;
+  price?: number;
+  unit?: string;
+  usageAmount?: number;
+};
+export function generateSeedance25Flash(
+  input: Seedance25FlashInput & { quoteOnly: true },
+): Promise<Seedance25FlashQuote>;
+export function generateSeedance25Flash(
+  input: Seedance25FlashInput & { quoteOnly?: false },
+): Promise<{ url: string; credits?: number }>;
+export async function generateSeedance25Flash(
+  input: Seedance25FlashInput,
+): Promise<{ url: string; credits?: number } | Seedance25FlashQuote> {
   const prompt = input.prompt.trim();
   if (!prompt || prompt.length > 20_000) throw new Error('SEEDANCE25_FLASH_INVALID_PROMPT');
   const images = input.images ?? [];
   const videos = input.videos ?? [];
   const audios = input.audios ?? [];
+  const taskType = input.taskType ?? (images.length > 0 && videos.length > 0 ? 'edit' : 'auto');
+  if (taskType === 'edit' && (!videos.length || !videos.some(video => video.duration >= 4))) {
+    throw new Error('SEEDANCE25_FLASH_EDIT_REQUIRES_VIDEO');
+  }
   if (images.length > SEEDANCE25_FLASH_MAX_IMAGES
     || videos.length > SEEDANCE25_FLASH_MAX_VIDEOS
     || audios.length > SEEDANCE25_FLASH_MAX_AUDIOS) {
@@ -2238,14 +2271,16 @@ export async function generateSeedance25Flash(input: {
         { gateway: true },
       ));
     }
-    const generateAudio = audioUrls.length > 0;
+    const aspectRatio = taskType === 'edit' ? 'adaptive' : SEEDANCE25_FLASH_RATIO;
+    const duration = taskType === 'edit' ? -1 : SEEDANCE25_FLASH_DURATION_SECONDS;
+    const generateAudio = input.generateAudio ?? (taskType === 'edit' || audioUrls.length > 0);
     const params = {
       prompt,
       resolution: SEEDANCE25_FLASH_RESOLUTION,
-      duration: SEEDANCE25_FLASH_DURATION_SECONDS,
-      aspectRatio: SEEDANCE25_FLASH_RATIO,
+      duration,
+      aspectRatio,
       generateAudio,
-      omniReferenceTaskType: 'auto',
+      omniReferenceTaskType: taskType,
       returnLastFrame: false,
       outputFormat: 'mp4',
       ...(imageUrls.length ? { imageUrls } : {}),
@@ -2274,16 +2309,31 @@ export async function generateSeedance25Flash(input: {
       const reason = String(quoteResponse.data?.reason ?? quoteResponse.data?.status ?? 'quote rejected');
       throw new Error(`PICSART_SEEDANCE25_FLASH_OPTIONS_FAILED status ${quoteResponse.status}: ${reason}`.slice(0, 220));
     }
-    if (!Number.isFinite(accountCredits) || accountCredits < quote.credits) {
+    const hasEnoughProviderCredits = Number.isFinite(accountCredits) && accountCredits >= quote.credits;
+    if (input.quoteOnly) {
+      return {
+        quoteOnly: true,
+        taskType,
+        duration,
+        aspectRatio,
+        credits: quote.credits,
+        availableCredits: accountCredits,
+        hasEnoughProviderCredits,
+        price: quote.price,
+        unit: quote.unit,
+        usageAmount: quote.usageAmount,
+      };
+    }
+    if (!hasEnoughProviderCredits) {
       throw new Error(ERR_INSUFFICIENT_CREDITS);
     }
 
     const aiSDKPayload = JSON.stringify({
-      aspectRatio: SEEDANCE25_FLASH_RATIO,
+      aspectRatio,
       resolution: SEEDANCE25_FLASH_RESOLUTION,
-      duration: SEEDANCE25_FLASH_DURATION_SECONDS,
+      duration,
       generateAudio,
-      omniReferenceTaskType: 'auto',
+      omniReferenceTaskType: taskType,
       returnLastFrame: false,
       outputFormat: 'mp4',
       imageUrls,
