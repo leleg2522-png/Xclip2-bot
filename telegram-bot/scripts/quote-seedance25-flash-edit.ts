@@ -9,6 +9,7 @@ async function main() {
   const [videoPath, imagePath] = args.filter(arg => !arg.startsWith('--'));
   const submit = args.includes('--submit');
   const identityLock = args.includes('--identity-lock');
+  const audioOff = args.includes('--audio-off');
   const maxCreditsArg = args.find(arg => arg.startsWith('--max-provider-credits='));
   const maxProviderCredits = maxCreditsArg ? Number(maxCreditsArg.split('=')[1]) : undefined;
   const variantArg = args.find(arg => arg.startsWith('--variant='));
@@ -47,7 +48,7 @@ async function main() {
       images: [{ buffer: imageBuffer, name: 'character-reference.jpg', mime: 'image/jpeg' }],
       videos: [{ buffer: videoBuffer, name: 'source-video.mp4', mime: 'video/mp4', duration: videoDuration }],
       taskType: 'edit',
-      generateAudio: true,
+      generateAudio: !audioOff,
       persistAccount: false,
       onStatus: stage => console.log(`STAGE=${stage}`),
       onPoll: elapsedSec => {
@@ -77,6 +78,7 @@ async function main() {
         providerPrice: result.price,
         providerUnit: result.unit,
         usageAmount: result.usageAmount,
+        generateAudio: !audioOff,
         selectedAccountHasEnoughCredits: result.hasEnoughProviderCredits,
         submittedPaidJob: false,
       }, null, 2));
