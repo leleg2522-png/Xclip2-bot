@@ -1622,3 +1622,17 @@ mtime_ms = 1794868214774
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/858aa92e-3c33-48ca-95b1-c82d228357a9/7f2b6f2e-e20e-408b-98be-f1ac54914c9a"
 storage_version_token = "1794868247447618"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "KAZFWfEGfzMP_4IyRG299"
+uri = "file://generated-artifacts/seedance25-p2-character-swap-once/native.mp4"
+type = "video"
+title = "Seedance 2.5 biasa (P2) — hasil mentah"
+description = "Hasil tes sebelumnya, bukan Flash: 30 detik, 854×480, tanpa audio dan sebelum upscale Renderful. Tidak ada generate atau biaya baru."
+logical_id = "200ada4a-7125-4cbf-b965-c879e55f36aa"
+content_hash = "sha256:31b818aed472cfd1003f0080a9c2380b98a19d2e8edfc3b331a7004e242e671c"
+size = 12213299
+mtime_ms = 1794865223224
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/200ada4a-7125-4cbf-b965-c879e55f36aa/17c648c9-e31c-48c9-a8e7-008da4911e6e"
+storage_version_token = "1794868324686563"
+content_type = "video/mp4"
