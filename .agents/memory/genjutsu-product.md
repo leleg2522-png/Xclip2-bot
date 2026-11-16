@@ -38,3 +38,16 @@ Wan 3.0's Vivareel image-and-video reference capability is not verified characte
 **Why:** Accepting both reference types and completing a job does not prove that a model supports in-place character swapping.
 
 **How to apply:** Do not migrate Genjutsu to this route based on reference-input support alone. Inspect the entire output, not only a source-length excerpt: the model can introduce the image-derived character only in later, separate scenes.
+
+Standard P2 reference generation can retain the film setting while applying the
+reference character's appearance, but this is not proof of timeline-preserving
+character replacement or an exact identity lock.
+
+**Why:** In a controlled comparison, its 30-second result stayed in the film
+setting with the white-blazer character, unlike Wan's separate office scenes,
+but expanded a roughly 5.5-second source and changed performance timing.
+
+**How to apply:** Separate scene retention, reference likeness, and motion/timing
+fidelity when judging results. Do not replace the Genjutsu production route or
+promise Higgsfield-equivalent replacement based on reference-mode acceptance
+or this partial visual improvement alone.

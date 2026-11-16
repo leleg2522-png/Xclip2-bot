@@ -1552,3 +1552,45 @@ mtime_ms = 1794863416996
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/7d99a8e8-30a4-4988-90a2-08ee69645c6c/ce67c6f0-7cba-4cf3-8136-ac5a1c6406ca"
 storage_version_token = "1794863699781859"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "nXl5pxovoXeFcVgVRUJEA"
+uri = "file://generated-artifacts/seedance25-p2-character-swap-once/character-source-p2-comparison.jpg"
+type = "image"
+title = "Perbandingan foto, video sumber, dan hasil P2"
+description = "Sumber dan P2 di detik yang sama. P2 menempatkan karakter berblazer putih di latar film, tetapi pose dan timing tidak identik."
+logical_id = "873c6707-3a18-4f36-9953-c432b10f4f2c"
+content_hash = "sha256:c2146ddd421a538c2c5ddd9682b2812b13f6ff466724c6efef83e0b39025e945"
+size = 25386
+mtime_ms = 1794865320179
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/873c6707-3a18-4f36-9953-c432b10f4f2c/38bb7b0e-54ff-4df4-8079-e78be4049294"
+storage_version_token = "1794865378859618"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "2Yk62Kdk3BoQC0smSR3DS"
+uri = "file://generated-artifacts/seedance25-p2-character-swap-once/p2-character-swap-1080p.mp4"
+type = "video"
+title = "Hasil P2 — 30 detik, 1080p"
+description = "Video lengkap satu tes character swap P2. Tanpa audio, 200 kredit untuk generate; finishing 1080p selesai. Latar film dipertahankan, tetapi gerak dan timing tidak identik dengan sumber."
+logical_id = "ae5ccd91-cfb1-4987-8d2a-479b23fbf279"
+content_hash = "sha256:d9c303ccfa07206d2f71f6f9ff149d96de2706a2190f3f9150d09d34d4ddc183"
+size = 19484054
+mtime_ms = 1794865462484
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/ae5ccd91-cfb1-4987-8d2a-479b23fbf279/6abd328f-57d9-473f-bf61-7450ddb5ed62"
+storage_version_token = "1794865522159269"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "kqdMKvrwZVkvsTZGnTWdg"
+uri = "file://generated-artifacts/seedance25-p2-character-swap-once/timeline-30s.jpg"
+type = "image"
+title = "Rangkaian frame P2 dari awal sampai akhir"
+description = "Sampel setiap detik dari video final 1080p, untuk melihat konsistensi adegan dan karakter sepanjang hasil 30 detik."
+logical_id = "610a78fc-ac47-49c5-8206-027a6c20dd61"
+content_hash = "sha256:2706bf823f6e578f7b9c28816584913337098145c3b3b15b17f00d24cdaf6f44"
+size = 122496
+mtime_ms = 1794865503411
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/610a78fc-ac47-49c5-8206-027a6c20dd61/1539b019-27f9-452c-87f8-d534faf4a71a"
+storage_version_token = "1794865523483225"
+content_type = "image/jpeg"
