@@ -1524,3 +1524,31 @@ mtime_ms = 1794862113720
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/16d4a269-979e-4fb0-b354-2d5728b70be7/db6bb0af-fd11-4d96-b7dc-c73793eca432"
 storage_version_token = "1794862149670358"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "K72EVhzDa_cm-UHo0fiwc"
+uri = "file://generated-artifacts/wan-genjutsu-india-once/full24-comparison.jpg"
+type = "image"
+title = "Pemeriksaan seluruh hasil Wan 3.0"
+description = "Enam frame berurutan dari sekitar detik 2, 6, 10, 14, 18, dan 22; dibaca kiri ke kanan lalu baris bawah. Wan mempertahankan adegan film terlebih dahulu, lalu berpindah ke adegan kantor. Jadi ini belum mengganti karakter di dalam adegan film seperti yang diminta."
+logical_id = "06c56f89-bb30-467b-89e3-30429c72b935"
+content_hash = "sha256:54e6a8f08f42258bf656b7831844444348972a19430a2208adf96f9e25da3439"
+size = 42995
+mtime_ms = 1794863386964
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/06c56f89-bb30-467b-89e3-30429c72b935/aaba8664-72cf-4344-a046-4801ebfb1243"
+storage_version_token = "1794863437219839"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "S2QVEm_SHLPPtRPDMu94v"
+uri = "file://generated-artifacts/wan-genjutsu-india-once/wan-genjutsu-1080p.mp4"
+type = "video"
+title = "Cuplikan tes Wan 3.0 — belum berhasil mengganti karakter"
+description = "Cuplikan awal sekitar 5,53 detik dari hasil Wan 24 detik, disiapkan ke 1922×1080 dan dipasangi audio asli cuplikan sumber yang terverifikasi identik. Pemeriksaan seluruh 24 detik menunjukkan adegan film lalu adegan kantor, bukan penggantian karakter di dalam adegan film. Wan melaporkan biaya 72 poin, terpisah dari proses finishing."
+logical_id = "7d99a8e8-30a4-4988-90a2-08ee69645c6c"
+content_hash = "sha256:a5d0628d6e20c0a61dd8e222597e1459a741ee44e2b91d1e035b69c674fb4255"
+size = 4478936
+mtime_ms = 1794863416996
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/7d99a8e8-30a4-4988-90a2-08ee69645c6c/c6d5b48a-bc13-49ed-9e1e-f74a13529ff7"
+storage_version_token = "1794863465630691"
+content_type = "video/mp4"

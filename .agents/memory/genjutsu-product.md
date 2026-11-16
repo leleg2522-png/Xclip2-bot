@@ -32,3 +32,9 @@ An authorized repeat with explicit identity-first instructions still did not pro
 **Why:** Stronger natural-language instructions alone did not resolve the observed character mismatch.
 
 **How to apply:** Do not present further prompt-only edits as a confirmed identity lock. Investigate model-supported identity conditioning or a dedicated character-swap method before recommending more paid attempts; changing providers or adding a new processing stage requires discussing that change with the user.
+
+Wan 3.0's Vivareel image-and-video reference capability is not verified character replacement. In a controlled comparison using the same film clip and character photo, the output showed the film scene first and the photo's office setting later, rather than replacing the performer within the film.
+
+**Why:** Accepting both reference types and completing a job does not prove that a model supports in-place character swapping.
+
+**How to apply:** Do not migrate Genjutsu to this route based on reference-input support alone. Inspect the entire output, not only a source-length excerpt: the model can introduce the image-derived character only in later, separate scenes.

@@ -32,3 +32,9 @@ Disabling a Vivareel key in the DB must remain authoritative; an empty or unavai
 **Why:** An environment fallback could reuse the same account an admin disabled, bypass pool controls, and hide a database outage.
 
 **How to apply:** Treat the environment key only as an initial, idempotent pool seed, never as an alternate runtime credential when the pool cannot provide one.
+
+Task-status GET requests can temporarily return HTTP 500 while the accepted Wan job continues and ultimately completes.
+
+**Why:** An authorized video-and-image comparison encountered this during processing and subsequently recovered by polling the same task ID.
+
+**How to apply:** Retry transient status reads with a bounded delay, keeping the original credential and task ID. An HTTP 500 from polling is not permission to resubmit or fail over to another paid generation.
