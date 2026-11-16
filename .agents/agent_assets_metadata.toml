@@ -1440,3 +1440,17 @@ mtime_ms = 1794793380756
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/14874ca4-64df-45dd-bd02-f700f71fe768/2c7b31ee-4858-42b4-873a-bf4a4d8222e4"
 storage_version_token = "1794793504009083"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "SL6AoXjymrhKxk-QdkNZh"
+uri = "file://generated-artifacts/genjutsu-original-audio-live-once/genjutsu-1080p.mp4"
+type = "video"
+title = "Hasil tes Genjutsu — audio asli"
+description = "Tes generate nyata berhasil. Video 1080×1922, durasi 10,04 detik. Audio asli terverifikasi identik dengan sumber, tanpa audio baru dari model."
+logical_id = "2b622b10-9bdd-4e25-81cd-5b8daaca4e97"
+content_hash = "sha256:c281b74c4b0dde9fc8fdaa4dd191d903fa5a8e712beb3844e0d2c4aef81aca82"
+size = 7150054
+mtime_ms = 1794856275214
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/2b622b10-9bdd-4e25-81cd-5b8daaca4e97/9832e65f-9cc7-4c20-ba18-827989158b54"
+storage_version_token = "1794856327984250"
+content_type = "video/mp4"

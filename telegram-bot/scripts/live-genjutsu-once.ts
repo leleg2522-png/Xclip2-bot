@@ -10,7 +10,10 @@ import { inspectSeedance25Media } from '../src/seedance25-media';
 import { generateRenderful1080 } from '../src/renderful-auto-upscale';
 import { inspectFloraUpscaleVideo, normalizeFlora1080 } from '../src/flora-upscale-media';
 
-const root = path.resolve(__dirname, '../../generated-artifacts/genjutsu-live-once');
+const runName = process.argv.find(arg => arg.startsWith('--run-name='))?.slice('--run-name='.length)
+  ?? 'genjutsu-live-once';
+if (!/^genjutsu-[a-z0-9-]+$/.test(runName)) throw Error('INVALID_RUN_NAME');
+const root = path.resolve(__dirname, '../../generated-artifacts', runName);
 const statePath = path.join(root, 'state.json');
 const sourcePath = path.resolve(__dirname, '../../generated-artifacts/kling4-woman-dance-live/native.mp4');
 const imagePath = path.resolve(__dirname, '../../attached_assets/generated_images/young-ceo-woman-reference.jpg');
@@ -41,7 +44,7 @@ async function main() {
   const lock = await fs.open(path.join(root, 'run.lock'), 'wx');
   await lock.close();
   await save({ started: true, status: 'preflight', startedAt: new Date().toISOString(),
-    sourcePath, imagePath, botSaldoCharged: false });
+    sourcePath, imagePath, botSaldoCharged: false, generateAudio: false });
   picsart.initPicsart(db);
   const [video, image] = await Promise.all([fs.readFile(sourcePath), fs.readFile(imagePath)]);
   const duration = await inspectSeedance25Media(video, 'video');

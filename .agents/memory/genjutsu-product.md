@@ -7,10 +7,16 @@ Genjutsu is a separate customer menu, not a replacement for the general Seedance
 
 **Why:** The user requested a Genjutsu-style feature backed by Seedance 2.5 Flash and chose “Menu Genjutsu terpisah” after reviewing this flow and price.
 
-**How to apply:** Keep ordinary Flash's optional mixed references and text-to-video intact. Genjutsu delivers 1080p with hidden Renderful finishing, keeps supplier names and source resolution out of customer messages, and refunds failed generation/finishing/delivery. Ask the model to preserve source motion, camera, scene, and audio, but never promise Higgsfield-identical quality or guaranteed identity consistency.
+**How to apply:** Keep ordinary Flash's optional mixed references and text-to-video intact. Genjutsu delivers 1080p with hidden Renderful finishing, keeps supplier names and source resolution out of customer messages, and refunds failed generation/finishing/delivery. Ask the model to preserve source motion, camera, and scene; restore audio separately as described below. Never promise Higgsfield-identical quality or guaranteed identity consistency.
 
 Genjutsu must generate visuals without model-created audio, then restore audio from the user's source video after finishing. If the source is silent, deliver silent video; never keep the generated soundtrack as a fallback.
 
 **Why:** After the live job failed on generated-audio moderation, the user selected “Pakai audio asli video”.
 
 **How to apply:** Disable audio generation explicitly only for Genjutsu, preserve the original audio's timing and content in the final media, and refund if restoration fails. Do not change the general Flash audio settings or run another paid test without new permission.
+
+The audio-off edit contract is live-verified: `generateAudio:false` produced silent visuals, finishing completed, and the restored AAC decoded identically to the source. A portrait result may be 1080×1922 rather than exactly 1080×1920 because the provider preserves the source aspect ratio.
+
+**Why:** Native portrait dimensions can be 480×854, so proportional 1080-short-edge delivery need not have a 1920 long edge. Requiring exactly 1080×1920 would reject a valid finished result.
+
+**How to apply:** Validate 1080 on the short edge and preserve the actual aspect ratio; do not promise exact 1920 height or assume that disabling audio prevents every possible moderation failure.
