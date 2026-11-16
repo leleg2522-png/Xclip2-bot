@@ -631,6 +631,8 @@ async function checkGenjutsuIdentityPayload() {
     assert.equal(params.aspectRatio, 'adaptive');
     assert.equal(params.audioUrls, undefined);
     assert.equal(params.faceStrength, undefined, 'Do not invent unsupported identity-control parameters');
+    assert.equal(params.negativePrompt, undefined, 'Exclusions stay inline; Flash documents no negativePrompt field');
+    assert.equal(params.negative_prompt, undefined, 'Do not invent an alternate negative-prompt field');
   }
   const metadata = JSON.parse(h.calls.posts[1].body.params.options.drive.attributes.aiSDKPayload);
   assert.deepEqual(metadata.imageUrls, ['https://uploads.test/identity.jpg']);

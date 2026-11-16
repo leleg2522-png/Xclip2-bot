@@ -1,7 +1,3 @@
-Perform an in-place full-character replacement in reference video 1, using reference image 1 as the sole identity source.
+Replace the character in the reference video with the character in the reference image.
 
-Treat the source video as a locked edit plate, not inspiration for a new scene. In every frame, replace the main foreground woman with the same fictional woman shown in the image: her facial identity and facial proportions, long side-parted black hair, ivory blazer over a blue-grey blouse, delicate necklace, and small earrings. Replace the original woman's face itself, not just her clothing. Do not keep the source actress's eyes, nose, mouth, or facial structure underneath the replacement styling. Do not blend the two faces or invent a third woman.
-
-Drive the replacement with the original woman's exact head orientation, gaze, expressions, lip movements, body poses, and hand gestures at the same moments in the source timeline. Keep the original shot and its duration. Do not add, extend, repeat, slow down, or invent performances. Preserve camera movement, camera framing, the curtain and room, background people, their positions, and the original composition.
-
-Keep the reference woman's identity stable across head turns, open-mouth expressions, and partial occlusion. Relight and render her naturally within the source film's lighting and monochrome photographic treatment; do not import the photo's office background. No scene changes, inserts, montage, extra foreground people, captions, subtitles, or logos. Generate the replacement visuals only, without a soundtrack.
+Avoid: original face, blended faces, changing identity, distorted face, changed background, extra people, subtitles.

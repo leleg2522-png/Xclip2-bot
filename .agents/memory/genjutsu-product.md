@@ -5,6 +5,17 @@ description: User-approved scope and customer flow for the separate Genjutsu Tel
 
 Genjutsu is a separate customer menu, not a replacement for the general Seedance 2.5 Flash flow. It requires one source video followed by one character photo, uses an automatic character-replacement prompt, and asks for explicit Generate confirmation at Rp6,000.
 
+The user wants Genjutsu's automatic prompt kept simple: “ganti karakter video
+refrensi dengan karakter image refrensi”, plus negative instructions.
+
+**Why:** The user explicitly replaced the earlier elaborate identity-lock prompt
+with this short instruction.
+
+**How to apply:** Do not expand it back into a long identity/performance prompt
+without asking. Flash's documented parameter list has no separate negative
+prompt field; disclose inline exclusions as text instructions, not native
+negative conditioning or a guaranteed identity lock.
+
 For the character-swap flow, duration must automatically follow the reference
 video, not a manually fixed number or a 30-second reference-generation preset.
 

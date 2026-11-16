@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { Telegraf, Markup } from 'telegraf';
-import { createGenjutsuFlow, GENJUTSU_PROMPT, type GenjutsuDraft } from '../src/genjutsu';
+import { createGenjutsuFlow, GENJUTSU_PROMPT, GENJUTSU_NEGATIVE_PROMPT, type GenjutsuDraft } from '../src/genjutsu';
 
 const source = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true);
@@ -81,14 +81,12 @@ async function checkWizard() {
   assert.equal(h.submitted[0].value.video.fileId, 'video');
   assert.equal(h.submitted[0].value.imageFileId, 'character');
   assert.equal(h.submitted[0].prompt, GENJUTSU_PROMPT);
-  assert.match(GENJUTSU_PROMPT, /main foreground person/);
-  assert.match(GENJUTSU_PROMPT, /ONLY identity and appearance reference/);
-  assert.match(GENJUTSU_PROMPT, /NOT the replacement face/);
-  assert.match(GENJUTSU_PROMPT, /not just their clothes/);
-  assert.match(GENJUTSU_PROMPT, /Do not retain the original performer/);
-  assert.match(GENJUTSU_PROMPT, /first frame through the final frame/);
-  assert.match(GENJUTSU_PROMPT, /after hands or hair uncover the face/);
-  assert.match(GENJUTSU_PROMPT, /Generate visuals only/);
+  assert.equal(GENJUTSU_PROMPT,
+    'Replace the character in the reference video with the character in the reference image.' +
+    `\n\nAvoid: ${GENJUTSU_NEGATIVE_PROMPT}.`);
+  assert.match(GENJUTSU_NEGATIVE_PROMPT, /original face/);
+  assert.match(GENJUTSU_NEGATIVE_PROMPT, /blended faces/);
+  assert.match(GENJUTSU_NEGATIVE_PROMPT, /changing identity/);
   assert.match(h.messages.join('\n'), /Kemiripan wajah tidak dijamin/);
   assert.match(h.messages.join('\n'), /Boleh kirim sebagai file gambar/);
   assert.match(h.messages.join('\n'), /Rp6.000/);

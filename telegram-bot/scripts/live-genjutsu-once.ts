@@ -88,12 +88,18 @@ async function main() {
   const [video, image] = await Promise.all([fs.readFile(sourcePath), fs.readFile(imagePath)]);
   const duration = await inspectSeedance25Media(video, 'video');
   if (duration < 4 || duration > 30) throw Error('INVALID_SOURCE_DURATION');
-  const prompt = state.prompt ?? (promptFile
+  const requestedPrompt = promptFile
     ? (await fs.readFile(path.resolve(__dirname, '../..', promptFile), 'utf8')).trim()
-    : GENJUTSU_PROMPT);
+    : GENJUTSU_PROMPT;
+  if (state.nativeAttempted && state.prompt && state.prompt !== requestedPrompt) {
+    throw Error('CANNOT_CHANGE_PROMPT_AFTER_SUBMIT');
+  }
+  const prompt = state.nativeAttempted ? (state.prompt ?? requestedPrompt) : requestedPrompt;
   await save({ prompt });
+  console.log('GENJUTSU_PREFLIGHT', JSON.stringify({ sourceSeconds: duration, duration: 'auto', taskType: 'edit' }));
 
   // Read-only pool preflight. Do not disable or reassign live users' keys in QA.
+  console.log('GENJUTSU_FINISHING_POOL_CHECK');
   const rows = state.finishingKeyId
     ? await db.query('SELECT id, api_key FROM renderful_key_pool WHERE id = $1', [state.finishingKeyId])
     : await db.query("SELECT id, api_key FROM renderful_key_pool WHERE status <> 'dead' ORDER BY id");
@@ -103,6 +109,7 @@ async function main() {
     try {
       const response = await http.get(`${base}/account/balance`, {
         headers: { Authorization: `Bearer ${row.api_key}` },
+        timeout: 15000,
       });
       if (Number(response.data.balance_available) > 0) { selected = row; break; }
     } catch { /* No secret-bearing transport errors in output. */ }
@@ -232,7 +239,7 @@ async function main() {
 main().catch(async error => {
   const detail = safeError(error);
   console.error('GENJUTSU_STOPPED', detail);
-  if (state.started && !['completed', 'failed'].includes(state.status)) {
+  if (ownsLock && state.started && !['completed', 'failed'].includes(state.status)) {
     await save({ status: 'failed', failure: detail, failedAt: new Date().toISOString() }).catch(() => {});
   }
   process.exitCode = 1;
