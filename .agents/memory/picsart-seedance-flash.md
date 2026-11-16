@@ -11,6 +11,12 @@ A second live edit with a 10.042-second solo clip and the same image reference r
 
 An exact-face identity prompt with audio generation enabled was accepted for polling but failed with `422 bytedance_output_audio_sensitive`; the provider returned no usage amount. A subsequent audio-off job was accepted, but the workspace lost the local polling process before a result or provider task ID was saved. Each attempt was capped at 63 credits, but actual deductions are unknown.
 
+The ordinary Genjutsu character-swap prompt has also produced `422 bytedance_output_audio_sensitive` after successful quote and submit with the documented edit parameters. This is a generated-audio moderation failure, not evidence of a ratio/duration mismatch. A 63-credit quote is an estimate, not proof of the amount ultimately deducted.
+
+**Why:** A live test reproduced this failure even without the older exact-face prompt; changing valid edit parameters or automatically replaying the job would not be a justified fix.
+
+**How to apply:** Inspect the original provider reason before interpreting HTTP 422. Preserve the single-attempt authorization boundary, and ask before another paid test or changing audio behavior. Do not claim a final 1080p result when generation failed before finishing.
+
 The captured AI Playground model-v1 HAR confirms only the original 5-second, 15-credit text-to-video contract and one `imageUrls` reference; it does not contain Flash video/audio requests. The live test confirms image+video edit mode, but not standalone video-only or audio-only references or regular 30-second text-to-video.
 
 **Why:** The public API and Playground gateway are distinct request surfaces, and edit quotes reported more billing units than rendered seconds. Losing the local poller after provider acceptance leaves the result and credit usage unknown, so an automatic replay could double-spend.
