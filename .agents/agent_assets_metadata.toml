@@ -1193,14 +1193,14 @@ content_type = "video/mp4"
 id = "QQKPqH6tjQVIAaBKujU7C"
 uri = "file://generated-artifacts/modelrunner-seedance25-image-test-20261112/seedance25-image-dance-30s-480p.mp4"
 type = "video"
-title = "Seedance 2.5 — tes tarian dari gambar"
-description = "Tes image-to-video berhasil untuk prompt tarian nonseksual yang disetujui: 30,048 detik, 852×480, 24 fps, audio AAC. Biaya aktual US$4,6277."
+title = "Kandidat video ref — koreografi, 30 detik"
+description = "Dua perempuan berkostum fantasi dengan gerakan koreografi yang lebih aktif; bukan tarian realistis solo."
 logical_id = "5474c680-e320-4e58-abec-1cc78ea6d575"
 content_hash = "sha256:fda46dce5d9c0893452108fd2da39a62f4db7de8f26a8f39256c8139d3aff668"
 size = 28428450
 mtime_ms = 1794443606814
-storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/5474c680-e320-4e58-abec-1cc78ea6d575/04aa90d8-2878-4a23-b379-d6f6576bb479"
-storage_version_token = "1794443642175485"
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/5474c680-e320-4e58-abec-1cc78ea6d575/ffb61d11-4c11-465b-830a-0e6c230ebfc7"
+storage_version_token = "1794793068045494"
 content_type = "video/mp4"
 
 [[outputs]]
@@ -1411,4 +1411,18 @@ size = 7624902
 mtime_ms = 1794792463466
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/0803608b-95ee-4661-87bd-c1eb4bfe4bb2/9b073253-a8ac-4b45-ba5b-0d55eabe34e7"
 storage_version_token = "1794792612443106"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "xnQXOaa6Viy8fiCS2-z_Q"
+uri = "file://generated-artifacts/kling4-woman-dance-live/native.mp4"
+type = "video"
+title = "Kandidat video ref — perempuan solo, 10 detik"
+description = "Satu perempuan di latar sederhana; gerakannya ringan dan lebih banyak gestur tangan daripada tarian seluruh tubuh."
+logical_id = "3f97d144-dbb1-448c-b9f3-29c0890a6754"
+content_hash = "sha256:a1ddf2a9abe31b14e4fb17e1f8bd76a494ddbd8dd461b679c0daf8b140cbe3cd"
+size = 4428344
+mtime_ms = 1793920504067
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/3f97d144-dbb1-448c-b9f3-29c0890a6754/673b814d-b00d-4e64-9b6d-5ea2b34bd7b1"
+storage_version_token = "1794793066411183"
 content_type = "video/mp4"
