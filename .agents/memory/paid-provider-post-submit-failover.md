@@ -47,3 +47,14 @@ resuming. Resume a known ID rather than submitting again; treat an attempted
 submit without an ID as ambiguous. Stop repeated launch attempts when the
 workspace itself remains unavailable, and do not describe a prepared prompt
 as a completed live test.
+
+PID-only locks are unreliable across workspace restarts because process IDs
+are reused; a stale lock can even name the newly launched diagnostic itself.
+
+**Why:** A Genjutsu diagnostic repeatedly reported `TEST_ALREADY_RUNNING` even
+though no earlier generation process remained.
+
+**How to apply:** Check process identity and the matching run, not merely
+whether a PID exists. Treat a prior lock naming the current process as stale,
+retain exclusive lock creation, and still consult persisted submit markers
+before deciding whether any generation can be attempted.

@@ -1594,3 +1594,31 @@ mtime_ms = 1794865503411
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/610a78fc-ac47-49c5-8206-027a6c20dd61/1539b019-27f9-452c-87f8-d534faf4a71a"
 storage_version_token = "1794865523483225"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "p46fcvSR8CaJbz5aX3Src"
+uri = "file://generated-artifacts/genjutsu-flash-after-p2-once/native.mp4"
+type = "video"
+title = "Preview mentah Genjutsu Flash — belum di-upscale"
+description = "Satu generate dengan prompt sederhana dan larangan inline. Durasi 5,375 detik, ukuran aktual 758×554, tanpa audio model. Memakai 36 kredit; Renderful belum dijalankan."
+logical_id = "cbff6d92-9550-4b46-9354-4e778427e8e5"
+content_hash = "sha256:47e870a4f305f38152b92766b6d8b6d14d5e749ffa064c8afe47ad80b9337599"
+size = 2578950
+mtime_ms = 1794868148620
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/cbff6d92-9550-4b46-9354-4e778427e8e5/2e4cd665-766f-4e9b-bcb4-0903d70049fc"
+storage_version_token = "1794868246106928"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "2AjAlYVR3knQJtdqX1Rfv"
+uri = "file://generated-artifacts/genjutsu-flash-after-p2-once/reference-source-result.jpg"
+type = "image"
+title = "Perbandingan foto, sumber, dan hasil Flash"
+description = "Sumber dan hasil pada detik 1. Pakaian serta rambut berubah, tetapi wajah hasil masih lebih mengikuti pemeran asli daripada foto karakter."
+logical_id = "858aa92e-3c33-48ca-95b1-c82d228357a9"
+content_hash = "sha256:b994eba74004cf5015ddfe7e034a82caf09eb66724af2c3b7139d19afe74c33b"
+size = 26211
+mtime_ms = 1794868214774
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/858aa92e-3c33-48ca-95b1-c82d228357a9/7f2b6f2e-e20e-408b-98be-f1ac54914c9a"
+storage_version_token = "1794868247447618"
+content_type = "image/jpeg"

@@ -26,6 +26,7 @@ if (creditLimit !== undefined && (!Number.isFinite(creditLimit) || creditLimit <
   throw Error('INVALID_TEST_CREDIT_LIMIT');
 }
 const lockPath = path.join(root, 'run.lock');
+const approveUpscale = process.argv.includes('--approve-upscale');
 const db = new Pool({ connectionString: process.env.RAILWAY_DATABASE_URL,
   ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 15000 });
 const http = axios.create({ proxy: false, timeout: 180000, maxContentLength: 250 * 1024 * 1024 });
@@ -59,10 +60,19 @@ async function main() {
     try {
       const pidText = (await fs.readFile(lockPath, 'utf8')).trim();
       const pid = Number(pidText);
-      if (Number.isInteger(pid) && pid > 0) {
-        try { process.kill(pid, 0); throw Error('TEST_ALREADY_RUNNING'); }
-        catch (error: any) { if (error.message === 'TEST_ALREADY_RUNNING') throw error; }
+      if (Number.isInteger(pid) && pid > 0 && pid !== process.pid) {
+        try {
+          const args = (await fs.readFile(`/proc/${pid}/cmdline`, 'utf8')).split('\0');
+          if (['node', 'nodejs', 'tsx'].includes(path.basename(args[0] ?? ''))
+            && args.some(arg => arg.endsWith('/live-genjutsu-once.ts'))
+            && args.includes(`--run-name=${runName}`)) {
+            throw Error('TEST_ALREADY_RUNNING');
+          }
+        } catch (error: any) {
+          if (error.code !== 'ENOENT' && error.code !== 'ESRCH') throw error;
+        }
       }
+      if ((await fs.readFile(lockPath, 'utf8')).trim() !== pidText) throw Error('TEST_LOCK_CHANGED_RETRY_LATER');
       await fs.unlink(lockPath);
     } catch (error: any) {
       if (error.code !== 'ENOENT') throw error;
@@ -98,23 +108,25 @@ async function main() {
   await save({ prompt });
   console.log('GENJUTSU_PREFLIGHT', JSON.stringify({ sourceSeconds: duration, duration: 'auto', taskType: 'edit' }));
 
-  // Read-only pool preflight. Do not disable or reassign live users' keys in QA.
-  console.log('GENJUTSU_FINISHING_POOL_CHECK');
-  const rows = state.finishingKeyId
-    ? await db.query('SELECT id, api_key FROM renderful_key_pool WHERE id = $1', [state.finishingKeyId])
-    : await db.query("SELECT id, api_key FROM renderful_key_pool WHERE status <> 'dead' ORDER BY id");
   let selected: any;
-  for (const row of rows.rows) {
-    if (state.finishingTaskId) { selected = row; break; }
-    try {
-      const response = await http.get(`${base}/account/balance`, {
-        headers: { Authorization: `Bearer ${row.api_key}` },
-        timeout: 15000,
-      });
-      if (Number(response.data.balance_available) > 0) { selected = row; break; }
-    } catch { /* No secret-bearing transport errors in output. */ }
+  // Finishing is an explicit second step after the owner reviews the raw video.
+  if (approveUpscale) {
+    console.log('GENJUTSU_FINISHING_POOL_CHECK');
+    const rows = state.finishingKeyId
+      ? await db.query('SELECT id, api_key FROM renderful_key_pool WHERE id = $1', [state.finishingKeyId])
+      : await db.query("SELECT id, api_key FROM renderful_key_pool WHERE status <> 'dead' ORDER BY id");
+    for (const row of rows.rows) {
+      if (state.finishingTaskId) { selected = row; break; }
+      try {
+        const response = await http.get(`${base}/account/balance`, {
+          headers: { Authorization: `Bearer ${row.api_key}` },
+          timeout: 15000,
+        });
+        if (Number(response.data.balance_available) > 0) { selected = row; break; }
+      } catch { /* No secret-bearing transport errors in output. */ }
+    }
+    if (!selected) throw Error('NO_READY_FINISHING_KEY');
   }
-  if (!selected) throw Error('NO_READY_FINISHING_KEY');
   const input = {
     userId: 0, persistAccount: false, prompt,
     generateAudio: false,
@@ -174,6 +186,13 @@ async function main() {
     await fs.writeFile(nativePath, (await http.get(nativeUrl, { responseType: 'arraybuffer' })).data);
   }
   console.log('NATIVE_COMPLETED', JSON.stringify({ credits: nativeCredits }));
+  if (!approveUpscale) {
+    const facts = await inspectFloraUpscaleVideo(await fs.readFile(nativePath));
+    await save({ status: 'awaiting_visual_review', previewReadyAt: new Date().toISOString(),
+      nativeFacts: facts, finishingApproved: false, failure: null });
+    console.log('GENJUTSU_RAW_REVIEW_READY', JSON.stringify({ ...facts, credits: nativeCredits }));
+    return;
+  }
   let published = 0;
   const final = await generateRenderful1080(nativeUrl!, {
     key: async () => selected.api_key, disable: async () => {},

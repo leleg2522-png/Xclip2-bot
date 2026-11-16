@@ -16,6 +16,16 @@ without asking. Flash's documented parameter list has no separate negative
 prompt field; disclose inline exclusions as text instructions, not native
 negative conditioning or a guaranteed identity lock.
 
+For owner-run Genjutsu experiments, show and review the raw model output before
+paying for finishing. Do not automatically upscale a test whose character swap
+has not been accepted.
+
+**Why:** The user explicitly said: “Hasil nya jgn langsung di upscale kalo belum bener bener fix”.
+
+**How to apply:** Pause experimental runs after native generation, ask the owner
+to assess the character swap, and resume finishing only after approval. This is
+a test-stage gate, not permission to silently downgrade public customer delivery.
+
 For the character-swap flow, duration must automatically follow the reference
 video, not a manually fixed number or a 30-second reference-generation preset.
 
@@ -49,7 +59,11 @@ Completing generation, audio restoration, and finishing does not establish succe
 
 An authorized repeat with explicit identity-first instructions still did not produce adequate reference likeness on visual review, despite successful video/audio delivery.
 
-**Why:** Stronger natural-language instructions alone did not resolve the observed character mismatch.
+A short replacement prompt with inline negative instructions also changed the
+clothing and hair without adequately replacing the original facial identity.
+
+**Why:** Neither stronger identity-first wording nor a minimal replacement
+instruction with exclusions resolved the observed character mismatch.
 
 **How to apply:** Do not present further prompt-only edits as a confirmed identity lock. Investigate model-supported identity conditioning or a dedicated character-swap method before recommending more paid attempts; changing providers or adding a new processing stage requires discussing that change with the user.
 
