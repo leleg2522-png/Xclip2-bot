@@ -19,11 +19,19 @@ const sourceFile = process.argv.find(arg => arg.startsWith('--source-file='))?.s
   ?? 'generated-artifacts/kling4-woman-dance-live/native.mp4';
 const sourcePath = path.resolve(__dirname, '../..', sourceFile);
 const imagePath = path.resolve(__dirname, '../../attached_assets/generated_images/young-ceo-woman-reference.jpg');
+const promptFile = process.argv.find(arg => arg.startsWith('--prompt-file='))?.slice('--prompt-file='.length);
+const creditLimitArg = process.argv.find(arg => arg.startsWith('--max-credits='))?.slice('--max-credits='.length);
+const creditLimit = creditLimitArg === undefined ? undefined : Number(creditLimitArg);
+if (creditLimit !== undefined && (!Number.isFinite(creditLimit) || creditLimit <= 0)) {
+  throw Error('INVALID_TEST_CREDIT_LIMIT');
+}
+const lockPath = path.join(root, 'run.lock');
 const db = new Pool({ connectionString: process.env.RAILWAY_DATABASE_URL,
   ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 15000 });
 const http = axios.create({ proxy: false, timeout: 180000, maxContentLength: 250 * 1024 * 1024 });
 const base = 'https://api.renderful.ai/api/v1';
 let state: any = {};
+let ownsLock = false;
 async function save(patch: Record<string, unknown>) {
   state = { ...state, ...patch };
   await fs.writeFile(statePath + '.tmp', JSON.stringify(state, null, 2));
@@ -41,21 +49,57 @@ async function main() {
   await fs.mkdir(root, { recursive: true });
   try { state = JSON.parse(await fs.readFile(statePath, 'utf8')); }
   catch (error: any) { if (error.code !== 'ENOENT') throw error; }
-  if (state.started) throw Error('TEST_ALREADY_STARTED_DO_NOT_RESUBMIT');
+  if (state.completedAt) { console.log('GENJUTSU_ALREADY_COMPLETED'); return; }
+  // Resume the saved provider job, or a run that stopped strictly before submit.
+  if (state.nativeAttempted && !state.nativeTaskId && !state.nativeResultUrl) {
+    throw Error('GENJUTSU_AMBIGUOUS_SUBMIT_DO_NOT_REPLAY');
+  }
+  if (state.started) {
+    // A stale lock is recoverable only for a persisted pre-submit state.
+    try {
+      const pidText = (await fs.readFile(lockPath, 'utf8')).trim();
+      const pid = Number(pidText);
+      if (Number.isInteger(pid) && pid > 0) {
+        try { process.kill(pid, 0); throw Error('TEST_ALREADY_RUNNING'); }
+        catch (error: any) { if (error.message === 'TEST_ALREADY_RUNNING') throw error; }
+      }
+      await fs.unlink(lockPath);
+    } catch (error: any) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
   // Exclusive lock also covers simultaneous invocations.
-  const lock = await fs.open(path.join(root, 'run.lock'), 'wx');
+  const lock = await fs.open(lockPath, 'wx');
+  ownsLock = true;
+  await lock.writeFile(String(process.pid));
   await lock.close();
-  await save({ started: true, status: 'preflight', startedAt: new Date().toISOString(),
+  await save({ started: true, status: 'preflight', startedAt: state.startedAt ?? new Date().toISOString(),
+    resumedPreSubmit: Boolean(state.started),
     sourcePath, imagePath, botSaldoCharged: false, generateAudio: false });
+  const originalQuery = db.query.bind(db);
+  db.query = ((sql: string, values?: any[]) => {
+    if (!/^\s*SELECT\b/i.test(sql)
+      && !/^\s*UPDATE picsart_credentials\s+SET access_token\b/i.test(sql)) {
+      throw Error('QA_DATABASE_WRITE_BLOCKED');
+    }
+    return originalQuery(sql, values);
+  }) as typeof db.query;
   picsart.initPicsart(db);
   const [video, image] = await Promise.all([fs.readFile(sourcePath), fs.readFile(imagePath)]);
   const duration = await inspectSeedance25Media(video, 'video');
   if (duration < 4 || duration > 30) throw Error('INVALID_SOURCE_DURATION');
+  const prompt = state.prompt ?? (promptFile
+    ? (await fs.readFile(path.resolve(__dirname, '../..', promptFile), 'utf8')).trim()
+    : GENJUTSU_PROMPT);
+  await save({ prompt });
 
   // Read-only pool preflight. Do not disable or reassign live users' keys in QA.
-  const rows = await db.query("SELECT id, api_key FROM renderful_key_pool WHERE status <> 'dead' ORDER BY id");
+  const rows = state.finishingKeyId
+    ? await db.query('SELECT id, api_key FROM renderful_key_pool WHERE id = $1', [state.finishingKeyId])
+    : await db.query("SELECT id, api_key FROM renderful_key_pool WHERE status <> 'dead' ORDER BY id");
   let selected: any;
   for (const row of rows.rows) {
+    if (state.finishingTaskId) { selected = row; break; }
     try {
       const response = await http.get(`${base}/account/balance`, {
         headers: { Authorization: `Bearer ${row.api_key}` },
@@ -65,48 +109,78 @@ async function main() {
   }
   if (!selected) throw Error('NO_READY_FINISHING_KEY');
   const input = {
-    userId: 0, persistAccount: false, prompt: GENJUTSU_PROMPT,
+    userId: 0, persistAccount: false, prompt,
     generateAudio: false,
     taskType: 'edit' as const,
     images: [{ buffer: image, name: 'genjutsu-character.jpg', mime: 'image/jpeg' }],
     videos: [{ buffer: video, name: 'genjutsu-source.mp4', mime: 'video/mp4', duration }],
     audios: [],
   };
-  const quote = await picsart.generateSeedance25Flash({ ...input, quoteOnly: true });
-  await save({ quoteCredits: quote.credits, inputDuration: duration, status: 'quoted',
-    taskType: quote.taskType, durationSetting: quote.duration, ratioSetting: quote.aspectRatio });
-  console.log('QUOTE', JSON.stringify({ credits: quote.credits, sourceSeconds: duration,
-    taskType: quote.taskType, duration: quote.duration, ratio: quote.aspectRatio }));
-  if (!quote.hasEnoughProviderCredits) throw Error('INSUFFICIENT_PROVIDER_CREDITS');
-  await save({ nativeAttempted: true, status: 'generating' });
-  let lastTick = 0;
-  const native = await picsart.generateSeedance25Flash({
-    ...input, maxProviderCredits: quote.credits,
-    onStatus: stage => console.log('NATIVE_STAGE', stage),
-    onSubmitted: async ({ credentialId, taskId }) => {
-      await save({ credentialId, nativeTaskId: taskId, status: 'polling_native' });
-      console.log('NATIVE_JOB_SAVED');
-    },
-    onPoll: seconds => {
-      if (seconds - lastTick >= 60) { lastTick = seconds; console.log('NATIVE_ELAPSED_SECONDS', seconds); }
-    },
-  });
-  await fs.writeFile(path.join(root, 'native.mp4'), (await http.get(native.url, { responseType: 'arraybuffer' })).data);
-  await save({ status: 'finishing', nativeCompleted: true, nativeCredits: native.credits });
-  console.log('NATIVE_COMPLETED');
+  let nativeUrl = state.nativeResultUrl as string | undefined;
+  let nativeCredits = state.nativeCredits as number | undefined;
+  if (!nativeUrl && state.nativeTaskId) {
+    let lastTick = 0;
+    const result = await picsart.pollSeedance25FlashResult(state.credentialId, state.nativeTaskId, {
+      onTick: elapsedMs => {
+        const seconds = Math.round(elapsedMs / 1000);
+        if (seconds - lastTick >= 60) { lastTick = seconds; console.log('NATIVE_ELAPSED_SECONDS', seconds); }
+      },
+    });
+    nativeUrl = result.url;
+    nativeCredits = result.credits;
+    await save({ nativeResultUrl: nativeUrl, nativeCredits, status: 'finishing', nativeCompleted: true });
+  }
+  if (!nativeUrl) {
+    if (state.nativeAttempted) throw Error('GENJUTSU_AMBIGUOUS_SUBMIT_DO_NOT_REPLAY');
+    const quote = await picsart.generateSeedance25Flash({ ...input, quoteOnly: true });
+    await save({ quoteCredits: quote.credits, inputDuration: duration, status: 'quoted',
+      taskType: quote.taskType, durationSetting: quote.duration, ratioSetting: quote.aspectRatio });
+    console.log('QUOTE', JSON.stringify({ credits: quote.credits, sourceSeconds: duration,
+      taskType: quote.taskType, duration: quote.duration, ratio: quote.aspectRatio }));
+    if (quote.taskType !== 'edit' || quote.duration !== -1 || quote.aspectRatio !== 'adaptive') {
+      throw Error('TEST_REQUIRES_AUTOMATIC_REFERENCE_VIDEO_DURATION_AND_RATIO');
+    }
+    if (creditLimit !== undefined && quote.credits > creditLimit) {
+      throw Error('TEST_QUOTE_EXCEEDS_CREDIT_LIMIT_DO_NOT_SUBMIT');
+    }
+    if (!quote.hasEnoughProviderCredits) throw Error('INSUFFICIENT_PROVIDER_CREDITS');
+    await save({ nativeAttempted: true, status: 'generating' });
+    let lastTick = 0;
+    const result = await picsart.generateSeedance25Flash({
+      ...input, maxProviderCredits: quote.credits,
+      onStatus: stage => console.log('NATIVE_STAGE', stage),
+      onSubmitted: async ({ credentialId, taskId }) => {
+        await save({ credentialId, nativeTaskId: taskId, status: 'polling_native' });
+        console.log('NATIVE_JOB_SAVED');
+      },
+      onPoll: seconds => {
+        if (seconds - lastTick >= 60) { lastTick = seconds; console.log('NATIVE_ELAPSED_SECONDS', seconds); }
+      },
+    });
+    nativeUrl = result.url;
+    nativeCredits = result.credits;
+    await save({ status: 'finishing', nativeCompleted: true, nativeCredits, nativeResultUrl: nativeUrl });
+  }
+  const nativePath = path.join(root, 'native.mp4');
+  try { await fs.access(nativePath); }
+  catch {
+    await fs.writeFile(nativePath, (await http.get(nativeUrl, { responseType: 'arraybuffer' })).data);
+  }
+  console.log('NATIVE_COMPLETED', JSON.stringify({ credits: nativeCredits }));
   let published = 0;
-  const final = await generateRenderful1080(native.url, {
+  const final = await generateRenderful1080(nativeUrl!, {
     key: async () => selected.api_key, disable: async () => {},
     download: async url => Buffer.from((await http.get(url, { responseType: 'arraybuffer' })).data),
     inspect: inspectFloraUpscaleVideo,
     publish: async bytes => {
       // Native URL is a public Picsart asset, never a Telegram-token URL.
-      if (published++ === 0) return native.url;
+      if (published++ === 0) return nativeUrl!;
       const file = path.join(root, 'genjutsu-1080p.mp4');
       await fs.writeFile(file, bytes);
       return file;
     },
     submit: async (key, url) => {
+      if (state.finishingTaskId) return { id: state.finishingTaskId };
       if (state.finishingAttempted) throw Error('NO_FINISHING_REPLAY');
       await save({ finishingAttempted: true, finishingKeyId: selected.id });
       const response = await http.post(`${base}/generations`, {
@@ -119,6 +193,7 @@ async function main() {
       return { id };
     },
     poll: async (key, id) => {
+      if (state.finishingResultUrl) return state.finishingResultUrl;
       for (let i = 0; i < 120; i++) {
         await new Promise(resolve => setTimeout(resolve, 10000));
         const { data } = await http.get(`${base}/generations/${id}`, {
@@ -133,6 +208,7 @@ async function main() {
           const output = data.output ?? data.outputs?.[0];
           const url = typeof output === 'string' ? output : output?.url ?? output?.video_url;
           if (!url) throw Error('FINISHING_NO_OUTPUT');
+          await save({ finishingResultUrl: url });
           return url;
         }
       }
@@ -160,4 +236,7 @@ main().catch(async error => {
     await save({ status: 'failed', failure: detail, failedAt: new Date().toISOString() }).catch(() => {});
   }
   process.exitCode = 1;
-}).finally(() => db.end());
+}).finally(async () => {
+  if (ownsLock) await fs.unlink(lockPath).catch(() => {});
+  await db.end();
+});

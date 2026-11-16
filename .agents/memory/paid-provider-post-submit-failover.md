@@ -34,3 +34,16 @@ the actual gateway failure and makes unrelated failures appear identical.
 job with read-only result requests, and test that nested credit/auth errors do
 not trigger account rotation. A successful fresh upload/public CDN GET proves
 only that sample's accessibility, not that an earlier job or vendor fetch worked.
+
+Workspace tool disconnections do not establish whether a paid operation ran:
+a command can execute and persist changes before reporting
+`SERVER unexpectedly disconnected`.
+
+**Why:** During interrupted live tests, some calls failed before spawning while
+another executed through local setup before the connection was lost.
+
+**How to apply:** Inspect durable stage markers and accepted job IDs before
+resuming. Resume a known ID rather than submitting again; treat an attempted
+submit without an ID as ambiguous. Stop repeated launch attempts when the
+workspace itself remains unavailable, and do not describe a prepared prompt
+as a completed live test.

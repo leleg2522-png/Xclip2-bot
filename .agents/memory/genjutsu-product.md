@@ -5,6 +5,15 @@ description: User-approved scope and customer flow for the separate Genjutsu Tel
 
 Genjutsu is a separate customer menu, not a replacement for the general Seedance 2.5 Flash flow. It requires one source video followed by one character photo, uses an automatic character-replacement prompt, and asks for explicit Generate confirmation at Rp6,000.
 
+For the character-swap flow, duration must automatically follow the reference
+video, not a manually fixed number or a 30-second reference-generation preset.
+
+**Why:** The user explicitly corrected: “Harus nya durasi auto mengikuti refrensi video”.
+
+**How to apply:** Use Flash edit mode with automatic duration (`-1`) and
+adaptive ratio. Describing a test source as approximately 5.5 seconds does not
+authorize hardcoding that duration. Keep the ordinary non-edit Flash flow separate.
+
 **Why:** The user requested a Genjutsu-style feature backed by Seedance 2.5 Flash and chose “Menu Genjutsu terpisah” after reviewing this flow and price.
 
 **How to apply:** Keep ordinary Flash's optional mixed references and text-to-video intact. Genjutsu delivers 1080p with hidden Renderful finishing, keeps supplier names and source resolution out of customer messages, and refunds failed generation/finishing/delivery. Ask the model to preserve source motion, camera, and scene; restore audio separately as described below. Never promise Higgsfield-identical quality or guaranteed identity consistency.
