@@ -20,7 +20,7 @@ const accountRunner = fragment(source, 'async function runWithAccount<T>(', '// 
 const poller = fragment(
   source,
   'export async function pollSeedance25FlashResult(',
-  'export async function generateSeedance25Flash(',
+  'export type Seedance25FlashTaskType',
 ).replace('export async function', 'async function');
 const generator = fragment(
   source,
@@ -39,6 +39,7 @@ function harness(options: {
     gets: [] as string[],
     uploads: [] as Array<{ name: string; mime: string; bytes: number; gateway: boolean }>,
     accounts: [] as number[],
+    accountAssignment: [] as boolean[],
     ownerNotices: 0,
   };
   class TestPollDiag {
@@ -69,10 +70,13 @@ function harness(options: {
     ok2xx: (status: number) => status >= 200 && status < 300,
     PollDiag: TestPollDiag,
     q: async () => ({ rows: [{ n: options.accountCount ?? 1 }] }),
-    acquireAccount: async (_userId: number, _pool: unknown, tried: number[]) => {
+    acquireAccount: async (_userId: number, _pool: unknown, tried: number[], _strictPool: boolean, assignUser: boolean) => {
       const available = [1, 2].slice(0, options.accountCount ?? 1);
       const id = available.find(value => !tried.includes(value)) ?? null;
-      if (id != null) calls.accounts.push(id);
+      if (id != null) {
+        calls.accounts.push(id);
+        calls.accountAssignment.push(assignUser);
+      }
       return id;
     },
     getCredits: async () => ({ credits: options.balance ?? 500 }),
@@ -122,7 +126,9 @@ async function checkSuccessfulContract() {
   assert.equal(h.calls.posts[0].body.params.model, 'seedance-2.5-flash');
   assert.equal(h.calls.posts[0].body.params.params.duration, 30);
   assert.equal(h.calls.posts[0].body.params.params.resolution, '480p');
+  assert.equal(h.calls.posts[0].body.params.params.aspectRatio, '16:9');
   assert.equal(h.calls.posts[0].body.params.params.generateAudio, false);
+  assert.equal(h.calls.posts[0].body.params.params.omniReferenceTaskType, 'auto');
   assert.equal(h.calls.posts[1].url, 'https://picsart.test/gw-v2/workflows/v1/models/submit');
   assert.equal(h.calls.posts[1].body.params.options.drive.folder.path, 'AI Playground');
   assert.equal(h.calls.posts[1].body.params.options.drive.attributes.appId, 'com.picsart.ai-playground');
@@ -136,11 +142,34 @@ async function checkNoSubmitWhenUnaffordable() {
   assert.equal(h.calls.gets.length, 0);
 }
 
+async function checkEditQuoteOnly() {
+  const h = harness();
+  const quote = await h.generate('Replace the man with the image character', {
+    taskType: 'edit',
+    quoteOnly: true,
+    images: [{ buffer: Buffer.from('image'), name: 'character.jpg', mime: 'image/jpeg' }],
+    videos: [{ buffer: Buffer.from('15-second video'), name: 'source.mp4', mime: 'video/mp4', duration: 15 }],
+  });
+  assert.equal(quote.quoteOnly, true);
+  assert.equal(quote.taskType, 'edit');
+  assert.equal(quote.duration, -1);
+  assert.equal(quote.aspectRatio, 'adaptive');
+  assert.equal(quote.credits, 90);
+  assert.equal(h.calls.posts.length, 1, 'Quote-only must never submit a generation job');
+  assert.equal(h.calls.gets.length, 0);
+  assert.deepEqual(h.calls.accountAssignment, [false], 'Quote-only must not create a sticky account assignment');
+  const params = h.calls.posts[0].body.params.params;
+  assert.equal(params.duration, -1);
+  assert.equal(params.aspectRatio, 'adaptive');
+  assert.equal(params.omniReferenceTaskType, 'edit');
+  assert.equal(params.generateAudio, true);
+}
+
 async function checkMixedReferencePayload() {
   const h = harness();
   const references = {
     images: [{ buffer: Buffer.from('image'), name: 'reference-image-1.png', mime: 'image/png' }],
-    videos: [{ buffer: Buffer.from('video'), name: 'reference-video-1.mp4', mime: 'video/mp4', duration: 3 }],
+    videos: [{ buffer: Buffer.from('video'), name: 'reference-video-1.mp4', mime: 'video/mp4', duration: 15 }],
     audios: [{ buffer: Buffer.from('audio'), name: 'reference-audio-1.mp3', mime: 'audio/mpeg', duration: 2 }],
   };
   await h.generate('A character walks through the scene', references);
@@ -151,6 +180,9 @@ async function checkMixedReferencePayload() {
   assert.deepEqual(Array.from(quoteParams.videoUrls), ['https://uploads.test/reference-video-1.mp4']);
   assert.deepEqual(Array.from(quoteParams.audioUrls), ['https://uploads.test/reference-audio-1.mp3']);
   assert.equal(quoteParams.generateAudio, true);
+  assert.equal(quoteParams.duration, -1);
+  assert.equal(quoteParams.aspectRatio, 'adaptive');
+  assert.equal(quoteParams.omniReferenceTaskType, 'edit');
   const submitParams = h.calls.posts[1].body.params.params;
   assert.deepEqual(Array.from(submitParams.imageUrls), Array.from(quoteParams.imageUrls));
   assert.deepEqual(Array.from(submitParams.videoUrls), Array.from(quoteParams.videoUrls));
@@ -159,7 +191,9 @@ async function checkMixedReferencePayload() {
   assert.deepEqual(sdkPayload.imageUrls, ['https://uploads.test/reference-image-1.png']);
   assert.deepEqual(sdkPayload.videoUrls, ['https://uploads.test/reference-video-1.mp4']);
   assert.deepEqual(sdkPayload.audioUrls, ['https://uploads.test/reference-audio-1.mp3']);
-  assert.equal(sdkPayload.omniReferenceTaskType, 'auto');
+  assert.equal(sdkPayload.omniReferenceTaskType, 'edit');
+  assert.equal(sdkPayload.duration, -1);
+  assert.equal(sdkPayload.aspectRatio, 'adaptive');
 
   const tooMany = harness();
   await assert.rejects(
@@ -204,6 +238,7 @@ async function checkBotBillingDeliveryAndRefund() {
   const releases: number[] = [];
   const deliveries: any[] = [];
   let providerCalls = 0;
+  let providerInput: any;
   let finishingCalls = 0;
   const context = vm.createContext({
     console: { log() {}, warn() {}, error() {} },
@@ -215,8 +250,9 @@ async function checkBotBillingDeliveryAndRefund() {
     },
     chargeFailMsg: () => 'Saldo tidak cukup',
     formatRupiah: (amount: number) => `Rp${amount}`,
-    picsart: { SEEDANCE25_FLASH_DURATION_SECONDS: 30, generateSeedance25Flash: async () => {
+    picsart: { SEEDANCE25_FLASH_DURATION_SECONDS: 30, generateSeedance25Flash: async (input: any) => {
       providerCalls++;
+      providerInput = input;
       return { url: 'https://result.test/video.mp4', credits: 90 };
     } },
     sendResult: async (...args: any[]) => { deliveries.push(args); return true; },
@@ -234,11 +270,17 @@ async function checkBotBillingDeliveryAndRefund() {
     } },
   });
   vm.runInContext(compile(runner), context);
-  await context.runPicsartSeedance25Flash(1, 2, 3, 4, 'A test prompt', { images: [], videos: [], audios: [] });
+  await context.runPicsartSeedance25Flash(1, 2, 3, 4, 'Replace the man with the image character', {
+    images: [{ buffer: Buffer.from('image'), name: 'character.jpg', mime: 'image/jpeg' }],
+    videos: [{ buffer: Buffer.from('15-second video'), name: 'source.mp4', mime: 'video/mp4', duration: 15 }],
+    audios: [],
+    taskType: 'edit',
+  });
   assert.deepEqual(charges, [6000]);
   assert.equal(providerCalls, 1);
   assert.equal(deliveries.length, 1);
-  assert.match(deliveries[0][2], /30 detik · 480p · tanpa audio/);
+  assert.equal(providerInput.taskType, 'edit');
+  assert.match(deliveries[0][2], /edit · durasi mengikuti video sumber · 480p · audio aktif/);
   assert.equal(deliveries[0][3], true);
   assert.deepEqual(refunds, []);
   assert.deepEqual(releases, [3]);
@@ -266,7 +308,9 @@ async function checkBotBillingDeliveryAndRefund() {
     } },
   });
   vm.runInContext(compile(runner), failingContext);
-  await failingContext.runPicsartSeedance25Flash(1, 2, 3, 4, 'A test prompt', { images: [], videos: [], audios: [] });
+  await failingContext.runPicsartSeedance25Flash(1, 2, 3, 4, 'A test prompt', {
+    images: [], videos: [], audios: [], taskType: 'auto',
+  });
   assert.deepEqual(charges, [6000, 6000]);
   assert.deepEqual(refunds, [6000], 'Provider failure refunds the full customer price');
   assert.deepEqual(releases, [3, 3]);
@@ -344,6 +388,7 @@ async function checkFlashMediaIntake() {
 async function main() {
   await checkSuccessfulContract();
   await checkNoSubmitWhenUnaffordable();
+  await checkEditQuoteOnly();
   await checkMixedReferencePayload();
   await checkAmbiguousSubmitNeverReplays();
   await checkPostSubmitAuthNeverReplays();

@@ -2395,7 +2395,7 @@ export async function generateSeedance25Flash(
       const detail = String(error?.message ?? 'poll failed').slice(0, 160);
       throw new Error(`PICSART_SEEDANCE25_FLASH_POST_SUBMIT_FAILED ${detail}`);
     }
-  });
+  }, { assignAccount: !input.quoteOnly });
 }
 
 // ─── Picsart Image-to-Video models captured from the AI Playground HAR ───────
