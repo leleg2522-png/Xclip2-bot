@@ -2183,6 +2183,8 @@ export type Seedance25FlashInput = {
   taskType?: Seedance25FlashTaskType;
   generateAudio?: boolean;
   quoteOnly?: boolean;
+  persistAccount?: boolean;
+  maxProviderCredits?: number;
   onStatus?: (stage: 'upload' | 'quote' | 'submit' | 'poll') => void;
   onPoll?: (elapsedSec: number) => void;
 };
@@ -2213,6 +2215,10 @@ export async function generateSeedance25Flash(
   const videos = input.videos ?? [];
   const audios = input.audios ?? [];
   const taskType = input.taskType ?? (images.length > 0 && videos.length > 0 ? 'edit' : 'auto');
+  if (input.maxProviderCredits !== undefined
+    && (!Number.isFinite(input.maxProviderCredits) || input.maxProviderCredits <= 0)) {
+    throw new Error('SEEDANCE25_FLASH_INVALID_APPROVED_CREDIT_LIMIT');
+  }
   if (taskType === 'edit' && (!videos.length || !videos.some(video => video.duration >= 4))) {
     throw new Error('SEEDANCE25_FLASH_EDIT_REQUIRES_VIDEO');
   }
@@ -2310,6 +2316,9 @@ export async function generateSeedance25Flash(
       throw new Error(`PICSART_SEEDANCE25_FLASH_OPTIONS_FAILED status ${quoteResponse.status}: ${reason}`.slice(0, 220));
     }
     const hasEnoughProviderCredits = Number.isFinite(accountCredits) && accountCredits >= quote.credits;
+    if (input.maxProviderCredits !== undefined && quote.credits > input.maxProviderCredits) {
+      throw new Error('PICSART_SEEDANCE25_FLASH_QUOTE_EXCEEDS_APPROVAL');
+    }
     if (input.quoteOnly) {
       return {
         quoteOnly: true,
@@ -2395,7 +2404,7 @@ export async function generateSeedance25Flash(
       const detail = String(error?.message ?? 'poll failed').slice(0, 160);
       throw new Error(`PICSART_SEEDANCE25_FLASH_POST_SUBMIT_FAILED ${detail}`);
     }
-  }, { assignAccount: !input.quoteOnly });
+  }, { assignAccount: input.persistAccount ?? !input.quoteOnly });
 }
 
 // ─── Picsart Image-to-Video models captured from the AI Playground HAR ───────
