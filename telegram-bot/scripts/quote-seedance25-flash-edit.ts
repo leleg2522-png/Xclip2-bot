@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { basename, dirname, extname, resolve } from 'node:path';
 import { Pool } from 'pg';
 import * as picsart from '../src/picsart';
 import { inspectSeedance25Media } from '../src/seedance25-media';
@@ -33,7 +33,7 @@ async function main() {
     let lastPollLog = 0;
     const sharedInput = {
       userId: 0,
-      prompt: 'Replace the young man in the navy-blue suit with the woman shown in the image reference. Keep the older woman and the younger woman unchanged. Preserve the source actions, expressions, camera movement, framing, background, lighting, pacing, and original audio. Keep the replacement character recognizable and consistent in every frame; do not add characters or change the story.',
+      prompt: 'Replace the main person in the source video with the woman shown in the image reference. Preserve the source movement and choreography, timing, camera framing and movement, background, lighting, other people, and original audio. Keep the reference woman recognizable and consistent throughout; do not add people or change the scene.',
       images: [{ buffer: imageBuffer, name: 'character-reference.jpg', mime: 'image/jpeg' }],
       videos: [{ buffer: videoBuffer, name: 'source-video.mp4', mime: 'video/mp4', duration: videoDuration }],
       taskType: 'edit',
@@ -78,7 +78,12 @@ async function main() {
       if (!output.length || output.length > 100 * 1024 * 1024) {
         throw new Error('Generated result is empty or exceeds the 100MB download cap');
       }
-      const outputPath = resolve(process.cwd(), '../generated-artifacts/seedance25-flash-character-swap-test/output.mp4');
+      const videoLabel = `${basename(dirname(videoPath))}-${basename(videoPath, extname(videoPath))}`
+        .toLowerCase()
+        .replace(/[^a-z0-9-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 80) || 'source';
+      const outputPath = resolve(process.cwd(), `../generated-artifacts/seedance25-flash-edit-${videoLabel}/output.mp4`);
       await mkdir(resolve(outputPath, '..'), { recursive: true });
       await writeFile(outputPath, output);
       console.log(JSON.stringify({
