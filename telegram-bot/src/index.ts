@@ -20,6 +20,7 @@ import { Client, Pool } from 'pg';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import sharp from 'sharp';
 import { createGenjutsuFlow, type GenjutsuDraft, type GenjutsuFile } from './genjutsu';
+import { restoreGenjutsuAudio } from './genjutsu-audio';
 import express from 'express';
 import { promises as fsp, createReadStream } from 'fs';
 import os from 'os';
@@ -2833,7 +2834,7 @@ const genjutsuFlow = createGenjutsuFlow({
       seedance25FlashAudios: [],
       seedance25FlashPendingUploads: 0,
     });
-    return submitSeedance25FlashPrompt(ctx, prompt, 'Genjutsu · Character Swap');
+    return submitSeedance25FlashPrompt(ctx, prompt, 'Genjutsu · Character Swap', true);
   },
 });
 
@@ -7047,7 +7048,9 @@ function seedance25RatioKeyboard() {
   ]));
 }
 
-async function submitSeedance25FlashPrompt(ctx: any, rawPrompt: string, displayLabel = 'Seedance 2.5 Flash') {
+async function submitSeedance25FlashPrompt(
+  ctx: any, rawPrompt: string, displayLabel = 'Seedance 2.5 Flash', preserveSourceAudio = false,
+) {
   const userId = ctx.from.id;
   let prompt: string;
   try {
@@ -7159,7 +7162,10 @@ async function submitSeedance25FlashPrompt(ctx: any, rawPrompt: string, displayL
       ? `⏳ ${displayLabel} sedang menyiapkan edit video 1080p. Hasil akan dikirim otomatis...`
       : `⏳ ${displayLabel} sedang menyiapkan video 1080p. Hasil akan dikirim otomatis...`
   ));
-  runPicsartSeedance25Flash(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, references, displayLabel)
+  runPicsartSeedance25Flash(
+    ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, references, displayLabel,
+    preserveSourceAudio ? references.videos[0]?.buffer : undefined,
+  )
     .catch((error: any) => console.error(`[${userId}] Seedance 2.5 Flash error:`, describeError(error)));
 }
 
@@ -11183,6 +11189,7 @@ async function runPicsartSeedance25Flash(
   references: Required<Pick<Parameters<typeof picsart.generateSeedance25Flash>[0], 'images' | 'videos' | 'audios'>>
     & { taskType: picsart.Seedance25FlashTaskType },
   displayLabel = 'Seedance 2.5 Flash',
+  sourceAudioVideo?: Buffer,
 ) {
   const label = displayLabel;
   const price = MODEL_PRICES.picsart_seedance_25_flash;
@@ -11201,6 +11208,7 @@ async function runPicsartSeedance25Flash(
       userId: dbUserId,
       prompt,
       ...references,
+      ...(sourceAudioVideo ? { generateAudio: false } : {}),
       onStatus: providerStage => {
         stage = providerStage;
         const message = providerStage === 'upload'
@@ -11231,6 +11239,16 @@ async function runPicsartSeedance25Flash(
       `⏳ ${label}: menyiapkan hasil 1080p. Video akan dikirim otomatis.`,
     );
     if (!finalVideo.upscaled || !finalVideo.url) throw Error('SEEDANCE25_FLASH_1080_FINISH_FAILED');
+    let deliveryUrl = finalVideo.url;
+    let audioLabel = references.taskType === 'edit' || references.audios.length ? 'audio aktif' : 'tanpa audio';
+    if (sourceAudioVideo) {
+      const response = await telegramHttp.get(finalVideo.url, {
+        responseType: 'arraybuffer', timeout: 300_000, maxContentLength: 250 * 1024 * 1024,
+      });
+      const restored = await restoreGenjutsuAudio(sourceAudioVideo, Buffer.from(response.data));
+      deliveryUrl = await publishMedia(restored.buffer, true);
+      audioLabel = restored.hasAudio ? 'audio asli video' : 'tanpa audio';
+    }
     stage = 'delivery';
     const referenceCount = references.images.length + references.videos.length + references.audios.length;
     const inputLabel = referenceCount
@@ -11241,8 +11259,8 @@ async function runPicsartSeedance25Flash(
       : `${picsart.SEEDANCE25_FLASH_DURATION_SECONDS} detik · 16:9`;
     const delivered = await sendResult(
       chatId,
-      finalVideo.url,
-      `⚡ ${label} (${inputLabel} · ${outputLabel} · 1080p · ${references.taskType === 'edit' || references.audios.length ? 'audio aktif' : 'tanpa audio'})\n\n/menu untuk buat lagi`,
+      deliveryUrl,
+      `⚡ ${label} (${inputLabel} · ${outputLabel} · 1080p · ${audioLabel})\n\n/menu untuk buat lagi`,
       true
     ).catch(() => false);
     if (delivered) {

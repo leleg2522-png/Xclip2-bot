@@ -399,6 +399,7 @@ async function checkBotBillingDeliveryAndRefund() {
   assert.equal(providerCalls, 1);
   assert.equal(deliveries.length, 1);
   assert.equal(providerInput.taskType, 'edit');
+  assert.equal(providerInput.generateAudio, undefined, 'Ordinary Flash keeps its existing audio settings');
   assert.equal(deliveries[0][1], 'https://result.test/video-1080.mp4');
   assert.match(deliveries[0][2], /edit · durasi mengikuti video sumber · 1080p · audio aktif/);
   assert.doesNotMatch(deliveries[0][2], /upscal|renderful|480p|native/i);

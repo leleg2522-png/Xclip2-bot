@@ -5,8 +5,9 @@ export const GENJUTSU_PROMPT =
   'Use the reference character as the identity and appearance guide: preserve their face, hairstyle, clothing, ' +
   'and distinctive features consistently across every frame and head turn. ' +
   'Follow the original performer’s motion, gestures, body poses, choreography, and timing. ' +
-  'Preserve the source camera framing and movement, background, lighting, scene composition, other people, ' +
-  'and original audio wherever possible. Do not add extra people, captions, subtitles, logos, or scene changes. ' +
+  'Preserve the source camera framing and movement, background, lighting, scene composition, and other people. ' +
+  'Generate visuals only; do not generate speech, music, sound effects, or a new soundtrack. ' +
+  'Do not add extra people, captions, subtitles, logos, or scene changes. ' +
   'Keep the replacement natural, with consistent proportions and no face blending or identity changes.';
 
 export interface GenjutsuFile {
@@ -102,7 +103,8 @@ export function createGenjutsuFlow(deps: Dependencies) {
       return ctx.reply(
         `Genjutsu · Character Swap · 1080p\n\n` +
         `Video sumber: ${ready.video!.duration.toFixed(1)} detik\nFoto karakter: 1\n` +
-        'Durasi dan rasio hasil mengikuti video sumber.\nPrompt penggantian karakter dibuat otomatis.\n\n' +
+        'Durasi, rasio, dan audio asli mengikuti video sumber. Video tanpa audio tetap tanpa audio.\n' +
+        'Prompt penggantian karakter dibuat otomatis.\n\n' +
         `Harga: ${deps.price()} per video. Jika proses gagal, saldo dikembalikan penuh.\n` +
         'Gunakan materi yang diizinkan dan foto orang dengan persetujuannya.\n\nTekan Generate untuk mulai.',
         keyboard(ready, deps.price()),

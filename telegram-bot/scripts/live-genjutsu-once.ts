@@ -4,6 +4,7 @@ import path from 'node:path';
 import axios from 'axios';
 import { Pool } from 'pg';
 import { GENJUTSU_PROMPT } from '../src/genjutsu';
+import { restoreGenjutsuAudio } from '../src/genjutsu-audio';
 import * as picsart from '../src/picsart';
 import { inspectSeedance25Media } from '../src/seedance25-media';
 import { generateRenderful1080 } from '../src/renderful-auto-upscale';
@@ -60,6 +61,7 @@ async function main() {
   if (!selected) throw Error('NO_READY_FINISHING_KEY');
   const input = {
     userId: 0, persistAccount: false, prompt: GENJUTSU_PROMPT,
+    generateAudio: false,
     taskType: 'edit' as const,
     images: [{ buffer: image, name: 'genjutsu-character.jpg', mime: 'image/jpeg' }],
     videos: [{ buffer: video, name: 'genjutsu-source.mp4', mime: 'video/mp4', duration }],
@@ -136,10 +138,14 @@ async function main() {
   });
   if (!final.upscaled) throw Error('MANDATORY_1080P_FAILED');
   // This fixture is 480p natively; a local final must have been produced.
-  const output = await fs.readFile(path.join(root, 'genjutsu-1080p.mp4'));
-  const facts = await inspectFloraUpscaleVideo(output);
+  const outputPath = path.join(root, 'genjutsu-1080p.mp4');
+  const visual = await fs.readFile(outputPath);
+  const restored = await restoreGenjutsuAudio(video, visual);
+  await fs.writeFile(outputPath, restored.buffer);
+  const facts = await inspectFloraUpscaleVideo(restored.buffer);
   if (Math.min(facts.width, facts.height) !== 1080) throw Error('OUTPUT_NOT_1080P');
-  await save({ status: 'completed', completedAt: new Date().toISOString(), output: facts });
+  await save({ status: 'completed', completedAt: new Date().toISOString(), output: facts,
+    audioMode: 'source', hasOriginalAudio: restored.hasAudio });
   console.log('GENJUTSU_COMPLETED', JSON.stringify(facts));
 }
 main().catch(async error => {

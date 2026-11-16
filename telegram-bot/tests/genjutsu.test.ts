@@ -177,7 +177,8 @@ async function checkRealGenerationAdapter() {
   const declaration = ast.statements.find(node => ts.isVariableStatement(node)
     && node.declarationList.declarations.some(d => d.name.getText(ast) === 'genjutsuFlow'));
   assert(declaration);
-  for (const upscale of [true, false]) {
+  for (const scenario of ['success', 'upscale-fail', 'audio-fail', 'publish-fail', 'silent']) {
+    const upscale = scenario !== 'upscale-fail';
     let session: any = {
       mode: 'genjutsu', dbUserId: 7, generationDraft: true, generationDraftKind: 'genjutsu',
       genjutsuDraft: {
@@ -187,7 +188,7 @@ async function checkRealGenerationAdapter() {
     };
     const providerInputs: any[] = [], deliveries: any[] = [], messages: string[] = [];
     const charges: number[] = [], refunds: number[] = [], stages: string[] = [], releases: number[] = [];
-    let finishing = 0, pipeline: Promise<void> | undefined;
+    let finishing = 0, audioRestores = 0, pipeline: Promise<void> | undefined;
     const ctx = {
       from: { id: 1 }, chat: { id: 2 },
       reply: async (text: string) => { messages.push(text); return { message_id: 3 }; },
@@ -212,6 +213,18 @@ async function checkRealGenerationAdapter() {
         deleteMessage: async () => {},
       } },
       telegramHttp: { get: async () => ({ data: Buffer.from('valid-media') }) },
+      restoreGenjutsuAudio: async (original: Buffer, generated: Buffer) => {
+        audioRestores++;
+        assert(original.equals(providerInputs[0].videos[0].buffer), 'Use the actual source video, not generated audio');
+        assert.equal(generated.toString(), 'valid-media');
+        if (scenario === 'audio-fail') throw Error('GENJUTSU_AUDIO_FINISH_FAILED');
+        return { buffer: Buffer.from('restored-original-audio'), hasAudio: scenario !== 'silent' };
+      },
+      publishMedia: async (bytes: Buffer) => {
+        assert.equal(bytes.toString(), 'restored-original-audio');
+        if (scenario === 'publish-fail') throw Error('PUBLISH_FAILED');
+        return 'https://result.test/original-audio-1080.mp4';
+      },
       detectMime: () => ({ mime: 'image/jpeg', ext: 'jpg' }),
       seedance25ReferenceName: () => 'video.mp4',
       inspectSeedance25Media: async () => 10,
@@ -247,16 +260,19 @@ async function checkRealGenerationAdapter() {
     assert.deepEqual(charges, [6000], 'Genjutsu charges exactly once');
     assert.equal(providerInputs.length, 1);
     assert.equal(providerInputs[0].taskType, 'edit');
+    assert.equal(providerInputs[0].generateAudio, false, 'Genjutsu must disable model audio explicitly');
     assert.equal(providerInputs[0].images.length, 1);
     assert.equal(providerInputs[0].videos.length, 1);
     assert.equal(providerInputs[0].audios.length, 0);
     assert.equal(providerInputs[0].prompt, GENJUTSU_PROMPT);
     assert.equal(finishing, 1);
     assert.deepEqual(releases, [7]);
-    if (upscale) {
+    assert.equal(audioRestores, upscale ? 1 : 0);
+    if (['success', 'silent'].includes(scenario)) {
       assert.deepEqual(refunds, []);
-      assert.equal(deliveries[0][1], 'https://result.test/1080.mp4');
+      assert.equal(deliveries[0][1], 'https://result.test/original-audio-1080.mp4');
       assert.match(deliveries[0][2], /Genjutsu · Character Swap/);
+      assert.match(deliveries[0][2], scenario === 'silent' ? /tanpa audio/ : /audio asli video/);
       messages.push(deliveries[0][2]);
     } else {
       assert.equal(deliveries.length, 0, 'Never send native video after finishing failure');
