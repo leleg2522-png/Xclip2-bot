@@ -2821,15 +2821,17 @@ const genjutsuFlow = createGenjutsuFlow({
   },
   submit: async (ctx, draft, prompt) => {
     const current = getSession(ctx.from.id);
+    const images = draft.imageFileIds ?? (draft.imageFileId ? [draft.imageFileId] : []);
     if (current.mode !== 'genjutsu' || current.genjutsuDraft?.id !== draft.id
-      || current.genjutsuDraft.step !== 'submitting' || !draft.video || !draft.imageFileId) return;
+      || current.genjutsuDraft.step !== 'submitting' || !draft.video
+      || images.length < 1 || images.length > 10 || draft.pendingImageFileIds?.length) return;
     // Reuse media collection and delivery, but Genjutsu's runner selects
     // standard Seedance 2.5 edit instead of the ordinary Flash backend.
     setSession(ctx.from.id, {
       mode: 'seedance25_flash_wait_prompt',
       genjutsuDraft: undefined,
       seedance25FlashDraftId: draft.id,
-      seedance25FlashImageFileIds: [draft.imageFileId],
+      seedance25FlashImageFileIds: [...images],
       seedance25FlashVideos: [draft.video],
       seedance25FlashAudios: [],
       seedance25FlashPendingUploads: 0,
@@ -7079,10 +7081,11 @@ async function submitSeedance25FlashPrompt(
   const imageFileIds = [...(activeDraft.seedance25FlashImageFileIds ?? [])];
   const videoFiles = [...(activeDraft.seedance25FlashVideos ?? [])];
   const audioFiles = [...(activeDraft.seedance25FlashAudios ?? [])];
-  // Genjutsu has one unambiguous identity image and one performance source.
+  // Genjutsu has 1–10 character references and exactly one performance source.
   // Never silently fall back to ordinary Flash or mix in a stale draft's media.
-  if (preserveSourceAudio && (imageFileIds.length !== 1 || videoFiles.length !== 1 || audioFiles.length !== 0)) {
-    return ctx.reply('Referensi Genjutsu tidak lengkap atau tercampur. Mulai lagi dari menu Genjutsu dengan 1 video dan 1 foto. Saldo belum dipotong.');
+  if (preserveSourceAudio && (imageFileIds.length < 1 || imageFileIds.length > 10
+    || new Set(imageFileIds).size !== imageFileIds.length || videoFiles.length !== 1 || audioFiles.length !== 0)) {
+    return ctx.reply('Referensi Genjutsu tidak lengkap atau tercampur. Mulai lagi dari menu Genjutsu dengan 1 video dan 1–10 gambar referensi. Saldo belum dipotong.');
   }
   if (imageFileIds.length > 0 && videoFiles.length > 0 && !videoFiles.some(video =>
     Number.isFinite(video.duration) && video.duration >= (preserveSourceAudio ? 3 : 4)

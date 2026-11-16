@@ -3,7 +3,13 @@ name: Genjutsu character swap product
 description: User-approved scope and customer flow for the separate Genjutsu Telegram feature.
 ---
 
-Genjutsu is a separate customer menu, not a replacement for the general Seedance 2.5 Flash flow. It requires one source video followed by one character photo, uses an automatic character-replacement prompt, and asks for explicit Generate confirmation at Rp6,000.
+Genjutsu is a separate customer menu, not a replacement for the general Seedance 2.5 Flash flow. It requires one source video followed by 1–10 reference images, uses an automatic character-replacement prompt, and asks for explicit Generate confirmation at Rp6,000.
+
+Genjutsu accepts exactly one video and at most ten reference images, with at least one image required.
+
+**Why:** The user requested: “Buat agar genjutsu bisa masukin image refrensi nya maks 10 jadi input video nya satu”.
+
+**How to apply:** Let the user finish collecting images explicitly before confirmation. Preserve all accepted references and their order through submission; never silently send only the first image. Keep the duration packages, backend choice, and existing pricing unchanged unless separately requested. Local checks of multiple-image payloads are not evidence of live generation quality.
 
 Use ordinary Seedance 2.5, not Flash, as Genjutsu's backend.
 

@@ -87,6 +87,8 @@ async function main() {
 
   for (const patch of [
     { images: [] }, { audios: [{ buffer: Buffer.from('x'), duration: 2 }] },
+    { images: Array.from({ length: 11 }, () => ({ buffer: Buffer.from('x') })) },
+    { videos: Array.from({ length: 2 }, () => ({ buffer: Buffer.from('x'), duration: 10 })) },
     { generateAudio: true }, { taskType: 'reference' }, { maxReferenceSeconds: 20 },
     { videos: [{ buffer: Buffer.from('x'), duration: 2.99 }] },
     { videos: [{ buffer: Buffer.from('x'), duration: 15.01 }] },
@@ -94,6 +96,22 @@ async function main() {
     const invalid = harness();
     await assert.rejects(() => invalid.run(patch), /GENJUTSU_INVALID/);
     assert.equal(invalid.calls.posts.length, 0);
+  }
+  for (const count of [2, 10]) {
+    const multi = harness();
+    const images = Array.from({ length: count }, (_, i) => ({
+      buffer: Buffer.from(`ref-${i}`), name: `ref-${i}.jpg`, mime: 'image/jpeg',
+    }));
+    await multi.run({ images });
+    assert.equal(multi.calls.uploads.length, count + 1);
+    assert.deepEqual(multi.calls.uploads.slice(0, count).map(item => item.bytes), images.map(item => item.buffer.toString()));
+    for (const call of multi.calls.posts) {
+      const refs = call.body.params.content.filter((item: any) => item.type === 'image_url');
+      assert.equal(refs.length, count, 'All references reach both quote and submit');
+      assert.deepEqual(Array.from(refs, (item: any) => item.image_url.url),
+        images.map(image => `https://media.test/${image.name}`));
+      assert.equal(call.body.params.content.filter((item: any) => item.type === 'video_url').length, 1);
+    }
   }
   for (const max of [15, 30]) {
     for (const duration of [3, max]) {

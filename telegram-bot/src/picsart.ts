@@ -1884,7 +1884,8 @@ export async function submitSeedance(credId: number, input: {
 }): Promise<string> {
   if (input.taskType === 'edit'
     && (input.duration !== -1 || input.ratio !== 'adaptive'
-      || input.imageUrls.length !== 1 || (input.videoUrls?.length ?? (input.videoUrl ? 1 : 0)) !== 1
+      || input.imageUrls.length < 1 || input.imageUrls.length > 10
+      || (input.videoUrls?.length ?? (input.videoUrl ? 1 : 0)) !== 1
       || (input.audioUrls?.length ?? 0) !== 0 || input.generateAudio !== false)) {
     throw Error('GENJUTSU_INVALID_EDIT_PARAMETERS');
   }

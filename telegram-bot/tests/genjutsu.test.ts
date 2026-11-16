@@ -27,6 +27,7 @@ function harness() {
   let draft: GenjutsuDraft | undefined;
   let duration = 10;
   let invalidImage = false;
+  let imageWork: ((file: any) => Promise<void>) | undefined;
   let blockVideo: Promise<void> | undefined;
   const messages: string[] = [], submitted: any[] = [];
   const ctx = {
@@ -38,7 +39,7 @@ function harness() {
     get: () => draft, set: (_id, value) => { draft = value; },
     price: () => 'Rp6.000',
     inspectVideo: async () => { await blockVideo; return duration; },
-    inspectImage: async () => { if (invalidImage) throw Error('broken'); },
+    inspectImage: async (_ctx, file) => { await imageWork?.(file); if (invalidImage) throw Error('broken'); },
     submit: async (_ctx, value, prompt) => { submitted.push({ value, prompt }); },
   });
   return {
@@ -46,6 +47,7 @@ function harness() {
     draft: () => draft,
     duration: (value: number) => { duration = value; },
     invalidImage: (value: boolean) => { invalidImage = value; },
+    imageWork: (value: (file: any) => Promise<void>) => { imageWork = value; },
     cancel: () => { draft = undefined; },
     block: (value: Promise<void>) => { blockVideo = value; },
   };
@@ -73,6 +75,8 @@ async function checkWizard() {
   assert.equal(h.draft()?.step, 'image');
   h.invalidImage(false);
   await h.flow.image(h.ctx, { file_id: 'character' });
+  assert.equal(h.draft()?.step, 'image', 'More references can be added before confirmation');
+  await h.flow.callback(h.ctx, `genjutsu_images_done_${h.draft()!.id}`);
   assert.equal(h.draft()?.step, 'confirm');
   assert.equal(h.submitted.length, 0, 'Uploading media never charges or submits');
   const callback = `genjutsu_generate_${h.draft()!.id}`;
@@ -81,7 +85,7 @@ async function checkWizard() {
   await Promise.all([h.flow.callback(h.ctx, callback), h.flow.callback(h.ctx, callback)]);
   assert.equal(h.submitted.length, 1, 'A double click can submit only once');
   assert.equal(h.submitted[0].value.video.fileId, 'video');
-  assert.equal(h.submitted[0].value.imageFileId, 'character');
+  assert.deepEqual(h.submitted[0].value.imageFileIds, ['character']);
   assert.equal(h.submitted[0].prompt, GENJUTSU_PROMPT);
   assert.equal(GENJUTSU_PROMPT,
     'Replace the character in the reference video with the character in the reference image.' +
@@ -90,7 +94,7 @@ async function checkWizard() {
   assert.match(GENJUTSU_NEGATIVE_PROMPT, /blended faces/);
   assert.match(GENJUTSU_NEGATIVE_PROMPT, /changing identity/);
   assert.match(h.messages.join('\n'), /Kemiripan wajah tidak dijamin/);
-  assert.match(h.messages.join('\n'), /Boleh kirim sebagai file gambar/);
+  assert.match(h.messages.join('\n'), /sebagai file gambar/);
   assert.match(h.messages.join('\n'), /Rp6.000/);
   assert.doesNotMatch(h.messages.join('\n'), /picsart|seedance|renderful|upscal|480p/i);
 }
@@ -137,6 +141,7 @@ async function checkDurationPackages() {
       assert.equal(h.submitted.length, 0);
       if (valid) {
         await h.flow.image(h.ctx, { file_id: 'replacement' });
+        await h.flow.callback(h.ctx, `genjutsu_images_done_${id}`);
         await h.flow.callback(h.ctx, `genjutsu_generate_${id}`);
         assert.equal(h.submitted[0].value.maxReferenceSeconds, max);
         assert.match(h.messages.join('\n'), new RegExp(`Paket: ${max} detik`));
@@ -145,6 +150,56 @@ async function checkDurationPackages() {
       }
     }
   }
+}
+
+async function checkMultipleImages() {
+  const h = harness();
+  await h.flow.callback(h.ctx, 'mode_genjutsu');
+  const id = h.draft()!.id;
+  await h.flow.callback(h.ctx, `genjutsu_duration_15_${id}`);
+  await h.flow.video(h.ctx, { file_id: 'only-video' });
+  await h.flow.callback(h.ctx, `genjutsu_images_done_${id}`);
+  assert.equal(h.draft()?.step, 'image', 'Zero images cannot reach confirmation');
+  const release = new Map<string, () => void>();
+  h.imageWork(file => new Promise(resolve => release.set(file.file_id, resolve)));
+  const ids = Array.from({ length: 10 }, (_, i) => `ref-${i}`);
+  const uploads = ids.map(file_id => h.flow.image(h.ctx, { file_id }));
+  assert.equal(h.draft()?.pendingImageFileIds?.length, 10);
+  await h.flow.image(h.ctx, { file_id: 'eleventh' });
+  await h.flow.image(h.ctx, { file_id: ids[0] });
+  assert.equal(release.size, 10, 'Do not inspect duplicate or eleventh images');
+  await h.flow.callback(h.ctx, `genjutsu_images_done_${id}`);
+  await h.flow.callback(h.ctx, `genjutsu_generate_${id}`);
+  assert.equal(h.draft()?.step, 'image', 'Cannot confirm or charge with pending images');
+  assert.equal(h.submitted.length, 0);
+  for (const ref of [...ids].reverse()) release.get(ref)!();
+  await Promise.all(uploads);
+  assert.deepEqual(h.draft()?.imageFileIds, ids, 'Album order survives out-of-order validation');
+  assert.equal(h.draft()?.pendingImageFileIds?.length, 0);
+  await h.flow.video(h.ctx, { file_id: 'second-video' });
+  assert.equal(h.draft()?.video?.fileId, 'only-video', 'Still accepts exactly one video');
+  await h.flow.callback(h.ctx, 'genjutsu_images_done_stale');
+  assert.equal(h.draft()?.step, 'image');
+  await h.flow.callback(h.ctx, `genjutsu_images_done_${id}`);
+  assert.match(h.messages.join('\n'), /Gambar referensi: 10\/10/);
+  await Promise.all([h.flow.callback(h.ctx, `genjutsu_generate_${id}`), h.flow.callback(h.ctx, `genjutsu_generate_${id}`)]);
+  assert.equal(h.submitted.length, 1);
+  assert.deepEqual(h.submitted[0].value.imageFileIds, ids);
+
+  const cancelled = harness();
+  await cancelled.flow.callback(cancelled.ctx, 'mode_genjutsu');
+  await cancelled.flow.callback(cancelled.ctx, `genjutsu_duration_30_${cancelled.draft()!.id}`);
+  await cancelled.flow.video(cancelled.ctx, { file_id: 'source' });
+  let unblock!: () => void;
+  cancelled.imageWork(() => new Promise(resolve => { unblock = resolve; }));
+  const pending = cancelled.flow.image(cancelled.ctx, { file_id: 'old-image' });
+  cancelled.cancel();
+  await cancelled.flow.callback(cancelled.ctx, 'mode_genjutsu');
+  const fresh = cancelled.draft()!.id;
+  unblock();
+  await pending;
+  assert.equal(cancelled.draft()?.id, fresh);
+  assert.equal(cancelled.draft()?.imageFileIds, undefined, 'Old image completions cannot overwrite a fresh draft');
 }
 
 /** Drive actual Telegram callback/photo/video/document handlers without any network. */
@@ -202,6 +257,7 @@ async function checkTelegramRouting() {
     await message(asDocument
       ? { document: { file_id: 'character', file_unique_id: 'i', mime_type: 'image/jpeg', file_name: 'character.jpg' } }
       : { photo: [{ file_id: 'character', file_unique_id: 'i', width: 720, height: 1280 }] });
+    await callback(`genjutsu_images_done_${session.genjutsuDraft.id}`);
     assert.equal(session.genjutsuDraft.step, 'confirm');
     const id = session.genjutsuDraft.id;
     await callback(`genjutsu_generate_${id}`);
@@ -211,7 +267,7 @@ async function checkTelegramRouting() {
     await callback(`genjutsu_generate_${id}`);
   }
   assert.equal(submissions.length, 2);
-  assert(submissions.every(s => s.draft.video.fileId === 'source' && s.draft.imageFileId === 'character'));
+  assert(submissions.every(s => s.draft.video.fileId === 'source' && s.draft.imageFileIds[0] === 'character'));
   assert.match(source, /'genjutsu',/);
   assert.match(source, /'mode_genjutsu'\)/);
 }
@@ -225,7 +281,7 @@ async function checkRealGenerationAdapter() {
     let session: any = {
       mode: 'genjutsu', dbUserId: 7, generationDraft: true, generationDraftKind: 'genjutsu',
       genjutsuDraft: {
-        id: 'confirmed-draft', step: 'confirm', imageFileId: 'image',
+        id: 'confirmed-draft', step: 'confirm', imageFileIds: Array.from({ length: 10 }, (_, i) => `image-${i}`),
         maxReferenceSeconds: 15,
         video: { fileId: 'source', mime: 'video/mp4', duration: 10 },
       },
@@ -257,7 +313,7 @@ async function checkRealGenerationAdapter() {
         deleteMessage: async () => {},
       } },
       telegramHttp: { get: async (url: string) => ({
-        data: Buffer.from(url === 'https://telegram.test/image' ? 'identity-image'
+        data: Buffer.from(url.startsWith('https://telegram.test/image-') ? `identity-${url.split('/').pop()}`
           : url === 'https://telegram.test/source' ? 'original-performance-video' : 'finished-visual-video'),
       }) },
       restoreGenjutsuAudio: async (original: Buffer, generated: Buffer) => {
@@ -318,9 +374,10 @@ async function checkRealGenerationAdapter() {
     assert.equal(providerInputs[0].taskType, 'edit');
     assert.equal(providerInputs[0].maxReferenceSeconds, 15);
     assert.equal(providerInputs[0].generateAudio, false, 'Genjutsu must disable model audio explicitly');
-    assert.equal(providerInputs[0].images.length, 1);
+    assert.equal(providerInputs[0].images.length, 10);
     assert.equal(providerInputs[0].videos.length, 1);
-    assert.equal(providerInputs[0].images[0].buffer.toString(), 'identity-image');
+    assert.equal(providerInputs[0].images[0].buffer.toString(), 'identity-image-0');
+    assert.equal(providerInputs[0].images[9].buffer.toString(), 'identity-image-9');
     assert.equal(providerInputs[0].videos[0].buffer.toString(), 'original-performance-video');
     assert.equal(providerInputs[0].audios.length, 0);
     assert.equal(providerInputs[0].prompt, GENJUTSU_PROMPT);
@@ -346,7 +403,8 @@ async function checkIdentityReferenceGuards() {
   for (const refs of [
     { images: [], videos: ['source'], audios: [] },
     { images: ['identity'], videos: [], audios: [] },
-    { images: ['identity', 'stale-image'], videos: ['source'], audios: [] },
+    { images: Array.from({ length: 11 }, (_, i) => `image-${i}`), videos: ['source'], audios: [] },
+    { images: ['identity', 'identity'], videos: ['source'], audios: [] },
     { images: ['identity'], videos: ['source', 'stale-video'], audios: [] },
     { images: ['identity'], videos: ['source'], audios: ['stale-audio'] },
   ]) {
@@ -375,6 +433,7 @@ async function checkIdentityReferenceGuards() {
 async function main() {
   await checkWizard();
   await checkDurationPackages();
+  await checkMultipleImages();
   await checkCancellation();
   await checkTelegramRouting();
   await checkRealGenerationAdapter();

@@ -49,7 +49,7 @@ export async function generateGenjutsuWithSeedance25(
   const images = input.images ?? [], videos = input.videos ?? [];
   const max = input.maxReferenceSeconds ?? 30;
   const prompt = input.prompt.trim();
-  if (!prompt || prompt.length > 20_000 || images.length !== 1 || videos.length !== 1
+  if (!prompt || prompt.length > 20_000 || images.length < 1 || images.length > 10 || videos.length !== 1
     || (input.audios?.length ?? 0) !== 0 || (input.taskType && input.taskType !== 'edit')
     || input.generateAudio === true) throw Error('GENJUTSU_INVALID_REFERENCES');
   if (![15, 30].includes(max) || !Number.isFinite(videos[0].duration) || videos[0].duration < 3 || videos[0].duration > max) {
@@ -69,10 +69,13 @@ export async function generateGenjutsuWithSeedance25(
   }
   return deps.account(input.userId, async id => {
     input.onStatus?.('upload');
-    const imageUrl = await deps.upload(id, images[0].buffer, images[0].name ?? 'character.jpg', images[0].mime ?? 'image/jpeg');
+    const imageUrls: string[] = [];
+    for (const [index, image] of images.entries()) {
+      imageUrls.push(await deps.upload(id, image.buffer, image.name ?? `character-${index + 1}.jpg`, image.mime ?? 'image/jpeg'));
+    }
     const videoUrl = await deps.upload(id, source.buffer, source.name ?? 'source.mp4', source.mime ?? 'video/mp4');
     const submission: GenjutsuEditSubmission = {
-      prompt, imageUrls: [imageUrl], videoUrls: [videoUrl], audioUrls: [],
+      prompt, imageUrls, videoUrls: [videoUrl], audioUrls: [],
       duration: -1, ratio: 'adaptive', resolution: '480p', taskType: 'edit', generateAudio: false,
     };
     input.onStatus?.('quote');
@@ -80,7 +83,7 @@ export async function generateGenjutsuWithSeedance25(
       model: deps.model,
       content: [
         { type: 'video_url', video_url: { url: videoUrl }, role: 'reference_video' },
-        { type: 'image_url', image_url: { url: imageUrl }, role: 'reference_image' },
+        ...imageUrls.map(url => ({ type: 'image_url', image_url: { url }, role: 'reference_image' })),
         { type: 'text', text: prompt },
       ],
       ratio: 'adaptive', duration: -1, resolution: '480p', generate_audio: false,
