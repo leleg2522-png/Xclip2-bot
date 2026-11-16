@@ -1,7 +1,7 @@
 {
   "name": "telegram-video-bot",
   "version": "1.0.0",
-  "description": "Telegram bot for Kling 2.6 Pro Motion Control video generation via Renderful.ai",
+  "description": "Telegram bot for video generation, including Kling Motion Control via Picsart",
   "main": "dist/index.js",
   "scripts": {
     "test:generation-errors": "tsx tests/generation-errors.test.ts",
@@ -23,10 +23,10 @@
     "test:kling21": "tsx tests/kling21-flora.test.ts",
     "test:kling21p2": "tsx tests/kling21-p2-flora.test.ts",
     "test:gomni11flora": "tsx tests/gemini-omni-11-flora.test.ts",
-    "test:klingp2": "tsx tests/kling-p2-s4.test.ts",
+    "test:klingp2": "tsx tests/kling-p2-s4.test.ts && tsx tests/kling-picsart-p23.test.ts",
     "test:klingp4": "tsx tests/kling-p4-flora.test.ts",
     "test:klingv3pro": "tsx tests/kling-v3-pro-edan.test.ts",
-    "test:klingp5": "tsx tests/kling-v3-standard-flora.test.ts && tsx tests/kling-edanbot.test.ts && tsx tests/alriz-motion.test.ts && tsx tests/alriz-pool.test.ts && tsx tests/alriz-reference-hosting.test.ts",
+    "test:klingp5": "tsx tests/kling-v3-standard-flora.test.ts && tsx tests/alriz-motion.test.ts && tsx tests/alriz-pool.test.ts && tsx tests/alriz-reference-hosting.test.ts",
     "setup:alriz-pool": "tsx scripts/setup-alriz-pool.ts",
     "test:xclipmotion": "tsx tests/xclip-motion-flora.test.ts",
     "test:har-models": "tsx tests/picsart-har-models.test.ts",

@@ -10,8 +10,8 @@ for (const priceKey of ['kling_p2', 'kling_p3']) assert.match(source, new RegExp
 const wrappersFrom = source.indexOf('async function runKlingP2(');
 const wrappersTo = source.indexOf('// ─── Background: Picsart Image-to-Video', wrappersFrom);
 const wrappers = source.slice(wrappersFrom, wrappersTo);
-assert.match(wrappers, /runKlingEdanbot/);
-assert.match(wrappers, /EDANBOT_KLING_MC_MODEL/);
+assert.match(wrappers, /runKlingMotionControl/);
+assert.doesNotMatch(wrappers, /runKlingEdanbot|EDANBOT_KLING_MC_MODEL/);
 assert.match(wrappers, /MODEL_PRICES\.kling_p2/);
 assert.match(wrappers, /MODEL_PRICES\.kling_p3/);
 function compile(text: string) {
@@ -27,7 +27,7 @@ async function wizard(variant: 'p2' | 'p3', document: boolean) {
     editMessageText: async (text: string) => { messages.push(text); },
   };
   const context = vm.createContext({
-    ctx, MODEL_PRICES: { kling_p2: 4000, kling_p3: 4000 }, KLING_P3_MAX_REF_SECONDS: 30,
+    ctx, MODEL_PRICES: { kling_p2: 4000, kling_p3: 4000 }, KLING_P2_P3_MAX_REF_SECONDS: 30,
     klingV3StandardVideoError,
     getSession: () => session, setSession: (_id: number, patch: any) => Object.assign(session, patch),
     requireLogin: async () => true, formatRupiah: (price: number) => `Rp${price}`,
@@ -76,8 +76,8 @@ async function wizard(variant: 'p2' | 'p3', document: boolean) {
     assert.equal(session[`klingP${n}VideoFileId`], undefined);
   }
   ctx.message = document
-    ? { document: { file_id: 'video_id', mime_type: 'video/mp4', file_size: 1000 } }
-    : { video: { file_id: 'video_id', file_size: 1000, duration: 10 } };
+    ? { document: { file_id: 'video_id', mime_type: 'video/mp4', file_size: 1000, duration: 30 } }
+    : { video: { file_id: 'video_id', file_size: 1000, duration: 30 } };
   await video();
   assert.equal(session.mode, `kling${variant}_wait_prompt`);
   ctx.message = { text: '-' };
@@ -87,7 +87,7 @@ async function wizard(variant: 'p2' | 'p3', document: boolean) {
   );
   await prompt(); await prompt();
   assert.equal(runs.length, 1, 'Duplicate prompts must not start two paid jobs');
-  assert.deepEqual(runs[0], [9, 9, 7, 88, 'photo_id', 'video_id', document ? undefined : 10, '']);
+  assert.deepEqual(runs[0], [9, 9, 7, 88, 'photo_id', 'video_id', 30, '']);
   assert.doesNotMatch(messages.join(' '), /Flora|Edanbot|P5|upscal/i);
 }
 async function main() {
@@ -95,6 +95,6 @@ async function main() {
     await wizard(variant, false);
     await wizard(variant, true);
   }
-  console.log('P2/P3 Edanbot routing: public names/prices, fresh photo IDs, 3–30s/15MB limits, document input and duplicate-prompt safety passed.');
+  console.log('P2/P3 routing: public names/prices, 3–30s/15MB limits, document input and duplicate-prompt safety passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

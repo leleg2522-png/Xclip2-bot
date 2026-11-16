@@ -78,7 +78,7 @@ async function main() {
   const source=readFileSync('src/index.ts','utf8');
   const ast=ts.createSourceFile('index.ts',source,ts.ScriptTarget.Latest,true);
   const delegates: Record<string,string> = {
-    runKlingP4:'runKlingV3Standard',runKlingP2:'runKlingEdanbot',runKlingP3:'runKlingEdanbot',
+    runKlingP4:'runKlingV3Standard',runKlingP2:'runKlingMotionControl',runKlingP3:'runKlingMotionControl',
     runSeedance25P2:'runPicsartSeedance25',runSeedanceMiniVideoEdit:'runSeedanceVideoEdit',
     runSeedanceFastVideoEdit:'runSeedanceVideoEdit',runSeedance2VideoEdit:'runSeedanceVideoEdit',
     runKling21Pro:'runPicsartI2v',

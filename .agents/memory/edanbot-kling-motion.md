@@ -1,35 +1,25 @@
 ---
 name: Kling Motion package routing and Edanbot
-description: P2/P3 Edan Bot native; P4/P5 share Alriz 2.6 Pro and deliver directly without Renderful.
+description: P1/P2/P3 use Picsart Motion Control; P2/P3 allow 30s; P4/P5 remain Alriz-native.
 ---
 
 # Current Kling Motion routing
 
-P2/P3 use the HAR-verified Edan Bot generation flow and model key
-`kling-motion-26-pro`. Deliver the provider result directly without
-Renderful finishing; keep the public package labels and prices separate. P4
-and P5 use Alriz `mc-kling-2.6-pro` and the same database key pool.
-Its customer-facing name must remain **Kling MC V3 Pro P5**, independently
-of the underlying provider model version.
+P1, P2, and P3 use Picsart Motion Control. P1 remains limited to 16-second
+reference videos; P2/P3 accept up to 30 seconds. Keep their public package
+labels and prices separate. P4/P5 use Alriz `mc-kling-2.6-pro` and the same
+database key pool; keep the customer-facing P5 name **Kling MC V3 Pro P5**.
 P4 and P5 deliver the native Alriz result directly without Renderful finishing.
 
-**Why:** The user explicitly switched P2/P3 to the newly supplied Edan Bot HAR
-and then clarified that Renderful upscaling is not needed for those packages.
-This supersedes the earlier P2/P3-to-P5 routing decision only for P2/P3.
-The user later requested: “gw ingin kling mc p5 di ganti kling mc 2,6 pro dari alriz”.
-The user subsequently requested “kling mc p4 ganti backend nya sama seperti p5”,
-extending that backend choice to P4 without changing its price.
-After inspecting the live native
-P5 result, the user clarified: “gaperlu finishing dari renderfull”.
-The user then requested the displayed name “kling mc v3 pro” and specified P5;
-this is a display-name change, not a request to switch the underlying model.
-The user subsequently clarified for P4: “lah ga perlu upscale lagi itu p4”.
+**Why:** On 2026-11-16 the user asked to move P2/P3 to P1's backend while
+allowing up to 30 seconds instead of P1's shorter limit. This supersedes the
+older P2/P3-to-Edanbot decision. The user separately requested Alriz for P4/P5
+and clarified that those packages need no Renderful finishing.
 
-**How to apply:** Keep P2/P3 native output claims limited to “resolution follows
-the model result”; do not promise 1080p without new evidence. Preserve full
-refunds on generation or delivery failure and never replay ambiguous/accepted
-paid submissions. Do not add finishing back to P4 or P5. Keep Xclip Motion's
-separate finishing policy unchanged.
+**How to apply:** Keep P2/P3 on Picsart with their 30-second cap and separate
+labels/prices. Preserve full refunds on generation or delivery failure and
+never replay ambiguous/accepted paid submissions. Do not add finishing back to
+P4/P5. Keep Xclip Motion's separate finishing policy unchanged.
 
 ## Alriz credential management
 
@@ -73,22 +63,24 @@ matching MIME types, preserve legacy download links for other callers, and test
 real GET/HEAD responses. Do not claim an upstream failure is resolved solely
 from a mocked generation test or replay an already accepted paid job to check.
 
-## Edan Bot flow
+## Edanbot separation
 
 **Hard rule:** never let any user-facing string (reply/caption/error/filename) leak `edanbot`/`roboneo`/`wavespeed`/`openart`/`meitu`/`meitudata`, and never send the raw `result_url` as a link — always re-upload bytes.
 
-## Model variants
-- P2 and P3 both submit the HAR-verified model key `kling-motion-26-pro`.
-- The HAR response's internal model/provider fields are implementation details and must remain hidden from customers.
+Edanbot remains a separate backend for the Kling v3 Pro image-to-video flow; it
+is not the P2/P3 Motion Control backend.
 
-**Why:** The newest supplied HAR submitted `kling-motion-26-pro` and the job completed; this supersedes the older `--secondary` model-key evidence.
+**Why:** P2/P3 moved to Picsart on 2026-11-16; the separate Edanbot image-to-video
+route remains in the project.
 
-**How to apply:** Submit `kling-motion-26-pro` for both P2 and P3 while preserving their separate public labels and prices; the prompt entered after the reference video goes in `fields.prompt` (a `-` means empty prompt). Customer-facing text must not expose the key or supplier.
+**How to apply:** Keep Edanbot cookie-pool and direct no-proxy handling scoped
+to that separate image-to-video flow. Do not route P2/P3 back to Edanbot or
+reuse its Motion Control model key.
 
-## API flow (single shared account)
+## Edanbot API flow (separate image-to-video product)
 - Auth: `EDANBOT_COOKIE` secret. It is the value of a Flask **signed** `session=` cookie. Normalize: prepend `session=` if missing (users often paste only the value → 401 without the prefix).
 - **Never route edanbot via Decodo proxy:** on Railway the proxy answers 407 (proxy auth) for these calls. Use a plain no-proxy axios client. The cookie is signed, not IP-bound, so direct calls work from any IP.
-- Steps: `POST /api/uploads` (multipart field `file`, once per image + once per video) → returns `.asset` object; `POST /api/generate` JSON `{model:<P2/P3 variant key>, fields:{prompt, image_url:<asset>, video_url:<asset>, reference_video_duration, character_orientation:'video', keep_original_sound:true}}` → `{job_id, credits}`; poll `GET /api/jobs/{job_id}` until `status:'completed'` (result_url) / `'failed'` / non-empty `.error`.
+- Upload and poll through the same cookie-backed Edanbot API, but use only the image-to-video model payload verified for that separate product; the former P2/P3 Motion Control payload no longer applies.
 - Headers: cookie + `user-agent`, `referer: https://edanbot.digital/dashboard`, `origin: https://edanbot.digital`.
 
 ## Multi-user safety
@@ -102,7 +94,7 @@ Admin commands: `/addedancookie` (newline-separated, `session=` prefix optional)
 and `/edanpool`.
 
 ## Fragility
-Cookie dies on logout/expiry → all P2 generations 401. Recovery: user re-grabs the `session` cookie for edanbot.digital from browser DevTools and updates `EDANBOT_COOKIE`.
+Cookie dies on logout/expiry → Edanbot-backed image-to-video requests 401. Recovery: user re-grabs the `session` cookie for edanbot.digital from browser DevTools and updates `EDANBOT_COOKIE`.
 
 ## Separate Kling v3 Pro image-to-video product
 
