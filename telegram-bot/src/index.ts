@@ -5497,7 +5497,7 @@ bot.on('callback_query', async (ctx) => {
     return ctx.editMessageText(
       `⚡ *Seedance 2.5 Flash*\n\n` +
       `Output text-to-video: *30 detik* • *480p* • *16:9*\n` +
-      `Jika mengirim gabungan gambar + video, mode edit mengikuti durasi dan rasio video sumber.\n` +
+      `Jika mengirim gabungan gambar + video, mode edit mengikuti durasi dan rasio video sumber (minimal 4 detik).\n` +
       `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}* per video\n\n` +
       `Kirim referensi opsional sebelum prompt: maksimal ${picsart.SEEDANCE25_FLASH_MAX_IMAGES} gambar, ` +
       `${picsart.SEEDANCE25_FLASH_MAX_VIDEOS} video, dan ${picsart.SEEDANCE25_FLASH_MAX_AUDIOS} audio. ` +
@@ -5519,6 +5519,14 @@ bot.on('callback_query', async (ctx) => {
     const images = draft.seedance25FlashImageFileIds?.length ?? 0;
     const videos = draft.seedance25FlashVideos?.length ?? 0;
     const audios = draft.seedance25FlashAudios?.length ?? 0;
+    if (images > 0 && videos > 0 && !draft.seedance25FlashVideos?.some(video =>
+      Number.isFinite(video.duration) && video.duration >= 4 && video.duration <= 30)) {
+      return ctx.reply(
+        'Mode edit gambar + video memerlukan setidaknya satu video sumber berdurasi 4–30 detik. ' +
+        'Tambahkan video yang sesuai sebelum lanjut. Saldo belum dipotong.',
+        seedance25FlashInputKeyboard(),
+      );
+    }
     setSession(userId, { mode: 'seedance25_flash_wait_prompt' });
     return ctx.editMessageText(
       `✅ Referensi siap: ${images} gambar, ${videos} video, ${audios} audio.\n` +
@@ -7008,6 +7016,15 @@ async function submitSeedance25FlashPrompt(ctx: any, rawPrompt: string) {
   const imageFileIds = [...(activeDraft.seedance25FlashImageFileIds ?? [])];
   const videoFiles = [...(activeDraft.seedance25FlashVideos ?? [])];
   const audioFiles = [...(activeDraft.seedance25FlashAudios ?? [])];
+  if (imageFileIds.length > 0 && videoFiles.length > 0 && !videoFiles.some(video =>
+    Number.isFinite(video.duration) && video.duration >= 4 && video.duration <= 30)) {
+    setSession(userId, { mode: 'seedance25_flash_wait_media' });
+    return ctx.reply(
+      'Mode edit memerlukan setidaknya satu video sumber berdurasi 4–30 detik. ' +
+      'Tambahkan video yang sesuai, lalu lanjut ke prompt. Saldo belum dipotong.',
+      seedance25FlashInputKeyboard(),
+    );
+  }
   setSession(userId, {
     mode: 'idle',
     seedance25FlashDraftId: undefined,
@@ -7021,7 +7038,8 @@ async function submitSeedance25FlashPrompt(ctx: any, rawPrompt: string) {
     images: [],
     videos: [],
     audios: [],
-    taskType: imageFileIds.length > 0 && videoFiles.length > 0 ? 'edit' : 'auto',
+    taskType: imageFileIds.length > 0 && videoFiles.length > 0
+      ? 'edit' : imageFileIds.length + videoFiles.length + audioFiles.length > 0 ? 'reference' : 'auto',
   };
   let totalBytes = 0;
   const download = async (fileId: string) => {

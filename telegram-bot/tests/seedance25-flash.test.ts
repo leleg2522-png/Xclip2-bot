@@ -145,6 +145,51 @@ async function checkNoSubmitWhenUnaffordable() {
   assert.equal(h.calls.gets.length, 0);
 }
 
+async function checkDocumentedReferenceSubtasks() {
+  const image = { buffer: Buffer.from('image'), name: 'image.jpg', mime: 'image/jpeg' };
+  const video = { buffer: Buffer.from('video'), name: 'source.mp4', mime: 'video/mp4', duration: 10 };
+  const audio = { buffer: Buffer.from('audio'), name: 'audio.mp3', mime: 'audio/mpeg', duration: 3 };
+  for (const refs of [
+    { images: [image] }, { videos: [video] }, { audios: [audio] },
+    { images: [image], audios: [audio] }, { videos: [video], audios: [audio] },
+  ]) {
+    const h = harness();
+    await h.generate('Use these references to create a new scene', refs);
+    for (const request of h.calls.posts) {
+      assert.equal(request.body.params.model, 'seedance-2.5-flash');
+      const params = request.body.params.params;
+      assert.equal(params.omniReferenceTaskType, 'reference');
+      assert.equal(params.duration, 30);
+      assert.equal(params.aspectRatio, '16:9');
+      assert.equal(params.resolution, '480p');
+    }
+    const metadata = JSON.parse(h.calls.posts[1].body.params.options.drive.attributes.aiSDKPayload);
+    assert.equal(metadata.omniReferenceTaskType, 'reference');
+  }
+  // A caller may explicitly request reference-to-video even with both media.
+  const reference = harness();
+  await reference.generate('New scene', { images: [image], videos: [video], taskType: 'reference' });
+  assert.equal(reference.calls.posts[0].body.params.params.duration, 30);
+  assert.equal(reference.calls.posts[0].body.params.params.omniReferenceTaskType, 'reference');
+
+  for (const duration of [0, 3.999, 30.01, NaN, Infinity]) {
+    const invalid = harness();
+    await assert.rejects(() => invalid.generate('Edit', {
+      images: [image], videos: [{ ...video, duration }],
+    }), /SEEDANCE25_FLASH_EDIT_REQUIRES_VIDEO/);
+    assert.equal(invalid.calls.uploads.length, 0);
+    assert.equal(invalid.calls.posts.length, 0, 'Invalid edit must not quote or submit');
+  }
+  for (const duration of [4, 30]) {
+    const valid = harness();
+    await valid.generate('Edit', { images: [image], videos: [{ ...video, duration }] });
+    const params = valid.calls.posts[0].body.params.params;
+    assert.equal(params.omniReferenceTaskType, 'edit');
+    assert.equal(params.duration, -1);
+    assert.equal(params.aspectRatio, 'adaptive');
+  }
+}
+
 async function checkEditQuoteOnly() {
   const h = harness();
   const quote = await h.generate('Replace the man with the image character', {
@@ -460,9 +505,56 @@ async function checkFlashContinuationDraftGuard() {
   assert.equal(context.generationDraftKindForContinuation('seedance25_inputs_done'), 'oneover');
 }
 
+async function checkEditRejectedBeforePromptAndCharge() {
+  const callback = fragment(botSource, "  if (data === 'seedance25_flash_refs_done') {",
+    "  if (data.startsWith('seedance25_mode_')) {");
+  const promptPrefix = fragment(botSource,
+    'async function submitSeedance25FlashPrompt(', "  let totalBytes = 0;");
+  let session: any = {
+    dbUserId: 9, mode: 'seedance25_flash_wait_media', seedance25FlashDraftId: 'active',
+    seedance25FlashImageFileIds: ['image'],
+    seedance25FlashVideos: [{ fileId: 'short-video', duration: 3 }],
+    seedance25FlashAudios: [],
+  };
+  const replies: string[] = [];
+  let promptScreens = 0;
+  const context = vm.createContext({
+    getSession: () => session,
+    setSession: (_id: number, patch: any) => { session = { ...session, ...patch }; },
+    seedance25FlashInputKeyboard: () => ({}),
+    validateSeedance25Prompt: (value: string) => value,
+    getCooldownRemainingMs: () => 0,
+  });
+  vm.runInContext(compile(
+    `async function continueFlash(ctx) { const userId = ctx.from.id; const data = 'seedance25_flash_refs_done'; ${callback} }\n`
+    + promptPrefix + '\nthrow Error("Unexpectedly proceeded to download or charge");\n}'),
+    context,
+  );
+  const ctx = {
+    from: { id: 1 },
+    reply: async (text: string) => { replies.push(text); },
+    editMessageText: async () => { promptScreens++; },
+  };
+  await context.continueFlash(ctx);
+  assert.equal(session.mode, 'seedance25_flash_wait_media');
+  assert.equal(promptScreens, 0);
+  assert.match(replies[0], /4–30 detik/);
+  // Also protect old prompt screens that were opened before these checks.
+  session.mode = 'seedance25_flash_wait_prompt';
+  await context.submitSeedance25FlashPrompt(ctx, 'Replace the character');
+  assert.equal(session.mode, 'seedance25_flash_wait_media');
+  assert.equal(session.seedance25FlashDraftId, 'active', 'Keep references so a valid video can be added');
+  assert.match(replies[1], /Saldo belum dipotong/);
+  session.seedance25FlashVideos.push({ fileId: 'valid-video', duration: 4 });
+  await context.continueFlash(ctx);
+  assert.equal(session.mode, 'seedance25_flash_wait_prompt');
+  assert.equal(promptScreens, 1);
+}
+
 async function main() {
   await checkSuccessfulContract();
   await checkNoSubmitWhenUnaffordable();
+  await checkDocumentedReferenceSubtasks();
   await checkEditQuoteOnly();
   await checkApprovedCreditLimit();
   await checkSubmittedStateIsPersistedBeforePolling();
@@ -473,6 +565,7 @@ async function main() {
   await checkBotBillingDeliveryAndRefund();
   await checkFlashMediaIntake();
   await checkFlashContinuationDraftGuard();
+  await checkEditRejectedBeforePromptAndCharge();
   console.log('Seedance 2.5 Flash passed: 30s gateway settings, quoted-credit preflight, no duplicate jobs, Rp6.000 billing/refunds, native 480p delivery.');
 }
 

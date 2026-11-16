@@ -2173,7 +2173,7 @@ export async function pollSeedance25FlashResult(
   throw diag.timeoutError();
 }
 
-export type Seedance25FlashTaskType = 'auto' | 'edit';
+export type Seedance25FlashTaskType = 'auto' | 'reference' | 'edit';
 export type Seedance25FlashInput = {
   userId: number;
   prompt: string;
@@ -2215,12 +2215,20 @@ export async function generateSeedance25Flash(
   const images = input.images ?? [];
   const videos = input.videos ?? [];
   const audios = input.audios ?? [];
-  const taskType = input.taskType ?? (images.length > 0 && videos.length > 0 ? 'edit' : 'auto');
+  // Picsart docs: explicit subtask hints validate constraints at submit rather
+  // than letting auto infer an incompatible task after the job is accepted.
+  // https://picsart.com/api-platform/models/seedance-2.5-flash
+  const taskType = input.taskType ?? (images.length > 0 && videos.length > 0
+    ? 'edit' : images.length + videos.length + audios.length > 0 ? 'reference' : 'auto');
+  if (!['auto', 'reference', 'edit'].includes(taskType)) {
+    throw new Error('SEEDANCE25_FLASH_INVALID_PARAMETER_TASK_TYPE');
+  }
   if (input.maxProviderCredits !== undefined
     && (!Number.isFinite(input.maxProviderCredits) || input.maxProviderCredits <= 0)) {
     throw new Error('SEEDANCE25_FLASH_INVALID_APPROVED_CREDIT_LIMIT');
   }
-  if (taskType === 'edit' && (!videos.length || !videos.some(video => video.duration >= 4))) {
+  if (taskType === 'edit' && !videos.some(video => Number.isFinite(video.duration)
+    && video.duration >= 4 && video.duration <= SEEDANCE25_FLASH_MAX_REFERENCE_SECONDS)) {
     throw new Error('SEEDANCE25_FLASH_EDIT_REQUIRES_VIDEO');
   }
   if (images.length > SEEDANCE25_FLASH_MAX_IMAGES
