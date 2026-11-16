@@ -4,6 +4,7 @@ export interface VideoMenuScreen { text: string; rows: VideoMenuButton[][] }
 export const VIDEO_FAMILIES = [
   { id: 'kling', label: 'Kling' },
   { id: 'seedance', label: 'Seedance' },
+  { id: 'genjutsu', label: 'Genjutsu' },
   { id: 'veo', label: 'Veo' },
   { id: 'wan', label: 'Wan' },
   { id: 'minimax', label: 'MiniMax' },
@@ -23,6 +24,7 @@ const FAMILY_PREFIX = 'menu_video_family_';
 const button = (text: string, callback_data: string): VideoMenuButton => ({ text, callback_data });
 
 export function videoFamilyForCallback(data: string): VideoFamilyId | undefined {
+  if (data === 'mode_genjutsu') return 'genjutsu';
   if (data === 'mode_bvideo_vela') return 'vela';
   if (data === 'mode_bvideo_muse') return 'muse';
   if (data === 'mode_bvideo_deapi_ltx') return 'ltx';

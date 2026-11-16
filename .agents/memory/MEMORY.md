@@ -50,5 +50,6 @@
 - [Vivareel API base URL](vivareel-api.md) — docs examples on vivareel.ai work; the api.vivareel.com hostname mentioned in docs failed DNS during a live preflight.
 - [Seedance reference audio](seedance-reference-audio.md) — keep Picsart routes; 2.0 requires visual media with audio, 2.5 permits audio-only; distinguish per-file docs from bot totals.
 - [Picsart Seedance 2.5 Flash](picsart-seedance-flash.md) — edit adaptive/-1; 15s→14.72s/90, 10s→9.73s/63; quote first, persist job IDs, never replay.
+- [Genjutsu character swap](genjutsu-product.md) — separate menu; video then photo, automatic prompt, Rp6,000 confirmation, 1080p without provider-facing copy.
 - [Seedance reference numbering](seedance-reference-numbering.md) — Dreamina-style actual image binding, not cosmetic labels; provider semantics need separate output evidence.
 - [Posbot API contract](posbot-api.md) — use downloadable Markdown: transactions recover job_code; /status/<job_code> returns results without portal login. Never resubmit on parse failure.

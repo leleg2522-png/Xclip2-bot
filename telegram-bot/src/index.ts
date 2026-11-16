@@ -19,6 +19,7 @@ import FormData from 'form-data';
 import { Client, Pool } from 'pg';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import sharp from 'sharp';
+import { createGenjutsuFlow, type GenjutsuDraft, type GenjutsuFile } from './genjutsu';
 import express from 'express';
 import { promises as fsp, createReadStream } from 'fs';
 import os from 'os';
@@ -1783,6 +1784,7 @@ picsart.initPicsart(db, (msg: string) => {
 // ─── Session state ────────────────────────────────────────────────────────────
 
 type Mode =
+  | 'genjutsu'
   | BudgetVideoMode
   | P2Mode
   | PosbotSeedance25BotMode
@@ -1885,6 +1887,7 @@ type Mode =
   | 'topup_wait_custom';
 
 type GenerationDraftKind =
+  | 'genjutsu'
   | 'kling'
   | 'klingp2'
   | 'klingp3'
@@ -1921,6 +1924,7 @@ type GenerationDraftKind =
   | 'budget_video';
 
 interface Session {
+  genjutsuDraft?: GenjutsuDraft;
   seedanceAudioDraft?: SeedanceAudioDraft;
   mode: Mode;
   budgetVideo?: BudgetVideoDraft;
@@ -2176,6 +2180,7 @@ function setSession(userId: number, data: Partial<Session>) {
 }
 
 const GENERATION_DRAFT_MODES = new Set<Mode>([
+  'genjutsu',
   'budget_video_ratio', 'budget_video_image', 'budget_video_end', 'budget_video_prompt',
   's25p2_wait_ratio', 's25p2_wait_media', 's25p2_wait_prompt',
   'posbot_s25_wait_ratio', 'posbot_s25_wait_media', 'posbot_s25_wait_prompt',
@@ -2239,6 +2244,7 @@ function generationDraftKindForStart(data: string): GenerationDraftKind | undefi
     mode_flora_seedance_2_5_480: 'flora_seedance_2_5_480',
     mode_oneover_seedance25: 'oneover',
     mode_seedance25_flash: 'seedance25_flash',
+    mode_genjutsu: 'genjutsu',
     mode_seedance25_p2: 'seedance25_p2',
     mode_posbot_s25_i2v: 'posbot_seedance25',
     mode_posbot_s25_r2v: 'posbot_seedance25',
@@ -2265,6 +2271,7 @@ function generationDraftKindForStart(data: string): GenerationDraftKind | undefi
 }
 
 function generationDraftKindForContinuation(data: string): GenerationDraftKind | undefined {
+  if (data.startsWith('genjutsu_')) return 'genjutsu';
   if (data.startsWith('bvideo_')) return 'budget_video';
   if (data.startsWith('s25p2_')) return 'seedance25_p2';
   if (data.startsWith('pb25_')) return 'posbot_seedance25';
@@ -2785,6 +2792,51 @@ async function upscaleGeneratedVideo(
   });
 }
 
+async function downloadGenjutsuFile(ctx: any, file: GenjutsuFile): Promise<Buffer> {
+  const link = await retryTelegramFileRead<{ href: string }>(() => ctx.telegram.getFileLink(file.file_id));
+  const response = await telegramHttp.get(link.href, {
+    responseType: 'arraybuffer', timeout: 60_000,
+    maxContentLength: 19 * 1024 * 1024,
+  });
+  const buffer = Buffer.from(response.data);
+  if (!buffer.length || buffer.length > 19 * 1024 * 1024) throw Error('GENJUTSU_INVALID_MEDIA_SIZE');
+  return buffer;
+}
+
+const genjutsuFlow = createGenjutsuFlow({
+  get: userId => {
+    const session = getSession(userId);
+    return session.mode === 'genjutsu' ? session.genjutsuDraft : undefined;
+  },
+  set: (userId, draft) => setSession(userId, { mode: 'genjutsu', genjutsuDraft: draft }),
+  price: () => formatRupiah(MODEL_PRICES.picsart_seedance_25_flash),
+  inspectVideo: async (ctx, file) => inspectSeedance25Media(await downloadGenjutsuFile(ctx, file), 'video'),
+  inspectImage: async (ctx, file) => {
+    const buffer = await downloadGenjutsuFile(ctx, file);
+    const facts = await sharp(buffer).metadata();
+    if (!facts.width || !facts.height || !['jpeg', 'png', 'webp'].includes(facts.format ?? '')) {
+      throw Error('GENJUTSU_INVALID_IMAGE');
+    }
+  },
+  submit: async (ctx, draft, prompt) => {
+    const current = getSession(ctx.from.id);
+    if (current.mode !== 'genjutsu' || current.genjutsuDraft?.id !== draft.id
+      || current.genjutsuDraft.step !== 'submitting' || !draft.video || !draft.imageFileId) return;
+    // Reuse the proven edit, billing, finishing and refund pipeline, but not
+    // the ordinary Flash input wizard or customer-facing name.
+    setSession(ctx.from.id, {
+      mode: 'seedance25_flash_wait_prompt',
+      genjutsuDraft: undefined,
+      seedance25FlashDraftId: draft.id,
+      seedance25FlashImageFileIds: [draft.imageFileId],
+      seedance25FlashVideos: [draft.video],
+      seedance25FlashAudios: [],
+      seedance25FlashPendingUploads: 0,
+    });
+    return submitSeedance25FlashPrompt(ctx, prompt, 'Genjutsu · Character Swap');
+  },
+});
+
 // ─── Keyboards ────────────────────────────────────────────────────────────────
 
 function videoModelRows() {
@@ -2799,6 +2851,7 @@ function videoModelRows() {
     [Markup.button.callback('🌊 Seedance 2.0 1080p', 'mode_pi2v_seedance_2')],
     [Markup.button.callback('🌊 Seedance 2.5 • Teks / Gambar / Video / Audio', 'mode_oneover_seedance25')],
     [Markup.button.callback(`⚡ Seedance 2.5 Flash · Teks + referensi · 30 detik · 1080p · ${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}`, 'mode_seedance25_flash')],
+    [Markup.button.callback(`Genjutsu · Character Swap · 1080p · ${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}`, 'mode_genjutsu')],
     [Markup.button.callback(`Seedance 2.5 P2 · Gambar / Video / Audio · 30s · 1080p · ${formatRupiah(MODEL_PRICES.seedance25_p2)}`, 'mode_seedance25_p2')],
     [Markup.button.callback(`Seedance 2.5 P3 · I2V · 30 detik · ${formatRupiah(MODEL_PRICES.posbot_seedance25)}`, 'mode_posbot_s25_i2v')],
     [Markup.button.callback(`Seedance 2.5 P3 · R2V · 30 detik · ${formatRupiah(MODEL_PRICES.posbot_seedance25)}`, 'mode_posbot_s25_r2v')],
@@ -3414,6 +3467,7 @@ function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false 
     `• Seedance 2.0 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
     `• Seedance 2.5 Teks / Gambar / Video / Audio (30s, 1080p) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25)}\n` +
     `• Seedance 2.5 Flash Teks / Referensi (30s, 1080p) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}\n` +
+    `• Genjutsu Character Swap (video 4–30s + foto, 1080p) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}\n` +
     `• Seedance 2.5 P2 Gambar / Video referensi (30s, 1080p melalui upscale) — ${formatRupiah(MODEL_PRICES.seedance25_p2)}\n` +
     `• Seedance 2.5 P3 I2V dari foto (30 detik) — ${formatRupiah(MODEL_PRICES.posbot_seedance25)}\n` +
     `• Seedance 2.5 P3 R2V dari video referensi (30 detik) — ${formatRupiah(MODEL_PRICES.posbot_seedance25)}\n` +
@@ -4765,6 +4819,10 @@ bot.on('callback_query', async (ctx) => {
       await ctx.reply('⚠️ Tombol ini berasal dari proses yang sudah tidak aktif. Gunakan menu atau draft yang sedang berjalan.').catch(() => {});
       return;
     }
+  }
+
+  if (data === 'mode_genjutsu' || data.startsWith('genjutsu_')) {
+    return genjutsuFlow.callback(ctx, data);
   }
 
   if (data.startsWith('mode_bvideo_') || data.startsWith('bvideo_')) {
@@ -6989,7 +7047,7 @@ function seedance25RatioKeyboard() {
   ]));
 }
 
-async function submitSeedance25FlashPrompt(ctx: any, rawPrompt: string) {
+async function submitSeedance25FlashPrompt(ctx: any, rawPrompt: string, displayLabel = 'Seedance 2.5 Flash') {
   const userId = ctx.from.id;
   let prompt: string;
   try {
@@ -7098,10 +7156,10 @@ async function submitSeedance25FlashPrompt(ctx: any, rawPrompt: string) {
   if (getSession(userId).mode !== 'idle' && getSession(userId).seedance25FlashDraftId !== draftId) return;
   const statusMsg = await retryTelegramRateLimit<{ message_id: number }>(() => ctx.reply(
     references.taskType === 'edit'
-      ? '⏳ Seedance 2.5 Flash sedang menyiapkan edit video 1080p. Hasil akan dikirim otomatis...'
-      : '⏳ Seedance 2.5 Flash sedang menyiapkan video 1080p. Hasil akan dikirim otomatis...'
+      ? `⏳ ${displayLabel} sedang menyiapkan edit video 1080p. Hasil akan dikirim otomatis...`
+      : `⏳ ${displayLabel} sedang menyiapkan video 1080p. Hasil akan dikirim otomatis...`
   ));
-  runPicsartSeedance25Flash(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, references)
+  runPicsartSeedance25Flash(ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, references, displayLabel)
     .catch((error: any) => console.error(`[${userId}] Seedance 2.5 Flash error:`, describeError(error)));
 }
 
@@ -8177,6 +8235,7 @@ bot.on('photo', async (ctx) => {
   if (!await requireLogin(ctx)) return;
   const draft = getSession(ctx.from.id);
   const photo = ctx.message.photo[ctx.message.photo.length - 1];
+  if (draft.mode === 'genjutsu') return genjutsuFlow.image(ctx, photo);
   if (draft.mode === 'seedance25_flash_wait_media') {
     return handleSeedance25FlashImage(ctx, photo.file_id, photo.file_size);
   }
@@ -8213,6 +8272,7 @@ bot.on('video', async (ctx) => {
   const userId = ctx.from.id;
   const session = getSession(userId);
   const vid = ctx.message.video;
+  if (session.mode === 'genjutsu') return genjutsuFlow.video(ctx, vid);
   const MAX_VIDEO_BYTES = 19 * 1024 * 1024; // 19MB — Telegram bot API limit is 20MB
   if (session.mode === 'seedance25_flash_wait_media') return handleSeedance25FlashMedia(ctx, 'video', vid);
   if (session.mode === 'picsart_i2v_wait_image' && session.picsartI2vModel === 'wan_v3') {
@@ -8577,6 +8637,7 @@ async function handleAudioTranscriptionFile(ctx: any, fileId: string, mimeType?:
 bot.on('audio', async (ctx) => {
   if (!await requireLogin(ctx)) return;
   const session = getSession(ctx.from.id);
+  if (session.mode === 'genjutsu') return genjutsuFlow.message(ctx);
   if (session.mode === 'seedance25_flash_wait_media') {
     return handleSeedance25FlashMedia(ctx, 'audio', ctx.message.audio);
   }
@@ -8591,6 +8652,7 @@ bot.on('audio', async (ctx) => {
 bot.on('voice', async (ctx) => {
   if (!await requireLogin(ctx)) return;
   const session = getSession(ctx.from.id);
+  if (session.mode === 'genjutsu') return genjutsuFlow.message(ctx);
   if (session.mode === 'seedance25_flash_wait_media') {
     return handleSeedance25FlashMedia(ctx, 'audio', {
       ...ctx.message.voice,
@@ -8612,6 +8674,7 @@ bot.on('voice', async (ctx) => {
 bot.on('text', async (ctx) => {
   const userId = ctx.from.id;
   const session = getSession(userId);
+  if (session.mode === 'genjutsu') return genjutsuFlow.message(ctx);
 
   if (session.mode === 'seedance25_flash_wait_media') {
     return ctx.reply('Kirim referensi gambar/video/audio atau tekan tombol lanjut ke prompt. Tanpa referensi, Flash membuat text-to-video.');
@@ -9790,6 +9853,15 @@ bot.on('document', async (ctx) => {
   const userId = ctx.from.id;
   const session = getSession(userId);
   const doc = ctx.message.document;
+  if (session.mode === 'genjutsu') {
+    if (doc.mime_type?.startsWith('video/') || /\.(mp4|mov|webm)$/i.test(doc.file_name ?? '')) {
+      return genjutsuFlow.video(ctx, doc);
+    }
+    if (doc.mime_type?.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(doc.file_name ?? '')) {
+      return genjutsuFlow.image(ctx, doc);
+    }
+    return genjutsuFlow.message(ctx);
+  }
   if (session.mode === 'seedance25_flash_wait_media') {
     if (doc.mime_type?.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(doc.file_name ?? '')) {
       return handleSeedance25FlashImage(ctx, doc.file_id, doc.file_size);
@@ -11110,8 +11182,9 @@ async function runPicsartSeedance25Flash(
   prompt: string,
   references: Required<Pick<Parameters<typeof picsart.generateSeedance25Flash>[0], 'images' | 'videos' | 'audios'>>
     & { taskType: picsart.Seedance25FlashTaskType },
+  displayLabel = 'Seedance 2.5 Flash',
 ) {
-  const label = 'Seedance 2.5 Flash';
+  const label = displayLabel;
   const price = MODEL_PRICES.picsart_seedance_25_flash;
   let stage = 'charge';
   const charge = await beginCharge(dbUserId, price, MAX_PARALLEL_GENERATIONS_PER_USER);
