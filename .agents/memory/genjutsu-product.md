@@ -26,3 +26,9 @@ Completing generation, audio restoration, and finishing does not establish succe
 **Why:** Clothing/style resemblance and technical delivery were incorrectly summarized as success without establishing facial identity fidelity.
 
 **How to apply:** Treat the image as the sole identity source and the video as performance guidance, explicitly prohibit retaining/blending the source face, and preserve the exact image/video roles. Describe prompt and payload checks as local verification only, never as proof of improved likeness. New paid comparisons require fresh permission.
+
+An authorized repeat with explicit identity-first instructions still did not produce adequate reference likeness on visual review, despite successful video/audio delivery.
+
+**Why:** Stronger natural-language instructions alone did not resolve the observed character mismatch.
+
+**How to apply:** Do not present further prompt-only edits as a confirmed identity lock. Investigate model-supported identity conditioning or a dedicated character-swap method before recommending more paid attempts; changing providers or adding a new processing stage requires discussing that change with the user.

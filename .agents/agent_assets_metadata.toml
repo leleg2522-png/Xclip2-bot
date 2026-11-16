@@ -1454,3 +1454,31 @@ mtime_ms = 1794856275214
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/2b622b10-9bdd-4e25-81cd-5b8daaca4e97/9832e65f-9cc7-4c20-ba18-827989158b54"
 storage_version_token = "1794856327984250"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "uodDV4sNl1uZYMOTBhdJb"
+uri = "file://generated-artifacts/genjutsu-identity-check-live-once/reference-comparison.jpg"
+type = "image"
+title = "Perbandingan referensi dan hasil tes terbaru"
+description = "Paling kiri: foto karakter referensi. Tiga gambar berikutnya: detail wajah hasil video pada beberapa bagian. Pakaian mengikuti referensi, tetapi kemiripan wajah belum cukup untuk dinyatakan sesuai."
+logical_id = "95c402a7-a19c-4f79-b149-f27be3e6613d"
+content_hash = "sha256:5bd891a11d4513e7dc4084b438b3a3ec660dcff640fc40d4b00fbd9902b0b01e"
+size = 35104
+mtime_ms = 1794861045898
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/95c402a7-a19c-4f79-b149-f27be3e6613d/977829d3-59f9-491a-a271-f24d51f0ce31"
+storage_version_token = "1794861078575968"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "zvgptLEdGsP3dbe7WgwlP"
+uri = "file://generated-artifacts/genjutsu-identity-check-live-once/genjutsu-1080p.mp4"
+type = "video"
+title = "Hasil tes ulang Genjutsu — kemiripan belum sesuai"
+description = "Video akhir 1080×1922, durasi 10,04 detik, dengan audio asli yang terverifikasi identik. Proses selesai, tetapi kemiripan karakter belum memenuhi target."
+logical_id = "74198d36-1452-42dd-a48e-51a0fe900c0e"
+content_hash = "sha256:fcfc1a09ff9d3263a8ba2b707319bcaf961374cbd1eede5e3d60eb782e33dee1"
+size = 8291798
+mtime_ms = 1794861226232
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/74198d36-1452-42dd-a48e-51a0fe900c0e/b70caa2b-0e90-484b-84ea-f86e5ab2dc28"
+storage_version_token = "1794861264958198"
+content_type = "video/mp4"
