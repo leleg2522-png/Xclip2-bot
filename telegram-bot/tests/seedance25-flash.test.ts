@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { GENJUTSU_PROMPT } from '../src/genjutsu';
 
 const source = readFileSync(new URL('../src/picsart.ts', import.meta.url), 'utf8');
 const botSource = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
@@ -611,7 +612,33 @@ async function checkEditRejectedBeforePromptAndCharge() {
   assert.doesNotMatch(screenTexts.join('\n'), /upscal|renderful|480p|native/i);
 }
 
+async function checkGenjutsuIdentityPayload() {
+  const h = harness();
+  await h.generate(GENJUTSU_PROMPT, {
+    taskType: 'edit', generateAudio: false,
+    images: [{ buffer: Buffer.from('identity-photo'), name: 'identity.jpg', mime: 'image/jpeg' }],
+    videos: [{ buffer: Buffer.from('performance'), name: 'performance.mp4', mime: 'video/mp4', duration: 10 }],
+  });
+  assert.equal(h.calls.posts.length, 2, 'One quote and one mocked submit, without retries');
+  for (const call of h.calls.posts) {
+    const params = call.body.params.params;
+    assert.equal(params.prompt, GENJUTSU_PROMPT, 'The identity instructions reach both quote and submit unchanged');
+    assert.deepEqual(Array.from(params.imageUrls), ['https://uploads.test/identity.jpg']);
+    assert.deepEqual(Array.from(params.videoUrls), ['https://uploads.test/performance.mp4']);
+    assert.equal(params.omniReferenceTaskType, 'edit');
+    assert.equal(params.generateAudio, false);
+    assert.equal(params.duration, -1);
+    assert.equal(params.aspectRatio, 'adaptive');
+    assert.equal(params.audioUrls, undefined);
+    assert.equal(params.faceStrength, undefined, 'Do not invent unsupported identity-control parameters');
+  }
+  const metadata = JSON.parse(h.calls.posts[1].body.params.options.drive.attributes.aiSDKPayload);
+  assert.deepEqual(metadata.imageUrls, ['https://uploads.test/identity.jpg']);
+  assert.deepEqual(metadata.videoUrls, ['https://uploads.test/performance.mp4']);
+}
+
 async function main() {
+  await checkGenjutsuIdentityPayload();
   await checkSuccessfulContract();
   await checkNoSubmitWhenUnaffordable();
   await checkDocumentedReferenceSubtasks();

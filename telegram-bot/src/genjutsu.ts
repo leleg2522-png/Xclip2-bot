@@ -2,8 +2,16 @@ import { randomUUID } from 'node:crypto';
 
 export const GENJUTSU_PROMPT =
   'Replace only the main foreground person in the source video with the character shown in the image reference. ' +
-  'Use the reference character as the identity and appearance guide: preserve their face, hairstyle, clothing, ' +
-  'and distinctive features consistently across every frame and head turn. ' +
+  'REFERENCE ROLES: The single attached image is the ONLY identity and appearance reference for the replacement character. ' +
+  'The attached video supplies performance timing, body motion, camera, and scene, NOT the replacement face. ' +
+  'IDENTITY FIRST: Replace the original performer’s facial identity, not just their clothes, hair, or visual style. ' +
+  'Match the image character’s facial proportions, face shape, eyes and eyelids, eyebrows, nose, lips, jawline, ' +
+  'skin tone, and distinctive features as a coherent single identity. ' +
+  'Do not retain the original performer’s face, blend the two identities, beautify into a generic face, or invent a lookalike. ' +
+  'Keep the image character’s hairstyle, hairline, clothing, and visible accessories. ' +
+  'TEMPORAL CONSISTENCY: Use that same reference identity from the first frame through the final frame, ' +
+  'including profile views, head turns, changing expressions, and after hands or hair uncover the face. ' +
+  'Use the source expression and gaze as performance guidance without copying the source facial identity. ' +
   'Follow the original performer’s motion, gestures, body poses, choreography, and timing. ' +
   'Preserve the source camera framing and movement, background, lighting, scene composition, and other people. ' +
   'Generate visuals only; do not generate speech, music, sound effects, or a new soundtrack. ' +
@@ -75,7 +83,9 @@ export function createGenjutsuFlow(deps: Dependencies) {
       });
       return ctx.reply(
         `Video sumber diterima (${duration.toFixed(1)} detik).\n\n` +
-        'Sekarang kirim 1 foto karakter pengganti. Gunakan foto yang jelas; maksimal 19MB.',
+        'Sekarang kirim 1 foto karakter pengganti: satu wajah yang tajam, cukup besar, ' +
+        'menghadap depan atau sedikit menyamping, tanpa penutup wajah atau filter berat. Maksimal 19MB.\n' +
+        'Boleh kirim sebagai file gambar agar kualitas aslinya tetap terjaga.',
         keyboard(),
       );
     } catch {
@@ -105,6 +115,8 @@ export function createGenjutsuFlow(deps: Dependencies) {
         `Video sumber: ${ready.video!.duration.toFixed(1)} detik\nFoto karakter: 1\n` +
         'Durasi, rasio, dan audio asli mengikuti video sumber. Video tanpa audio tetap tanpa audio.\n' +
         'Prompt penggantian karakter dibuat otomatis.\n\n' +
+        'Foto menjadi acuan wajah dan penampilan; video menjadi acuan gerakan dan adegan. ' +
+        'Kemiripan wajah tidak dijamin dan perlu diperiksa pada hasil.\n\n' +
         `Harga: ${deps.price()} per video. Jika proses gagal, saldo dikembalikan penuh.\n` +
         'Gunakan materi yang diizinkan dan foto orang dengan persetujuannya.\n\nTekan Generate untuk mulai.',
         keyboard(ready, deps.price()),

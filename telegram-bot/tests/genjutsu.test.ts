@@ -82,6 +82,15 @@ async function checkWizard() {
   assert.equal(h.submitted[0].value.imageFileId, 'character');
   assert.equal(h.submitted[0].prompt, GENJUTSU_PROMPT);
   assert.match(GENJUTSU_PROMPT, /main foreground person/);
+  assert.match(GENJUTSU_PROMPT, /ONLY identity and appearance reference/);
+  assert.match(GENJUTSU_PROMPT, /NOT the replacement face/);
+  assert.match(GENJUTSU_PROMPT, /not just their clothes/);
+  assert.match(GENJUTSU_PROMPT, /Do not retain the original performer/);
+  assert.match(GENJUTSU_PROMPT, /first frame through the final frame/);
+  assert.match(GENJUTSU_PROMPT, /after hands or hair uncover the face/);
+  assert.match(GENJUTSU_PROMPT, /Generate visuals only/);
+  assert.match(h.messages.join('\n'), /Kemiripan wajah tidak dijamin/);
+  assert.match(h.messages.join('\n'), /Boleh kirim sebagai file gambar/);
   assert.match(h.messages.join('\n'), /Rp6.000/);
   assert.doesNotMatch(h.messages.join('\n'), /picsart|seedance|renderful|upscal|480p/i);
 }
@@ -212,11 +221,14 @@ async function checkRealGenerationAdapter() {
         sendMessage: async (_chat: number, text: string) => { messages.push(text); },
         deleteMessage: async () => {},
       } },
-      telegramHttp: { get: async () => ({ data: Buffer.from('valid-media') }) },
+      telegramHttp: { get: async (url: string) => ({
+        data: Buffer.from(url === 'https://telegram.test/image' ? 'identity-image'
+          : url === 'https://telegram.test/source' ? 'original-performance-video' : 'finished-visual-video'),
+      }) },
       restoreGenjutsuAudio: async (original: Buffer, generated: Buffer) => {
         audioRestores++;
         assert(original.equals(providerInputs[0].videos[0].buffer), 'Use the actual source video, not generated audio');
-        assert.equal(generated.toString(), 'valid-media');
+        assert.equal(generated.toString(), 'finished-visual-video');
         if (scenario === 'audio-fail') throw Error('GENJUTSU_AUDIO_FINISH_FAILED');
         return { buffer: Buffer.from('restored-original-audio'), hasAudio: scenario !== 'silent' };
       },
@@ -263,6 +275,8 @@ async function checkRealGenerationAdapter() {
     assert.equal(providerInputs[0].generateAudio, false, 'Genjutsu must disable model audio explicitly');
     assert.equal(providerInputs[0].images.length, 1);
     assert.equal(providerInputs[0].videos.length, 1);
+    assert.equal(providerInputs[0].images[0].buffer.toString(), 'identity-image');
+    assert.equal(providerInputs[0].videos[0].buffer.toString(), 'original-performance-video');
     assert.equal(providerInputs[0].audios.length, 0);
     assert.equal(providerInputs[0].prompt, GENJUTSU_PROMPT);
     assert.equal(finishing, 1);
@@ -283,11 +297,42 @@ async function checkRealGenerationAdapter() {
   }
 }
 
+async function checkIdentityReferenceGuards() {
+  for (const refs of [
+    { images: [], videos: ['source'], audios: [] },
+    { images: ['identity'], videos: [], audios: [] },
+    { images: ['identity', 'stale-image'], videos: ['source'], audios: [] },
+    { images: ['identity'], videos: ['source', 'stale-video'], audios: [] },
+    { images: ['identity'], videos: ['source'], audios: ['stale-audio'] },
+  ]) {
+    const messages: string[] = [];
+    const session = {
+      mode: 'seedance25_flash_wait_prompt', dbUserId: 7, seedance25FlashDraftId: 'identity-draft',
+      seedance25FlashImageFileIds: refs.images,
+      seedance25FlashVideos: refs.videos.map(fileId => ({ fileId, duration: 10 })),
+      seedance25FlashAudios: refs.audios.map(fileId => ({ fileId, duration: 10 })),
+    };
+    const context = vm.createContext({
+      validateSeedance25Prompt: (prompt: string) => prompt,
+      getSession: () => session, getCooldownRemainingMs: () => 0,
+      setSession: () => { throw Error('Invalid Genjutsu must not consume the draft'); },
+      runPicsartSeedance25Flash: () => { throw Error('Invalid identity references must never charge or submit'); },
+    });
+    vm.runInContext(compile(functionCode('submitSeedance25FlashPrompt')), context);
+    await context.submitSeedance25FlashPrompt({
+      from: { id: 1 }, reply: async (text: string) => { messages.push(text); },
+    }, GENJUTSU_PROMPT, 'Genjutsu · Character Swap', true);
+    assert.equal(messages.length, 1);
+    assert.match(messages[0], /Saldo belum dipotong/);
+  }
+}
+
 async function main() {
   await checkWizard();
   await checkCancellation();
   await checkTelegramRouting();
   await checkRealGenerationAdapter();
+  await checkIdentityReferenceGuards();
   console.log('Genjutsu passed: mandatory video + photo, automatic prompt, explicit confirmation, cancellation, stale/double-click guards, actual Telegram media/document routing.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

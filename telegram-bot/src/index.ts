@@ -7078,6 +7078,11 @@ async function submitSeedance25FlashPrompt(
   const imageFileIds = [...(activeDraft.seedance25FlashImageFileIds ?? [])];
   const videoFiles = [...(activeDraft.seedance25FlashVideos ?? [])];
   const audioFiles = [...(activeDraft.seedance25FlashAudios ?? [])];
+  // Genjutsu has one unambiguous identity image and one performance source.
+  // Never silently fall back to ordinary Flash or mix in a stale draft's media.
+  if (preserveSourceAudio && (imageFileIds.length !== 1 || videoFiles.length !== 1 || audioFiles.length !== 0)) {
+    return ctx.reply('Referensi Genjutsu tidak lengkap atau tercampur. Mulai lagi dari menu Genjutsu dengan 1 video dan 1 foto. Saldo belum dipotong.');
+  }
   if (imageFileIds.length > 0 && videoFiles.length > 0 && !videoFiles.some(video =>
     Number.isFinite(video.duration) && video.duration >= 4 && video.duration <= 30)) {
     setSession(userId, { mode: 'seedance25_flash_wait_media' });

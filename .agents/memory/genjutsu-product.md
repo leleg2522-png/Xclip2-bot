@@ -20,3 +20,9 @@ The audio-off edit contract is live-verified: `generateAudio:false` produced sil
 **Why:** Native portrait dimensions can be 480×854, so proportional 1080-short-edge delivery need not have a 1920 long edge. Requiring exactly 1080×1920 would reject a valid finished result.
 
 **How to apply:** Validate 1080 on the short edge and preserve the actual aspect ratio; do not promise exact 1920 height or assume that disabling audio prevents every possible moderation failure.
+
+Completing generation, audio restoration, and finishing does not establish successful character likeness. The user rejected the completed sample because the character did not resemble the reference sufficiently.
+
+**Why:** Clothing/style resemblance and technical delivery were incorrectly summarized as success without establishing facial identity fidelity.
+
+**How to apply:** Treat the image as the sole identity source and the video as performance guidance, explicitly prohibit retaining/blending the source face, and preserve the exact image/video roles. Describe prompt and payload checks as local verification only, never as proof of improved likeness. New paid comparisons require fresh permission.
