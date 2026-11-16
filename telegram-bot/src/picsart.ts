@@ -2187,6 +2187,7 @@ export type Seedance25FlashInput = {
   maxProviderCredits?: number;
   onStatus?: (stage: 'upload' | 'quote' | 'submit' | 'poll') => void;
   onPoll?: (elapsedSec: number) => void;
+  onSubmitted?: (submission: { credentialId: number; taskId: string }) => void | Promise<void>;
 };
 export type Seedance25FlashQuote = {
   quoteOnly: true;
@@ -2384,6 +2385,14 @@ export async function generateSeedance25Flash(
       throw new Error(`PICSART_SUBMIT_FAILED status ${submitted.status}: ${reason}`.slice(0, 220));
     }
 
+    try {
+      await input.onSubmitted?.({ credentialId: credId, taskId: id });
+    } catch (error: any) {
+      const detail = String(error?.message ?? 'state persistence failed')
+        .replace(/rt:[^\s]+/g, 'rt:[redacted]')
+        .slice(0, 120);
+      console.error(`[picsart:seedance25-flash] submission state save failed: ${detail}`);
+    }
     input.onStatus?.('poll');
     try {
       return await pollSeedance25FlashResult(credId, id, {

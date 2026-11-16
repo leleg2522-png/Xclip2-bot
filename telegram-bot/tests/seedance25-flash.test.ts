@@ -40,6 +40,7 @@ function harness(options: {
     uploads: [] as Array<{ name: string; mime: string; bytes: number; gateway: boolean }>,
     accounts: [] as number[],
     accountAssignment: [] as boolean[],
+    events: [] as string[],
     ownerNotices: 0,
   };
   class TestPollDiag {
@@ -99,10 +100,12 @@ function harness(options: {
         if (url.endsWith('/options')) {
           return { status: 201, data: { status: 'success', response: { credits: 90, price: 3, unit: 'second', usageAmount: 30, chargeCredits: false } } };
         }
+        calls.events.push('submit');
         return options.submitResponse ?? { status: 201, data: { response: { id: 'accepted-task' } } };
       },
       get: async (url: string) => {
         calls.gets.push(url);
+        calls.events.push('poll');
         return { status: 200, data: { response: { status: 'COMPLETED', result: { url: 'https://result.test/video.mp4' }, usage: { credits: 90 } } } };
       },
     },
@@ -192,6 +195,32 @@ async function checkApprovedCreditLimit() {
   assert.equal(result.url, 'https://result.test/video.mp4');
   assert.equal(withinLimit.calls.posts.filter(call => call.url.endsWith('/submit')).length, 1);
   assert.deepEqual(withinLimit.calls.accountAssignment, [false]);
+}
+
+async function checkSubmittedStateIsPersistedBeforePolling() {
+  const h = harness();
+  let savedSubmission: { credentialId: number; taskId: string } | undefined;
+  await h.generate('Replace the performer with the image character', {
+    onSubmitted: async (submission: { credentialId: number; taskId: string }) => {
+      await Promise.resolve();
+      savedSubmission = submission;
+      h.calls.events.push('state-saved');
+    },
+  });
+  assert.equal(savedSubmission?.credentialId, 1);
+  assert.equal(savedSubmission?.taskId, 'accepted-task');
+  assert.deepEqual(h.calls.events, ['submit', 'state-saved', 'poll']);
+  assert.equal(h.calls.posts.filter(call => call.url.endsWith('/submit')).length, 1);
+}
+
+async function checkStateSaveFailureDoesNotReplaySubmit() {
+  const h = harness();
+  await h.generate('Replace the performer with the image character', {
+    onSubmitted: () => { throw new Error('simulated disk error'); },
+  });
+  assert.equal(h.calls.posts.filter(call => call.url.endsWith('/submit')).length, 1);
+  assert.equal(h.calls.gets.length, 1, 'Continue polling the accepted job when local state saving fails');
+  assert.deepEqual(h.calls.accounts, [1], 'Never switch accounts or resubmit after acceptance');
 }
 
 async function checkMixedReferencePayload() {
@@ -419,6 +448,8 @@ async function main() {
   await checkNoSubmitWhenUnaffordable();
   await checkEditQuoteOnly();
   await checkApprovedCreditLimit();
+  await checkSubmittedStateIsPersistedBeforePolling();
+  await checkStateSaveFailureDoesNotReplaySubmit();
   await checkMixedReferencePayload();
   await checkAmbiguousSubmitNeverReplays();
   await checkPostSubmitAuthNeverReplays();
