@@ -7,8 +7,10 @@ The official Picsart Seedance 2.5 Flash API documentation supports output durati
 
 The user chose 30-second Flash output at Rp6,000 for text-only and all reference modes. A live Playground edit with a 15-second source and an image reference accepted `omniReferenceTaskType=edit`, `duration=-1`, and `aspectRatio=adaptive`; it returned a 14.72-second 480×854 H.264 video with AAC audio. The quote and completed job both reported 90 provider credits at 3 credits per unit with `usageAmount=30`, so provider billing units did not match the roughly 15-second rendered duration.
 
+A second live edit with a 10.042-second solo clip and the same image reference returned a 9.728-second 480×854 H.264/AAC video. Its quote and completed job reported 63 provider credits at 3 credits per unit with `usageAmount=21`. The selected source shows mostly hand gestures rather than a full-body dance.
+
 The captured AI Playground model-v1 HAR confirms only the original 5-second, 15-credit text-to-video contract and one `imageUrls` reference; it does not contain Flash video/audio requests. The live test confirms image+video edit mode, but not standalone video-only or audio-only references or regular 30-second text-to-video.
 
-**Why:** The public API and Playground gateway are distinct request surfaces, and the edit quote's 30 units were not the output duration. Neither provider billing nor support for other modalities should be inferred from docs or the old 5-second HAR.
+**Why:** The public API and Playground gateway are distinct request surfaces, and edit quotes reported 30 units for a 14.72-second result and 21 units for a 9.728-second result. Neither provider billing nor support for other modalities should be inferred from docs or the old 5-second HAR.
 
 **How to apply:** Keep the model-v1 options quote before any submit and use its actual credit amount for account preflight and approval caps; do not estimate edit cost from output duration. Keep customer price at Rp6,000 unless the user changes it. Never claim video/audio Playground support is live-verified unless a real quote or authorized completed job confirms it. Preserve the bot's stricter aggregate reference-duration limits separately from the documented per-file ceiling.

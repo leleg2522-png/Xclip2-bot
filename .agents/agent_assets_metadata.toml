@@ -1426,3 +1426,17 @@ mtime_ms = 1793920504067
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/3f97d144-dbb1-448c-b9f3-29c0890a6754/673b814d-b00d-4e64-9b6d-5ea2b34bd7b1"
 storage_version_token = "1794793066411183"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "e1WC-yW8GGWyiKSrou8mY"
+uri = "file://generated-artifacts/seedance25-flash-edit-kling4-woman-dance-live-native/output.mp4"
+type = "video"
+title = "Seedance Flash — character swap from solo clip"
+description = "10.042-second solo source; 9.728-second 480×854 result with AAC audio; 63 provider credits used."
+logical_id = "14874ca4-64df-45dd-bd02-f700f71fe768"
+content_hash = "sha256:2f1c059ab9bb6c99c39104d5282d010c2ce09c9baf6beada3cc1a8e52f8e0259"
+size = 4369976
+mtime_ms = 1794793380756
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/14874ca4-64df-45dd-bd02-f700f71fe768/2c7b31ee-4858-42b4-873a-bf4a4d8222e4"
+storage_version_token = "1794793504009083"
+content_type = "video/mp4"
