@@ -15,7 +15,9 @@ const runName = process.argv.find(arg => arg.startsWith('--run-name='))?.slice('
 if (!/^genjutsu-[a-z0-9-]+$/.test(runName)) throw Error('INVALID_RUN_NAME');
 const root = path.resolve(__dirname, '../../generated-artifacts', runName);
 const statePath = path.join(root, 'state.json');
-const sourcePath = path.resolve(__dirname, '../../generated-artifacts/kling4-woman-dance-live/native.mp4');
+const sourceFile = process.argv.find(arg => arg.startsWith('--source-file='))?.slice('--source-file='.length)
+  ?? 'generated-artifacts/kling4-woman-dance-live/native.mp4';
+const sourcePath = path.resolve(__dirname, '../..', sourceFile);
 const imagePath = path.resolve(__dirname, '../../attached_assets/generated_images/young-ceo-woman-reference.jpg');
 const db = new Pool({ connectionString: process.env.RAILWAY_DATABASE_URL,
   ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 15000 });

@@ -1482,3 +1482,45 @@ mtime_ms = 1794861226232
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/74198d36-1452-42dd-a48e-51a0fe900c0e/b70caa2b-0e90-484b-84ea-f86e5ab2dc28"
 storage_version_token = "1794861264958198"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "IitTkkzjnyaulugFiyetg"
+uri = "file://generated-artifacts/genjutsu-indian-film-live-once/source-solo.mp4"
+type = "video"
+title = "Video sumber film India — Kalpana (1948)"
+description = "Cuplikan sekitar 5,5 detik dengan satu pemeran wanita. Ini video yang akan diganti karakternya, bukan foto referensinya. Sumber arsip: https://archive.org/details/kalpana-1948-uday-shankar"
+logical_id = "c381a3cb-81a0-490d-a192-9e0e786e7103"
+content_hash = "sha256:ef8eeb1f7237c3c3631c5ba096512a603190bd8d4cad2cfc624cc7af55bf5323"
+size = 1607760
+mtime_ms = 1794861828940
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/c381a3cb-81a0-490d-a192-9e0e786e7103/460af86b-942f-4327-b810-1cd137c96305"
+storage_version_token = "1794861887634558"
+content_type = "video/mp4"
+
+[[outputs]]
+id = "bhFI-vCMlJk7GtAZnykwH"
+uri = "file://generated-artifacts/genjutsu-indian-film-live-once/reference-comparison.jpg"
+type = "image"
+title = "Perbandingan karakter pada adegan film India"
+description = "Paling kiri foto karakter wanita berblazer putih yang sama; tiga gambar berikutnya adalah hasil adegan India. Blazer dan rambut sudah berubah mengikuti referensi, sementara tampilan hitam-putih film dipertahankan. Ini bukan jaminan wajah identik."
+logical_id = "9864c79f-e4fd-436b-bea9-0df7d7a160ca"
+content_hash = "sha256:48479574761d2d03af59817261de6f0ddf86844fbbac3a80bfd1aa47dc1ee615"
+size = 32727
+mtime_ms = 1794862026080
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/9864c79f-e4fd-436b-bea9-0df7d7a160ca/f4eb8467-c6dc-4eff-9354-a0ef6fecda71"
+storage_version_token = "1794862054237197"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "Baw7Nu4BnGlpWVENbxwd4"
+uri = "file://generated-artifacts/genjutsu-indian-film-live-once/genjutsu-1080p.mp4"
+type = "video"
+title = "Hasil Genjutsu — cuplikan film India"
+description = "Hasil edit AI dari Kalpana (1948), memakai foto wanita berblazer putih sebagai karakter pengganti. Resolusi 1478×1080, durasi sekitar 5,54 detik. Audio asli cuplikan terverifikasi identik; tampilan hitam-putih dipertahankan. Kemiripan wajah tidak dinyatakan identik."
+logical_id = "16d4a269-979e-4fb0-b354-2d5728b70be7"
+content_hash = "sha256:66bce909a164f7022e3f537db71d5447d22c16df8d31827808dc22807550debc"
+size = 3488692
+mtime_ms = 1794862113720
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/16d4a269-979e-4fb0-b354-2d5728b70be7/db6bb0af-fd11-4d96-b7dc-c73793eca432"
+storage_version_token = "1794862149670358"
+content_type = "video/mp4"
