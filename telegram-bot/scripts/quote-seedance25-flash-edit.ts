@@ -31,16 +31,14 @@ async function main() {
     ]);
     const videoDuration = await inspectSeedance25Media(videoBuffer, 'video');
     let lastPollLog = 0;
-    const result = await picsart.generateSeedance25Flash({
+    const sharedInput = {
       userId: 0,
       prompt: 'Replace the young man in the navy-blue suit with the woman shown in the image reference. Keep the older woman and the younger woman unchanged. Preserve the source actions, expressions, camera movement, framing, background, lighting, pacing, and original audio. Keep the replacement character recognizable and consistent in every frame; do not add characters or change the story.',
       images: [{ buffer: imageBuffer, name: 'character-reference.jpg', mime: 'image/jpeg' }],
       videos: [{ buffer: videoBuffer, name: 'source-video.mp4', mime: 'video/mp4', duration: videoDuration }],
       taskType: 'edit',
       generateAudio: true,
-      quoteOnly: !submit,
       persistAccount: false,
-      ...(submit ? { maxProviderCredits } : {}),
       onStatus: stage => console.log(`STAGE=${stage}`),
       onPoll: elapsedSec => {
         if (elapsedSec - lastPollLog >= 30) {
@@ -48,7 +46,17 @@ async function main() {
           console.log(`POLL_ELAPSED_SECONDS=${elapsedSec}`);
         }
       },
-    });
+    } as const;
+    const result = submit
+      ? await picsart.generateSeedance25Flash({
+        ...sharedInput,
+        quoteOnly: false,
+        maxProviderCredits,
+      })
+      : await picsart.generateSeedance25Flash({
+        ...sharedInput,
+        quoteOnly: true,
+      });
     if ('quoteOnly' in result && result.quoteOnly) {
       console.log(JSON.stringify({
         taskType: result.taskType,

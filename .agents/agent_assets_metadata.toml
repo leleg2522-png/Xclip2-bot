@@ -1398,3 +1398,17 @@ mtime_ms = 1794756190065
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/ec73c1f0-2bc6-4e17-ad84-8fb31e282ab3/cc7ca7d8-91c3-4405-a03c-7a5ce5f3e414"
 storage_version_token = "1794756232134600"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "zzexao-Qe8w0kfX3O28Ih"
+uri = "file://generated-artifacts/seedance25-flash-character-swap-test/output.mp4"
+type = "video"
+title = "Seedance 2.5 Flash — character swap"
+description = "One paid edit test: 15-second source clip, 14.72-second 480×854 output with an audio stream; 90 provider credits used."
+logical_id = "0803608b-95ee-4661-87bd-c1eb4bfe4bb2"
+content_hash = "sha256:2b0e664b21e164a381db13d8ff0149a7db629c93e3f9d9f1400ef3f803d39113"
+size = 7624902
+mtime_ms = 1794792463466
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/0803608b-95ee-4661-87bd-c1eb4bfe4bb2/9b073253-a8ac-4b45-ba5b-0d55eabe34e7"
+storage_version_token = "1794792612443106"
+content_type = "video/mp4"

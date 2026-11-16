@@ -165,6 +165,35 @@ async function checkEditQuoteOnly() {
   assert.equal(params.generateAudio, true);
 }
 
+async function checkApprovedCreditLimit() {
+  const overLimit = harness();
+  await assert.rejects(
+    () => overLimit.generate('Replace the man with the image character', {
+      taskType: 'edit',
+      persistAccount: false,
+      maxProviderCredits: 89,
+      images: [{ buffer: Buffer.from('image'), name: 'character.jpg', mime: 'image/jpeg' }],
+      videos: [{ buffer: Buffer.from('15-second video'), name: 'source.mp4', mime: 'video/mp4', duration: 15 }],
+    }),
+    /PICSART_SEEDANCE25_FLASH_QUOTE_EXCEEDS_APPROVAL/,
+  );
+  assert.equal(overLimit.calls.posts.length, 1, 'A quote above the approved limit must not submit');
+  assert.equal(overLimit.calls.gets.length, 0);
+  assert.deepEqual(overLimit.calls.accountAssignment, [false]);
+
+  const withinLimit = harness();
+  const result = await withinLimit.generate('Replace the man with the image character', {
+    taskType: 'edit',
+    persistAccount: false,
+    maxProviderCredits: 90,
+    images: [{ buffer: Buffer.from('image'), name: 'character.jpg', mime: 'image/jpeg' }],
+    videos: [{ buffer: Buffer.from('15-second video'), name: 'source.mp4', mime: 'video/mp4', duration: 15 }],
+  });
+  assert.equal(result.url, 'https://result.test/video.mp4');
+  assert.equal(withinLimit.calls.posts.filter(call => call.url.endsWith('/submit')).length, 1);
+  assert.deepEqual(withinLimit.calls.accountAssignment, [false]);
+}
+
 async function checkMixedReferencePayload() {
   const h = harness();
   const references = {
@@ -389,6 +418,7 @@ async function main() {
   await checkSuccessfulContract();
   await checkNoSubmitWhenUnaffordable();
   await checkEditQuoteOnly();
+  await checkApprovedCreditLimit();
   await checkMixedReferencePayload();
   await checkAmbiguousSubmitNeverReplays();
   await checkPostSubmitAuthNeverReplays();
