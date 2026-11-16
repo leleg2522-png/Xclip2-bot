@@ -1,4 +1,6 @@
 import { seedanceAudioContent, validateSeedanceAudioBuffers, type SeedanceAudioBuffer } from './seedance-reference-audio';
+import { generateGenjutsuWithSeedance25, type GenjutsuProviderInput } from './picsart-genjutsu';
+import { prepareGenjutsuVideo } from './genjutsu-video';
 // ─────────────────────────────────────────────────────────────────────────────
 // Picsart AI Playground backend client
 //
@@ -1873,12 +1875,19 @@ export async function submitSeedance(credId: number, input: {
   videoUrl?: string;
   videoUrls?: string[];
   audioUrls?: string[];
-  duration: number; // 15 | 30
-  ratio: SeedanceAspectRatio;
+  duration: number; // 15 | 30 for reference generation; -1 for edit
+  ratio: SeedanceAspectRatio | 'adaptive';
+  taskType?: 'reference' | 'edit';
   resolution?: SeedanceResolution; // default "480p"
   generateAudio?: boolean;
   outputName?: string;
 }): Promise<string> {
+  if (input.taskType === 'edit'
+    && (input.duration !== -1 || input.ratio !== 'adaptive'
+      || input.imageUrls.length !== 1 || (input.videoUrls?.length ?? (input.videoUrl ? 1 : 0)) !== 1
+      || (input.audioUrls?.length ?? 0) !== 0 || input.generateAudio !== false)) {
+    throw Error('GENJUTSU_INVALID_EDIT_PARAMETERS');
+  }
   const access = await getAccessToken(credId);
   const resolution = input.resolution || '480p';
   const generateAudio = input.generateAudio ?? true;
@@ -1912,7 +1921,7 @@ export async function submitSeedance(credId: number, input: {
     resolution,
     generate_audio: generateAudio,
     ...(videoUrls.length || audioUrls.length || input.imageUrls.length
-      ? { omni_reference_task_type: 'reference' } : {}),
+      ? { omni_reference_task_type: input.taskType ?? 'reference' } : {}),
     output_format: 'mp4',
     options: {
       drive: {
@@ -2120,6 +2129,34 @@ export async function generateSeedance(input: {
       }
       throw new Error(`PICSART_SEEDANCE25_POST_SUBMIT_FAILED job=${id}: ${e?.message ?? e}`);
     }
+  });
+}
+
+export async function generateSeedance25Genjutsu(input: GenjutsuProviderInput): Promise<{ url: string; credits?: number }> {
+  return generateGenjutsuWithSeedance25(input, {
+    model: SEEDANCE_MODEL,
+    prepareVideo: prepareGenjutsuVideo,
+    account: (userId, work, assign) => runWithAccount(userId, null, work, { assignAccount: assign }),
+    upload: (id, data, name, mime) => uploadFile(id, data, name, mime, { gateway: true }),
+    credits: getCredits,
+    quote: async (id, params) => {
+      const response = await http.post(`${API_BASE}/gw-v2/workflows/seedance/options`, { params }, {
+        headers: commonHeaders({
+          'content-type': 'application/json',
+          authorization: `Bearer ${await getAccessToken(id)}`,
+          'x-app-authorization': X_APP_AUTHORIZATION,
+          'x-sub-package-id': 'subscription_pro_monthly',
+        }), validateStatus: () => true,
+      });
+      if (response.status === 401) throw Error('PICSART_SUBMIT_FAILED status 401: edit options rejected account token');
+      const quote = response.data?.response;
+      if (!ok2xx(response.status) || typeof quote?.credits !== 'number' || quote.chargeCredits === true) {
+        throw Error('GENJUTSU_INVALID_CREDIT_QUOTE');
+      }
+      return quote.credits;
+    },
+    submit: submitSeedance,
+    poll: (id, taskId, onTick) => pollSeedanceResult(id, taskId, { onTick }),
   });
 }
 

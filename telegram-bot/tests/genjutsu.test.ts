@@ -54,9 +54,11 @@ function harness() {
 async function checkWizard() {
   const h = harness();
   await h.flow.callback(h.ctx, 'mode_genjutsu');
+  assert.equal(h.draft()?.step, 'package');
+  await h.flow.callback(h.ctx, `genjutsu_duration_30_${h.draft()!.id}`);
   await h.flow.image(h.ctx, { file_id: 'early-photo' });
   assert.equal(h.draft()?.step, 'video', 'Photo cannot skip the mandatory video');
-  for (const duration of [3.99, 30.01, NaN]) {
+  for (const duration of [2.99, 30.01, NaN]) {
     h.duration(duration);
     await h.flow.video(h.ctx, { file_id: 'invalid' });
     assert.equal(h.draft()?.step, 'video');
@@ -98,10 +100,12 @@ async function checkCancellation() {
   let release!: () => void;
   h.block(new Promise(resolve => { release = resolve; }));
   await h.flow.callback(h.ctx, 'mode_genjutsu');
+  await h.flow.callback(h.ctx, `genjutsu_duration_30_${h.draft()!.id}`);
   const oldId = h.draft()!.id;
   const pending = h.flow.video(h.ctx, { file_id: 'old-video' });
   h.cancel();
   await h.flow.callback(h.ctx, 'mode_genjutsu');
+  await h.flow.callback(h.ctx, `genjutsu_duration_15_${h.draft()!.id}`);
   const newId = h.draft()!.id;
   release();
   await pending;
@@ -110,6 +114,37 @@ async function checkCancellation() {
   assert.equal(h.draft()?.video, undefined, 'Cancelled uploads cannot overwrite a new draft');
   await h.flow.callback(h.ctx, `genjutsu_generate_${oldId}`);
   assert.equal(h.submitted.length, 0);
+}
+
+async function checkDurationPackages() {
+  for (const max of [15, 30] as const) {
+    for (const duration of [2.99, 3, max, max + 0.01, NaN]) {
+      const h = harness();
+      await h.flow.callback(h.ctx, 'mode_genjutsu');
+      const id = h.draft()!.id;
+      await h.flow.video(h.ctx, { file_id: 'before-selection' });
+      assert.equal(h.draft()?.step, 'package', 'A package is mandatory before upload');
+      await h.flow.callback(h.ctx, `genjutsu_duration_${max}_stale`);
+      assert.equal(h.draft()?.step, 'package');
+      await h.flow.callback(h.ctx, `genjutsu_duration_${max}_${id}`);
+      assert.equal(h.draft()?.maxReferenceSeconds, max);
+      await h.flow.callback(h.ctx, `genjutsu_duration_${max === 15 ? 30 : 15}_${id}`);
+      assert.equal(h.draft()?.maxReferenceSeconds, max, 'A stale package button cannot change an active upload');
+      h.duration(duration);
+      await h.flow.video(h.ctx, { file_id: 'source' });
+      const valid = Number.isFinite(duration) && duration >= 3 && duration <= max;
+      assert.equal(h.draft()?.step, valid ? 'image' : 'video');
+      assert.equal(h.submitted.length, 0);
+      if (valid) {
+        await h.flow.image(h.ctx, { file_id: 'replacement' });
+        await h.flow.callback(h.ctx, `genjutsu_generate_${id}`);
+        assert.equal(h.submitted[0].value.maxReferenceSeconds, max);
+        assert.match(h.messages.join('\n'), new RegExp(`Paket: ${max} detik`));
+      } else {
+        assert.match(h.messages.join('\n'), new RegExp(`3–${max} detik`));
+      }
+    }
+  }
 }
 
 /** Drive actual Telegram callback/photo/video/document handlers without any network. */
@@ -159,6 +194,7 @@ async function checkTelegramRouting() {
   } as any);
   for (const asDocument of [false, true]) {
     await callback('mode_genjutsu');
+    await callback(`genjutsu_duration_${asDocument ? 30 : 15}_${session.genjutsuDraft.id}`);
     assert.equal(session.generationDraftKind, 'genjutsu');
     await message(asDocument
       ? { document: { file_id: 'source', file_unique_id: 'v', mime_type: 'video/mp4', file_name: 'source.mp4' } }
@@ -184,12 +220,13 @@ async function checkRealGenerationAdapter() {
   const declaration = ast.statements.find(node => ts.isVariableStatement(node)
     && node.declarationList.declarations.some(d => d.name.getText(ast) === 'genjutsuFlow'));
   assert(declaration);
-  for (const scenario of ['success', 'upscale-fail', 'audio-fail', 'publish-fail', 'silent']) {
+  for (const scenario of ['success', 'upscale-fail', 'audio-fail', 'publish-fail', 'silent', 'actual-too-long', 'actual-too-short']) {
     const upscale = scenario !== 'upscale-fail';
     let session: any = {
       mode: 'genjutsu', dbUserId: 7, generationDraft: true, generationDraftKind: 'genjutsu',
       genjutsuDraft: {
         id: 'confirmed-draft', step: 'confirm', imageFileId: 'image',
+        maxReferenceSeconds: 15,
         video: { fileId: 'source', mime: 'video/mp4', duration: 10 },
       },
     };
@@ -237,14 +274,16 @@ async function checkRealGenerationAdapter() {
       },
       detectMime: () => ({ mime: 'image/jpeg', ext: 'jpg' }),
       seedance25ReferenceName: () => 'video.mp4',
-      inspectSeedance25Media: async () => 10,
+      inspectSeedance25Media: async () => scenario === 'actual-too-long' ? 15.1 : scenario === 'actual-too-short' ? 2.99 : 10,
       beginCharge: async (_id: number, amount: number) => { charges.push(amount); return { ok: true }; },
       addSaldo: async (_id: number, amount: number) => { refunds.push(amount); },
       releaseGenerating: (id: number) => { releases.push(id); },
       incrementKlingUsage: async () => 1, markGenSuccess: () => {},
       describeError: (error: Error) => error.message,
       notifyGenerationFailure: async (_chat: number, _id: number, _error: Error, stage: string) => { stages.push(stage); },
-      picsart: { SEEDANCE25_FLASH_DURATION_SECONDS: 30, generateSeedance25Flash: async (input: any) => {
+      picsart: { SEEDANCE25_FLASH_DURATION_SECONDS: 30,
+        generateSeedance25Flash: async () => { throw Error('Genjutsu must not use Flash'); },
+        generateSeedance25Genjutsu: async (input: any) => {
         providerInputs.push(input); input.onStatus('upload'); input.onStatus('quote'); input.onStatus('poll');
         return { url: 'https://result.test/native.mp4' };
       } },
@@ -264,12 +303,20 @@ async function checkRealGenerationAdapter() {
     ), context);
     const flow = vm.runInContext('genjutsuFlow', context);
     await flow.callback(ctx, 'genjutsu_generate_confirmed-draft');
+    if (scenario.startsWith('actual-')) {
+      assert.equal(pipeline, undefined, 'Probe the actual file against the selected package before charging');
+      assert.equal(charges.length, 0);
+      assert.equal(providerInputs.length, 0);
+      assert.equal(session.mode, 'idle', 'Do not fall back to the ordinary Flash wizard');
+      continue;
+    }
     assert(pipeline, 'Confirmation must reach the real generation runner');
     await pipeline;
     await flow.callback(ctx, 'genjutsu_generate_confirmed-draft');
     assert.deepEqual(charges, [6000], 'Genjutsu charges exactly once');
     assert.equal(providerInputs.length, 1);
     assert.equal(providerInputs[0].taskType, 'edit');
+    assert.equal(providerInputs[0].maxReferenceSeconds, 15);
     assert.equal(providerInputs[0].generateAudio, false, 'Genjutsu must disable model audio explicitly');
     assert.equal(providerInputs[0].images.length, 1);
     assert.equal(providerInputs[0].videos.length, 1);
@@ -327,6 +374,7 @@ async function checkIdentityReferenceGuards() {
 
 async function main() {
   await checkWizard();
+  await checkDurationPackages();
   await checkCancellation();
   await checkTelegramRouting();
   await checkRealGenerationAdapter();

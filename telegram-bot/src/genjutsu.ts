@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 export const GENJUTSU_NEGATIVE_PROMPT =
   'original face, blended faces, changing identity, distorted face, changed background, extra people, subtitles';
 
-// Flash documents no separate negative-prompt field. These are inline text
+// Seedance documents no separate negative-prompt field. These are inline text
 // exclusions, not an unsupported API parameter or guaranteed conditioning.
 export const GENJUTSU_PROMPT =
   'Replace the character in the reference video with the character in the reference image.' +
@@ -18,7 +18,8 @@ export interface GenjutsuFile {
 
 export interface GenjutsuDraft {
   id: string;
-  step: 'video' | 'checking_video' | 'image' | 'checking_image' | 'confirm' | 'submitting';
+  step: 'package' | 'video' | 'checking_video' | 'image' | 'checking_image' | 'confirm' | 'submitting';
+  maxReferenceSeconds?: 15 | 30;
   video?: { fileId: string; mime: string; duration: number };
   imageFileId?: string;
 }
@@ -40,13 +41,23 @@ function keyboard(draft?: GenjutsuDraft, price?: string) {
   ] } };
 }
 
+function packageKeyboard(draft: GenjutsuDraft) {
+  return { reply_markup: { inline_keyboard: [
+    [{ text: 'Paket 15 detik · Referensi 3–15 detik', callback_data: `genjutsu_duration_15_${draft.id}` }],
+    [{ text: 'Paket 30 detik · Referensi 3–30 detik', callback_data: `genjutsu_duration_30_${draft.id}` }],
+    [{ text: 'Batal · Menu Utama', callback_data: 'back_main' }],
+  ] } };
+}
+
 /** Separate wizard; never takes a prompt or media from a regular Flash draft. */
 export function createGenjutsuFlow(deps: Dependencies) {
   async function message(ctx: any) {
     const draft = deps.get(ctx.from.id);
     if (!draft) return;
+    if (draft.step === 'package') return ctx.reply('Pilih paket durasi video referensi Genjutsu.', packageKeyboard(draft));
+    const max = draft.maxReferenceSeconds ?? 30;
     const text = draft.step === 'video'
-      ? 'Genjutsu: kirim 1 video sumber berdurasi 4–30 detik, maksimal 19MB.'
+      ? `Genjutsu · Paket ${max} detik: kirim 1 video sumber berdurasi 3–${max} detik, maksimal 19MB.`
       : draft.step === 'image'
         ? 'Genjutsu: kirim 1 foto karakter pengganti, maksimal 19MB.'
         : draft.step === 'confirm'
@@ -59,13 +70,14 @@ export function createGenjutsuFlow(deps: Dependencies) {
     const userId = ctx.from.id, draft = deps.get(userId);
     if (!draft) return;
     if (draft.step !== 'video') return message(ctx);
+    const max = draft.maxReferenceSeconds ?? 30;
     if (file.file_size && file.file_size > maxBytes) {
       return ctx.reply('Video maksimal 19MB. Kirim video yang lebih kecil.', keyboard());
     }
     deps.set(userId, { ...draft, step: 'checking_video' });
     try {
       const duration = await deps.inspectVideo(ctx, file);
-      if (!Number.isFinite(duration) || duration < 4 || duration > 30) throw Error('INVALID_VIDEO');
+      if (!Number.isFinite(duration) || duration < 3 || duration > max) throw Error('INVALID_VIDEO');
       const current = deps.get(userId);
       if (current?.id !== draft.id || current.step !== 'checking_video') return;
       deps.set(userId, {
@@ -83,7 +95,7 @@ export function createGenjutsuFlow(deps: Dependencies) {
       const current = deps.get(userId);
       if (current?.id !== draft.id || current.step !== 'checking_video') return;
       deps.set(userId, { ...current, step: 'video' });
-      return ctx.reply('Video tidak valid. Gunakan video berdurasi 4–30 detik, maksimal 19MB. Saldo belum dipotong.', keyboard());
+      return ctx.reply(`Video tidak valid. Paket ${max} detik menerima video 3–${max} detik, maksimal 19MB. Saldo belum dipotong.`, keyboard());
     }
   }
 
@@ -103,6 +115,7 @@ export function createGenjutsuFlow(deps: Dependencies) {
       deps.set(userId, ready);
       return ctx.reply(
         `Genjutsu · Character Swap · 1080p\n\n` +
+        `Paket: ${ready.maxReferenceSeconds ?? 30} detik\n` +
         `Video sumber: ${ready.video!.duration.toFixed(1)} detik\nFoto karakter: 1\n` +
         'Durasi, rasio, dan audio asli mengikuti video sumber. Video tanpa audio tetap tanpa audio.\n' +
         'Prompt penggantian karakter dibuat otomatis.\n\n' +
@@ -123,17 +136,29 @@ export function createGenjutsuFlow(deps: Dependencies) {
   async function callback(ctx: any, data: string) {
     const userId = ctx.from.id;
     if (data === 'mode_genjutsu') {
-      deps.set(userId, { id: randomUUID(), step: 'video' });
+      const draft: GenjutsuDraft = { id: randomUUID(), step: 'package' };
+      deps.set(userId, draft);
       return ctx.editMessageText(
         `Genjutsu · Character Swap · 1080p · ${deps.price()}\n\n` +
         'Ganti karakter utama dalam video dengan karakter dari foto referensi.\n' +
         'Gerakan, kamera, dan latar diminta mengikuti video sumber; hasil bergantung pada materi input.\n\n' +
-        'Langkah 1/2: kirim 1 video sumber berdurasi 4–30 detik, maksimal 19MB.\n' +
+        'Pilih batas durasi referensi: paket 15 detik menerima 3–15 detik, ' +
+        'paket 30 detik menerima 3–30 detik. Hasil mengikuti durasi video sumber.\n' +
         'Setelah itu, kirim 1 foto karakter. Tidak perlu menulis prompt.',
-        keyboard(),
+        packageKeyboard(draft),
       );
     }
     const draft = deps.get(userId);
+    const selected = /^genjutsu_duration_(15|30)_(.+)$/.exec(data);
+    if (selected && draft?.step === 'package' && selected[2] === draft.id) {
+      const max = Number(selected[1]) as 15 | 30;
+      deps.set(userId, { ...draft, step: 'video', maxReferenceSeconds: max });
+      return ctx.editMessageText(
+        `Genjutsu · Paket ${max} detik\n\nLangkah 1/2: kirim 1 video referensi berdurasi 3–${max} detik, maksimal 19MB.\n` +
+        'Durasi hasil mengikuti video sumber. Setelah itu, kirim 1 foto karakter.',
+        keyboard(),
+      );
+    }
     if (!draft || draft.step !== 'confirm' || !draft.video || !draft.imageFileId
       || data !== `genjutsu_generate_${draft.id}`) {
       return ctx.reply('Tombol Genjutsu ini sudah tidak aktif. Gunakan draft yang sedang berjalan atau /menu.');

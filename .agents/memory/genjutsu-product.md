@@ -5,6 +5,36 @@ description: User-approved scope and customer flow for the separate Genjutsu Tel
 
 Genjutsu is a separate customer menu, not a replacement for the general Seedance 2.5 Flash flow. It requires one source video followed by one character photo, uses an automatic character-replacement prompt, and asks for explicit Generate confirmation at Rp6,000.
 
+Use ordinary Seedance 2.5, not Flash, as Genjutsu's backend.
+
+**Why:** After comparing the results, the user said: “Yaudah backend nya pake seedance 2,5 biasa aja”.
+
+**How to apply:** Keep this change scoped to Genjutsu; do not reroute the ordinary
+Flash menu or P2. Standard reference-mode sample quality does not establish
+the quality of automatic-duration edit mode; do not claim that edit route has
+been live-verified based on the earlier reference-generation sample.
+
+Genjutsu has two reference-duration packages: 15 seconds accepts **3–15 seconds**,
+and 30 seconds accepts **3–30 seconds**. The package is a reference cap, not
+permission to stretch every result to that maximum.
+
+**Why:** The user explicitly requested both packages and both lower/upper limits.
+Their earlier instruction that output duration follows the reference still applies.
+
+**How to apply:** Require package selection before uploads, validate actual
+file duration against it, and retain the selection through confirmation and
+submission. Keep prices unchanged unless the user requests new prices.
+
+The 3-second user minimum must coexist with the edit provider's 4-second
+technical minimum without lengthening the delivered clip or changing its audio.
+
+**Why:** Rejecting all sub-4-second references would contradict the user's
+explicit 3-second minimum for both packages.
+
+**How to apply:** Prepare short inputs without changing performance timing,
+retain the original source separately, and restore original duration and audio
+for delivery. Do not treat technical preparation as permission to expand a story.
+
 The user wants Genjutsu's automatic prompt kept simple: “ganti karakter video
 refrensi dengan karakter image refrensi”, plus negative instructions.
 
@@ -31,11 +61,11 @@ video, not a manually fixed number or a 30-second reference-generation preset.
 
 **Why:** The user explicitly corrected: “Harus nya durasi auto mengikuti refrensi video”.
 
-**How to apply:** Use Flash edit mode with automatic duration (`-1`) and
+**How to apply:** Use standard Seedance 2.5 edit mode with automatic duration (`-1`) and
 adaptive ratio. Describing a test source as approximately 5.5 seconds does not
 authorize hardcoding that duration. Keep the ordinary non-edit Flash flow separate.
 
-**Why:** The user requested a Genjutsu-style feature backed by Seedance 2.5 Flash and chose “Menu Genjutsu terpisah” after reviewing this flow and price.
+**Why:** The user chose “Menu Genjutsu terpisah” and later selected ordinary Seedance 2.5 after comparing raw samples.
 
 **How to apply:** Keep ordinary Flash's optional mixed references and text-to-video intact. Genjutsu delivers 1080p with hidden Renderful finishing, keeps supplier names and source resolution out of customer messages, and refunds failed generation/finishing/delivery. Ask the model to preserve source motion, camera, and scene; restore audio separately as described below. Never promise Higgsfield-identical quality or guaranteed identity consistency.
 
@@ -45,7 +75,7 @@ Genjutsu must generate visuals without model-created audio, then restore audio f
 
 **How to apply:** Disable audio generation explicitly only for Genjutsu, preserve the original audio's timing and content in the final media, and refund if restoration fails. Do not change the general Flash audio settings or run another paid test without new permission.
 
-The audio-off edit contract is live-verified: `generateAudio:false` produced silent visuals, finishing completed, and the restored AAC decoded identically to the source. A portrait result may be 1080×1922 rather than exactly 1080×1920 because the provider preserves the source aspect ratio.
+The earlier Flash audio-off edit contract was live-verified: `generateAudio:false` produced silent visuals, finishing completed, and the restored AAC decoded identically to the source. This is historical Flash evidence, not live verification of the new standard-edit backend. A portrait result may be 1080×1922 rather than exactly 1080×1920 because the provider preserves the source aspect ratio.
 
 **Why:** Native portrait dimensions can be 480×854, so proportional 1080-short-edge delivery need not have a 1920 long edge. Requiring exactly 1080×1920 would reject a valid finished result.
 

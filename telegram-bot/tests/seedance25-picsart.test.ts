@@ -98,7 +98,7 @@ function harness(options: Options = {}) {
 
 async function checkAcceptedJobBinding() {
   const accountRunner = fragment(provider, 'async function runWithAccount<T>(', '// Admin: register');
-  const generate = fragment(provider, 'export async function generateSeedance(', '// ─── Seedance 2.5 Flash')
+  const generate = fragment(provider, 'export async function generateSeedance(', 'export async function generateSeedance25Genjutsu(')
     .replace('export async function', 'async function');
   for (const error of ['PICSART_INSUFFICIENT_CREDITS', 'PICSART_SUBMIT_FAILED status 401: expired', 'PICSART_REFRESH_DEAD', 'PICSART_TIMEOUT']) {
     let submits = 0;
@@ -171,7 +171,7 @@ async function checkSubmitContract() {
 }
 
 async function checkMultiReferenceUploads() {
-  const generate = compile(fragment(provider, 'export async function generateSeedance(', '// ─── Seedance 2.5 Flash')
+  const generate = compile(fragment(provider, 'export async function generateSeedance(', 'export async function generateSeedance25Genjutsu(')
     .replace('export async function', 'async function'));
   const uploads: Array<{ name: string; mime: string }> = [];
   let submitted: any, creditBalance = 500, accepted = 0;

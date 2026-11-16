@@ -4,7 +4,7 @@
   "description": "Telegram bot for video generation, including Kling Motion Control via Picsart",
   "main": "dist/index.js",
   "scripts": {
-    "test:genjutsu": "tsx tests/genjutsu.test.ts && tsx tests/genjutsu-audio.test.ts",
+    "test:genjutsu": "tsx tests/genjutsu.test.ts && tsx tests/genjutsu-provider.test.ts && tsx tests/genjutsu-video.test.ts && tsx tests/genjutsu-audio.test.ts",
     "test:generation-errors": "tsx tests/generation-errors.test.ts",
     "test:vivareel": "tsx tests/vivareel-wan.test.ts && tsx tests/vivareel-wan-media.test.ts && tsx tests/vivareel-wan-reference.test.ts",
     "test:vivareel-pool": "tsx tests/vivareel-pool.test.ts",

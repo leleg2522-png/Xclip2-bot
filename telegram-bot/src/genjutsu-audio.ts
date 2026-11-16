@@ -32,7 +32,9 @@ export async function restoreGenjutsuAudio(
     const outputFile = join(dir, 'result.mp4');
     await Promise.all([writeFile(originalFile, source), writeFile(generatedFile, generated)]);
     const [original, visual] = await Promise.all([facts(originalFile), facts(generatedFile)]);
-    if (Math.abs(original.duration - visual.duration) > 1) {
+    const preparedShortSource = original.duration >= 3 && original.duration < 4
+      && visual.duration >= 4 && visual.duration <= 4.3;
+    if (!preparedShortSource && Math.abs(original.duration - visual.duration) > 1) {
       throw Error('GENJUTSU_AUDIO_DURATION_MISMATCH');
     }
     // Short edit outputs may differ by a few frames. Pad the final frame rather

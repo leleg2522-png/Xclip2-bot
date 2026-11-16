@@ -2823,8 +2823,8 @@ const genjutsuFlow = createGenjutsuFlow({
     const current = getSession(ctx.from.id);
     if (current.mode !== 'genjutsu' || current.genjutsuDraft?.id !== draft.id
       || current.genjutsuDraft.step !== 'submitting' || !draft.video || !draft.imageFileId) return;
-    // Reuse the proven edit, billing, finishing and refund pipeline, but not
-    // the ordinary Flash input wizard or customer-facing name.
+    // Reuse media collection and delivery, but Genjutsu's runner selects
+    // standard Seedance 2.5 edit instead of the ordinary Flash backend.
     setSession(ctx.from.id, {
       mode: 'seedance25_flash_wait_prompt',
       genjutsuDraft: undefined,
@@ -2834,7 +2834,7 @@ const genjutsuFlow = createGenjutsuFlow({
       seedance25FlashAudios: [],
       seedance25FlashPendingUploads: 0,
     });
-    return submitSeedance25FlashPrompt(ctx, prompt, 'Genjutsu · Character Swap', true);
+    return submitSeedance25FlashPrompt(ctx, prompt, 'Genjutsu · Character Swap', true, draft.maxReferenceSeconds ?? 30);
   },
 });
 
@@ -7050,6 +7050,7 @@ function seedance25RatioKeyboard() {
 
 async function submitSeedance25FlashPrompt(
   ctx: any, rawPrompt: string, displayLabel = 'Seedance 2.5 Flash', preserveSourceAudio = false,
+  genjutsuMaxSeconds: 15 | 30 = 30,
 ) {
   const userId = ctx.from.id;
   let prompt: string;
@@ -7084,7 +7085,18 @@ async function submitSeedance25FlashPrompt(
     return ctx.reply('Referensi Genjutsu tidak lengkap atau tercampur. Mulai lagi dari menu Genjutsu dengan 1 video dan 1 foto. Saldo belum dipotong.');
   }
   if (imageFileIds.length > 0 && videoFiles.length > 0 && !videoFiles.some(video =>
-    Number.isFinite(video.duration) && video.duration >= 4 && video.duration <= 30)) {
+    Number.isFinite(video.duration) && video.duration >= (preserveSourceAudio ? 3 : 4)
+      && video.duration <= (preserveSourceAudio ? genjutsuMaxSeconds : 30))) {
+    if (preserveSourceAudio) {
+      setSession(userId, {
+        mode: 'idle', seedance25FlashDraftId: undefined, seedance25FlashImageFileIds: undefined,
+        seedance25FlashVideos: undefined, seedance25FlashAudios: undefined, seedance25FlashPendingUploads: 0,
+      });
+      return ctx.reply(
+        `Paket Genjutsu ${genjutsuMaxSeconds} detik menerima video 3–${genjutsuMaxSeconds} detik. ` +
+        'Mulai lagi dari menu Genjutsu. Saldo belum dipotong.',
+      );
+    }
     setSession(userId, { mode: 'seedance25_flash_wait_media' });
     return ctx.reply(
       'Mode edit memerlukan setidaknya satu video sumber berdurasi 4–30 detik. ' +
@@ -7101,10 +7113,11 @@ async function submitSeedance25FlashPrompt(
     seedance25FlashPendingUploads: 0,
   });
   const references: Required<Pick<Parameters<typeof picsart.generateSeedance25Flash>[0], 'images' | 'videos' | 'audios'>>
-    & { taskType: picsart.Seedance25FlashTaskType } = {
+    & { taskType: picsart.Seedance25FlashTaskType; maxReferenceSeconds?: 15 | 30 } = {
     images: [],
     videos: [],
     audios: [],
+    ...(preserveSourceAudio ? { maxReferenceSeconds: genjutsuMaxSeconds } : {}),
     taskType: imageFileIds.length > 0 && videoFiles.length > 0
       ? 'edit' : imageFileIds.length + videoFiles.length + audioFiles.length > 0 ? 'reference' : 'auto',
   };
@@ -7156,6 +7169,10 @@ async function submitSeedance25FlashPrompt(
     };
     references.videos = await downloadMedia(videoFiles, 'video');
     references.audios = await downloadMedia(audioFiles, 'audio');
+    if (preserveSourceAudio && (!references.videos[0] || references.videos[0].duration < 3
+      || references.videos[0].duration > genjutsuMaxSeconds)) {
+      throw Error('GENJUTSU_REFERENCE_EXCEEDS_SELECTED_PACKAGE');
+    }
   } catch {
     return retryTelegramRateLimit(() => ctx.reply(
       '❌ Referensi tidak bisa dibaca atau melewati batas ukuran/durasi. Mulai lagi dari /menu.'
@@ -11183,7 +11200,7 @@ async function runPicsartSeedance25(
   }
 }
 
-// ─── Background: Seedance 2.5 Flash, mandatory Renderful 1080p ───────────────
+// ─── Shared delivery: ordinary Flash or standard Seedance Genjutsu, 1080p ───
 
 async function runPicsartSeedance25Flash(
   chatId: number,
@@ -11192,7 +11209,7 @@ async function runPicsartSeedance25Flash(
   statusMsgId: number,
   prompt: string,
   references: Required<Pick<Parameters<typeof picsart.generateSeedance25Flash>[0], 'images' | 'videos' | 'audios'>>
-    & { taskType: picsart.Seedance25FlashTaskType },
+    & { taskType: picsart.Seedance25FlashTaskType; maxReferenceSeconds?: 15 | 30 },
   displayLabel = 'Seedance 2.5 Flash',
   sourceAudioVideo?: Buffer,
 ) {
@@ -11209,12 +11226,13 @@ async function runPicsartSeedance25Flash(
   try {
     stage = 'quote';
     let lastEdit = 0;
-    const result = await picsart.generateSeedance25Flash({
+    const generate = sourceAudioVideo ? picsart.generateSeedance25Genjutsu : picsart.generateSeedance25Flash;
+    const result = await generate({
       userId: dbUserId,
       prompt,
       ...references,
       ...(sourceAudioVideo ? { generateAudio: false } : {}),
-      onStatus: providerStage => {
+      onStatus: (providerStage: 'upload' | 'quote' | 'submit' | 'poll') => {
         stage = providerStage;
         const message = providerStage === 'upload'
           ? `⏳ ${label}: mengunggah media referensi...`
@@ -11226,7 +11244,7 @@ async function runPicsartSeedance25Flash(
         lastEdit = Date.now();
         bot.telegram.editMessageText(chatId, statusMsgId, undefined, message).catch(() => {});
       },
-      onPoll: elapsedSec => {
+      onPoll: (elapsedSec: number) => {
         if (Date.now() - lastEdit < 30_000) return;
         lastEdit = Date.now();
         const mins = Math.floor(elapsedSec / 60);
