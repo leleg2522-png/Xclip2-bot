@@ -2285,6 +2285,8 @@ function generationDraftKindForContinuation(data: string): GenerationDraftKind |
   if (data.startsWith('seedance_edit_')) return 'picsart_i2v';
   if (data.startsWith('seedance_fast_edit_')) return 'picsart_i2v';
   if (data.startsWith('seedance_2_edit_')) return 'picsart_i2v';
+  // Flash has its own active draft kind; keep it ahead of the broad OneOver prefix.
+  if (data.startsWith('seedance25_flash_')) return 'seedance25_flash';
   if (data.startsWith('seedance25_')) return 'oneover';
   if (data === 'seedance25_inputs_done') return 'oneover';
   if (data.startsWith('audio_voice_')) return 'audio';

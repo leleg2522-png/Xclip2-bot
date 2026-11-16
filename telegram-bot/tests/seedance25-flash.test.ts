@@ -443,6 +443,23 @@ async function checkFlashMediaIntake() {
   assert(replies.some(text => text.includes('Maksimal 5 referensi video')));
 }
 
+async function checkFlashContinuationDraftGuard() {
+  const draftRouting = fragment(
+    botSource,
+    'function generationDraftKindForStart(',
+    'function generationDraftBlockReason(',
+  );
+  const context = vm.createContext({});
+  vm.runInContext(compile(draftRouting), context);
+  const startKind = context.generationDraftKindForStart('mode_seedance25_flash');
+  const continueKind = context.generationDraftKindForContinuation('seedance25_flash_refs_done');
+  assert.equal(startKind, 'seedance25_flash');
+  assert.equal(continueKind, startKind, 'Flash continue button must match its active draft kind');
+
+  assert.equal(context.generationDraftKindForStart('mode_oneover_seedance25'), 'oneover');
+  assert.equal(context.generationDraftKindForContinuation('seedance25_inputs_done'), 'oneover');
+}
+
 async function main() {
   await checkSuccessfulContract();
   await checkNoSubmitWhenUnaffordable();
@@ -455,6 +472,7 @@ async function main() {
   await checkPostSubmitAuthNeverReplays();
   await checkBotBillingDeliveryAndRefund();
   await checkFlashMediaIntake();
+  await checkFlashContinuationDraftGuard();
   console.log('Seedance 2.5 Flash passed: 30s gateway settings, quoted-credit preflight, no duplicate jobs, Rp6.000 billing/refunds, native 480p delivery.');
 }
 
