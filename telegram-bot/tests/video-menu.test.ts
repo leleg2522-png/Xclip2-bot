@@ -8,6 +8,7 @@ import { CHINA_VIDEO_MODELS } from '../src/chinaapi-video';
 import { buildVideoMenuScreen, VIDEO_FAMILIES, videoFamilyForCallback } from '../src/video-menu';
 import { isRetiredVideoCallback } from '../src/retired-video-models';
 import { BUDGET_VIDEO_MODELS, isBudgetVideoModel } from '../src/budget-video-api';
+import { GENJUTSU_PRICES } from '../src/genjutsu';
 
 // Evaluate only pure menu functions, never import the running bot or connect to its DB.
 const source = fs.readFileSync(path.resolve(__dirname, '../src/index.ts'), 'utf8');
@@ -18,7 +19,7 @@ const functions = ast.statements.filter(s => ts.isFunctionDeclaration(s)
   && functionNames.includes(s.name?.text || '')).map(s => s.getText(ast)).join('\n');
 assert.equal(functions.match(/function /g)?.length, functionNames.length);
 const context = vm.createContext({
-  Markup, CHINA_VIDEO_MODELS, buildVideoMenuScreen, isRetiredVideoCallback, BUDGET_VIDEO_MODELS, isBudgetVideoModel,
+  Markup, CHINA_VIDEO_MODELS, buildVideoMenuScreen, isRetiredVideoCallback, BUDGET_VIDEO_MODELS, isBudgetVideoModel, GENJUTSU_PRICES,
   MODEL_PRICES: { seedance25_p2: 7500, picsart_seedance_25_flash: 6000, posbot_seedance25: 7000 },
   KLING_V3_PRO: { label: 'Kling v3 Pro' },
   formatRupiah: (value: number) => `Rp${Math.round(value).toLocaleString('id-ID')}`,
@@ -30,6 +31,7 @@ vm.runInContext(ts.transpileModule(functions, {
 const modelRows = JSON.parse(JSON.stringify(vm.runInContext('videoModelRows()', context)));
 assert.match(modelRows.flat().find((b: any) => b.callback_data === 'mode_seedance25_p2').text, /Rp7\.500/);
 assert.match(modelRows.flat().find((b: any) => b.callback_data === 'mode_seedance25_flash').text, /Rp6\.000/);
+assert.match(modelRows.flat().find((b: any) => b.callback_data === 'mode_genjutsu').text, /15s Rp4\.500 · 30s Rp8\.000/);
 const main = JSON.parse(JSON.stringify(vm.runInContext('mainMenuKeyboard().reply_markup.inline_keyboard', context)));
 const expected = [
   'mode_genjutsu',

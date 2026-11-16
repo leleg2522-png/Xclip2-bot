@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+export const GENJUTSU_PRICES = Object.freeze({ 15: 4500, 30: 8000 });
+
 export const GENJUTSU_NEGATIVE_PROMPT =
   'original face, blended faces, changing identity, distorted face, changed background, extra people, subtitles';
 
@@ -29,7 +31,7 @@ export interface GenjutsuDraft {
 interface Dependencies {
   get(userId: number): GenjutsuDraft | undefined;
   set(userId: number, draft: GenjutsuDraft): void;
-  price(): string;
+  price(seconds: 15 | 30): string;
   inspectVideo(ctx: any, file: GenjutsuFile): Promise<number>;
   inspectImage(ctx: any, file: GenjutsuFile): Promise<void>;
   submit(ctx: any, draft: GenjutsuDraft, prompt: string): Promise<unknown>;
@@ -52,10 +54,10 @@ function keyboard(draft?: GenjutsuDraft, price?: string) {
   ] } };
 }
 
-function packageKeyboard(draft: GenjutsuDraft) {
+function packageKeyboard(draft: GenjutsuDraft, price: Dependencies['price']) {
   return { reply_markup: { inline_keyboard: [
-    [{ text: 'Paket 15 detik · Referensi 3–15 detik', callback_data: `genjutsu_duration_15_${draft.id}` }],
-    [{ text: 'Paket 30 detik · Referensi 3–30 detik', callback_data: `genjutsu_duration_30_${draft.id}` }],
+    [{ text: `Paket 15 detik · ${price(15)} · Referensi 3–15 detik`, callback_data: `genjutsu_duration_15_${draft.id}` }],
+    [{ text: `Paket 30 detik · ${price(30)} · Referensi 3–30 detik`, callback_data: `genjutsu_duration_30_${draft.id}` }],
     [{ text: 'Batal · Menu Utama', callback_data: 'back_main' }],
   ] } };
 }
@@ -65,7 +67,7 @@ export function createGenjutsuFlow(deps: Dependencies) {
   async function message(ctx: any) {
     const draft = deps.get(ctx.from.id);
     if (!draft) return;
-    if (draft.step === 'package') return ctx.reply('Pilih paket durasi video referensi Genjutsu.', packageKeyboard(draft));
+    if (draft.step === 'package') return ctx.reply('Pilih paket durasi video referensi Genjutsu.', packageKeyboard(draft, deps.price));
     if (draft.step === 'image') return ctx.reply(
       `Genjutsu: kirim 1–10 gambar referensi, maksimal 19MB per gambar dan total referensi 100MB. ` +
       `${imageIds(draft).length - (draft.pendingImageFileIds?.length ?? 0)} gambar diterima. ` +
@@ -78,7 +80,7 @@ export function createGenjutsuFlow(deps: Dependencies) {
       : draft.step === 'confirm'
           ? 'Video dan foto sudah siap. Tekan Generate untuk mulai; prompt dibuat otomatis.'
           : 'Input Genjutsu sedang diperiksa atau diproses. Tunggu sebentar.';
-    return ctx.reply(text, keyboard(draft.step === 'confirm' ? draft : undefined, deps.price()));
+    return ctx.reply(text, keyboard(draft.step === 'confirm' ? draft : undefined, deps.price(max)));
   }
 
   async function video(ctx: any, file: GenjutsuFile) {
@@ -170,9 +172,9 @@ export function createGenjutsuFlow(deps: Dependencies) {
         'Prompt penggantian karakter dibuat otomatis.\n\n' +
         'Foto menjadi acuan wajah dan penampilan; video menjadi acuan gerakan dan adegan. ' +
         'Kemiripan wajah tidak dijamin dan perlu diperiksa pada hasil.\n\n' +
-        `Harga: ${deps.price()} per video. Jika proses gagal, saldo dikembalikan penuh.\n` +
+        `Harga: ${deps.price(ready.maxReferenceSeconds ?? 30)} per video. Jika proses gagal, saldo dikembalikan penuh.\n` +
         'Gunakan materi yang diizinkan dan foto orang dengan persetujuannya.\n\nTekan Generate untuk mulai.',
-        keyboard(ready, deps.price()),
+        keyboard(ready, deps.price(ready.maxReferenceSeconds ?? 30)),
       );
   }
 
@@ -182,13 +184,13 @@ export function createGenjutsuFlow(deps: Dependencies) {
       const draft: GenjutsuDraft = { id: randomUUID(), step: 'package' };
       deps.set(userId, draft);
       return ctx.editMessageText(
-        `Genjutsu · Character Swap · 1080p · ${deps.price()}\n\n` +
+        `Genjutsu · Character Swap · 1080p\n15 detik ${deps.price(15)} · 30 detik ${deps.price(30)}\n\n` +
         'Ganti karakter utama dalam video dengan karakter dari foto referensi.\n' +
         'Gerakan, kamera, dan latar diminta mengikuti video sumber; hasil bergantung pada materi input.\n\n' +
         'Pilih batas durasi referensi: paket 15 detik menerima 3–15 detik, ' +
         'paket 30 detik menerima 3–30 detik. Hasil mengikuti durasi video sumber.\n' +
         'Setelah itu, kirim 1–10 gambar referensi karakter. Tidak perlu menulis prompt.',
-        packageKeyboard(draft),
+        packageKeyboard(draft, deps.price),
       );
     }
     const draft = deps.get(userId);
@@ -200,7 +202,7 @@ export function createGenjutsuFlow(deps: Dependencies) {
       const max = Number(selected[1]) as 15 | 30;
       deps.set(userId, { ...draft, step: 'video', maxReferenceSeconds: max });
       return ctx.editMessageText(
-        `Genjutsu · Paket ${max} detik\n\nLangkah 1/2: kirim 1 video referensi berdurasi 3–${max} detik, maksimal 19MB.\n` +
+        `Genjutsu · Paket ${max} detik · ${deps.price(max)}\n\nLangkah 1/2: kirim 1 video referensi berdurasi 3–${max} detik, maksimal 19MB.\n` +
         'Durasi hasil mengikuti video sumber. Setelah itu, kirim 1–10 gambar referensi karakter.',
         keyboard(),
       );

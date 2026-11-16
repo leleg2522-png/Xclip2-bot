@@ -6,6 +6,7 @@ import { Pool } from 'pg';
 import { activateOctoberPromo, octoberPromoStatus, octoberPromoPrice, octoberPromoText, OCTOBER_PROMO } from '../src/october-topup-promo';
 import { PICSART_I2V_MODELS } from '../src/picsart';
 import { HAR_MODELS } from '../src/picsart-har-models';
+import { GENJUTSU_PRICES } from '../src/genjutsu';
 
 const source = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true);
@@ -171,7 +172,7 @@ async function main() {
   assert.match(octoberPromoText(active), /promo aktif di akun/);
   assert.match(octoberPromoText({ active: true, eligible: false }), /harga normal/);
   const priceTableContext = vm.createContext({
-    octoberPromoPrice, octoberPromoText,
+    octoberPromoPrice, octoberPromoText, GENJUTSU_PRICES,
     formatRupiah: (amount: number) => 'Rp' + amount.toLocaleString('id-ID'),
     KLING4_DURATIONS: [10, 15, 30], CHINA_VIDEO_MODELS: {}, BUDGET_VIDEO_MODELS: {},
     KLING_P4: { label: 'P4' }, ALRIZ_KLING_P5: { label: 'P5' },
@@ -184,6 +185,8 @@ async function main() {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
   }).outputText + functionCode('getPicsartI2vPrice') + functionCode('hargaText'), priceTableContext);
   const promoTable = priceTableContext.hargaText(active);
+  assert.match(promoTable, /Genjutsu 15 detik .*— Rp4\.500/);
+  assert.match(promoTable, /Genjutsu 30 detik .*— Rp8\.000/);
   for (const label of ['Kling 2.1 Pro', 'Heygen Video', 'PixVerse v6', 'MiniMax H3', 'Seedance 2.0 Mini'])
     assert.ok(promoTable.split('\n').some((line: string) => line.startsWith(`• ${label} `) && line.includes('Rp1.500')), label);
   assert.match(priceTableContext.hargaText({ active: true, eligible: false }), /Kling 2\.1 Pro \(10 detik\) — Rp3\.500/);

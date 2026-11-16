@@ -19,7 +19,7 @@ import FormData from 'form-data';
 import { Client, Pool } from 'pg';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import sharp from 'sharp';
-import { createGenjutsuFlow, type GenjutsuDraft, type GenjutsuFile } from './genjutsu';
+import { createGenjutsuFlow, GENJUTSU_PRICES, type GenjutsuDraft, type GenjutsuFile } from './genjutsu';
 import { restoreGenjutsuAudio } from './genjutsu-audio';
 import express from 'express';
 import { promises as fsp, createReadStream } from 'fs';
@@ -2810,7 +2810,7 @@ const genjutsuFlow = createGenjutsuFlow({
     return session.mode === 'genjutsu' ? session.genjutsuDraft : undefined;
   },
   set: (userId, draft) => setSession(userId, { mode: 'genjutsu', genjutsuDraft: draft }),
-  price: () => formatRupiah(MODEL_PRICES.picsart_seedance_25_flash),
+  price: seconds => formatRupiah(GENJUTSU_PRICES[seconds]),
   inspectVideo: async (ctx, file) => inspectSeedance25Media(await downloadGenjutsuFile(ctx, file), 'video'),
   inspectImage: async (ctx, file) => {
     const buffer = await downloadGenjutsuFile(ctx, file);
@@ -2854,7 +2854,7 @@ function videoModelRows() {
     [Markup.button.callback('🌊 Seedance 2.0 1080p', 'mode_pi2v_seedance_2')],
     [Markup.button.callback('🌊 Seedance 2.5 • Teks / Gambar / Video / Audio', 'mode_oneover_seedance25')],
     [Markup.button.callback(`⚡ Seedance 2.5 Flash · Teks + referensi · 30 detik · 1080p · ${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}`, 'mode_seedance25_flash')],
-    [Markup.button.callback(`Genjutsu · Character Swap · 1080p · ${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}`, 'mode_genjutsu')],
+    [Markup.button.callback(`Genjutsu · 15s ${formatRupiah(GENJUTSU_PRICES[15])} · 30s ${formatRupiah(GENJUTSU_PRICES[30])}`, 'mode_genjutsu')],
     [Markup.button.callback(`Seedance 2.5 P2 · Gambar / Video / Audio · 30s · 1080p · ${formatRupiah(MODEL_PRICES.seedance25_p2)}`, 'mode_seedance25_p2')],
     [Markup.button.callback(`Seedance 2.5 P3 · I2V · 30 detik · ${formatRupiah(MODEL_PRICES.posbot_seedance25)}`, 'mode_posbot_s25_i2v')],
     [Markup.button.callback(`Seedance 2.5 P3 · R2V · 30 detik · ${formatRupiah(MODEL_PRICES.posbot_seedance25)}`, 'mode_posbot_s25_r2v')],
@@ -3470,7 +3470,8 @@ function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false 
     `• Seedance 2.0 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
     `• Seedance 2.5 Teks / Gambar / Video / Audio (30s, 1080p) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25)}\n` +
     `• Seedance 2.5 Flash Teks / Referensi (30s, 1080p) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}\n` +
-    `• Genjutsu Character Swap (video 4–30s + foto, 1080p) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}\n` +
+    `• Genjutsu 15 detik (video 3–15s + 1–10 gambar, 1080p) — ${formatRupiah(GENJUTSU_PRICES[15])}\n` +
+    `• Genjutsu 30 detik (video 3–30s + 1–10 gambar, 1080p) — ${formatRupiah(GENJUTSU_PRICES[30])}\n` +
     `• Seedance 2.5 P2 Gambar / Video referensi (30s, 1080p melalui upscale) — ${formatRupiah(MODEL_PRICES.seedance25_p2)}\n` +
     `• Seedance 2.5 P3 I2V dari foto (30 detik) — ${formatRupiah(MODEL_PRICES.posbot_seedance25)}\n` +
     `• Seedance 2.5 P3 R2V dari video referensi (30 detik) — ${formatRupiah(MODEL_PRICES.posbot_seedance25)}\n` +
@@ -11217,7 +11218,9 @@ async function runPicsartSeedance25Flash(
   sourceAudioVideo?: Buffer,
 ) {
   const label = displayLabel;
-  const price = MODEL_PRICES.picsart_seedance_25_flash;
+  const price = sourceAudioVideo
+    ? GENJUTSU_PRICES[references.maxReferenceSeconds ?? 30]
+    : MODEL_PRICES.picsart_seedance_25_flash;
   let stage = 'charge';
   const charge = await beginCharge(dbUserId, price, MAX_PARALLEL_GENERATIONS_PER_USER);
   if (!charge.ok) {

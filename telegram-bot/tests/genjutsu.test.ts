@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { Telegraf, Markup } from 'telegraf';
-import { createGenjutsuFlow, GENJUTSU_PROMPT, GENJUTSU_NEGATIVE_PROMPT, type GenjutsuDraft } from '../src/genjutsu';
+import { createGenjutsuFlow, GENJUTSU_PRICES, GENJUTSU_PROMPT, GENJUTSU_NEGATIVE_PROMPT, type GenjutsuDraft } from '../src/genjutsu';
 
 const source = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true);
@@ -37,7 +37,7 @@ function harness() {
   };
   const flow = createGenjutsuFlow({
     get: () => draft, set: (_id, value) => { draft = value; },
-    price: () => 'Rp6.000',
+    price: seconds => `Rp${GENJUTSU_PRICES[seconds].toLocaleString('id-ID')}`,
     inspectVideo: async () => { await blockVideo; return duration; },
     inspectImage: async (_ctx, file) => { await imageWork?.(file); if (invalidImage) throw Error('broken'); },
     submit: async (_ctx, value, prompt) => { submitted.push({ value, prompt }); },
@@ -95,7 +95,7 @@ async function checkWizard() {
   assert.match(GENJUTSU_NEGATIVE_PROMPT, /changing identity/);
   assert.match(h.messages.join('\n'), /Kemiripan wajah tidak dijamin/);
   assert.match(h.messages.join('\n'), /sebagai file gambar/);
-  assert.match(h.messages.join('\n'), /Rp6.000/);
+  assert.match(h.messages.join('\n'), /Harga: Rp8\.000/);
   assert.doesNotMatch(h.messages.join('\n'), /picsart|seedance|renderful|upscal|480p/i);
 }
 
@@ -142,6 +142,7 @@ async function checkDurationPackages() {
       if (valid) {
         await h.flow.image(h.ctx, { file_id: 'replacement' });
         await h.flow.callback(h.ctx, `genjutsu_images_done_${id}`);
+        assert.match(h.messages.join('\n'), new RegExp(`Harga: Rp${max === 15 ? '4\\.500' : '8\\.000'}`));
         await h.flow.callback(h.ctx, `genjutsu_generate_${id}`);
         assert.equal(h.submitted[0].value.maxReferenceSeconds, max);
         assert.match(h.messages.join('\n'), new RegExp(`Paket: ${max} detik`));
@@ -217,7 +218,7 @@ async function checkTelegramRouting() {
   const flow = createGenjutsuFlow({
     get: () => session.mode === 'genjutsu' ? session.genjutsuDraft : undefined,
     set: (_id, draft) => { session = { ...session, mode: 'genjutsu', genjutsuDraft: draft }; },
-    price: () => 'Rp6.000',
+    price: seconds => `Rp${GENJUTSU_PRICES[seconds].toLocaleString('id-ID')}`,
     inspectVideo: async () => 10, inspectImage: async () => {},
     submit: async (_ctx, draft, prompt) => { submissions.push({ draft, prompt }); },
   });
@@ -276,13 +277,15 @@ async function checkRealGenerationAdapter() {
   const declaration = ast.statements.find(node => ts.isVariableStatement(node)
     && node.declarationList.declarations.some(d => d.name.getText(ast) === 'genjutsuFlow'));
   assert(declaration);
+  for (const packageSeconds of [15, 30] as const) {
+  const expectedPrice = packageSeconds === 15 ? 4500 : 8000;
   for (const scenario of ['success', 'upscale-fail', 'audio-fail', 'publish-fail', 'silent', 'actual-too-long', 'actual-too-short']) {
     const upscale = scenario !== 'upscale-fail';
     let session: any = {
       mode: 'genjutsu', dbUserId: 7, generationDraft: true, generationDraftKind: 'genjutsu',
       genjutsuDraft: {
         id: 'confirmed-draft', step: 'confirm', imageFileIds: Array.from({ length: 10 }, (_, i) => `image-${i}`),
-        maxReferenceSeconds: 15,
+        maxReferenceSeconds: packageSeconds,
         video: { fileId: 'source', mime: 'video/mp4', duration: 10 },
       },
     };
@@ -294,7 +297,7 @@ async function checkRealGenerationAdapter() {
       reply: async (text: string) => { messages.push(text); return { message_id: 3 }; },
     };
     const context = vm.createContext({
-      Buffer, console, Date, createGenjutsuFlow,
+      Buffer, console, Date, createGenjutsuFlow, GENJUTSU_PRICES,
       getSession: () => session,
       setSession: (_id: number, patch: any) => { session = { ...session, ...patch }; },
       MODEL_PRICES: { picsart_seedance_25_flash: 6000 }, MAX_PARALLEL_GENERATIONS_PER_USER: 3,
@@ -330,7 +333,7 @@ async function checkRealGenerationAdapter() {
       },
       detectMime: () => ({ mime: 'image/jpeg', ext: 'jpg' }),
       seedance25ReferenceName: () => 'video.mp4',
-      inspectSeedance25Media: async () => scenario === 'actual-too-long' ? 15.1 : scenario === 'actual-too-short' ? 2.99 : 10,
+      inspectSeedance25Media: async () => scenario === 'actual-too-long' ? packageSeconds + 0.1 : scenario === 'actual-too-short' ? 2.99 : 10,
       beginCharge: async (_id: number, amount: number) => { charges.push(amount); return { ok: true }; },
       addSaldo: async (_id: number, amount: number) => { refunds.push(amount); },
       releaseGenerating: (id: number) => { releases.push(id); },
@@ -369,10 +372,10 @@ async function checkRealGenerationAdapter() {
     assert(pipeline, 'Confirmation must reach the real generation runner');
     await pipeline;
     await flow.callback(ctx, 'genjutsu_generate_confirmed-draft');
-    assert.deepEqual(charges, [6000], 'Genjutsu charges exactly once');
+    assert.deepEqual(charges, [expectedPrice], 'Charge the selected package once, not the actual 10-second source length');
     assert.equal(providerInputs.length, 1);
     assert.equal(providerInputs[0].taskType, 'edit');
-    assert.equal(providerInputs[0].maxReferenceSeconds, 15);
+    assert.equal(providerInputs[0].maxReferenceSeconds, packageSeconds);
     assert.equal(providerInputs[0].generateAudio, false, 'Genjutsu must disable model audio explicitly');
     assert.equal(providerInputs[0].images.length, 10);
     assert.equal(providerInputs[0].videos.length, 1);
@@ -392,11 +395,14 @@ async function checkRealGenerationAdapter() {
       messages.push(deliveries[0][2]);
     } else {
       assert.equal(deliveries.length, 0, 'Never send native video after finishing failure');
-      assert.deepEqual(refunds, [6000]);
+      assert.deepEqual(refunds, [expectedPrice]);
       assert.deepEqual(stages, ['finishing']);
     }
     assert.doesNotMatch(messages.join('\n'), /seedance|picsart|renderful|upscal|480p/i);
   }
+  }
+  assert.match(functionCode('upscaleGeneratedVideo'), /return generateRenderful1080\(sourceUrl,/,
+    'Public Genjutsu finishing must use Renderful, not a native-resolution fallback');
 }
 
 async function checkIdentityReferenceGuards() {

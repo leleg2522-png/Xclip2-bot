@@ -3,7 +3,19 @@ name: Genjutsu character swap product
 description: User-approved scope and customer flow for the separate Genjutsu Telegram feature.
 ---
 
-Genjutsu is a separate customer menu, not a replacement for the general Seedance 2.5 Flash flow. It requires one source video followed by 1–10 reference images, uses an automatic character-replacement prompt, and asks for explicit Generate confirmation at Rp6,000.
+Genjutsu is a separate customer menu, not a replacement for the general Seedance 2.5 Flash flow. It requires one source video followed by 1–10 reference images, uses an automatic character-replacement prompt, and asks for explicit Generate confirmation.
+
+Genjutsu's 15-second package costs **Rp4,500** and its 30-second package costs **Rp8,000**.
+
+**Why:** The user specified: “15 detik genjutsu 4500 dan 30 detik 8000”.
+
+**How to apply:** Price by the selected package, not by actual reference length. Show the same package price in the menu, price list, confirmation, and Generate button; use that amount for charging and full refunds. Do not change ordinary Flash or P2 pricing.
+
+Both public Genjutsu packages must finish through Renderful to 1080p before delivery.
+
+**Why:** The user reiterated: “Dan jgn lupa hasil di upscale ke renderfull”.
+
+**How to apply:** Do not deliver native output when finishing fails; refund the full selected-package charge. Preserve the existing separate raw-preview approval gate for owner experiments.
 
 Genjutsu accepts exactly one video and at most ten reference images, with at least one image required.
 
