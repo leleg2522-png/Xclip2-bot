@@ -138,7 +138,11 @@ async function main() {
   await assert.rejects(() => capped.run({ maxProviderCredits: 50 }), /QUOTE_EXCEEDS/);
   assert.equal(capped.calls.posts.length, 1);
   const failed = harness({ pollFails: true });
-  await assert.rejects(() => failed.run(), /^Error: PICSART_SEEDANCE25_POST_SUBMIT_FAILED/);
+  await assert.rejects(() => failed.run(), (error: any) => {
+    assert.match(error.message, /^PICSART_SEEDANCE25_POST_SUBMIT_FAILED Genjutsu job=accepted-job$/);
+    assert.equal(error.cause?.message, 'PICSART_AUTH_DEAD', 'Preserve the original polling failure for safe diagnostics');
+    return true;
+  });
   assert.equal(failed.calls.posts.length, 2, 'Never resubmit an accepted job');
   for (const options of [{ submitStatus: 500 }, { missingId: true }]) {
     const ambiguous = harness(options);

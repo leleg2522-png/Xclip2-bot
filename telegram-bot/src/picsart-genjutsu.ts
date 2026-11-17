@@ -103,7 +103,7 @@ export async function generateGenjutsuWithSeedance25(
       return await deps.poll(id, taskId, ms => input.onPoll?.(Math.round(ms / 1000)));
     } catch (error) {
       // The existing account runner recognizes this prefix and never resubmits.
-      throw new Error('PICSART_SEEDANCE25_POST_SUBMIT_FAILED Genjutsu', { cause: error });
+      throw new Error(`PICSART_SEEDANCE25_POST_SUBMIT_FAILED Genjutsu job=${taskId}`, { cause: error });
     }
   }, input.persistAccount ?? true);
 }

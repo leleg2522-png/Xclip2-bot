@@ -11239,6 +11239,12 @@ async function runPicsartSeedance25Flash(
       prompt,
       ...references,
       ...(sourceAudioVideo ? { generateAudio: false } : {}),
+      onSubmitted: ({ credentialId, taskId }) => {
+        console.log(
+          `[seedance25-flash] user=${userId} dbUser=${dbUserId} accepted ` +
+          `cred=${credentialId} job=${taskId}`
+        );
+      },
       onStatus: (providerStage: 'upload' | 'quote' | 'submit' | 'poll') => {
         stage = providerStage;
         const message = providerStage === 'upload'
@@ -11302,7 +11308,11 @@ async function runPicsartSeedance25Flash(
     }
   } catch (error: any) {
     const message = describeError(error);
-    console.error(`[seedance25-flash] user=${userId} dbUser=${dbUserId} stage=${stage} error=${message}`);
+    const pollCause = picsart.describePicsartPostSubmitCause(error);
+    console.error(
+      `[seedance25-flash] user=${userId} dbUser=${dbUserId} stage=${stage} ` +
+      `error=${message}${pollCause ? ` cause=${pollCause}` : ''}`
+    );
     await notifyGenerationFailure(chatId, statusMsgId, error, stage);
   } finally {
     if (refund) {

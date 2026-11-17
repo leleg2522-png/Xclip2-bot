@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import { Telegraf, Markup } from 'telegraf';
 import { createGenjutsuFlow, GENJUTSU_PRICES, GENJUTSU_PROMPT, type GenjutsuDraft } from '../src/genjutsu';
+import { describePicsartPostSubmitCause } from '../src/picsart';
 
 const USER_PROMPT = 'Ganti karakter utama menggunakan gambar referensi. Pertahankan gerakan video. Jangan tambahkan subtitle.';
 
@@ -334,7 +335,7 @@ async function checkRealGenerationAdapter() {
   assert(declaration);
   for (const packageSeconds of [15, 30] as const) {
   const expectedPrice = packageSeconds === 15 ? 4500 : 8000;
-  for (const scenario of ['success', 'upscale-fail', 'audio-fail', 'publish-fail', 'silent', 'actual-too-long', 'actual-too-short']) {
+  for (const scenario of ['success', 'upscale-fail', 'audio-fail', 'publish-fail', 'provider-fail', 'silent', 'actual-too-long', 'actual-too-short']) {
     const upscale = scenario !== 'upscale-fail';
     let session: any = {
       mode: 'genjutsu', dbUserId: 7, generationDraft: true, generationDraftKind: 'genjutsu',
@@ -345,7 +346,7 @@ async function checkRealGenerationAdapter() {
         video: { fileId: 'source', mime: 'video/mp4', duration: 10 },
       },
     };
-    const providerInputs: any[] = [], deliveries: any[] = [], messages: string[] = [];
+    const providerInputs: any[] = [], deliveries: any[] = [], messages: string[] = [], diagnostics: string[] = [];
     const charges: number[] = [], refunds: number[] = [], stages: string[] = [], releases: number[] = [];
     let finishing = 0, audioRestores = 0, pipeline: Promise<void> | undefined;
     const ctx = {
@@ -353,7 +354,13 @@ async function checkRealGenerationAdapter() {
       reply: async (text: string) => { messages.push(text); return { message_id: 3 }; },
     };
     const context = vm.createContext({
-      Buffer, console, Date, createGenjutsuFlow, GENJUTSU_PRICES,
+      Buffer,
+      console: {
+        log: (...args: any[]) => diagnostics.push(args.map(String).join(' ')),
+        warn: (...args: any[]) => diagnostics.push(args.map(String).join(' ')),
+        error: (...args: any[]) => diagnostics.push(args.map(String).join(' ')),
+      },
+      Date, createGenjutsuFlow, GENJUTSU_PRICES,
       getSession: () => session,
       setSession: (_id: number, patch: any) => { session = { ...session, ...patch }; },
       MODEL_PRICES: { picsart_seedance_25_flash: 6000 }, MAX_PARALLEL_GENERATIONS_PER_USER: 3,
@@ -396,10 +403,17 @@ async function checkRealGenerationAdapter() {
       incrementKlingUsage: async () => 1, markGenSuccess: () => {},
       describeError: (error: Error) => error.message,
       notifyGenerationFailure: async (_chat: number, _id: number, _error: Error, stage: string) => { stages.push(stage); },
-      picsart: { SEEDANCE25_FLASH_DURATION_SECONDS: 30,
+      picsart: { SEEDANCE25_FLASH_DURATION_SECONDS: 30, describePicsartPostSubmitCause,
         generateSeedance25Flash: async () => { throw Error('Genjutsu must not use Flash'); },
         generateSeedance25Genjutsu: async (input: any) => {
-        providerInputs.push(input); input.onStatus('upload'); input.onStatus('quote'); input.onStatus('poll');
+        providerInputs.push(input);
+        await input.onSubmitted?.({ credentialId: 11462, taskId: 'accepted-job' });
+        input.onStatus('upload'); input.onStatus('quote'); input.onStatus('poll');
+        if (scenario === 'provider-fail') {
+          throw new Error('PICSART_SEEDANCE25_POST_SUBMIT_FAILED Genjutsu job=accepted-job', {
+            cause: new Error('PICSART_GEN_FAILED: 422 https://private.test/result?token=fixture'),
+          });
+        }
         return { url: 'https://result.test/native.mp4' };
       } },
       upscaleGeneratedVideo: async (_source: string, _user: number, _chat: number, _status: number, text: string) => {
@@ -440,9 +454,11 @@ async function checkRealGenerationAdapter() {
     assert.equal(providerInputs[0].videos[0].buffer.toString(), 'original-performance-video');
     assert.equal(providerInputs[0].audios.length, 0);
     assert.equal(providerInputs[0].prompt, USER_PROMPT);
-    assert.equal(finishing, 1);
+    assert.equal(finishing, scenario === 'provider-fail' ? 0 : 1);
     assert.deepEqual(releases, [7]);
-    assert.equal(audioRestores, upscale ? 1 : 0);
+    assert.equal(audioRestores, upscale && scenario !== 'provider-fail' ? 1 : 0);
+    assert(diagnostics.some(line => line.includes('accepted cred=11462 job=accepted-job')),
+      'Log the accepted job before polling starts');
     if (['success', 'silent'].includes(scenario)) {
       assert.deepEqual(refunds, []);
       assert.equal(deliveries[0][1], 'https://result.test/original-audio-1080.mp4');
@@ -452,7 +468,12 @@ async function checkRealGenerationAdapter() {
     } else {
       assert.equal(deliveries.length, 0, 'Never send native video after finishing failure');
       assert.deepEqual(refunds, [expectedPrice]);
-      assert.deepEqual(stages, ['finishing']);
+      assert.deepEqual(stages, [scenario === 'provider-fail' ? 'poll' : 'finishing']);
+      if (scenario === 'provider-fail') {
+        const pollLog = diagnostics.find(line => line.includes('stage=poll'));
+        assert.match(pollLog ?? '', /cause=PICSART_GEN_FAILED: 422/);
+        assert.doesNotMatch(pollLog ?? '', /private\.test|fixture/);
+      }
     }
     assert.doesNotMatch(messages.join('\n'), /seedance|picsart|renderful|upscal|480p/i);
   }
