@@ -18,6 +18,17 @@ The user explicitly wants automatic upscaling to remain invisible to customers.
 messages, result captions, and refund/failure notices when adding or changing a
 provider. Admin-only setup and operational logs may retain internal names.
 
+## Seedance 2.5 P3 I2V route
+
+The public Seedance 2.5 P3 I2V option uses Edanbot at Rp6,500. Keep the existing
+P3 R2V route and the separate Picsart Seedance 2.5 Flash option unchanged.
+
+**Why:** The user explicitly chose Edanbot for P3 I2V and set the price to
+Rp6,500; the Edanbot flow accepts image references, not video references.
+
+**How to apply:** Keep P3 I2V and P3 R2V as distinct products. Do not expose the
+provider in customer-facing copy or redirect the P3 R2V workflow to this route.
+
 ## Kling P4 naming
 
 The public name “Kling MC V3 Pro P4” intentionally identifies the Flora route for

@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import { CHINA_VIDEO_MODELS } from '../src/chinaapi-video';
 import { BUDGET_VIDEO_MODELS } from '../src/budget-video-api';
+import { GENJUTSU_PRICES } from '../src/genjutsu';
 import { isRetiredVideoCallback, retiredVideoModelsGuard } from '../src/retired-video-models';
 
 const source = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
@@ -11,7 +12,7 @@ assert(source.indexOf('bot.use(retiredVideoModelsGuard(') < source.indexOf('bot.
 const ast = ts.createSourceFile('index.ts', source, ts.ScriptTarget.ES2022, true);
 const priceFn = ast.statements.find(s => ts.isFunctionDeclaration(s) && s.name?.text === 'hargaText')!;
 const prices = vm.createContext({
-  CHINA_VIDEO_MODELS, isRetiredVideoCallback, BUDGET_VIDEO_MODELS,
+  CHINA_VIDEO_MODELS, isRetiredVideoCallback, BUDGET_VIDEO_MODELS, GENJUTSU_PRICES,
   MODEL_PRICES: new Proxy({}, { get: () => 1000 }),
   formatRupiah: (n: number) => `Rp${n}`, octoberPromoText: () => '',
   octoberPromoPrice: (_status: unknown, _model: string, price: number) => price,

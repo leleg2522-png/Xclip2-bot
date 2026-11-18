@@ -666,7 +666,7 @@ async function main() {
   const flashMenuRow = botSource.split('\n').find(line => line.includes("'mode_seedance25_flash')"));
   assert.match(flashMenuRow!, /1080p/);
   assert.doesNotMatch(flashMenuRow!, /480p/);
-  const entry = fragment(botSource, "  if (data === 'mode_seedance25_flash' || data === 'mode_seedance25_flash_edanbot') {",
+  const entry = fragment(botSource, "  if (data === 'mode_seedance25_flash' || data === 'mode_seedance25_flash_edanbot'",
     "  if (data === 'seedance25_flash_refs_done') {");
   assert.match(entry, /edanbotFlash \?/);
   assert.match(entry, /Output text-to-video: \*30 detik\* • \*1080p\* • \*16:9\*/);

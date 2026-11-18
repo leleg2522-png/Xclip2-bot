@@ -22,6 +22,7 @@ assert.deepEqual(request.fields, {
   reference_images: ['https://edanbot.digital/uploads/reference.png'],
 });
 assert.equal(SEEDANCE25_FLASH_EDAN.maxImages, 9);
+assert.equal(SEEDANCE25_FLASH_EDAN.label, 'Seedance 2.5 P3 480p');
 assert.throws(() => seedance25FlashEdanRequest('prompt', []), /INVALID_REFERENCES/);
 assert.throws(() => seedance25FlashEdanRequest('prompt', [
   { ...asset, url: 'http://edanbot.digital/reference.png' },
@@ -110,12 +111,12 @@ async function billingTests() {
   for (const failure of ['none', 'generation', 'delivery', 'charge', 'throw-delivery']) {
     Object.keys(events).forEach(key => { (events as any)[key] = 0; });
     const context = vm.createContext({
-      MODEL_PRICES: { edanbot_seedance25_flash: 6000 },
+      MODEL_PRICES: { edanbot_seedance25_p3: 6500 },
       MAX_PARALLEL_GENERATIONS_PER_USER: 3,
       SEEDANCE25_FLASH_EDAN,
       beginCharge: async (_id: number, amount: number) => {
         events.charge++;
-        assert.equal(amount, 6000);
+        assert.equal(amount, 6500);
         return { ok: failure !== 'charge' };
       },
       chargeFailMsg: () => 'no saldo',
@@ -138,7 +139,7 @@ async function billingTests() {
       EDANBOT_JOB_TIMEOUT_MS: 1_200_000,
       sendResult: async (_chat: number, _url: string, caption: string) => {
         events.delivered++;
-        assert.match(caption, /Seedance 2\.5 Flash 480p/);
+        assert.match(caption, /Seedance 2\.5 P3 480p/);
         assert.match(caption, /480p/);
         assert.doesNotMatch(caption, /Edanbot|Picsart/i);
         if (failure === 'throw-delivery') throw new Error('delivery failed');
@@ -146,7 +147,7 @@ async function billingTests() {
       },
       incrementKlingUsage: async () => { events.usage++; return 1; },
       markGenSuccess: () => {},
-      addSaldo: async (_id: number, amount: number) => { assert.equal(amount, 6000); events.refund++; },
+      addSaldo: async (_id: number, amount: number) => { assert.equal(amount, 6500); events.refund++; },
       releaseGenerating: () => { events.release++; },
       describeError: () => 'safe error',
       notifyGenerationFailure: async () => { events.notify++; },
@@ -164,15 +165,19 @@ async function billingTests() {
     assert.equal(events.notify, ['none', 'charge'].includes(failure) ? 0 : 1, failure);
   }
   assert.match(source, /mode_seedance25_flash_edanbot/);
-  assert.match(source, /Seedance 2\.5 Flash · Gambar · 30 detik · 480p/);
+  assert.match(source, /mode_posbot_s25_i2v\s*:\s*'seedance25_flash'/);
+  assert.match(source, /Seedance 2\.5 P3 · I2V · 30 detik · 480p/);
+  assert.doesNotMatch(source, /Seedance 2\.5 Flash · Gambar · 30 detik · 480p/);
+  assert.match(source, /data === 'mode_posbot_s25_i2v'\)\s*\{/);
   assert.match(source, /mode_seedance25_flash_edanbot\s*:\s*'seedance25_flash'/);
-  assert.match(source, /runPicsartSeedance25Flash\(/);
+  assert.match(source, /edanbot_seedance25_p3: 6500/);
+  assert.match(source, /MODEL_PRICES\.posbot_seedance25\)\}`, 'mode_posbot_s25_r2v'/);
 }
 
 async function main() {
   await providerTests();
   await billingTests();
-  console.log('Edanbot Seedance 2.5 Flash: HAR contract, cookie rotation, no replay, menu routing and refunds passed');
+  console.log('Seedance 2.5 P3 I2V: Edanbot contract, Rp6.500 billing, no replay, and refunds passed');
 }
 main().catch(error => {
   console.error(error);

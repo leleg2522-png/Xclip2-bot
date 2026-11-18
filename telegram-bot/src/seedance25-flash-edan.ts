@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { validateSeedance25Prompt } from './seedance25-prompt';
 
 export const SEEDANCE25_FLASH_EDAN = {
-  label: 'Seedance 2.5 Flash 480p',
+  label: 'Seedance 2.5 P3 480p',
   model: 'seedance-2.5-flash-480p',
   aspectRatio: '16:9',
   duration: 30,
