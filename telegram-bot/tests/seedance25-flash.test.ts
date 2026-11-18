@@ -360,13 +360,17 @@ async function checkBotBillingDeliveryAndRefund() {
     },
     chargeFailMsg: () => 'Saldo tidak cukup',
     formatRupiah: (amount: number) => `Rp${amount}`,
-    picsart: { SEEDANCE25_FLASH_DURATION_SECONDS: 30, generateSeedance25Flash: async (input: any) => {
-      providerCalls++;
-      order.push('generate');
-      providerInput = input;
-      for (const stage of ['upload', 'quote', 'submit', 'poll']) input.onStatus?.(stage);
-      return { url: 'https://result.test/video.mp4', credits: 90 };
-    } },
+    picsart: {
+      SEEDANCE25_FLASH_DURATION_SECONDS: 30,
+      describePicsartPostSubmitCause: () => '',
+      generateSeedance25Flash: async (input: any) => {
+        providerCalls++;
+        order.push('generate');
+        providerInput = input;
+        for (const stage of ['upload', 'quote', 'submit', 'poll']) input.onStatus?.(stage);
+        return { url: 'https://result.test/video.mp4', credits: 90 };
+      },
+    },
     sendResult: async (...args: any[]) => { order.push('deliver'); deliveries.push(args); return deliveryOk; },
     incrementKlingUsage: async () => 1,
     markGenSuccess: () => {},
@@ -444,7 +448,11 @@ async function checkBotBillingDeliveryAndRefund() {
     beginCharge: async (_id: number, price: number) => { charges.push(price); return { ok: true }; },
     chargeFailMsg: () => 'Saldo tidak cukup',
     formatRupiah: (amount: number) => `Rp${amount}`,
-    picsart: { SEEDANCE25_FLASH_DURATION_SECONDS: 30, generateSeedance25Flash: async () => { throw Error('PICSART_GEN_FAILED'); } },
+    picsart: {
+      SEEDANCE25_FLASH_DURATION_SECONDS: 30,
+      describePicsartPostSubmitCause: () => '',
+      generateSeedance25Flash: async () => { throw Error('PICSART_GEN_FAILED'); },
+    },
     sendResult: async () => false,
     incrementKlingUsage: async () => 1,
     markGenSuccess: () => {},
@@ -658,9 +666,10 @@ async function main() {
   const flashMenuRow = botSource.split('\n').find(line => line.includes("'mode_seedance25_flash')"));
   assert.match(flashMenuRow!, /1080p/);
   assert.doesNotMatch(flashMenuRow!, /480p/);
-  const entry = fragment(botSource, "  if (data === 'mode_seedance25_flash') {",
+  const entry = fragment(botSource, "  if (data === 'mode_seedance25_flash' || data === 'mode_seedance25_flash_edanbot') {",
     "  if (data === 'seedance25_flash_refs_done') {");
-  assert.doesNotMatch(entry, /upscal|renderful|480p|native/i);
+  assert.match(entry, /edanbotFlash \?/);
+  assert.match(entry, /Output text-to-video: \*30 detik\* • \*1080p\* • \*16:9\*/);
   const flashPriceRow = botSource.split('\n').find(line => line.includes('Flash Teks / Referensi'));
   assert.match(flashPriceRow!, /1080p/);
   assert.doesNotMatch(flashPriceRow!, /upscal|renderful|480p|native/i);

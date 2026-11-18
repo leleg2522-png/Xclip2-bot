@@ -88,6 +88,7 @@ import {
   validateKling4ProTxtDocument, decodeKling4ProTxt,
 } from './kling4-pro-prompt';
 import { generateKlingV3Pro, KLING_V3_PRO } from './kling-v3-pro-edan';
+import { generateSeedance25FlashEdan, SEEDANCE25_FLASH_EDAN } from './seedance25-flash-edan';
 import { PgDramaStore } from './microdrama-store';
 import { registerMicrodrama } from './microdrama-bot';
 import { DeapiKeyPool } from './deapi-key-pool';
@@ -167,7 +168,7 @@ const floraHttp = axios.create({ timeout: 180_000 });
 // Direct HTTP client for Telegram downloads — tidak pakai proxy
 const telegramHttp = axios.create({ timeout: 60_000 });
 
-// Direct HTTP client for Edanbot's separate Kling v3 Pro image-to-video flow.
+// Direct HTTP client for Edanbot's Kling v3 Pro and Seedance 2.5 Flash flows.
 const edanbotHttp = axios.create({ timeout: 120_000, proxy: false });
 const EDANBOT_JOB_TIMEOUT_MS = 20 * 60 * 1000;
 
@@ -260,6 +261,7 @@ const MODEL_PRICES = {
   kling_p3: 4000,      // Kling MC V3.0 PRO P3 (Picsart Motion Control)
   kling_p2: 4000,      // Kling MC V3 PRO P2 (Picsart Motion Control)
   seedance25_p2: 7500, // Seedance 2.5 P2: Picsart P1 route with mandatory 1080p finishing.
+  edanbot_seedance25_flash: 6000, // Edanbot Seedance 2.5 Flash, native 480p, 30s.
   posbot_seedance25: POSBOT_SEEDANCE25_PRICE, // PosBot Seedance 2.5 P3 I2V and R2V, 30 seconds.
   kling_p4: 2500,      // Kling MC V3 Pro P4 (Alriz native)
   kling_v3_standard: 2500, // Kling MC V3 Pro P5 (Alriz native)
@@ -2082,6 +2084,7 @@ interface Session {
   seedance25Settings?: Seedance25Settings;
   seedance25Step?: 'mode' | 'audio' | 'ratio' | 'media' | 'prompt';
   seedance25FlashDraftId?: string;
+  seedance25FlashProvider?: 'picsart' | 'edanbot';
   seedance25FlashImageFileIds?: string[];
   seedance25FlashVideos?: Seedance25Media[];
   seedance25FlashAudios?: Seedance25Media[];
@@ -2245,6 +2248,7 @@ function generationDraftKindForStart(data: string): GenerationDraftKind | undefi
     mode_flora_seedance_2_5_480: 'flora_seedance_2_5_480',
     mode_oneover_seedance25: 'oneover',
     mode_seedance25_flash: 'seedance25_flash',
+    mode_seedance25_flash_edanbot: 'seedance25_flash',
     mode_genjutsu: 'genjutsu',
     mode_seedance25_p2: 'seedance25_p2',
     mode_posbot_s25_i2v: 'posbot_seedance25',
@@ -2832,6 +2836,7 @@ const genjutsuFlow = createGenjutsuFlow({
       mode: 'seedance25_flash_wait_prompt',
       genjutsuDraft: undefined,
       seedance25FlashDraftId: draft.id,
+      seedance25FlashProvider: undefined,
       seedance25FlashImageFileIds: [...images],
       seedance25FlashVideos: [draft.video],
       seedance25FlashAudios: [],
@@ -2855,6 +2860,7 @@ function videoModelRows() {
     [Markup.button.callback('🌊 Seedance 2.0 1080p', 'mode_pi2v_seedance_2')],
     [Markup.button.callback('🌊 Seedance 2.5 • Teks / Gambar / Video / Audio', 'mode_oneover_seedance25')],
     [Markup.button.callback(`⚡ Seedance 2.5 Flash · Teks + referensi · 30 detik · 1080p · ${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}`, 'mode_seedance25_flash')],
+    [Markup.button.callback(`⚡ Seedance 2.5 Flash · Gambar · 30 detik · 480p · ${formatRupiah(MODEL_PRICES.edanbot_seedance25_flash)}`, 'mode_seedance25_flash_edanbot')],
     [Markup.button.callback(`Genjutsu · 15s ${formatRupiah(GENJUTSU_PRICES[15])} · 30s ${formatRupiah(GENJUTSU_PRICES[30])}`, 'mode_genjutsu')],
     [Markup.button.callback(`Seedance 2.5 P2 · Gambar / Video / Audio · 30s · 1080p · ${formatRupiah(MODEL_PRICES.seedance25_p2)}`, 'mode_seedance25_p2')],
     [Markup.button.callback(`Seedance 2.5 P3 · I2V · 30 detik · ${formatRupiah(MODEL_PRICES.posbot_seedance25)}`, 'mode_posbot_s25_i2v')],
@@ -3471,6 +3477,7 @@ function hargaText(promo: OctoberPromoStatus = { active: false, eligible: false 
     `• Seedance 2.0 1080p — ${formatRupiah(getPicsartI2vPrice('seedance_2'))}\n` +
     `• Seedance 2.5 Teks / Gambar / Video / Audio (30s, 1080p) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25)}\n` +
     `• Seedance 2.5 Flash Teks / Referensi (30s, 1080p) — ${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}\n` +
+    `• Seedance 2.5 Flash Gambar (30s, 480p) — ${formatRupiah(MODEL_PRICES.edanbot_seedance25_flash)}\n` +
     `• Genjutsu 15 detik (video 3–15s + 1–10 gambar, 1080p) — ${formatRupiah(GENJUTSU_PRICES[15])}\n` +
     `• Genjutsu 30 detik (video 3–30s + 1–10 gambar, 1080p) — ${formatRupiah(GENJUTSU_PRICES[30])}\n` +
     `• Seedance 2.5 P2 Gambar / Video referensi (30s, 1080p melalui upscale) — ${formatRupiah(MODEL_PRICES.seedance25_p2)}\n` +
@@ -5538,9 +5545,11 @@ bot.on('callback_query', async (ctx) => {
     );
   }
 
-  if (data === 'mode_seedance25_flash') {
+  if (data === 'mode_seedance25_flash' || data === 'mode_seedance25_flash_edanbot') {
+    const edanbotFlash = data === 'mode_seedance25_flash_edanbot';
     setSession(userId, {
       mode: 'seedance25_flash_wait_media',
+      seedance25FlashProvider: edanbotFlash ? 'edanbot' : 'picsart',
       oneoverImageUrl: undefined,
       seedance25ImageFileIds: undefined,
       seedance25Videos: undefined,
@@ -5558,16 +5567,21 @@ bot.on('callback_query', async (ctx) => {
       seedance25FlashPendingUploads: 0,
     });
     return ctx.editMessageText(
-      `⚡ *Seedance 2.5 Flash*\n\n` +
-      `Output text-to-video: *30 detik* • *1080p* • *16:9*\n` +
-      `Jika mengirim gabungan gambar + video, mode edit mengikuti durasi dan rasio video sumber (minimal 4 detik).\n` +
-      `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}* per video\n\n` +
-      'Hasil video 1080p. Jika proses gagal, saldo dikembalikan.\n\n' +
-      `Kirim referensi opsional sebelum prompt: maksimal ${picsart.SEEDANCE25_FLASH_MAX_IMAGES} gambar, ` +
-      `${picsart.SEEDANCE25_FLASH_MAX_VIDEOS} video, dan ${picsart.SEEDANCE25_FLASH_MAX_AUDIOS} audio. ` +
-      'Boleh dicampur; tanpa referensi akan menjadi text-to-video.\n' +
-      'Batas per file 19MB, total referensi 100MB, dan total video/audio 30 detik per jenis.\n\n' +
-      'Setelah referensi selesai, tekan tombol lanjut ke prompt.',
+      edanbotFlash
+        ? `⚡ *${SEEDANCE25_FLASH_EDAN.label}*\n\n` +
+          `Video *30 detik* • *480p* • *16:9* · ${formatRupiah(MODEL_PRICES.edanbot_seedance25_flash)} per video\n` +
+          `Kirim 1–${SEEDANCE25_FLASH_EDAN.maxImages} gambar referensi (maksimal 19MB per gambar, 100MB total), ` +
+          'lalu tekan tombol lanjut ke prompt.\n\nJika proses gagal, saldo dikembalikan.'
+        : `⚡ *Seedance 2.5 Flash*\n\n` +
+          `Output text-to-video: *30 detik* • *1080p* • *16:9*\n` +
+          `Jika mengirim gabungan gambar + video, mode edit mengikuti durasi dan rasio video sumber (minimal 4 detik).\n` +
+          `Harga: *${formatRupiah(MODEL_PRICES.picsart_seedance_25_flash)}* per video\n\n` +
+          'Hasil video 1080p. Jika proses gagal, saldo dikembalikan.\n\n' +
+          `Kirim referensi opsional sebelum prompt: maksimal ${picsart.SEEDANCE25_FLASH_MAX_IMAGES} gambar, ` +
+          `${picsart.SEEDANCE25_FLASH_MAX_VIDEOS} video, dan ${picsart.SEEDANCE25_FLASH_MAX_AUDIOS} audio. ` +
+          'Boleh dicampur; tanpa referensi akan menjadi text-to-video.\n' +
+          'Batas per file 19MB, total referensi 100MB, dan total video/audio 30 detik per jenis.\n\n' +
+          'Setelah referensi selesai, tekan tombol lanjut ke prompt.',
       { parse_mode: 'Markdown', ...seedance25FlashInputKeyboard() }
     );
   }
@@ -5583,6 +5597,14 @@ bot.on('callback_query', async (ctx) => {
     const images = draft.seedance25FlashImageFileIds?.length ?? 0;
     const videos = draft.seedance25FlashVideos?.length ?? 0;
     const audios = draft.seedance25FlashAudios?.length ?? 0;
+    if (draft.seedance25FlashProvider === 'edanbot'
+      && (images < 1 || images > SEEDANCE25_FLASH_EDAN.maxImages || videos > 0 || audios > 0)) {
+      return ctx.reply(
+        `Seedance 2.5 Flash 480p memerlukan 1–${SEEDANCE25_FLASH_EDAN.maxImages} gambar saja. ` +
+        'Tambahkan gambar atau hapus referensi video/audio sebelum lanjut.',
+        seedance25FlashInputKeyboard(),
+      );
+    }
     if (images > 0 && videos > 0 && !draft.seedance25FlashVideos?.some(video =>
       Number.isFinite(video.duration) && video.duration >= 4 && video.duration <= 30)) {
       return ctx.reply(
@@ -5596,7 +5618,9 @@ bot.on('callback_query', async (ctx) => {
       `✅ Referensi siap: ${images} gambar, ${videos} video, ${audios} audio.\n` +
       (images ? 'Urutan gambar dipertahankan sebagai urutan upload.\n' : '') +
       `\nKirim prompt teks maksimal 20.000 karakter.\n\n` +
-      (images > 0 && videos > 0
+      (draft.seedance25FlashProvider === 'edanbot'
+        ? 'Mode: gambar + prompt, video 30 detik, 480p, 16:9.'
+        : images > 0 && videos > 0
         ? 'Mode edit karakter: hasil 1080p mengikuti durasi dan rasio video sumber.'
         : images + videos + audios
           ? 'Mode: video dengan referensi, durasi hasil 30 detik, 1080p.'
@@ -7080,9 +7104,18 @@ async function submitSeedance25FlashPrompt(
   }
   const dbUserId = activeDraft.dbUserId;
   const draftId = activeDraft.seedance25FlashDraftId;
+  const edanbotFlash = activeDraft.seedance25FlashProvider === 'edanbot';
   const imageFileIds = [...(activeDraft.seedance25FlashImageFileIds ?? [])];
   const videoFiles = [...(activeDraft.seedance25FlashVideos ?? [])];
   const audioFiles = [...(activeDraft.seedance25FlashAudios ?? [])];
+  if (edanbotFlash && (imageFileIds.length < 1 || imageFileIds.length > SEEDANCE25_FLASH_EDAN.maxImages
+    || videoFiles.length > 0 || audioFiles.length > 0)) {
+    return ctx.reply(
+      `Seedance 2.5 Flash 480p memerlukan 1–${SEEDANCE25_FLASH_EDAN.maxImages} gambar saja. ` +
+      'Tambahkan gambar atau mulai ulang tanpa video/audio. Saldo belum dipotong.',
+      seedance25FlashInputKeyboard(),
+    );
+  }
   // Genjutsu has 1–10 character references and exactly one performance source.
   // Never silently fall back to ordinary Flash or mix in a stale draft's media.
   if (preserveSourceAudio && (imageFileIds.length < 1 || imageFileIds.length > 10
@@ -7112,6 +7145,7 @@ async function submitSeedance25FlashPrompt(
   setSession(userId, {
     mode: 'idle',
     seedance25FlashDraftId: undefined,
+    seedance25FlashProvider: undefined,
     seedance25FlashImageFileIds: undefined,
     seedance25FlashVideos: undefined,
     seedance25FlashAudios: undefined,
@@ -7184,13 +7218,28 @@ async function submitSeedance25FlashPrompt(
     ));
   }
   if (getSession(userId).mode !== 'idle' && getSession(userId).seedance25FlashDraftId !== draftId) return;
+  const selectedLabel = edanbotFlash ? SEEDANCE25_FLASH_EDAN.label : displayLabel;
   const statusMsg = await retryTelegramRateLimit<{ message_id: number }>(() => ctx.reply(
-    references.taskType === 'edit'
-      ? `⏳ ${displayLabel} sedang menyiapkan edit video 1080p. Hasil akan dikirim otomatis...`
-      : `⏳ ${displayLabel} sedang menyiapkan video 1080p. Hasil akan dikirim otomatis...`
+    edanbotFlash
+      ? `⏳ ${selectedLabel} sedang menyiapkan video 480p. Hasil akan dikirim otomatis...`
+      : references.taskType === 'edit'
+        ? `⏳ ${selectedLabel} sedang menyiapkan edit video 1080p. Hasil akan dikirim otomatis...`
+        : `⏳ ${selectedLabel} sedang menyiapkan video 1080p. Hasil akan dikirim otomatis...`
   ));
+  if (edanbotFlash) {
+    runEdanbotSeedance25Flash(
+      ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt,
+      references.images.map((image, index) => ({
+        ...image,
+        name: image.name ?? `reference-image-${index + 1}.jpg`,
+        mime: image.mime ?? 'image/jpeg',
+      })),
+      selectedLabel,
+    ).catch((error: any) => console.error(`[${userId}] Seedance Flash error: ${describeError(error)}`));
+    return;
+  }
   runPicsartSeedance25Flash(
-    ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, references, displayLabel,
+    ctx.chat.id, userId, dbUserId, statusMsg.message_id, prompt, references, selectedLabel,
     preserveSourceAudio ? references.videos[0]?.buffer : undefined,
   )
     .catch((error: any) => console.error(`[${userId}] Seedance 2.5 Flash error:`, describeError(error)));
@@ -7305,15 +7354,19 @@ async function handleSeedance25FlashImage(ctx: any, fileId: string, fileSize?: n
   const draft = getSession(userId);
   if (draft.mode !== 'seedance25_flash_wait_media' || !draft.seedance25FlashDraftId) return;
   const images = draft.seedance25FlashImageFileIds ?? [];
+  const maxImages = draft.seedance25FlashProvider === 'edanbot'
+    ? SEEDANCE25_FLASH_EDAN.maxImages : picsart.SEEDANCE25_FLASH_MAX_IMAGES;
   if (fileSize && fileSize > SEEDANCE25_MAX_MEDIA_BYTES) return ctx.reply('Maksimal 19MB per gambar referensi.');
   if (images.includes(fileId)) return ctx.reply('Gambar referensi ini sudah diterima.');
-  if (images.length >= picsart.SEEDANCE25_FLASH_MAX_IMAGES) {
-    return ctx.reply(`Maksimal ${picsart.SEEDANCE25_FLASH_MAX_IMAGES} gambar referensi.`, seedance25FlashInputKeyboard());
+  if (images.length >= maxImages) {
+    return ctx.reply(`Maksimal ${maxImages} gambar referensi.`, seedance25FlashInputKeyboard());
   }
   setSession(userId, { seedance25FlashImageFileIds: [...images, fileId] });
   return ctx.reply(
-    `✅ Gambar referensi ${images.length + 1}/${picsart.SEEDANCE25_FLASH_MAX_IMAGES} diterima.\n` +
-    'Kirim gambar, video, atau audio lain; atau lanjut ke prompt.',
+    `✅ Gambar referensi ${images.length + 1}/${maxImages} diterima.\n` +
+    (draft.seedance25FlashProvider === 'edanbot'
+      ? 'Kirim gambar lain atau lanjut ke prompt.'
+      : 'Kirim gambar, video, atau audio lain; atau lanjut ke prompt.'),
     seedance25FlashInputKeyboard(),
   );
 }
@@ -7328,6 +7381,9 @@ async function handleSeedance25FlashMedia(
   const draftId = draft.seedance25FlashDraftId;
   if (draft.mode !== 'seedance25_flash_wait_media' || !draftId) {
     return ctx.reply('Pilih Seedance 2.5 Flash dari /menu untuk menambahkan referensi.');
+  }
+  if (draft.seedance25FlashProvider === 'edanbot') {
+    return ctx.reply('Seedance 2.5 Flash 480p menerima gambar saja. Kirim foto atau lanjut ke prompt.');
   }
   const key = kind === 'video' ? 'seedance25FlashVideos' : 'seedance25FlashAudios';
   const max = kind === 'video' ? picsart.SEEDANCE25_FLASH_MAX_VIDEOS : picsart.SEEDANCE25_FLASH_MAX_AUDIOS;
@@ -11199,6 +11255,73 @@ async function runPicsartSeedance25(
       await bot.telegram.sendMessage(
         chatId,
         `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`
+      ).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
+// ─── Edanbot Seedance 2.5 Flash, native 480p ──────────────────────────────────
+
+async function runEdanbotSeedance25Flash(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  prompt: string,
+  images: { buffer: Buffer; name: string; mime: string }[],
+  label: string = SEEDANCE25_FLASH_EDAN.label,
+) {
+  const price = MODEL_PRICES.edanbot_seedance25_flash;
+  const charge = await beginCharge(dbUserId, price, MAX_PARALLEL_GENERATIONS_PER_USER);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, price)).catch(() => {});
+    return;
+  }
+  let refund = true;
+  let stage = 'upload';
+  try {
+    const result = await generateSeedance25FlashEdan(prompt, images, {
+      cookies: getAvailableEdanbotCookies,
+      markDead: markEdanbotCookieDead,
+      upload: (cookie, image) => uploadToEdanbot(cookie, image.buffer, image.name, image.mime),
+      submit: async (cookie, body) => {
+        const response = await edanbotHttp.post('https://edanbot.digital/api/generate', body, {
+          headers: { cookie, origin: 'https://edanbot.digital', referer: 'https://edanbot.digital/dashboard' },
+        });
+        return response.data?.job_id;
+      },
+      poll: (cookie, jobId) => pollEdanbotJob(cookie, jobId, EDANBOT_JOB_TIMEOUT_MS),
+      onStatus: providerStage => {
+        stage = providerStage;
+        const message = providerStage === 'upload'
+          ? 'mengunggah gambar referensi...'
+          : providerStage === 'submit'
+            ? 'mengirim permintaan video...'
+            : 'membuat video 480p...';
+        bot.telegram.editMessageText(chatId, statusMsgId, undefined, `⏳ ${label}: ${message}`).catch(() => {});
+      },
+    });
+    const delivered = await sendResult(
+      chatId,
+      result.url,
+      `⚡ ${label} (30 detik · 16:9 · 480p)\n\n/menu untuk buat lagi`,
+      true,
+    );
+    if (!delivered) throw new Error('EDANBOT_SEEDANCE25_FLASH_DELIVERY_FAILED');
+    refund = false;
+    const newCount = await incrementKlingUsage(dbUserId);
+    markGenSuccess(userId);
+    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    console.log(`[edanbot-s25-flash] user=${userId} done usage=${newCount} job=${result.jobId}`);
+  } catch (error) {
+    console.error(`[edanbot-s25-flash] user=${userId} stage=${stage} error=${describeError(error)}`);
+    await notifyGenerationFailure(chatId, statusMsgId, error, stage);
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, price).catch(() => {});
+      await bot.telegram.sendMessage(
+        chatId, `↩️ Saldo ${formatRupiah(price)} dikembalikan (generate tidak berhasil).`
       ).catch(() => {});
     }
     releaseGenerating(dbUserId);
