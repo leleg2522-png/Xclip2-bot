@@ -1650,3 +1650,31 @@ mtime_ms = 1795077835978
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/388328cd-04c8-4df3-a80e-62324d02ecd0/94a5af0d-401e-4834-988c-53df4a9dfc44"
 storage_version_token = "1795077891573710"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "EdOdvOVQXCrgrfPnqPDfx"
+uri = "file://generated-artifacts/minimax-h3-reference-1.png"
+type = "image"
+title = "Foto referensi MiniMax H3 1"
+description = "Foto karakter dari contoh resmi MiniMax H3; digunakan sebagai referensi penampilan."
+logical_id = "c66ad400-2821-4303-9e27-0b99f1c5a5d7"
+content_hash = "sha256:14010a2673fe66e55e56e63fecb35aca6699ccc3d571705f90e188de0a24d1aa"
+size = 1471554
+mtime_ms = 1795078033898
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/c66ad400-2821-4303-9e27-0b99f1c5a5d7/d562fde3-7537-49d2-aaf7-e3b94a9496c5"
+storage_version_token = "1795078044758472"
+content_type = "image/png"
+
+[[outputs]]
+id = "Gs3thWGZcGJkR5H4ltaph"
+uri = "file://generated-artifacts/minimax-h3-reference-2.png"
+type = "image"
+title = "Foto referensi MiniMax H3 2"
+description = "Foto kedua dari karakter yang sama di contoh resmi MiniMax H3."
+logical_id = "90ad5af7-a3a5-4fba-a7d0-061cdac5fac6"
+content_hash = "sha256:d1b40b605d6739084517530ed7dff4cc47608877e5f3f37f7e2a7c3f7607bdda"
+size = 1879517
+mtime_ms = 1795078033918
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/90ad5af7-a3a5-4fba-a7d0-061cdac5fac6/9832f747-ea1d-4950-b14d-9f1de1996262"
+storage_version_token = "1795078046140266"
+content_type = "image/png"
