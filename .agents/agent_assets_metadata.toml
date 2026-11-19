@@ -1678,3 +1678,17 @@ mtime_ms = 1795078033918
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/90ad5af7-a3a5-4fba-a7d0-061cdac5fac6/9832f747-ea1d-4950-b14d-9f1de1996262"
 storage_version_token = "1795078046140266"
 content_type = "image/png"
+
+[[outputs]]
+id = "UlylvcwJcl76n1XARGfL_"
+uri = "file://generated-artifacts/minimax-h3-reference-video.mp4"
+type = "video"
+title = "Video referensi MiniMax H3"
+description = "Klip tari studio 9,47 detik dari contoh resmi MiniMax; video ini menjadi referensi gerak dalam uji swap."
+logical_id = "e3aafa3c-1148-44fd-8657-b4d0d39c78fa"
+content_hash = "sha256:ee41a7e2cd74943c729344db2dc7217b724c11e4e6c87d85ce406ed092216df6"
+size = 12151563
+mtime_ms = 1795078151098
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/e3aafa3c-1148-44fd-8657-b4d0d39c78fa/70f653d3-fb91-492f-8072-b4121fe7e12f"
+storage_version_token = "1795078159881627"
+content_type = "video/mp4"
