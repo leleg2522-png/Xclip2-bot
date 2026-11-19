@@ -1636,3 +1636,17 @@ mtime_ms = 1794865223224
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/200ada4a-7125-4cbf-b965-c879e55f36aa/17c648c9-e31c-48c9-a8e7-008da4911e6e"
 storage_version_token = "1794868324686563"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "rY7MEvBHAYnjoOCE35im9"
+uri = "file://generated-artifacts/minimax-h3-character-swap.mp4"
+type = "video"
+title = "MiniMax H3 — uji swap karakter"
+description = "Hasil tes langsung API MiniMax-H3 dengan video referensi dan dua foto karakter dari contoh resmi. Durasi 5,17 detik, resolusi 768p."
+logical_id = "388328cd-04c8-4df3-a80e-62324d02ecd0"
+content_hash = "sha256:ac288690b5b5ea4404e762eaf6015a40ded4e88a1e553e98e7810de225569f85"
+size = 1285083
+mtime_ms = 1795077835978
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/388328cd-04c8-4df3-a80e-62324d02ecd0/94a5af0d-401e-4834-988c-53df4a9dfc44"
+storage_version_token = "1795077891573710"
+content_type = "video/mp4"
