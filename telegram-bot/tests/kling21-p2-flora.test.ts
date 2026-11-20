@@ -61,6 +61,7 @@ function makeHarness(outcome = 'success') {
           image_url: 'https://our-domain.test/dl/image.jpg',
           prompt: 'A short scene',
           op: 'i2v',
+          audio: false,
           duration: 10,
           resolution: 1080,
         });

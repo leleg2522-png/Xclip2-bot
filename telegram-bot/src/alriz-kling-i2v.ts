@@ -100,6 +100,7 @@ export async function generateAlrizKling25P2(
       image_url: imageUrl,
       prompt,
       op: 'i2v',
+      audio: false,
       duration: ALRIZ_KLING_25_P2.duration,
       resolution: ALRIZ_KLING_25_P2.resolution,
     }, { ...config, headers: { ...config.headers, 'Content-Type': 'application/json' } });
