@@ -1692,3 +1692,17 @@ mtime_ms = 1795078151098
 storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/e3aafa3c-1148-44fd-8657-b4d0d39c78fa/70f653d3-fb91-492f-8072-b4121fe7e12f"
 storage_version_token = "1795078159881627"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "3TpGSn2MuanKXTj9rg01g"
+uri = "file://generated-artifacts/alriz-kling25-p2-live/attempt-2.mp4"
+type = "video"
+title = "Kling 2.5 Turbo 1080p live test"
+description = "Alriz completed the 10-second generation. Encoded output: 1440×1436, approximately 10.04 seconds, without an audio stream."
+logical_id = "a3409d77-9c01-4791-91e2-0f2e0917ec15"
+content_hash = "sha256:b5e99c6d3ec06a5b33b74c4fc274f945601e2c1ca48560df5b8b9e38541e53cc"
+size = 23986887
+mtime_ms = 1795186197946
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:d4b2d799-99da-4116-979b-7d4654921448/a3409d77-9c01-4791-91e2-0f2e0917ec15/926c0a36-1fb1-4fff-9ff6-27492fa3059f"
+storage_version_token = "1795186243517789"
+content_type = "video/mp4"
