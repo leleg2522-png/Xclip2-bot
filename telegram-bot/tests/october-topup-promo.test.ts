@@ -9,6 +9,17 @@ import { HAR_MODELS } from '../src/picsart-har-models';
 import { GENJUTSU_PRICES } from '../src/genjutsu';
 
 const source = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
+const promoSource = readFileSync(new URL('../src/october-topup-promo.ts', import.meta.url), 'utf8');
+function loadPromoVariant(enabled: boolean): typeof import('../src/october-topup-promo') {
+  const variantSource = promoSource.replace(/enabled: (?:true|false)/, `enabled: ${enabled}`);
+  assert.notEqual(variantSource, promoSource, 'Promo enabled flag should be present');
+  const context = vm.createContext({ exports: {} });
+  vm.runInContext(ts.transpileModule(variantSource, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+  }).outputText, context);
+  return context.exports as typeof import('../src/october-topup-promo');
+}
+const activePromo = loadPromoVariant(true);
 const ast = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true);
 function functionCode(name: string): string {
   const node = ast.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === name);
@@ -32,7 +43,7 @@ async function testBilling(model: string, eligible: boolean, insufficient = fals
   const expected = eligible ? 1500 : normal;
   const context = vm.createContext({
     HAR_MODELS, MODEL_PRICES: prices,
-    picsart: { PICSART_I2V_MODELS },
+    picsart: { PICSART_I2V_MODELS, describePicsartPostSubmitCause: () => undefined },
     userModelPrice: async (_id: number, actualModel: string, base: number) => {
       assert.equal(actualModel, model);
       assert.equal(base, normal);
@@ -50,6 +61,7 @@ async function testBilling(model: string, eligible: boolean, insufficient = fals
     releaseGenerating: () => { released++; },
     chargeFailMsg: () => 'insufficient',
     describeError: () => 'fixture',
+    notifyGenerationFailure: async () => {},
     formatRupiah: (amount: number) => `Rp${amount}`,
     downloadBuffer: async () => { downloads++; throw Error('fixture preparation failure'); },
     bot: { telegram: {
@@ -91,10 +103,11 @@ async function testSqlEligibility() {
     ) ON COMMIT DROP`);
     const adapter = { query: client.query.bind(client) } as Pick<Pool, 'query'>;
     const now = new Date('2026-10-26T00:00:00+07:00');
-    assert.deepEqual(await octoberPromoStatus(adapter, 1, now), { active: false, eligible: false });
-    await activateOctoberPromo(adapter);
+    const status = async (id: number, at = now) => ({ ...(await activePromo.octoberPromoStatus(adapter, id, at)) });
+    assert.deepEqual(await status(1), { active: false, eligible: false });
+    await activePromo.activateOctoberPromo(adapter);
     const first = await client.query('SELECT applied_at FROM bot_migrations');
-    await activateOctoberPromo(adapter);
+    await activePromo.activateOctoberPromo(adapter);
     assert.deepEqual((await client.query('SELECT applied_at FROM bot_migrations')).rows, first.rows);
     const start = '2026-10-25T12:00:00+07:00';
     await client.query('UPDATE bot_migrations SET applied_at=$1', [start]);
@@ -111,22 +124,22 @@ async function testSqlEligibility() {
     await add(8, 49999);
     await add(9, 50000, 'PAID', start, '2026-10-31T23:59:59+07:00');
     await add(12, 200000); // Previously qualifying participants stay eligible.
-    for (const id of [1, 2, 12]) assert.deepEqual(await octoberPromoStatus(adapter, id, now), active);
+    for (const id of [1, 2, 12]) assert.deepEqual(await status(id), active);
     for (const id of [3, 4, 5, 6, 7, 8, 10])
-      assert.deepEqual(await octoberPromoStatus(adapter, id, now), { active: true, eligible: false });
-    assert.equal((await octoberPromoStatus(adapter, 9, new Date('2026-10-31T23:59:59.999+07:00'))).eligible, true);
-    assert.deepEqual(await octoberPromoStatus(adapter, 1, new Date('2026-11-01T00:00:00+07:00')), active,
+      assert.deepEqual(await status(id), { active: true, eligible: false });
+    assert.equal((await status(9, new Date('2026-10-31T23:59:59.999+07:00'))).eligible, true);
+    assert.deepEqual(await status(1, new Date('2026-11-01T00:00:00+07:00')), active,
       'Existing eligibility survives the original deadline');
-    assert.deepEqual(await octoberPromoStatus(adapter, 7, new Date('2026-11-02T00:00:00+07:00')), active,
+    assert.deepEqual(await status(7, new Date('2026-11-02T00:00:00+07:00')), active,
       'Paid top-ups after the original deadline qualify');
     await add(11, 50000, 'PAID', '2026-11-02T01:00:00+07:00', '2026-11-02T01:01:00+07:00');
-    assert.deepEqual(await octoberPromoStatus(adapter, 11, new Date('2026-11-02T00:00:00+07:00')),
+    assert.deepEqual(await status(11, new Date('2026-11-02T00:00:00+07:00')),
       { active: true, eligible: false }, 'Future payments do not qualify early');
-    assert.deepEqual(await octoberPromoStatus(adapter, 11, new Date('2026-11-02T02:00:00+07:00')), active);
-    assert.deepEqual(await octoberPromoStatus(adapter, 1, new Date('2100-01-01T00:00:00+07:00')), active,
+    assert.deepEqual(await status(11, new Date('2026-11-02T02:00:00+07:00')), active);
+    assert.deepEqual(await status(1, new Date('2100-01-01T00:00:00+07:00')), active,
       'Promo does not expire automatically');
     await client.query("UPDATE topup_orders SET status='PAID', paid_at=$1 WHERE db_user_id=4", [start]);
-    assert.equal((await octoberPromoStatus(adapter, 4, now)).eligible, true, 'Payment immediately unlocks promo');
+    assert.equal((await status(4)).eligible, true, 'Payment immediately unlocks promo');
   } finally {
     await client.query('ROLLBACK');
     client.release();
@@ -135,19 +148,13 @@ async function testSqlEligibility() {
 }
 
 async function testExplicitStop() {
-  const promoSource = readFileSync(new URL('../src/october-topup-promo.ts', import.meta.url), 'utf8');
-  assert.match(promoSource, /enabled: true/);
-  const context = vm.createContext({ exports: {} });
-  vm.runInContext(ts.transpileModule(promoSource.replace('enabled: true', 'enabled: false'), {
-    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
-  }).outputText, context);
-  const disabled = context.exports;
+  assert.equal(OCTOBER_PROMO.enabled, false);
   const adapter = { query: async () => { throw Error('Disabled promo must not query/activate'); } };
-  await disabled.activateOctoberPromo(adapter);
-  const status = await disabled.octoberPromoStatus(adapter, 1);
+  await activateOctoberPromo(adapter);
+  const status = await octoberPromoStatus(adapter, 1);
   assert.equal(status.active, false); assert.equal(status.eligible, false);
-  assert.equal(disabled.octoberPromoPrice('heygen', 2500, status), 2500);
-  assert.equal(disabled.octoberPromoText(status), '');
+  assert.equal(octoberPromoPrice('heygen', 2500, status), 2500);
+  assert.equal(octoberPromoText(status), '');
 }
 
 async function main() {
@@ -163,7 +170,7 @@ async function main() {
   for (const model of ['kling_21_p2', 'seedance_2_mini_edit', 'seedance_2_fast', 'wan_v3', 'flora_minimax_h3_480', 'banana21_i2i'])
     assert.equal(octoberPromoPrice(model, 4000, active), 4000, model);
   assert.equal(octoberPromoText({ active: false, eligible: false }), '');
-  assert.equal(OCTOBER_PROMO.enabled, true);
+  assert.equal(OCTOBER_PROMO.enabled, false);
   assert.equal(OCTOBER_PROMO.minimumTopup, 50000);
   assert.match(octoberPromoText(active), /Satu transaksi top-up minimal Rp50\.000/);
   assert.doesNotMatch(octoberPromoText(active), /Rp200\.000/);
@@ -173,6 +180,7 @@ async function main() {
   assert.match(octoberPromoText({ active: true, eligible: false }), /harga normal/);
   const priceTableContext = vm.createContext({
     octoberPromoPrice, octoberPromoText, GENJUTSU_PRICES,
+    POSBOT_SEEDANCE25_PRICE: 7000,
     formatRupiah: (amount: number) => 'Rp' + amount.toLocaleString('id-ID'),
     KLING4_DURATIONS: [10, 15, 30], CHINA_VIDEO_MODELS: {}, BUDGET_VIDEO_MODELS: {},
     KLING_P4: { label: 'P4' }, ALRIZ_KLING_P5: { label: 'P5' },

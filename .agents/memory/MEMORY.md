@@ -11,7 +11,7 @@
 - [Telegram rate limits](telegram-rate-limits.md) — retry explicit 429s, not ambiguous sends; avoid a second error reply and never replay generation.
 - [Botelex stream interruptions](botelex-stream-interruption.md) — an HTTP 200 may still end without complete text; retries are new quota-consuming calls, not safe replays.
 - [XclipAI saldo billing & KlikQRIS](xclip-saldo-billing.md) — pay-per-generate: charge only if delivered, any failure=full refund, no saldo→cash; QRIS credit must accept status<>'PAID' so late payments recover
-- [Top-up promotion](october-topup-promo.md) — one paid Rp50k top-up since activation unlocks Rp1,500 on five models until the owner says stop; preserve existing eligibility.
+- [Top-up promotion](october-topup-promo.md) — owner stopped the global Rp50k promo; keep normal prices unless they explicitly resume it.
 - [Flora AI API](flora-ai-api.md) — generate pakai params.image_url/video_url (bukan inputs[]); upload form_fields snake_case; "1 key 1 task" salah (paralel jalan); tak ada endpoint saldo credits
 - [XclipAI referral scheme](xclip-referral-scheme.md) — 5% dari SETIAP top-up undangan masuk saldo utama pengundang; bonus cair hanya saat order PAID, idempotent via UNIQUE(order_id)
 - [Picsart account pools](picsart-account-pools.md) — all Picsart models can use both ~50-credit and higher-credit accounts, with no model exemptions; non-Picsart providers stay unchanged.

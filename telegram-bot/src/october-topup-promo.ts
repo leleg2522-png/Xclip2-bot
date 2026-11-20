@@ -2,7 +2,7 @@ import type { Pool } from 'pg';
 
 export const OCTOBER_PROMO = {
   id: 'october_2026_single_topup_200k_promo', // Preserve the original activation, despite the lower threshold.
-  enabled: true, // No automatic expiry; stop only on the owner's instruction.
+  enabled: false, // Owner ended the promotion; restore normal prices for everyone.
   minimumTopup: 50000,
   price: 1500,
 } as const;
