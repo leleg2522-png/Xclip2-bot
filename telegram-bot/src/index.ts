@@ -303,7 +303,7 @@ const MODEL_PRICES = {
   picsart_seedance_25_flash: 6000, // Seedance 2.5 Flash: native 480p → mandatory Renderful 1080p
   oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
-  kling_21_p2: 3000,   // Public Kling 2.1 P2; Alriz Kling 2.5 Turbo 720p backend
+  kling_21_p2: 3000,   // Public Kling 2.1 P2; Alriz Kling 2.5 Turbo 1080p backend
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
 
@@ -12988,7 +12988,7 @@ async function runKling21P2(
     const delivered = await sendResult(
       chatId,
       resultUrl,
-      `🎬 ${LABEL} (10 detik, 720p)\n\n/menu untuk buat lagi`,
+      `🎬 ${LABEL} (10 detik, 1080p)\n\n/menu untuk buat lagi`,
       true
     );
     if (delivered) {

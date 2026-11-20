@@ -30,8 +30,8 @@ assert.equal(runner.includes('Flora AI'), false);
 assert.deepEqual(ALRIZ_KLING_25_P2, {
   model: 'kling-2.5-turbo',
   duration: 10,
-  resolution: 720,
-  credits: 750,
+  resolution: 1080,
+  credits: 1000,
 });
 
 function makeHarness(outcome = 'success') {
@@ -62,7 +62,7 @@ function makeHarness(outcome = 'success') {
           prompt: 'A short scene',
           op: 'i2v',
           duration: 10,
-          resolution: 720,
+          resolution: 1080,
         });
         assert.doesNotMatch(JSON.stringify(body), /fixture-private-key|telegram/i);
         if (outcome === 'submit-timeout') throw Error('ETIMEDOUT fixture-private-key');
@@ -140,7 +140,7 @@ async function main() {
   assert.equal(invalid.events.published, 0);
   assert.equal(invalid.events.submits, 0);
 
-  console.log('Kling 2.1 P2 Alriz Kling 2.5 Turbo 720p API and submit-safety tests passed.');
+  console.log('Kling 2.1 P2 Alriz Kling 2.5 Turbo 1080p API and submit-safety tests passed.');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

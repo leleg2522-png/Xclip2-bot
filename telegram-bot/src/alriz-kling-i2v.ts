@@ -4,8 +4,8 @@ import type { AlrizKeySource } from './alriz-key-pool';
 export const ALRIZ_KLING_25_P2 = {
   model: 'kling-2.5-turbo',
   duration: 10,
-  resolution: 720,
-  credits: 750,
+  resolution: 1080,
+  credits: 1000,
 } as const;
 
 const API_BASE = 'https://alrizmotion.my.id/api';
@@ -114,7 +114,7 @@ export async function generateAlrizKling25P2(
     throw new Error('ALRIZ_SUBMIT_NO_JOB_ID');
   }
 
-  await api.status(`⏳ ${label}: video 10 detik 720p sedang dibuat.\nHasil dikirim otomatis.`);
+  await api.status(`⏳ ${label}: video 10 detik 1080p sedang dibuat.\nHasil dikirim otomatis.`);
   for (let attempt = 0; attempt < (api.maxPolls ?? 240); attempt++) {
     await wait(5000);
     let response: Response;
