@@ -41,6 +41,7 @@ import { FreebeatBridgeQueue, type BridgeAgent, type BridgeJob } from './freebea
 import { KLING_P4, klingP4VideoError, isFloraWorkspaceSetupError } from './kling-p4-flora';
 import { KLING_V3_STANDARD, klingV3StandardVideoError } from './kling-v3-standard-flora';
 import { ALRIZ_KLING_P5, generateKlingAlrizFromPool } from './alriz-motion';
+import { generateAlrizKling25P2FromPool } from './alriz-kling-i2v';
 import {
   SEEDANCE25_RATIOS, SEEDANCE25_MAX_IMAGES, SEEDANCE25_MAX_VIDEOS, SEEDANCE25_MAX_AUDIOS,
   SEEDANCE25_MAX_MEDIA_BYTES, SEEDANCE25_MAX_TOTAL_BYTES, SEEDANCE25_MAX_REFERENCE_SECONDS, validateSeedance25Request, seedance25ReferenceName,
@@ -302,7 +303,7 @@ const MODEL_PRICES = {
   picsart_seedance_25_flash: 6000, // Seedance 2.5 Flash: native 480p → mandatory Renderful 1080p
   oneover_seedance_25: 6000, // Seedance 2.5 I2V (OneOver) — promo
   kling_21_pro: 3500,  // Kling 2.1 Pro, 10s image-to-video
-  kling_21_p2: 3000,   // Public Kling 2.1 P2; Flora Kling 2.5 first-frame backend
+  kling_21_p2: 3000,   // Public Kling 2.1 P2; Alriz Kling 2.5 Turbo 720p backend
 } as const;
 type ModelKey = keyof typeof MODEL_PRICES;
 
@@ -2091,7 +2092,7 @@ interface Session {
   seedance25FlashPendingUploads?: number;
   // Kling 2.1 Pro (10-second image-to-video) wizard state
   kling21ImageUrl?: string;
-  // Public Kling 2.1 P2 (Flora Kling 2.5, 10-second image-to-video) wizard state
+  // Public Kling 2.1 P2 (Alriz Kling 2.5 Turbo, 10-second image-to-video) wizard state
   kling21P2ImageUrl?: string;
   // Flora Gemini Omni Flash 1.1 (10-second 1080p image-to-video) wizard state
   gomni11FloraRatio?: '9:16' | '16:9';
@@ -12948,7 +12949,7 @@ async function runKling21Pro(
 
 }
 
-// ─── Background: Kling 2.1 P2 (Flora Kling 2.5 backend) ──────────────────────
+// ─── Background: Kling 2.1 P2 (Alriz Kling 2.5 Turbo backend) ────────────────
 
 async function runKling21P2(
   chatId: number,
@@ -12960,7 +12961,6 @@ async function runKling21P2(
 ) {
   const LABEL = 'Kling 2.1 P2';
   const PRICE = MODEL_PRICES.kling_21_p2;
-  const skippedKeys = new Set<string>();
   const charge = await beginCharge(dbUserId, PRICE, 3);
   if (!charge.ok) {
     await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
@@ -12976,111 +12976,26 @@ async function runKling21P2(
       .jpeg({ quality: 95 })
       .toBuffer();
 
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const apiKey = await getNextFloraKey(skippedKeys);
-      if (!apiKey) {
-        await bot.telegram.editMessageText(
-          chatId,
-          statusMsgId,
-          undefined,
-          '❌ Layanan model ini sedang tidak tersedia. Hubungi admin.\n\n/menu untuk kembali'
-        ).catch(() => {});
-        return;
-      }
-
-      let acceptedRunId: string | undefined;
-      try {
-        const ws = await floraGetWorkspace(apiKey);
-        await bot.telegram.editMessageText(
-          chatId,
-          statusMsgId,
-          undefined,
-          `⏳ ${LABEL}: mengunggah foto... (1/3)`
-        ).catch(() => {});
-        const uploadedImageUrl = await floraUploadImage(
-          apiKey,
-          ws.workspaceId,
-          normalizedImage,
-          `kling-reference-${Date.now()}.jpg`,
-          'image/jpeg'
-        );
-
-        await bot.telegram.editMessageText(
-          chatId,
-          statusMsgId,
-          undefined,
-          `⏳ ${LABEL}: mengirim perintah... (2/3)`
-        ).catch(() => {});
-        acceptedRunId = await floraGenerate(
-          apiKey,
-          ws,
-          'i2v-kling-2.5',
-          { image_url: uploadedImageUrl, duration: '10' },
-          prompt,
-          'video'
-        );
-
-        await bot.telegram.editMessageText(
-          chatId,
-          statusMsgId,
-          undefined,
-          `⏳ ${LABEL}: video sedang dibuat... (3/3)\nBiasanya 5–15 menit. Hasil dikirim otomatis.`
-        ).catch(() => {});
-        const resultUrl = await floraPollRun(apiKey, acceptedRunId, 20 * 60 * 1000);
-        const delivered = await sendResult(
-          chatId,
-          resultUrl,
-          `🎬 ${LABEL} (10 detik)\n\n/menu untuk buat lagi`,
-          true
-        );
-        if (delivered) {
-          refund = false;
-          markGenSuccess(userId);
-          await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
-          console.log(`[${userId}] ${LABEL} done — internal model i2v-kling-2.5 run ${acceptedRunId}`);
-        }
-        return;
-      } catch (err: any) {
-        const desc = describeError(err);
-        console.error(`[${userId}] ${LABEL} attempt ${attempt + 1} failed (key …${apiKey.slice(-8)}): ${desc}`);
-
-        // A run ID means the upstream job may already be billable. Never submit
-        // it again with another key; refund the user instead.
-        if (acceptedRunId) {
-          if (isFloraKeyExhaustedError(desc)) await markFloraKeyDead(apiKey).catch(() => {});
-          const friendly = generationErrorMessage(err);
-          await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
-            .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
-          return;
-        }
-
-        if (isFloraKeyExhaustedError(desc)) {
-          await markFloraKeyDead(apiKey).catch(() => {});
-          skippedKeys.add(apiKey);
-          continue;
-        }
-
-        // Flora sometimes wraps an upstream/provider outage as HTTP 400
-        // input_validation_error with the generic message "Server Error".
-        // No run ID exists yet, so trying another account cannot duplicate a
-        // billable generation.
-        if (isFloraRetryablePreSubmitError(desc)) {
-          await new Promise(resolve => setTimeout(resolve, 3_000));
-          continue;
-        }
-
-        const friendly = generationErrorMessage(err);
-        await bot.telegram.editMessageText(chatId, statusMsgId, undefined, `${friendly}\n\n/menu untuk coba lagi`)
-          .catch(() => bot.telegram.sendMessage(chatId, `${friendly}\n\n/menu untuk coba lagi`));
-        return;
-      }
-    }
-    await bot.telegram.editMessageText(
+    const resultUrl = await generateAlrizKling25P2FromPool({
+      image: normalizedImage,
+      prompt,
+      publicLabel: LABEL,
+    }, {
+      pool: alrizKeyPool,
+      publish: bytes => publishMedia(bytes, false, undefined, true),
+      status: text => bot.telegram.editMessageText(chatId, statusMsgId, undefined, text).then(() => {}).catch(() => {}),
+    });
+    const delivered = await sendResult(
       chatId,
-      statusMsgId,
-      undefined,
-      '❌ Layanan model ini sedang mengalami gangguan. Saldo akan dikembalikan.\n\n/menu untuk coba lagi'
-    ).catch(() => {});
+      resultUrl,
+      `🎬 ${LABEL} (10 detik, 720p)\n\n/menu untuk buat lagi`,
+      true
+    );
+    if (delivered) {
+      refund = false;
+      markGenSuccess(userId);
+      await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    }
   } catch (err: any) {
     console.error(`[${userId}] ${LABEL} outer error: ${describeError(err)}`);
     await notifyGenerationFailure(chatId, statusMsgId, err);
