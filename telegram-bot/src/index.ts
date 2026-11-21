@@ -262,7 +262,7 @@ const MODEL_PRICES = {
   kling_mc: 3500,      // Kling MC3.0 PRO (Picsart Motion Control)
   kling_p3: 4000,      // Kling MC V3.0 PRO P3 (Edanbot Kling Motion 2.6 Pro)
   kling_p2: 4000,      // Kling MC V3 PRO P2 (Edanbot Kling Motion 2.6 Pro)
-  seedance25_p2: 7500, // Seedance 2.5 P2: Picsart P1 route with mandatory 1080p finishing.
+  seedance25_p2: 8500, // Seedance 2.5 P2: Picsart P1 route with mandatory 1080p finishing.
   edanbot_seedance25_p3: 6500, // Public Seedance 2.5 P3 I2V via Edanbot; native 480p, 30s.
   posbot_seedance25: POSBOT_SEEDANCE25_PRICE, // Seedance 2.5 P3 R2V, 30 seconds.
   kling_p4: 2500,      // Kling MC V3 Pro P4 (Alriz native)
@@ -10854,7 +10854,7 @@ async function runKlingP3(
 // ─── Background: Picsart Image-to-Video ───────────────────────────────────────
 
 async function runSeedance25P2(job: P2Job) {
-  // Keep P2's reference-only wizard and Rp7.500 tariff, but reuse P1's
+  // Keep P2's reference-only wizard and Rp8.500 tariff, but reuse P1's
   // Picsart generation, mandatory upscale, delivery, and refund path.
   const { chatId, userId, dbUserId, statusMsgId, prompt, ratio, refs } = job;
   const PRICE = MODEL_PRICES.seedance25_p2;

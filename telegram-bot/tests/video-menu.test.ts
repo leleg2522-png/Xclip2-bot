@@ -20,7 +20,7 @@ const functions = ast.statements.filter(s => ts.isFunctionDeclaration(s)
 assert.equal(functions.match(/function /g)?.length, functionNames.length);
 const context = vm.createContext({
   Markup, CHINA_VIDEO_MODELS, buildVideoMenuScreen, isRetiredVideoCallback, BUDGET_VIDEO_MODELS, isBudgetVideoModel, GENJUTSU_PRICES,
-  MODEL_PRICES: { seedance25_p2: 7500, picsart_seedance_25_flash: 6000, edanbot_seedance25_p3: 6500, posbot_seedance25: 7000 },
+  MODEL_PRICES: { seedance25_p2: 8500, picsart_seedance_25_flash: 6000, edanbot_seedance25_p3: 6500, posbot_seedance25: 7000 },
   KLING_V3_PRO: { label: 'Kling v3 Pro' },
   formatRupiah: (value: number) => `Rp${Math.round(value).toLocaleString('id-ID')}`,
   getPicsartI2vPrice: () => 5000,
@@ -29,7 +29,7 @@ vm.runInContext(ts.transpileModule(functions, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText, context);
 const modelRows = JSON.parse(JSON.stringify(vm.runInContext('videoModelRows()', context)));
-assert.match(modelRows.flat().find((b: any) => b.callback_data === 'mode_seedance25_p2').text, /Rp7\.500/);
+assert.match(modelRows.flat().find((b: any) => b.callback_data === 'mode_seedance25_p2').text, /Rp8\.500/);
 assert.match(modelRows.flat().find((b: any) => b.callback_data === 'mode_seedance25_flash').text, /Rp6\.000/);
 assert.match(modelRows.flat().find((b: any) => b.callback_data === 'mode_posbot_s25_i2v').text, /Seedance 2\.5 P3 · I2V · 30 detik · 480p · Rp6\.500/);
 assert.match(modelRows.flat().find((b: any) => b.callback_data === 'mode_posbot_s25_r2v').text, /Rp7\.000/);

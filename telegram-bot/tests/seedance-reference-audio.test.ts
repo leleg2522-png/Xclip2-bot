@@ -139,7 +139,7 @@ async function p2Tests() {
   const messages: string[] = [], jobs: any[] = [];
   const controller = createSeedance25P2Bot({
     getSession: () => state, setSession: (_id, patch) => { state = { ...state, ...patch }; },
-    price: () => 7500, cooldown: () => 0,
+    price: () => 8500, cooldown: () => 0,
     download: async () => Buffer.from('media'), inspect: async () => ({ duration: 2 }),
     run: async job => { jobs.push(job); },
   });
@@ -162,7 +162,7 @@ async function p2Tests() {
   const calls: any[][] = [];
   const context = vm.createContext({
     ...referenceLabels, SEEDANCE25_P2, validateP2References, validateSeedance25Prompt: (value: string) => value,
-    MODEL_PRICES: { seedance25_p2: 7500 },
+    MODEL_PRICES: { seedance25_p2: 8500 },
     retryTelegramFileRead: async (fn: any) => fn(),
     bot: { telegram: { getFileLink: async (id: string) => ({ href: `https://example.test/${id}` }) } },
     runPicsartSeedance25: async (...args: any[]) => { calls.push(args); },
@@ -172,7 +172,7 @@ async function p2Tests() {
   assert.equal(calls.length, 1);
   assert.equal(calls[0][8].length, 3);
   assert.equal(calls[0][8][1].mime, 'audio/ogg');
-  assert.equal(calls[0][9], 7500);
+  assert.equal(calls[0][9], 8500);
 }
 
 async function runnerTests() {

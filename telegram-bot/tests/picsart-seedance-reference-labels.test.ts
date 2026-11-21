@@ -105,7 +105,7 @@ async function p2() {
   const gate = new Promise<void>(resolve => { release = resolve; });
   const controller = createSeedance25P2Bot({
     getSession: () => state, setSession: (_id, patch) => { state = { ...state, ...patch }; },
-    price: () => 7500, cooldown: () => 0,
+    price: () => 8500, cooldown: () => 0,
     download: async id => { if (id === 'first') await gate; return Buffer.from(id === 'txt' ? '@2 left; @1 right' : 'image'); },
     inspect: async () => ({}), run: async job => { jobs.push(job); },
   });
@@ -127,7 +127,7 @@ async function p2() {
   const calls: any[][] = [];
   const context = vm.createContext({
     ...labels, validateSeedance25Prompt, validateP2References, SEEDANCE25_P2,
-    MODEL_PRICES: { seedance25_p2: 7500 },
+    MODEL_PRICES: { seedance25_p2: 8500 },
     retryTelegramFileRead: async (read: any) => read(),
     bot: { telegram: { getFileLink: async (id: string) => ({ href: `https://example.test/${id}` }) } },
     runPicsartSeedance25: async (...args: any[]) => { calls.push(args); },
