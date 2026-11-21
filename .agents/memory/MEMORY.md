@@ -16,7 +16,7 @@
 - [XclipAI referral scheme](xclip-referral-scheme.md) — 5% dari SETIAP top-up undangan masuk saldo utama pengundang; bonus cair hanya saat order PAID, idempotent via UNIQUE(order_id)
 - [Picsart account pools](picsart-account-pools.md) — all Picsart models can use both ~50-credit and higher-credit accounts, with no model exemptions; non-Picsart providers stay unchanged.
 - [Seedance 2.5 routes](seedance-api.md) — P2 stays separate at Rp4,500 but now uses P1's Picsart route with mandatory 1080p finishing.
-- [Kling Motion package routing](edanbot-kling-motion.md) — P1/P2/P3 use Picsart; P2/P3 accept 30s references, while P4/P5 remain Alriz-native.
+- [Kling Motion package routing](edanbot-kling-motion.md) — P1 uses Picsart; P2/P3 use Edanbot Kling Motion 2.6 Pro up to 30s; P4/P5 remain Alriz-native.
 - [Kling 2.1 P2 Alriz backend](kling21-p2-alriz.md) — public P2 is single-image I2V on Alriz Kling 2.5 Turbo, selected at 720p; keep it distinct from Motion Control P2.
 - [Picsart Kling 4 and Omni](picsart-kling4.md) — all Kling 4 modes require Renderful 1080p before delivery; no native fallback. Omni Rp8.500; credit cost uses quotes.
 - [Paid provider post-submit failover](paid-provider-post-submit-failover.md) — failover may retry only before an upstream paid job is accepted; post-submit auth loss must refund, not resubmit.

@@ -24,7 +24,7 @@
     "test:kling21": "tsx tests/kling21-flora.test.ts",
     "test:kling21p2": "tsx tests/kling21-p2-flora.test.ts",
     "test:gomni11flora": "tsx tests/gemini-omni-11-flora.test.ts",
-    "test:klingp2": "tsx tests/kling-p2-s4.test.ts && tsx tests/kling-picsart-p23.test.ts",
+    "test:klingp2": "tsx tests/kling-p2-s4.test.ts && tsx tests/kling-picsart-p23.test.ts && tsx tests/kling-motion-edan.test.ts",
     "test:klingp4": "tsx tests/kling-p4-flora.test.ts",
     "test:klingv3pro": "tsx tests/kling-v3-pro-edan.test.ts",
     "test:seedance25-edan": "tsx tests/seedance25-flash-edan.test.ts",

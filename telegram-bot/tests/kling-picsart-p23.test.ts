@@ -5,14 +5,17 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 const source = fs.readFileSync(path.resolve(__dirname, '../src/index.ts'), 'utf8');
-const runnerStart = source.indexOf('async function runKlingMotionControl(');
+const runnerStart = source.indexOf('async function runKlingMotionEdan(');
 const wrappersStart = source.indexOf('async function runKlingP2(', runnerStart);
 const wrappersEnd = source.indexOf('// ─── Background: Picsart Image-to-Video', wrappersStart);
 const runnerEnd = source.indexOf('\n}\n', runnerStart) + 3;
 assert.ok(runnerStart >= 0 && runnerEnd > runnerStart && wrappersStart > runnerEnd && wrappersEnd > wrappersStart);
 const runnerAndWrappers = source.slice(runnerStart, runnerEnd) + source.slice(wrappersStart, wrappersEnd);
-assert.doesNotMatch(runnerAndWrappers, /runKlingEdanbot|edanbot\.digital|EDANBOT_KLING_MC_MODEL/);
-assert.match(source, /KLING_P2_P3_MAX_REF_SECONDS\s*=\s*30/);
+assert.match(runnerAndWrappers, /generateKlingMotionEdan/);
+assert.match(runnerAndWrappers, /getAvailableEdanbotCookies/);
+assert.match(runnerAndWrappers, /markEdanbotCookieDead/);
+assert.doesNotMatch(runnerAndWrappers, /picsart\.generateKlingMotionControl/);
+assert.match(source, /KLING_P2_P3_MAX_REF_SECONDS\s*=\s*KLING_MOTION_EDAN\.maxReferenceSeconds/);
 
 function compile(text: string) {
   return ts.transpileModule(text, {
@@ -39,6 +42,7 @@ function harness(failure?: 'provider' | 'delivery') {
     MODEL_PRICES: { kling_mc: 3500, kling_p2: 4000, kling_p3: 4000 },
     KLING_MAX_REF_SECONDS: 16,
     KLING_P2_P3_MAX_REF_SECONDS: 30,
+    KLING_MOTION_EDAN: { minReferenceSeconds: 3, maxReferenceSeconds: 30 },
     beginCharge: async (_id: number, price: number) => {
       calls.charges.push(price);
       return { ok: true };
@@ -54,13 +58,19 @@ function harness(failure?: 'provider' | 'delivery') {
       ? { buf: image, ext: 'png', mime: 'image/png' }
       : { buf: video, ext: 'mp4', mime: 'video/mp4' },
     detectVideoType: () => ({ ext: 'mp4', mime: 'video/mp4' }),
-    picsart: {
-      generateKlingMotionControl: async (input: any) => {
-        calls.provider.push(input);
-        if (failure === 'provider') throw new Error('Picsart request failed');
-        return { url: 'https://picsart.test/result.mp4', credits: 64 };
-      },
+    inspectSeedance25Media: async () => 14.3,
+    generateKlingMotionEdan: async (...args: any[]) => {
+      calls.provider.push(args);
+      if (failure === 'provider') throw new Error('Edanbot request failed');
+      return { url: 'https://cdn.test/result.mp4', jobId: 'accepted-job' };
     },
+    getAvailableEdanbotCookies: async () => [],
+    markEdanbotCookieDead: async () => {},
+    uploadToEdanbot: async () => ({ type: 'image', url: 'https://edanbot.digital/uploads/a.png', name: 'a.png', size: 10 }),
+    edanbotHttp: {},
+    pollEdanbotJob: async () => 'https://cdn.test/result.mp4',
+    EDANBOT_JOB_TIMEOUT_MS: 1_200_000,
+    retryTelegramFileRead: async (read: () => Promise<any>) => read(),
     sendResult: async (_chat: number, url: string, caption: string, isVideo: boolean) => {
       calls.deliveries.push({ url, caption, isVideo });
       return failure !== 'delivery';
@@ -88,12 +98,15 @@ async function checkVariant(variant: 'p2' | 'p3') {
 
   assert.deepEqual(h.calls.charges, [price]);
   assert.equal(h.calls.provider.length, 1);
-  assert.equal(h.calls.provider[0].userId, 3);
-  assert.equal(h.calls.provider[0].model, 'v26', 'P2/P3 use the same Picsart Motion Control model as P1');
-  assert.equal(h.calls.provider[0].prompt, 'Follow this motion.');
-  assert.deepEqual(h.calls.provider[0].imageBuffer, h.image);
-  assert.deepEqual(h.calls.provider[0].videoBuffer, h.video);
-  assert.equal(h.calls.deliveries[0].url, 'https://picsart.test/result.mp4');
+  assert.equal(h.calls.provider[0][0], 'Follow this motion.');
+  assert.deepEqual(h.calls.provider[0][1].buffer, h.image);
+  assert.equal(h.calls.provider[0][1].mime, 'image/png');
+  assert.deepEqual(h.calls.provider[0][2].buffer, h.video);
+  assert.equal(h.calls.provider[0][2].mime, 'video/mp4');
+  assert.equal(h.calls.provider[0][3], 14.3);
+  assert.equal(h.calls.provider[0][4].cookies, h.context.getAvailableEdanbotCookies);
+  assert.equal(h.calls.provider[0][4].markDead, h.context.markEdanbotCookieDead);
+  assert.equal(h.calls.deliveries[0].url, 'https://cdn.test/result.mp4');
   assert.equal(h.calls.deliveries[0].caption, `🎭 ${label}\n\n/menu untuk buat lagi`);
   assert.equal(h.calls.deliveries[0].isVideo, true);
   assert.deepEqual(h.calls.refunds, []);
@@ -131,7 +144,7 @@ async function main() {
   await checkVariant('p3');
   await checkThirtyOneSecondsRejectedBeforeCharge();
   await checkFailuresRefundTheExistingPackagePrice();
-  console.log('Kling MC P2/P3 Picsart route, 30s cap, package prices, delivery and refunds passed.');
+  console.log('Kling MC P2/P3 Edanbot route, 30s cap, package prices, delivery and refunds passed.');
 }
 
 main().catch(error => {

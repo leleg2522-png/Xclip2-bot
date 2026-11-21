@@ -10,8 +10,8 @@ for (const priceKey of ['kling_p2', 'kling_p3']) assert.match(source, new RegExp
 const wrappersFrom = source.indexOf('async function runKlingP2(');
 const wrappersTo = source.indexOf('// ─── Background: Picsart Image-to-Video', wrappersFrom);
 const wrappers = source.slice(wrappersFrom, wrappersTo);
-assert.match(wrappers, /runKlingMotionControl/);
-assert.doesNotMatch(wrappers, /runKlingEdanbot|EDANBOT_KLING_MC_MODEL/);
+assert.match(wrappers, /runKlingMotionEdan/);
+assert.doesNotMatch(wrappers, /runKlingMotionControl/);
 assert.match(wrappers, /MODEL_PRICES\.kling_p2/);
 assert.match(wrappers, /MODEL_PRICES\.kling_p3/);
 function compile(text: string) {

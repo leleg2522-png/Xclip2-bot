@@ -1,24 +1,30 @@
 ---
 name: Kling Motion package routing and Edanbot
-description: P1/P2/P3 use Picsart Motion Control; P2/P3 allow 30s; P4/P5 remain Alriz-native.
+description: P1 uses Picsart, P2/P3 use Edanbot Motion 2.6 Pro up to 30s, and P4/P5 remain Alriz-native.
 ---
 
 # Current Kling Motion routing
 
-P1, P2, and P3 use Picsart Motion Control. P1 remains limited to 16-second
-reference videos; P2/P3 accept up to 30 seconds. Keep their public package
-labels and prices separate. P4/P5 use Alriz `mc-kling-2.6-pro` and the same
-database key pool; keep the customer-facing P5 name **Kling MC V3 Pro P5**.
-P4 and P5 deliver the native Alriz result directly without Renderful finishing.
+P1 uses Picsart Motion Control and remains limited to 16-second reference
+videos. P2/P3 use Edanbot's `kling-motion-26-pro` contract and accept up to
+30-second references. Keep their public package labels and prices separate.
+The Edanbot request uploads both files, sends the full uploaded asset objects,
+actual reference duration, `character_orientation: "video"`, and
+`keep_original_sound: true`, then polls the accepted job. P4/P5 use Alriz
+`mc-kling-2.6-pro` and the same database key pool; keep the customer-facing P5
+name **Kling MC V3 Pro P5**. P4/P5 deliver the native Alriz result directly
+without Renderful finishing.
 
-**Why:** On 2026-11-16 the user asked to move P2/P3 to P1's backend while
-allowing up to 30 seconds instead of P1's shorter limit. This supersedes the
-older P2/P3-to-Edanbot decision. The user separately requested Alriz for P4/P5
-and clarified that those packages need no Renderful finishing.
+**Why:** The owner later provided an Edanbot HAR and requested that P2/P3 use
+its Kling Motion Control backend. That newer direction supersedes the earlier
+request to share P1's Picsart route. The user separately requested Alriz for
+P4/P5 and clarified that those packages need no Renderful finishing.
 
-**How to apply:** Keep P2/P3 on Picsart with their 30-second cap and separate
-labels/prices. Preserve full refunds on generation or delivery failure and
-never replay ambiguous/accepted paid submissions. Do not add finishing back to
+**How to apply:** Keep P2/P3 on Edanbot with their 30-second cap and separate
+labels/prices. Use the managed Edanbot cookie pool; never copy session cookies
+from HAR files into source. Rotate only after explicit pre-acceptance 401/403
+responses, preserve full refunds on generation/delivery failure, and never
+replay ambiguous or accepted paid submissions. Do not add finishing back to
 P4/P5. Keep Xclip Motion's separate finishing policy unchanged.
 
 ## Alriz credential management
@@ -67,20 +73,21 @@ from a mocked generation test or replay an already accepted paid job to check.
 
 **Hard rule:** never let any user-facing string (reply/caption/error/filename) leak `edanbot`/`roboneo`/`wavespeed`/`openart`/`meitu`/`meitudata`, and never send the raw `result_url` as a link — always re-upload bytes.
 
-Edanbot remains a separate backend for the Kling v3 Pro image-to-video flow; it
-is not the P2/P3 Motion Control backend.
+Edanbot serves the separate Kling v3 Pro image-to-video flow and Kling Motion
+P2/P3; those products use distinct model requests.
 
-**Why:** P2/P3 moved to Picsart on 2026-11-16; the separate Edanbot image-to-video
-route remains in the project.
+**Why:** P2/P3's Edanbot route is based on the owner's supplied Motion Control
+HAR; the existing Kling v3 Pro image-to-video flow remains separate.
 
-**How to apply:** Keep Edanbot cookie-pool and direct no-proxy handling scoped
-to that separate image-to-video flow. Do not route P2/P3 back to Edanbot or
-reuse its Motion Control model key.
+**How to apply:** Keep Edanbot cookie-pool and direct no-proxy handling shared
+as appropriate, but preserve separate request builders and model identifiers.
+Do not change P1's Picsart route or P4/P5's Alriz route when editing either
+Edanbot flow.
 
-## Edanbot API flow (separate image-to-video product)
+## Edanbot API flow
 - Auth: `EDANBOT_COOKIE` secret. It is the value of a Flask **signed** `session=` cookie. Normalize: prepend `session=` if missing (users often paste only the value → 401 without the prefix).
 - **Never route edanbot via Decodo proxy:** on Railway the proxy answers 407 (proxy auth) for these calls. Use a plain no-proxy axios client. The cookie is signed, not IP-bound, so direct calls work from any IP.
-- Upload and poll through the same cookie-backed Edanbot API, but use only the image-to-video model payload verified for that separate product; the former P2/P3 Motion Control payload no longer applies.
+- Upload and poll through the same cookie-backed API, but keep each product's verified payload separate. Kling Motion P2/P3 use the `kling-motion-26-pro` model contract described above; Kling v3 Pro I2V uses its own model payload.
 - Headers: cookie + `user-agent`, `referer: https://edanbot.digital/dashboard`, `origin: https://edanbot.digital`.
 
 ## Multi-user safety

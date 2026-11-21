@@ -89,6 +89,7 @@ import {
   validateKling4ProTxtDocument, decodeKling4ProTxt,
 } from './kling4-pro-prompt';
 import { generateKlingV3Pro, KLING_V3_PRO } from './kling-v3-pro-edan';
+import { generateKlingMotionEdan, KLING_MOTION_EDAN } from './kling-motion-edan';
 import { generateSeedance25FlashEdan, SEEDANCE25_FLASH_EDAN } from './seedance25-flash-edan';
 import { PgDramaStore } from './microdrama-store';
 import { registerMicrodrama } from './microdrama-bot';
@@ -117,7 +118,7 @@ const BRIDGE_PUBLIC_URL = (process.env.BRIDGE_PUBLIC_URL
 
 if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is required');
 if (!DATABASE_URL) throw new Error('RAILWAY_DATABASE_URL is required');
-if (!RENDERFUL_API_KEY) console.warn('⚠️ RENDERFUL_API_KEY tidak diset — backend Renderful nonaktif (Kling Motion Control kini pakai Picsart).');
+if (!RENDERFUL_API_KEY) console.warn('⚠️ RENDERFUL_API_KEY tidak diset — backend Renderful nonaktif (Kling MC P1 memakai Picsart; P2/P3 memakai Edanbot).');
 if (!SNAPGEN_API_KEY) console.warn('⚠️ SNAPGEN_API_KEY tidak diset — backend SnapGen nonaktif (Veo 3.1 Fast/Lite dan Banana Pro/2/Lite).');
 
 // Decodo rotating proxy — set DECODO_PROXY_URL=http://user:pass@gate.decodo.com:port
@@ -169,7 +170,7 @@ const floraHttp = axios.create({ timeout: 180_000 });
 // Direct HTTP client for Telegram downloads — tidak pakai proxy
 const telegramHttp = axios.create({ timeout: 60_000 });
 
-// Direct HTTP client for Edanbot's Kling v3 Pro and Seedance 2.5 Flash flows.
+// Direct, no-proxy HTTP client for Edanbot models; each product has its own request contract.
 const edanbotHttp = axios.create({ timeout: 120_000, proxy: false });
 const EDANBOT_JOB_TIMEOUT_MS = 20 * 60 * 1000;
 
@@ -258,9 +259,9 @@ const MODEL_PRICES = {
   flora_seedance_2_480: 15000,
   flora_seedance_2_5_480_per_second: 1500,
   chat: 100,           // Chat AI per pesan
-  kling_mc: 3500,      // Kling MC3.0 PRO (Picsart motion control)
-  kling_p3: 4000,      // Kling MC V3.0 PRO P3 (Picsart Motion Control)
-  kling_p2: 4000,      // Kling MC V3 PRO P2 (Picsart Motion Control)
+  kling_mc: 3500,      // Kling MC3.0 PRO (Picsart Motion Control)
+  kling_p3: 4000,      // Kling MC V3.0 PRO P3 (Edanbot Kling Motion 2.6 Pro)
+  kling_p2: 4000,      // Kling MC V3 PRO P2 (Edanbot Kling Motion 2.6 Pro)
   seedance25_p2: 7500, // Seedance 2.5 P2: Picsart P1 route with mandatory 1080p finishing.
   edanbot_seedance25_p3: 6500, // Public Seedance 2.5 P3 I2V via Edanbot; native 480p, 30s.
   posbot_seedance25: POSBOT_SEEDANCE25_PRICE, // Seedance 2.5 P3 R2V, 30 seconds.
@@ -336,8 +337,8 @@ function getPicsartI2vPrice(model: picsart.PicsartI2vModelKey, duration: Kling4D
 
 // Batas durasi video referensi Kling Motion Control (detik).
 const KLING_MAX_REF_SECONDS = 16;
-// P2/P3 use the shared Picsart backend but accept reference clips up to 30s.
-const KLING_P2_P3_MAX_REF_SECONDS = 30;
+// P2/P3 use Edanbot's Kling Motion 2.6 Pro API and accept clips up to 30s.
+const KLING_P2_P3_MAX_REF_SECONDS = KLING_MOTION_EDAN.maxReferenceSeconds;
 
 // Deskripsi error yang tahan banting untuk logging/notif admin: message kosong,
 // axios error (status + body), atau nilai non-Error tetap menghasilkan info berguna.
@@ -1328,7 +1329,7 @@ async function floraListAudioModels(apiKey: string): Promise<FloraAudioModel[]> 
   return models;
 }
 
-// ─── Edanbot Cookie Pool (Kling MC V3.0 PRO P3) ───────────────────────────────
+// ─── Edanbot Cookie Pool (Kling MC P2/P3, Kling v3 Pro I2V, Seedance) ────────
 // Cookies disimpan di DB (tabel edanbot_cookie_pool). Bot memakai cookie
 // 'available' pertama; kalau ditolak (401/403), cookie di-mark dead dan bot
 // otomatis coba cookie berikutnya. Fallback: env EDANBOT_COOKIE.
@@ -10690,7 +10691,112 @@ async function pollEdanbotJob(cookie: string, jobId: string, maxMs = 600_000): P
   throw new Error(`EDANBOT_JOB_TIMEOUT: melewati batas waktu ${Math.ceil(maxMs / 60_000)} menit`);
 }
 
-// Kling MC P2/P3 share P1's Picsart backend while retaining separate prices and labels.
+// ─── Background: Kling MC P2/P3 on Edanbot ──────────────────────────────────
+
+async function runKlingMotionEdan(
+  chatId: number,
+  userId: number,
+  dbUserId: number,
+  statusMsgId: number,
+  imageFileId: string,
+  videoFileId: string,
+  prompt: string,
+  variant: { label: string; price: number; icon: string },
+  videoDuration?: number,
+) {
+  const { label, price: PRICE, icon } = variant;
+  if (videoDuration !== undefined && videoDuration > KLING_P2_P3_MAX_REF_SECONDS) {
+    await bot.telegram.editMessageText(
+      chatId, statusMsgId, undefined,
+      `❌ Video referensi terlalu panjang (${videoDuration} detik). Maksimal ${KLING_P2_P3_MAX_REF_SECONDS} detik.`,
+    ).catch(() => {});
+    return;
+  }
+  const charge = await beginCharge(dbUserId, PRICE, 3);
+  if (!charge.ok) {
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined, chargeFailMsg(charge.reason, PRICE)).catch(() => {});
+    return;
+  }
+  let refund = true;
+  try {
+    const resolveTelegramMedia = (fileIdOrUrl: string) => /^https?:\/\//i.test(fileIdOrUrl)
+      ? Promise.resolve({ href: fileIdOrUrl })
+      : retryTelegramFileRead<{ href: string }>(() => bot.telegram.getFileLink(fileIdOrUrl));
+    const [imageLink, videoLink] = await Promise.all([
+      resolveTelegramMedia(imageFileId),
+      resolveTelegramMedia(videoFileId),
+    ]);
+    const [image, downloadedVideo] = await Promise.all([
+      downloadBuffer(imageLink.href),
+      downloadBuffer(videoLink.href),
+    ]);
+    if (image.buf.length > 10 * 1024 * 1024) throw new Error('KLING_MOTION_IMAGE_TOO_LARGE');
+    const videoType = detectVideoType(downloadedVideo.buf, videoLink.href);
+    const duration = await inspectSeedance25Media(downloadedVideo.buf, 'video');
+    if (duration < KLING_MOTION_EDAN.minReferenceSeconds
+      || duration > KLING_MOTION_EDAN.maxReferenceSeconds) {
+      throw new Error(`Video referensi harus ${KLING_MOTION_EDAN.minReferenceSeconds}–${KLING_MOTION_EDAN.maxReferenceSeconds} detik.`);
+    }
+
+    await bot.telegram.editMessageText(chatId, statusMsgId, undefined,
+      `⏳ ${label}: mengunggah foto dan video referensi...`
+    ).catch(() => {});
+    const result = await generateKlingMotionEdan(
+      prompt,
+      { buffer: image.buf, name: `character.${image.ext}`, mime: image.mime },
+      { buffer: downloadedVideo.buf, name: `driver.${videoType.ext}`, mime: videoType.mime },
+      duration,
+      {
+        cookies: getAvailableEdanbotCookies,
+        markDead: markEdanbotCookieDead,
+        upload: async (cookie, media) => {
+          const asset = await uploadToEdanbot(cookie, media.buffer, media.name, media.mime);
+          if (asset.type !== (media.mime.startsWith('video/') ? 'video' : 'image')) {
+            throw new Error('EDANBOT_KLING_MOTION_INVALID_UPLOAD_TYPE');
+          }
+          return asset as { type: 'image' | 'video'; url: string; name: string; size: number };
+        },
+        submit: async (cookie, body) => {
+          const response = await edanbotHttp.post('https://edanbot.digital/api/generate', body, {
+            headers: { cookie, origin: 'https://edanbot.digital', referer: 'https://edanbot.digital/dashboard' },
+          });
+          const jobId = response.data?.job_id;
+          if (response.data?.ok !== true || typeof jobId !== 'string' || !/^[a-zA-Z0-9_-]{1,200}$/.test(jobId)) {
+            throw new Error('EDANBOT_KLING_MOTION_SUBMIT_NO_JOB_ID');
+          }
+          return jobId;
+        },
+        poll: (cookie, jobId) => pollEdanbotJob(cookie, jobId, EDANBOT_JOB_TIMEOUT_MS),
+        onStatus: stage => {
+          const text = stage === 'upload' ? 'mengunggah media...'
+            : stage === 'submit' ? 'mengirim job...'
+            : 'video sedang dibuat. Hasil akan dikirim otomatis.';
+          bot.telegram.editMessageText(chatId, statusMsgId, undefined, `⏳ ${label}: ${text}`).catch(() => {});
+        },
+      },
+    );
+
+    const delivered = await sendResult(chatId, result.url, `${icon} ${label}\n\n/menu untuk buat lagi`, true);
+    if (!delivered) throw new Error('KLING_MOTION_DELIVERY_FAILED');
+    refund = false;
+    const newCount = await incrementKlingUsage(dbUserId);
+    markGenSuccess(userId);
+    await bot.telegram.deleteMessage(chatId, statusMsgId).catch(() => {});
+    console.log(`[${userId}] ${label} done via Edanbot (usage: ${newCount})`);
+  } catch (error: unknown) {
+    // Never log Axios request config: it contains the account session cookie.
+    console.error(`[${userId}] ${label} failed: ${describeError(error)}`);
+    await notifyGenerationFailure(chatId, statusMsgId, error);
+  } finally {
+    if (refund) {
+      await addSaldo(dbUserId, PRICE).catch(() => {});
+      await bot.telegram.sendMessage(chatId, `↩️ Saldo ${formatRupiah(PRICE)} dikembalikan (generate tidak berhasil).`).catch(() => {});
+    }
+    releaseGenerating(dbUserId);
+  }
+}
+
+// Keep separate package prices and customer-facing names on the shared Edanbot route.
 async function runKlingP2(
   chatId: number,
   userId: number,
@@ -10701,19 +10807,18 @@ async function runKlingP2(
   videoDuration: number | undefined,
   prompt: string = ''
 ) {
-  return runKlingMotionControl(
+  return runKlingMotionEdan(
     chatId,
     userId,
     dbUserId,
     statusMsgId,
-    videoFileId,
     characterUrl,
+    videoFileId,
     prompt,
     {
       label: 'Kling MC V3 PRO P2',
       price: MODEL_PRICES.kling_p2,
       icon: '🎭',
-      maxReferenceSeconds: KLING_P2_P3_MAX_REF_SECONDS,
     },
     videoDuration,
   );
@@ -10729,19 +10834,18 @@ async function runKlingP3(
   videoDuration: number | undefined,
   prompt: string = ''
 ) {
-  return runKlingMotionControl(
+  return runKlingMotionEdan(
     chatId,
     userId,
     dbUserId,
     statusMsgId,
-    videoFileId,
     characterUrl,
+    videoFileId,
     prompt,
     {
       label: 'Kling MC V3.0 PRO P3',
       price: MODEL_PRICES.kling_p3,
       icon: '🎭',
-      maxReferenceSeconds: KLING_P2_P3_MAX_REF_SECONDS,
     },
     videoDuration,
   );
